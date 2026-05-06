@@ -1,0 +1,54 @@
+name: Pull Google Apps Script
+
+# Workflow manual (workflow_dispatch). Corre desde la pestana Actions
+# de GitHub. Baja el contenido del proyecto Apps Script al repo, en
+# apps-script/, y crea un commit en la rama claude/pull-gas-<run_id>.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  pull:
+    name: Pull GAS
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Pull desde Google Apps Script
+        run: node scripts/pull-gas.js
+        env:
+          GOOGLE_CLIENT_ID:     ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          GAS_SCRIPT_ID:        ${{ secrets.GAS_SCRIPT_ID }}
+
+      - name: Commit y push de cambios
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          BRANCH="bot/pull-gas-${{ github.run_id }}"
+          git checkout -b "$BRANCH"
+          git add apps-script/
+          if git diff --cached --quiet; then
+            echo "Sin cambios — apps-script/ ya esta sincronizado."
+            exit 0
+          fi
+          git commit -m "Pull desde Apps Script (run ${{ github.run_id }})"
+          git push -u origin "$BRANCH"
+          echo ""
+          echo "Rama creada: $BRANCH"
+          echo "Abre un PR para mergear:"
+          echo "  https://github.com/${{ github.repository }}/pull/new/$BRANCH"

@@ -1,0 +1,13 @@
+{
+  "name": "lasnubes",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sistema de Reservas Las Nubes — dashboard estatico + Apps Script backend",
+  "scripts": {
+    "deploy:gas": "node scripts/deploy-gas.js",
+    "pull:gas": "node scripts/pull-gas.js"
+  },
+  "dependencies": {
+    "googleapis": "^144.0.0"
+  }
+}

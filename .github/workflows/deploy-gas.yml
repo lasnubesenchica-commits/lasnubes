@@ -1,0 +1,38 @@
+name: Deploy Google Apps Script
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps-script/**'
+      - 'scripts/deploy-gas.js'
+      - 'package.json'
+      - '.github/workflows/deploy-gas.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy GAS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Deploy a Google Apps Script
+        run: node scripts/deploy-gas.js
+        env:
+          GOOGLE_CLIENT_ID:     ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          GAS_SCRIPT_ID:        ${{ secrets.GAS_SCRIPT_ID }}
+          GAS_DEPLOYMENT_ID:    ${{ secrets.GAS_DEPLOYMENT_ID }}
