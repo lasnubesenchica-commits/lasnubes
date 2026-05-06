@@ -2055,30 +2055,36 @@ Responde ÚNICAMENTE con JSON válido, sin texto adicional ni markdown:
 
 function parseVoucherWithClaude(imageBase64, mimeType) {
   try {
-    const prompt = `Analiza este voucher de pago de Yappy. Extrae estos datos.
+    const prompt = `Analiza este voucher de pago. Puede ser de Yappy, Banco General, ACH, transferencia interbancaria, otro banco panameño, o cualquier comprobante de pago. Extrae estos datos.
 
-Cada voucher de Yappy SIEMPRE tiene visibles estos 4 campos — son obligatorios y no debes devolverlos null:
+Campos OBLIGATORIOS (haz tu mejor esfuerzo por extraerlos siempre):
 
-1. SENDER: nombre del remitente. Aparece grande arriba a la izquierda en formato "<Nombre> te envió", por ejemplo "Ana G. te envió" → sender = "Ana G.". O "Alejandra D. te envió" → sender = "Alejandra D.". Devuelve el nombre EXACTO como aparece (incluyendo iniciales con punto si las tiene). Si la imagen es ilegible en esa zona, devuelve "" pero esto debe ser raro.
+1. SENDER: nombre completo de la persona que envía/origina el pago (el remitente, no el destinatario).
+   - En Yappy aparece arriba a la izquierda como "<Nombre> te envió", ej: "Ana G. te envió" → sender = "Ana G.". O "Alejandra D. te envió" → sender = "Alejandra D.".
+   - En vouchers de Banco General / ACH / otros: búscalo bajo etiquetas como "Cliente", "Remitente", "Origen", "Ordenante", "De", "From", "Nombre del cliente", "Cuenta de origen". Toma el NOMBRE de la persona, no el número de cuenta.
+   - Devuelve el nombre EXACTO como aparece (incluyendo iniciales con punto si las tiene). Conserva mayúsculas/minúsculas tal cual.
+   - NUNCA devuelvas el nombre del destinatario / beneficiario (ej: "Las Nubes", "Las Nubes Enchica", el dueño de la cuenta receptora). Si solo se ve el destinatario y no el remitente, devuelve "".
+   - Si la imagen es ilegible en esa zona, devuelve "", pero esto debe ser raro.
 
-2. MONTO: el monto principal pagado, justo debajo del sender en grande con un "$" delante. Devuelve el número sin "$", como un número JSON (ej: 90.00, no "$90.00"). Lo confirma el círculo verde con check al lado.
+2. MONTO: el monto principal pagado. En Yappy aparece grande con "$" delante, justo debajo del sender. En otros vouchers búscalo bajo "Monto", "Total", "Importe". Devuelve el número sin "$", como número JSON (ej: 90.00, no "$90.00").
 
-3. FECHA DEL PAGO: campo "Fecha". Suele venir como "4 may 2026 - 9:33 p.m." Convierte a formato YYYY-MM-DD usando los meses en español (ene=01, feb=02, mar=03, abr=04, may=05, jun=06, jul=07, ago=08, sep=09, oct=10, nov=11, dic=12). Asume zona horaria de Panamá. Si no hay año visible, usa 2026.
+3. FECHA DEL PAGO: la fecha en que se realizó el pago/transferencia. En Yappy es el campo "Fecha", típicamente "4 may 2026 - 9:33 p.m.". Convierte a formato YYYY-MM-DD usando meses en español (ene=01, feb=02, mar=03, abr=04, may=05, jun=06, jul=07, ago=08, sep=09, oct=10, nov=11, dic=12). Asume zona horaria de Panamá. Si no hay año visible, usa 2026.
 
-4. CÓDIGO DE CONFIRMACIÓN: campo "Confirmación", abajo a la derecha del icono de recibo, formato típico "#XXXXX-NNNNNNNN". Devuélvelo SIN el "#" inicial.
+4. CÓDIGO DE CONFIRMACIÓN: identificador único de la transacción. En Yappy es el campo "Confirmación" (formato "#XXXXX-NNNNNNNN"). En otros vouchers búscalo bajo "Referencia", "Nº de transacción", "Comprobante", "ID transacción". Devuélvelo SIN el "#" inicial.
 
 Campos OPCIONALES (pueden no estar):
 
-5. MENSAJE: texto literal del campo "Mensaje" si existe (a veces dice "abono", el nombre del cliente, etc.). Si no hay campo Mensaje en absoluto, devuelve null.
+5. MENSAJE: texto literal del campo "Mensaje", "Concepto", "Descripción", "Detalle" o "Comentario" si existe (a veces dice "abono", el nombre del huésped, fechas, etc.). Si no hay ningún campo de mensaje/comentario, devuelve null.
 
 Si MENSAJE contiene info adicional, parséala así:
-6. NOMBRE COMPLETO: nombre + apellido del cliente que aparezca dentro del mensaje (ej: "Juan Pérez" → "Juan Pérez"). Si solo hay un nombre, una palabra suelta, o no hay nombre del todo, devuelve null.
+6. NOMBRE COMPLETO: nombre de una persona (el HUÉSPED) que aparezca dentro del mensaje/comentarios. Acepta tanto nombre+apellido ("Juan Pérez") como nombres simples ("Karina", "Sra. López", "Don Carlos"). Devuelve el nombre tal cual aparece, sin tratamientos genéricos sueltos. EXCLUYE estas palabras que NO son nombres y devuelve null si solo hay esto: "abono", "pago", "reserva", "deposito", "depósito", "saldo", "anticipo", "señal", "adelanto", "transferencia", "yappy", "ach", fechas, números, montos, "cabaña/cabana verde/azul/lila", "noches". Si el mensaje no contiene un nombre de persona, devuelve null.
 7. EMAIL: dirección de correo dentro del mensaje. Si no hay, null.
 8. TELÉFONO: número panameño (8 dígitos, con o sin guión) dentro del mensaje. Devuélvelo en formato XXXX-XXXX. Si no hay, null.
 
 Reglas:
-- Los campos 1-4 son OBLIGATORIOS; haz tu mejor esfuerzo, no los devuelvas vacíos a menos que la imagen esté ilegible.
+- Los campos 1-4 son OBLIGATORIOS; haz tu mejor esfuerzo, no los devuelvas vacíos a menos que la imagen sea ilegible o claramente no contengan ese dato.
 - Los campos 5-8 SOLO usan info presente literalmente en el voucher. Nunca inventes.
+- SENDER y NOMBRE COMPLETO son cosas distintas: SENDER = quien hizo el pago; NOMBRE COMPLETO = nombre del huésped escrito en el mensaje (puede ser otra persona, ej: alguien paga a nombre de un familiar).
 - Responde ÚNICAMENTE con JSON válido, sin markdown ni texto adicional.
 
 Formato:
