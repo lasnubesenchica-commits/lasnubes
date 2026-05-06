@@ -288,15 +288,15 @@ function getOrCreateSheet() {
 
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
-    sheet.getRange(1, 1, 1, 23).setValues([[
+    sheet.getRange(1, 1, 1, 24).setValues([[
       'ID', 'Nombre', 'Cabaña', 'CabañaCodigo',
       'Entrada', 'Salida', 'Personas',
       'Monto', 'Abono', 'Origen', 'CodConfirmacion',
       'ServiceFee', 'Neto', 'Alerta', 'Pagador', 'FechaReserva',
       'FechaPago', 'MontoPagado', 'CodTransferencia', 'MontoVoucher', 'EstadoPago',
-      'Email', 'Comentarios'
+      'Email', 'Comentarios', 'Telefono'
     ]]);
-    sheet.getRange(1, 1, 1, 23).setFontWeight('bold');
+    sheet.getRange(1, 1, 1, 24).setFontWeight('bold');
     sheet.setFrozenRows(1);
   }
 
@@ -432,7 +432,8 @@ function appendReservation(sheet, r) {
     r.montoVoucher     || '',
     r.estadoPago       || '',
     r.email            || '',
-    r.comentarios      || ''
+    r.comentarios      || '',
+    r.telefono         || ''
   ]);
 }
 
@@ -974,7 +975,8 @@ function doGet(e) {
         montoVoucher:     r[19] || '',
         estadoPago:       r[20] || '',
         email:            r[21] || '',
-        comentarios:      r[22] || ''
+        comentarios:      r[22] || '',
+        telefono:         r[23] || ''
       }));
 
     return ContentService
@@ -1073,7 +1075,8 @@ function doPost(e) {
         r.montoVoucher || '',
         r.estadoPago   || '',
         r.email        || '',
-        r.comentarios  || ''
+        r.comentarios  || '',
+        r.telefono     || ''
       ]);
 
       if (payload.fechaAnterior) {
@@ -1125,7 +1128,7 @@ function doPost(e) {
         const sheetId = data[i][0] ? stripId(data[i][0].toString()) : '';
         if (sheetId && sheetId === rawId) {
           const row = i + 1;
-          sheet.getRange(row, 1, 1, 23).setValues([[
+          sheet.getRange(row, 1, 1, 24).setValues([[
             r.id,
             r.name,
             CABIN_NAMES[r.cabin] || r.cabin,
@@ -1154,7 +1157,8 @@ function doPost(e) {
               return newEstado || existingEstado || '';
             })(),
             r.email        || data[i][21] || '',
-            r.comentarios  || data[i][22] || ''
+            r.comentarios  || data[i][22] || '',
+            r.telefono     || data[i][23] || ''
           ]]);
 
           if (payload.fechaAnterior) {
@@ -1575,6 +1579,22 @@ function migrarColumnasV2() {
     }
   });
   Logger.log(cambios ? '✓ Migración V2 — ' + cambios + ' columna(s)' : '✓ Columnas ya existían');
+}
+
+function migrarColumnasV3() {
+  const sheet = getOrCreateSheet();
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  let cambios = 0;
+  ['Telefono'].forEach(h => {
+    if (!headers.includes(h)) {
+      const col = headers.length + 1;
+      sheet.getRange(1, col).setValue(h);
+      sheet.getRange(1, col).setFontWeight('bold');
+      headers.push(h);
+      cambios++;
+    }
+  });
+  Logger.log(cambios ? '✓ Migración V3 — ' + cambios + ' columna(s)' : '✓ Columnas V3 ya existían');
 }
 
 function limpiarDuplicadosAirbnb() {
@@ -2035,19 +2055,37 @@ Responde ÚNICAMENTE con JSON válido, sin texto adicional ni markdown:
 
 function parseVoucherWithClaude(imageBase64, mimeType) {
   try {
-    const prompt = `Analiza este voucher de pago de Yappy y extrae:
-1. CÓDIGO DE CONFIRMACIÓN: campo "Confirmación" (ej: #XCXDK-28951982)
-2. MONTO: el monto principal pagado (ej: $90.00)
+    const prompt = `Analiza este voucher de pago de Yappy y extrae los siguientes datos.
 
-Responde ÚNICAMENTE con JSON válido:
+Datos visibles directamente en el voucher:
+1. CÓDIGO DE CONFIRMACIÓN: campo "Confirmación" — devuelve SIN el "#" inicial (ej: "NBQEV-06253256").
+2. MONTO: el monto principal numérico, sin "$" ni texto (ej: 90.00).
+3. SENDER: el nombre del remitente que aparece arriba en "X te envió" (ej: "Ana G." o "Alejandra D.").
+4. FECHA DEL PAGO: en formato YYYY-MM-DD. Asume zona horaria de Panamá. Infiere el año basándote en la fecha visible (año actual 2026 si no hay otro indicio).
+5. MENSAJE: el texto literal del campo "Mensaje" si existe (puede no existir, en ese caso usa null).
+
+Datos parseados del campo MENSAJE (si está presente):
+6. NOMBRE COMPLETO: si el mensaje contiene un nombre completo del cliente (al menos nombre + apellido), devuélvelo. Si solo hay un nombre o no hay nombre, usa null.
+7. EMAIL: si el mensaje contiene una dirección de correo, devuélvela. Si no, null.
+8. TELÉFONO: si el mensaje contiene un número de teléfono panameño (8 dígitos, con o sin guión), devuélvelo en formato XXXX-XXXX. Si no, null.
+
+Si algún campo opcional no está presente o no estás seguro, usa null. Nunca inventes datos.
+
+Responde ÚNICAMENTE con JSON válido, sin markdown ni texto adicional:
 {
-  "codTransferencia": "#XCXDK-28951982",
-  "monto": "$90.00"
+  "codTransferencia": "NBQEV-06253256",
+  "monto": 90.00,
+  "sender": "Ana G.",
+  "fechaPago": "2026-05-04",
+  "mensaje": "abono",
+  "nombreCompleto": null,
+  "email": null,
+  "telefono": null
 }`;
 
     const payload = {
       model: 'claude-opus-4-6',
-      max_tokens: 200,
+      max_tokens: 400,
       messages: [{ role: 'user', content: [
         { type: 'image', source: { type: 'base64', media_type: mimeType, data: imageBase64 } },
         { type: 'text', text: prompt }
@@ -2062,12 +2100,35 @@ Responde ÚNICAMENTE con JSON válido:
     });
 
     const result = JSON.parse(response.getContentText());
-    if (!result.content || !result.content[0]) return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'Claude API error' })).setMimeType(ContentService.MimeType.JSON);
+    if (!result.content || !result.content[0]) {
+      Logger.log('Voucher Claude API error: ' + response.getContentText());
+      return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'Claude API error' })).setMimeType(ContentService.MimeType.JSON);
+    }
     const text = result.content[0].text.trim();
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'No JSON' })).setMimeType(ContentService.MimeType.JSON);
     const data = JSON.parse(jsonMatch[0]);
-    return ContentService.createTextOutput(JSON.stringify({ ok: true, codTransferencia: data.codTransferencia || '', monto: data.monto || '' })).setMimeType(ContentService.MimeType.JSON);
+
+    // Normalizaciones defensivas (por si Claude devuelve string con "$" o "#")
+    const codTransferencia = (data.codTransferencia || '').toString().replace(/^#/, '').trim();
+    let monto = data.monto;
+    if (typeof monto === 'string') {
+      monto = parseFloat(monto.replace(/[^\d.,-]/g, '').replace(',', '.')) || 0;
+    } else {
+      monto = parseFloat(monto) || 0;
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({
+      ok:               true,
+      codTransferencia: codTransferencia,
+      monto:            monto,
+      sender:           data.sender         || '',
+      fechaPago:        data.fechaPago      || '',
+      mensaje:          data.mensaje        || '',
+      nombreCompleto:   data.nombreCompleto || null,
+      email:            data.email          || null,
+      telefono:         data.telefono       || null
+    })).setMimeType(ContentService.MimeType.JSON);
   } catch(e) {
     return ContentService.createTextOutput(JSON.stringify({ ok: false, error: e.message })).setMimeType(ContentService.MimeType.JSON);
   }
