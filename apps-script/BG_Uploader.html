@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Banco General — Importar Movimientos</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap');
+
+    :root {
+      --bg: #0d0f14;
+      --surface: #13161e;
+      --border: #1e2330;
+      --accent: #00d4aa;
+      --accent-dim: #00d4aa22;
+      --danger: #ff4d6d;
+      --text: #e8eaf0;
+      --text-muted: #6b7280;
+      --success: #00d4aa;
+      --mono: 'DM Mono', monospace;
+      --sans: 'Syne', sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+      gap: 16px;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .header-icon {
+      width: 32px; height: 32px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+
+    .header h1 {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+
+    .header p {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--mono);
+      margin-top: 1px;
+    }
+
+    /* DROP ZONE */
+    .drop-zone {
+      border: 1.5px dashed var(--border);
+      border-radius: 12px;
+      padding: 32px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+      background: var(--surface);
+    }
+
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .drop-zone input[type="file"] {
+      position: absolute; inset: 0;
+      opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+
+    .drop-icon {
+      font-size: 32px;
+      margin-bottom: 10px;
+      display: block;
+      filter: grayscale(0.3);
+    }
+
+    .drop-zone h2 {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .drop-zone p {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--mono);
+    }
+
+    .drop-zone .accent { color: var(--accent); }
+
+    /* FILE INFO */
+    .file-info {
+      display: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .file-info.visible { display: flex; }
+
+    .file-badge {
+      background: var(--accent-dim);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 500;
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--accent);
+      white-space: nowrap;
+    }
+
+    .file-name {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+
+    /* PREVIEW TABLE */
+    .preview-wrapper {
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .preview-wrapper.visible { display: flex; }
+
+    .preview-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      font-family: var(--mono);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .preview-label .count {
+      background: var(--accent-dim);
+      color: var(--accent);
+      border-radius: 4px;
+      padding: 1px 7px;
+      font-size: 10px;
+    }
+
+    .table-scroll {
+      max-height: 160px;
+      overflow-y: auto;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    .table-scroll::-webkit-scrollbar { width: 4px; }
+    .table-scroll::-webkit-scrollbar-track { background: var(--bg); }
+    .table-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--mono);
+      font-size: 10px;
+    }
+
+    th {
+      background: #1a1d27;
+      color: var(--text-muted);
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 6px 10px;
+      text-align: left;
+      position: sticky; top: 0;
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 5px 10px;
+      border-top: 1px solid var(--border);
+      color: var(--text);
+      white-space: nowrap;
+      max-width: 150px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    tr:hover td { background: #ffffff08; }
+
+    .monto-neg { color: #ff6b6b; }
+    .monto-pos { color: var(--accent); }
+
+    /* STATUS */
+    .status {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-family: var(--mono);
+    }
+
+    .status.visible { display: flex; }
+    .status.loading { background: #1a2030; color: #7c9fd4; border: 1px solid #2a3550; }
+    .status.success { background: #0d2420; color: var(--accent); border: 1px solid #1a3d36; }
+    .status.error { background: #2a1018; color: var(--danger); border: 1px solid #4a1828; }
+
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid #2a3550;
+      border-top-color: #7c9fd4;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* BUTTON */
+    .btn {
+      width: 100%;
+      padding: 13px;
+      background: var(--accent);
+      color: #0a0f0d;
+      border: none;
+      border-radius: 10px;
+      font-family: var(--sans);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn:hover:not(:disabled) {
+      background: #00ffcc;
+      transform: translateY(-1px);
+    }
+
+    .btn:disabled {
+      background: var(--border);
+      color: var(--text-muted);
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      padding: 8px;
+      font-size: 11px;
+      margin-top: -8px;
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: var(--surface);
+      color: var(--text);
+      transform: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="header-icon">🏦</div>
+    <div>
+      <h1>Importar Movimientos</h1>
+      <p>Banco General — Cuenta de Ahorros</p>
+    </div>
+  </div>
+
+  <!-- DROP ZONE -->
+  <div class="drop-zone" id="dropZone">
+    <input type="file" id="fileInput" accept=".xlsx,.xls" />
+    <span class="drop-icon">📂</span>
+    <h2>Arrastra tu archivo aquí</h2>
+    <p>o haz clic para seleccionar · <span class="accent">.xlsx</span> de Banco General</p>
+  </div>
+
+  <!-- FILE INFO -->
+  <div class="file-info" id="fileInfo">
+    <span class="file-badge">XLSX</span>
+    <span class="file-name" id="fileName">—</span>
+  </div>
+
+  <!-- PREVIEW -->
+  <div class="preview-wrapper" id="previewWrapper">
+    <div class="preview-label">
+      Vista previa
+      <span class="count" id="rowCount">0 filas</span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Descripción</th>
+            <th>Monto</th>
+            <th>Saldo</th>
+          </tr>
+        </thead>
+        <tbody id="previewBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- STATUS -->
+  <div class="status" id="status">
+    <div class="spinner" id="statusSpinner"></div>
+    <span id="statusText"></span>
+  </div>
+
+  <!-- BOTONES -->
+  <button class="btn" id="uploadBtn" disabled>
+    ⬆ Cargar al Sheet
+  </button>
+  <button class="btn btn-secondary" id="resetBtn" style="display:none" onclick="resetUI()">
+    Cargar otro archivo
+  </button>
+
+  <script>
+    let parsedData = [];
+
+    const dropZone   = document.getElementById('dropZone');
+    const fileInput  = document.getElementById('fileInput');
+    const fileInfo   = document.getElementById('fileInfo');
+    const fileName   = document.getElementById('fileName');
+    const preview    = document.getElementById('previewWrapper');
+    const previewBody= document.getElementById('previewBody');
+    const rowCount   = document.getElementById('rowCount');
+    const statusEl   = document.getElementById('status');
+    const statusSpinner = document.getElementById('statusSpinner');
+    const statusText = document.getElementById('statusText');
+    const uploadBtn  = document.getElementById('uploadBtn');
+    const resetBtn   = document.getElementById('resetBtn');
+
+    // Drag & Drop
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file) processFile(file);
+    });
+
+    fileInput.addEventListener('change', e => {
+      if (e.target.files[0]) processFile(e.target.files[0]);
+    });
+
+    function processFile(file) {
+      if (!file.name.match(/\.xlsx?$/i)) {
+        showStatus('error', '❌ Solo se aceptan archivos .xlsx de Banco General');
+        return;
+      }
+
+      fileName.textContent = file.name;
+      fileInfo.classList.add('visible');
+      showStatus('loading', 'Leyendo archivo...');
+
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, dateNF: 'yyyy-mm-dd' });
+
+          // Encontrar fila de headers (buscar "Fecha")
+          let headerIdx = -1;
+          for (let i = 0; i < rows.length; i++) {
+            if (rows[i] && rows[i][1] === 'Fecha') { headerIdx = i; break; }
+          }
+
+          if (headerIdx === -1) {
+            showStatus('error', '❌ Formato no reconocido. ¿Es el archivo correcto de Banco General?');
+            return;
+          }
+
+          // Parsear transacciones
+          parsedData = [];
+          for (let i = headerIdx + 1; i < rows.length; i++) {
+            const r = rows[i];
+            if (!r[1] || !r[3] || r[4] === undefined) continue;
+
+            // Fecha puede venir como Date o string
+            let fecha = r[1];
+            if (fecha instanceof Date) {
+              fecha = fecha.toISOString().slice(0, 10);
+            } else if (typeof fecha === 'string') {
+              fecha = fecha.slice(0, 10);
+            }
+
+            const monto = parseFloat(String(r[4]).replace(',', '.')) || 0;
+            const saldo = parseFloat(String(r[5]).replace(',', '.')) || 0;
+
+            parsedData.push({
+              fecha,
+              referencia: String(r[2] || ''),
+              descripcion: String(r[3]),
+              monto,
+              saldo,
+              tipo: monto >= 0 ? 'Crédito' : 'Débito'
+            });
+          }
+
+          if (parsedData.length === 0) {
+            showStatus('error', '❌ No se encontraron transacciones en el archivo.');
+            return;
+          }
+
+          renderPreview();
+          hideStatus();
+          uploadBtn.disabled = false;
+          resetBtn.style.display = 'block';
+
+        } catch (err) {
+          showStatus('error', '❌ Error al leer el archivo: ' + err.message);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function renderPreview() {
+      previewBody.innerHTML = '';
+      // Mostrar primeras 8 filas
+      const preview5 = parsedData.slice(0, 8);
+      preview5.forEach(row => {
+        const tr = document.createElement('tr');
+        const montoClass = row.monto >= 0 ? 'monto-pos' : 'monto-neg';
+        const montoStr = (row.monto >= 0 ? '+' : '') + '$' + row.monto.toFixed(2);
+        tr.innerHTML = `
+          <td>${row.fecha}</td>
+          <td title="${row.descripcion}">${row.descripcion.slice(0, 35)}${row.descripcion.length > 35 ? '…' : ''}</td>
+          <td class="${montoClass}">${montoStr}</td>
+          <td>$${row.saldo.toFixed(2)}</td>
+        `;
+        previewBody.appendChild(tr);
+      });
+
+      rowCount.textContent = parsedData.length + ' filas';
+      document.getElementById('previewWrapper').classList.add('visible');
+    }
+
+    uploadBtn.addEventListener('click', () => {
+      if (parsedData.length === 0) return;
+
+      uploadBtn.disabled = true;
+      showStatus('loading', `Enviando ${parsedData.length} movimientos al Sheet...`);
+
+      // Convertir a array de arrays para Apps Script
+      const rows = parsedData.map(r => [
+        r.fecha, r.referencia, r.descripcion, r.monto, r.saldo, r.tipo
+      ]);
+
+      google.script.run
+        .withSuccessHandler(result => {
+          showStatus('success', result);
+          uploadBtn.disabled = true;
+          dropZone.style.display = 'none';
+        })
+        .withFailureHandler(err => {
+          showStatus('error', '❌ Error: ' + err.message);
+          uploadBtn.disabled = false;
+        })
+        .recibirMovimientosDesdeHTML(rows);
+    });
+
+    function showStatus(type, msg) {
+      statusEl.className = 'status visible ' + type;
+      statusSpinner.style.display = type === 'loading' ? 'block' : 'none';
+      statusText.textContent = msg;
+    }
+
+    function hideStatus() {
+      statusEl.className = 'status';
+    }
+
+    function resetUI() {
+      parsedData = [];
+      fileInput.value = '';
+      fileInfo.classList.remove('visible');
+      document.getElementById('previewWrapper').classList.remove('visible');
+      previewBody.innerHTML = '';
+      hideStatus();
+      uploadBtn.disabled = true;
+      resetBtn.style.display = 'none';
+      dropZone.style.display = 'block';
+    }
+  </script>
+</body>
+</html>
