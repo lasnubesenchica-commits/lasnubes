@@ -2083,6 +2083,20 @@
       </div>
     </div>
 
+    <!-- Fila 4b: Tipo de reserva -->
+    <div class="form-row" id="tipoRow">
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <label>Tipo de reserva</label>
+        <select id="fTipo" onchange="handleTipoChange()">
+          <option value="noche">Noche (2pm → 11am día siguiente)</option>
+          <option value="pasadia">Pasadía (12:30pm → 7pm)</option>
+          <option value="early">Early check-in (9am → 11am día siguiente · bloquea noche anterior)</option>
+          <option value="late">Late check-out (2pm → 4pm día siguiente · bloquea noche siguiente)</option>
+        </select>
+        <div id="fTipoHint" style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.4;"></div>
+      </div>
+    </div>
+
     <!-- Comentarios -->
     <div class="form-group">
       <label>Comentarios / Servicios especiales</label>
@@ -2744,13 +2758,15 @@ function renderCalendar() {
         const span = Math.round((new Date(res.checkout+"T12:00:00")-new Date(dateStr+"T12:00:00"))/86400000);
         const spanM = Math.min(span, daysInMonth-d+1);
         const alertStyle = res.alerta ? 'background:#f59e0b!important;color:#fff!important;' : '';
+        const tipoPfx = TIPO_PREFIX[res.tipo || 'noche'] || '';
+        const tipoTitle = res.tipo && res.tipo !== 'noche' ? ' ('+TIPO_LABEL[res.tipo]+')' : '';
         if(spanM > 1) {
           html += "<td class=\"day-cell"+tc+"\" colspan=\""+spanM+"\" style=\"padding:2px 0;\" onclick=\"handleDayClick('"+cabin+"','"+dateStr+"')\">";
-          html += "<div class=\"reservation-block "+cabin+"-block\" title=\""+res.name+"\" style=\"border-radius:6px;margin:2px 2px;text-align:left;padding-left:8px;"+alertStyle+"\">"+res.name.split(" ")[0]+"</div></td>";
+          html += "<div class=\"reservation-block "+cabin+"-block\" title=\""+res.name+tipoTitle+"\" style=\"border-radius:6px;margin:2px 2px;text-align:left;padding-left:8px;"+alertStyle+"\">"+tipoPfx+res.name.split(" ")[0]+"</div></td>";
           d += spanM;
         } else {
           html += "<td class=\"day-cell"+tc+"\" onclick=\"handleDayClick('"+cabin+"','"+dateStr+"')\">";
-          html += "<div class=\"reservation-block "+cabin+"-block\" title=\""+res.name+"\" style=\""+alertStyle+"\">"+res.name.split(" ")[0]+"</div></td>";
+          html += "<div class=\"reservation-block "+cabin+"-block\" title=\""+res.name+tipoTitle+"\" style=\""+alertStyle+"\">"+tipoPfx+res.name.split(" ")[0]+"</div></td>";
           d++;
         }
       } else if(res) {
@@ -2872,10 +2888,20 @@ function porCobrarDisplay(r) {
   return '$' + pendiente.toFixed(2);
 }
 
+const TIPO_LABEL  = { noche: 'Noche',   pasadia: 'Pasadía', early: 'Early',  late: 'Late' };
+const TIPO_PREFIX = { noche: '',        pasadia: '☼ ',      early: '🕗 ',    late: '🌙 ' };
+const TIPO_COLOR  = { pasadia: 'background:#fff3cd;color:#856404;', early: 'background:#e0e7ff;color:#3730a3;', late: 'background:#fce7f3;color:#9d174d;' };
+
+function tipoBadgeHtml(r) {
+  const t = r.tipo || 'noche';
+  if (t === 'noche') return '';
+  return ` <span style="display:inline-block;font-size:10px;padding:1px 6px;border-radius:20px;${TIPO_COLOR[t]||''}font-weight:500;margin-left:4px;">${TIPO_LABEL[t]||t}</span>`;
+}
+
 function recentRowHtml(r) {
   return `
     <tr style="${r.alerta ? 'background:#fffde7;' : ''}">
-      <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><strong title="${r.name}">${r.name}</strong>${r.alerta ? ' <span style="font-size:10px;background:#fff3cd;color:#856404;padding:1px 6px;border-radius:20px;">⚠</span>' : ''}</td>
+      <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><strong title="${r.name}">${r.name}</strong>${tipoBadgeHtml(r)}${r.alerta ? ' <span style="font-size:10px;background:#fff3cd;color:#856404;padding:1px 6px;border-radius:20px;">⚠</span>' : ''}</td>
       <td><span class="cabin-badge badge-${r.cabin}">${CABINS[r.cabin]}</span></td>
       <td>${formatDate(r.fechaReserva || r.checkin)}</td>
       <td><span class="origin-badge">${r.origin}</span></td>
@@ -2897,7 +2923,7 @@ function checkinRowHtml(r) {
     : null;
   return `
     <tr style="${r.alerta ? 'background:#fffde7;' : ''}">
-      <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><strong title="${r.name}">${r.name}</strong>${r.alerta ? ' <span style="font-size:10px;background:#fff3cd;color:#856404;padding:1px 6px;border-radius:20px;">⚠</span>' : ''}</td>
+      <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><strong title="${r.name}">${r.name}</strong>${tipoBadgeHtml(r)}${r.alerta ? ' <span style="font-size:10px;background:#fff3cd;color:#856404;padding:1px 6px;border-radius:20px;">⚠</span>' : ''}</td>
       <td><span class="cabin-badge badge-${r.cabin}">${CABINS[r.cabin]}</span></td>
       <td>${formatDate(r.checkin||'')}</td>
       <td style="text-align:center;">${nights !== null ? nights : '—'}</td>
@@ -3385,6 +3411,57 @@ function renderList() {
 }
 
 // ─── MODAL ───────────────────────────────────────────────────
+const TIPO_HINTS = {
+  noche:   'Una noche estándar. Entrada 2pm, salida 11am día siguiente.',
+  pasadia: 'Pasadía 12:30pm – 7pm. Bloquea solo el día de entrada (la noche siguiente queda libre).',
+  early:   'Entrada 9am día de llegada. Bloquea automáticamente la noche anterior. Sale 11am día siguiente.',
+  late:    'Salida 4pm. Bloquea automáticamente la noche siguiente al check-out estándar. Entrada 2pm día normal.'
+};
+
+function _addDaysISO(s, n) {
+  if (!s) return s;
+  const d = new Date(s + 'T12:00:00');
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+function handleTipoChange() {
+  const tipo = document.getElementById('fTipo').value;
+  const ciInp = document.getElementById('fCheckin');
+  const coInp = document.getElementById('fCheckout');
+  const amountInp = document.getElementById('fAmount');
+  const hint = document.getElementById('fTipoHint');
+  if (hint) hint.textContent = TIPO_HINTS[tipo] || '';
+
+  if (!ciInp.value) { calcSaldo(); return; }
+
+  // Calcular noches actuales
+  const cinDate = new Date(ciInp.value + 'T12:00:00');
+  const couDate = coInp.value ? new Date(coInp.value + 'T12:00:00') : null;
+  const nights = couDate ? Math.round((couDate - cinDate) / 86400000) : 0;
+
+  // Auto-ajuste de fechas según tipo (solo cuando el rango es 1 noche estándar, para no pisar al usuario)
+  if (tipo === 'noche' || tipo === 'pasadia') {
+    if (nights !== 1) coInp.value = _addDaysISO(ciInp.value, 1);
+  } else if (tipo === 'early') {
+    // Entra 9am día X, salida 11am día X+1. Bloquea noche X-1 → salida X+1. Range = 2 días.
+    if (nights === 1) {
+      ciInp.value = _addDaysISO(ciInp.value, -1);
+    }
+  } else if (tipo === 'late') {
+    // Entra 2pm día X, salida 4pm día X+1. Bloquea noche X+1. Range entrada → X+2.
+    if (nights === 1) {
+      coInp.value = _addDaysISO(coInp.value, 1);
+    }
+  }
+
+  // Default monto
+  if (tipo === 'pasadia') {
+    amountInp.value = '75.00';
+  }
+  calcSaldo();
+}
+
 function autoCheckout() {
   const cin  = document.getElementById('fCheckin').value;
   const cout = document.getElementById('fCheckout');
@@ -3449,6 +3526,10 @@ function openModal(cabin, date) {
   } else {
     document.getElementById('fAmount').value = '90.00';
   }
+  const _tipo = document.getElementById('fTipo');
+  if (_tipo) _tipo.value = 'noche';
+  const _hint = document.getElementById('fTipoHint');
+  if (_hint) _hint.textContent = TIPO_HINTS.noche;
   const _pp = document.getElementById('pricePreview'); if(_pp) _pp.style.display = 'none';
   document.getElementById('reservaModal').classList.add('open');
   clearVoucher();
@@ -3476,6 +3557,10 @@ function editReservation(id) {
   document.getElementById('fAmount').value = r.amount;
   document.getElementById('fComentarios').value = r.comentarios || '';
   document.getElementById('fPromoTarifa').checked = false;
+  const _tipoEl = document.getElementById('fTipo');
+  if (_tipoEl) _tipoEl.value = r.tipo || 'noche';
+  const _hintEl = document.getElementById('fTipoHint');
+  if (_hintEl) _hintEl.textContent = TIPO_HINTS[r.tipo || 'noche'] || '';
   calcSaldo();
   clearVoucher();
   document.getElementById('voucherSection').style.display = (r.origin === 'Directa') ? 'block' : 'none';
@@ -3901,9 +3986,10 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
 
   const comentarios = document.getElementById('fComentarios').value.trim();
   const notificar   = document.getElementById('fNotificarActualizacion').checked;
+  const tipo = (document.getElementById('fTipo') || {}).value || 'noche';
   const reservation = { id, name, email, telefono, pagador, cabin, checkin, checkout, persons, origin, deposit, amount,
                         confirmCode: id, serviceFee: 0, neto: amount,
-                        fechaReserva, codTransferencia, montoVoucher, estadoPago, comentarios };
+                        fechaReserva, codTransferencia, montoVoucher, estadoPago, comentarios, tipo };
 
   // Detect date change before overwriting
   let fechaAnterior = null;
