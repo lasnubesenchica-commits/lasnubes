@@ -938,24 +938,19 @@
     font-family: monospace;
   }
 
-  /* Promo checkbox inline en label */
-  .label-with-toggle {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 4px;
-  }
+  /* Promo checkbox debajo del field */
   .promo-toggle {
     display: flex;
     align-items: center;
-    gap: 5px;
-    font-size: 11px;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 12px;
     color: var(--text-muted);
     font-weight: 400;
     cursor: pointer;
     user-select: none;
   }
-  .promo-toggle input { width: 13px; height: 13px; accent-color: var(--verde-dark); cursor: pointer; }
+  .promo-toggle input { width: 14px; height: 14px; accent-color: var(--verde-dark); cursor: pointer; margin: 0; }
   .promo-toggle.disabled { opacity: 0.4; cursor: not-allowed; }
   .promo-toggle.disabled input { cursor: not-allowed; }
 
@@ -2056,7 +2051,7 @@
       </div>
       <div class="form-group">
         <label>Teléfono</label>
-        <input type="tel" id="fTelefono" placeholder="6000-0000">
+        <input type="tel" id="fTelefono" placeholder="N/A">
       </div>
     </div>
 
@@ -2121,14 +2116,12 @@
         <input type="number" id="fDeposit" placeholder="0.00" step="0.01" oninput="calcSaldo()">
       </div>
       <div class="form-group">
-        <div class="label-with-toggle">
-          <label style="margin:0;">Monto total ($)</label>
-          <label class="promo-toggle disabled" id="promoToggleLabel" title="Disponible al cargar voucher">
-            <input type="checkbox" id="fPromoTarifa" onchange="togglePromoTarifa()" disabled>
-            Promo
-          </label>
-        </div>
+        <label>Monto total ($)</label>
         <input type="number" id="fAmount" placeholder="0.00" step="0.01" oninput="calcSaldo()">
+        <label class="promo-toggle disabled" id="promoToggleLabel" title="Disponible al cargar voucher">
+          <input type="checkbox" id="fPromoTarifa" onchange="togglePromoTarifa()" disabled>
+          Tarifa promocional
+        </label>
       </div>
     </div>
     <div class="form-row">
@@ -3674,6 +3667,7 @@ function _formatVoucherFecha(isoStr) {
 
 function clearVoucher() {
   pendingVoucher = null;
+  _amountBeforePromo = null;
   const fileInp = document.getElementById('fVoucher');     if (fileInp) fileInp.value = '';
   const dz      = document.getElementById('voucherDropzone');
   const dzTitle = document.getElementById('voucherDropzoneTitle');
@@ -3787,14 +3781,24 @@ async function handleVoucherUpload(event) {
   }
 }
 
+let _amountBeforePromo = null;
+
 function togglePromoTarifa() {
   const chk = document.getElementById('fPromoTarifa');
   if (!chk || chk.disabled) return;
   if (!pendingVoucher) { chk.checked = false; return; }
+  const amountInp = document.getElementById('fAmount');
   if (chk.checked) {
+    _amountBeforePromo = amountInp.value;
     const monto = _voucherMontoNumber(pendingVoucher.monto);
     if (monto > 0) {
-      document.getElementById('fAmount').value = monto.toFixed(2);
+      amountInp.value = monto.toFixed(2);
+      calcSaldo();
+    }
+  } else {
+    if (_amountBeforePromo !== null) {
+      amountInp.value = _amountBeforePromo;
+      _amountBeforePromo = null;
       calcSaldo();
     }
   }
