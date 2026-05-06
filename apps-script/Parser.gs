@@ -288,15 +288,15 @@ function getOrCreateSheet() {
 
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
-    sheet.getRange(1, 1, 1, 24).setValues([[
+    sheet.getRange(1, 1, 1, 25).setValues([[
       'ID', 'Nombre', 'Cabaña', 'CabañaCodigo',
       'Entrada', 'Salida', 'Personas',
       'Monto', 'Abono', 'Origen', 'CodConfirmacion',
       'ServiceFee', 'Neto', 'Alerta', 'Pagador', 'FechaReserva',
       'FechaPago', 'MontoPagado', 'CodTransferencia', 'MontoVoucher', 'EstadoPago',
-      'Email', 'Comentarios', 'Telefono'
+      'Email', 'Comentarios', 'Telefono', 'Tipo'
     ]]);
-    sheet.getRange(1, 1, 1, 24).setFontWeight('bold');
+    sheet.getRange(1, 1, 1, 25).setFontWeight('bold');
     sheet.setFrozenRows(1);
   }
 
@@ -976,7 +976,8 @@ function doGet(e) {
         estadoPago:       r[20] || '',
         email:            r[21] || '',
         comentarios:      r[22] || '',
-        telefono:         r[23] || ''
+        telefono:         r[23] || '',
+        tipo:             r[24] || 'noche'
       }));
 
     return ContentService
@@ -1076,7 +1077,8 @@ function doPost(e) {
         r.estadoPago   || '',
         r.email        || '',
         r.comentarios  || '',
-        r.telefono     || ''
+        r.telefono     || '',
+        r.tipo         || 'noche'
       ]);
 
       if (payload.fechaAnterior) {
@@ -1128,7 +1130,7 @@ function doPost(e) {
         const sheetId = data[i][0] ? stripId(data[i][0].toString()) : '';
         if (sheetId && sheetId === rawId) {
           const row = i + 1;
-          sheet.getRange(row, 1, 1, 24).setValues([[
+          sheet.getRange(row, 1, 1, 25).setValues([[
             r.id,
             r.name,
             CABIN_NAMES[r.cabin] || r.cabin,
@@ -1158,7 +1160,8 @@ function doPost(e) {
             })(),
             r.email        || data[i][21] || '',
             r.comentarios  || data[i][22] || '',
-            r.telefono     || data[i][23] || ''
+            r.telefono     || data[i][23] || '',
+            r.tipo         || data[i][24] || 'noche'
           ]]);
 
           if (payload.fechaAnterior) {
@@ -1595,6 +1598,25 @@ function migrarColumnasV3() {
     }
   });
   Logger.log(cambios ? '✓ Migración V3 — ' + cambios + ' columna(s)' : '✓ Columnas V3 ya existían');
+}
+
+// V4: agrega columna Tipo (noche | pasadia | early | late). Default 'noche' en filas existentes.
+function migrarColumnasV4() {
+  const sheet = getOrCreateSheet();
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (headers.includes('Tipo')) {
+    Logger.log('✓ Columna Tipo ya existía');
+    return;
+  }
+  const col = headers.length + 1;
+  sheet.getRange(1, col).setValue('Tipo');
+  sheet.getRange(1, col).setFontWeight('bold');
+  const lastRow = sheet.getLastRow();
+  if (lastRow >= 2) {
+    const values = Array(lastRow - 1).fill(['noche']);
+    sheet.getRange(2, col, lastRow - 1, 1).setValues(values);
+  }
+  Logger.log('✓ Migración V4 — columna Tipo agregada con default "noche"');
 }
 
 function limpiarDuplicadosAirbnb() {
