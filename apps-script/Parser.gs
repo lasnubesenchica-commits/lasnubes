@@ -2055,28 +2055,38 @@ Responde ÚNICAMENTE con JSON válido, sin texto adicional ni markdown:
 
 function parseVoucherWithClaude(imageBase64, mimeType) {
   try {
-    const prompt = `Analiza este voucher de pago de Yappy y extrae los siguientes datos.
+    const prompt = `Analiza este voucher de pago de Yappy. Extrae estos datos.
 
-Datos visibles directamente en el voucher:
-1. CÓDIGO DE CONFIRMACIÓN: campo "Confirmación" — devuelve SIN el "#" inicial (ej: "NBQEV-06253256").
-2. MONTO: el monto principal numérico, sin "$" ni texto (ej: 90.00).
-3. SENDER: el nombre del remitente que aparece arriba en "X te envió" (ej: "Ana G." o "Alejandra D.").
-4. FECHA DEL PAGO: en formato YYYY-MM-DD. Asume zona horaria de Panamá. Infiere el año basándote en la fecha visible (año actual 2026 si no hay otro indicio).
-5. MENSAJE: el texto literal del campo "Mensaje" si existe (puede no existir, en ese caso usa null).
+Cada voucher de Yappy SIEMPRE tiene visibles estos 4 campos — son obligatorios y no debes devolverlos null:
 
-Datos parseados del campo MENSAJE (si está presente):
-6. NOMBRE COMPLETO: si el mensaje contiene un nombre completo del cliente (al menos nombre + apellido), devuélvelo. Si solo hay un nombre o no hay nombre, usa null.
-7. EMAIL: si el mensaje contiene una dirección de correo, devuélvela. Si no, null.
-8. TELÉFONO: si el mensaje contiene un número de teléfono panameño (8 dígitos, con o sin guión), devuélvelo en formato XXXX-XXXX. Si no, null.
+1. SENDER: nombre del remitente. Aparece grande arriba a la izquierda en formato "<Nombre> te envió", por ejemplo "Ana G. te envió" → sender = "Ana G.". O "Alejandra D. te envió" → sender = "Alejandra D.". Devuelve el nombre EXACTO como aparece (incluyendo iniciales con punto si las tiene). Si la imagen es ilegible en esa zona, devuelve "" pero esto debe ser raro.
 
-Si algún campo opcional no está presente o no estás seguro, usa null. Nunca inventes datos.
+2. MONTO: el monto principal pagado, justo debajo del sender en grande con un "$" delante. Devuelve el número sin "$", como un número JSON (ej: 90.00, no "$90.00"). Lo confirma el círculo verde con check al lado.
 
-Responde ÚNICAMENTE con JSON válido, sin markdown ni texto adicional:
+3. FECHA DEL PAGO: campo "Fecha". Suele venir como "4 may 2026 - 9:33 p.m." Convierte a formato YYYY-MM-DD usando los meses en español (ene=01, feb=02, mar=03, abr=04, may=05, jun=06, jul=07, ago=08, sep=09, oct=10, nov=11, dic=12). Asume zona horaria de Panamá. Si no hay año visible, usa 2026.
+
+4. CÓDIGO DE CONFIRMACIÓN: campo "Confirmación", abajo a la derecha del icono de recibo, formato típico "#XXXXX-NNNNNNNN". Devuélvelo SIN el "#" inicial.
+
+Campos OPCIONALES (pueden no estar):
+
+5. MENSAJE: texto literal del campo "Mensaje" si existe (a veces dice "abono", el nombre del cliente, etc.). Si no hay campo Mensaje en absoluto, devuelve null.
+
+Si MENSAJE contiene info adicional, parséala así:
+6. NOMBRE COMPLETO: nombre + apellido del cliente que aparezca dentro del mensaje (ej: "Juan Pérez" → "Juan Pérez"). Si solo hay un nombre, una palabra suelta, o no hay nombre del todo, devuelve null.
+7. EMAIL: dirección de correo dentro del mensaje. Si no hay, null.
+8. TELÉFONO: número panameño (8 dígitos, con o sin guión) dentro del mensaje. Devuélvelo en formato XXXX-XXXX. Si no hay, null.
+
+Reglas:
+- Los campos 1-4 son OBLIGATORIOS; haz tu mejor esfuerzo, no los devuelvas vacíos a menos que la imagen esté ilegible.
+- Los campos 5-8 SOLO usan info presente literalmente en el voucher. Nunca inventes.
+- Responde ÚNICAMENTE con JSON válido, sin markdown ni texto adicional.
+
+Formato:
 {
-  "codTransferencia": "NBQEV-06253256",
-  "monto": 90.00,
   "sender": "Ana G.",
+  "monto": 90.00,
   "fechaPago": "2026-05-04",
+  "codTransferencia": "NBQEV-06253256",
   "mensaje": "abono",
   "nombreCompleto": null,
   "email": null,
@@ -2084,7 +2094,7 @@ Responde ÚNICAMENTE con JSON válido, sin markdown ni texto adicional:
 }`;
 
     const payload = {
-      model: 'claude-opus-4-6',
+      model: 'claude-opus-4-7',
       max_tokens: 400,
       messages: [{ role: 'user', content: [
         { type: 'image', source: { type: 'base64', media_type: mimeType, data: imageBase64 } },
