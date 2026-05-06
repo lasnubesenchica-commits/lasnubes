@@ -2135,7 +2135,12 @@ Responde solo el JSON.`;
       mensaje:          data.mensaje        || '',
       nombreCompleto:   data.nombreCompleto || null,
       email:            data.email          || null,
-      telefono:         data.telefono       || null
+      telefono:         data.telefono       || null,
+      _debug: {
+        rawText:  text,
+        parsed:   data,
+        promptVersion: 'v3-2026-05-06'
+      }
     })).setMimeType(ContentService.MimeType.JSON);
   } catch(e) {
     return ContentService.createTextOutput(JSON.stringify({ ok: false, error: e.message })).setMimeType(ContentService.MimeType.JSON);

@@ -3718,6 +3718,7 @@ async function handleVoucherUpload(event) {
       })
     });
     const data = await res.json();
+    console.log('[voucher] API response', data);
 
     if (!data.ok) {
       if (dz)      dz.classList.remove('loading');
