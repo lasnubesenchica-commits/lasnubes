@@ -20,6 +20,14 @@ const fs   = require('fs');
 const path = require('path');
 
 const GAS_DIR = path.join(process.cwd(), 'apps-script');
+const DASHBOARD_HTML = path.join(process.cwd(), 'dashboard.html');
+
+function extractDeploymentIdFromDashboard() {
+  if (!fs.existsSync(DASHBOARD_HTML)) return null;
+  const content = fs.readFileSync(DASHBOARD_HTML, 'utf8');
+  const match = content.match(/script\.google\.com\/macros\/s\/([A-Za-z0-9_-]+)\/exec/);
+  return match ? match[1] : null;
+}
 
 function getAuthClient() {
   const clientId     = process.env.GOOGLE_CLIENT_ID;
@@ -105,27 +113,54 @@ async function main() {
   const versionNumber = verRes.data.versionNumber;
   console.log(`OK Version ${versionNumber} creada`);
 
-  // 3. Actualizar deployment de produccion
-  let deploymentId = process.env.GAS_DEPLOYMENT_ID;
-  if (!deploymentId || !(await deploymentExists(api, scriptId, deploymentId))) {
-    console.warn(`AVISO deploymentId ${deploymentId || '(none)'} no valido, buscando web app activo`);
-    deploymentId = await findWebAppDeploymentId(api, scriptId);
-    if (!deploymentId) throw new Error('No se encontro un web app deployment activo');
-    console.log(`-> Web app encontrado: ${deploymentId}`);
+  // 3. Determinar lista de deployments a actualizar.
+  // Prioridad:
+  //   a) deployment ID extraido de dashboard.html (fuente de verdad: el URL que usa el frontend)
+  //   b) GAS_DEPLOYMENT_ID secret (legacy)
+  //   c) primer web app deployment encontrado
+  // Si dashboard.html y el secret apuntan a IDs distintos, actualizamos AMBOS para evitar drift.
+  const dashboardDeploymentId = extractDeploymentIdFromDashboard();
+  if (dashboardDeploymentId) {
+    console.log(`-> Deployment ID en dashboard.html: ${dashboardDeploymentId}`);
+  } else {
+    console.warn('AVISO No pude extraer deployment ID de dashboard.html');
   }
 
-  await api.projects.deployments.update({
-    scriptId, deploymentId,
-    requestBody: {
-      deploymentConfig: {
-        scriptId,
-        versionNumber,
-        manifestFileName: 'appsscript',
-        description: `Auto-deploy ${new Date().toISOString()}`
-      }
+  const candidates = new Set();
+  if (dashboardDeploymentId) candidates.add(dashboardDeploymentId);
+  if (process.env.GAS_DEPLOYMENT_ID) candidates.add(process.env.GAS_DEPLOYMENT_ID);
+
+  const validIds = [];
+  for (const id of candidates) {
+    if (await deploymentExists(api, scriptId, id)) {
+      validIds.push(id);
+    } else {
+      console.warn(`AVISO deployment ${id} no existe en el script, se omite`);
     }
-  });
-  console.log(`OK Deployment ${deploymentId} -> version ${versionNumber}`);
+  }
+
+  if (validIds.length === 0) {
+    const fallbackId = await findWebAppDeploymentId(api, scriptId);
+    if (!fallbackId) throw new Error('No se encontro un web app deployment activo');
+    console.log(`-> Fallback web app encontrado: ${fallbackId}`);
+    validIds.push(fallbackId);
+  }
+
+  for (const deploymentId of validIds) {
+    await api.projects.deployments.update({
+      scriptId, deploymentId,
+      requestBody: {
+        deploymentConfig: {
+          scriptId,
+          versionNumber,
+          manifestFileName: 'appsscript',
+          description: `Auto-deploy ${new Date().toISOString()}`
+        }
+      }
+    });
+    console.log(`OK Deployment ${deploymentId} -> version ${versionNumber}`);
+  }
+
   console.log('Despliegue completado.');
 }
 
