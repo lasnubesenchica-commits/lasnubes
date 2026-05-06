@@ -2088,32 +2088,48 @@ NOMBRE COMPLETO — nombre de una persona DENTRO del mensaje (ej: "Reserva Karin
 
 Responde solo el JSON.`;
 
-    const payload = {
-      model: 'claude-opus-4-6',
+    const buildPayload = (model) => ({
+      model,
       max_tokens: 500,
       messages: [{ role: 'user', content: [
         { type: 'image', source: { type: 'base64', media_type: mimeType, data: imageBase64 } },
         { type: 'text', text: prompt }
       ]}]
-    };
+    });
 
-    const response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+    const callClaude = (payload) => UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': getClaudeApiKey(), 'anthropic-version': '2023-06-01' },
       payload: JSON.stringify(payload),
       muteHttpExceptions: true
     });
 
-    const rawBody = response.getContentText();
-    const status  = response.getResponseCode();
-    const result  = JSON.parse(rawBody);
-    if (!result.content || !result.content[0]) {
-      Logger.log('Voucher Claude API error (status ' + status + '): ' + rawBody);
-      const errMsg = (result.error && result.error.message) ? result.error.message : 'Claude API error';
+    // Retry con backoff ante 429/529 (overloaded). Tras 2 intentos en opus, cae a sonnet.
+    const attempts = [
+      { model: 'claude-opus-4-6', wait: 0    },
+      { model: 'claude-opus-4-6', wait: 1500 },
+      { model: 'claude-sonnet-4-6', wait: 1500 }
+    ];
+
+    let response, rawBody, status, result, lastModel;
+    for (const a of attempts) {
+      if (a.wait) Utilities.sleep(a.wait);
+      lastModel = a.model;
+      response  = callClaude(buildPayload(a.model));
+      status    = response.getResponseCode();
+      rawBody   = response.getContentText();
+      try { result = JSON.parse(rawBody); } catch(_) { result = null; }
+      if (status === 200 && result && result.content && result.content[0]) break;
+      Logger.log('Voucher attempt ' + a.model + ' status ' + status + ': ' + rawBody.slice(0, 300));
+      if (status !== 429 && status !== 529 && status < 500) break; // error no-transitorio: no reintentar
+    }
+
+    if (!result || !result.content || !result.content[0]) {
+      const errMsg = (result && result.error && result.error.message) ? result.error.message : 'Claude API error';
       return ContentService.createTextOutput(JSON.stringify({
         ok: false,
         error: errMsg,
-        _debug: { status, rawBody, payloadModel: payload.model }
+        _debug: { status, rawBody, payloadModel: lastModel }
       })).setMimeType(ContentService.MimeType.JSON);
     }
     const text = result.content[0].text.trim();
