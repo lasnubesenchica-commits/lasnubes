@@ -847,6 +847,124 @@
 
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
+  /* ── VOUCHER DROPZONE ─────────────────────────────────── */
+  .voucher-dropzone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 22px 16px;
+    margin-bottom: 14px;
+    border: 2px dashed var(--border);
+    border-radius: 14px;
+    background: var(--bg);
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+  }
+  .voucher-dropzone:hover,
+  .voucher-dropzone:active {
+    border-color: var(--verde-dark);
+    background: var(--verde-light);
+  }
+  .voucher-dropzone.loading {
+    border-color: var(--verde-dark);
+    background: var(--verde-light);
+    cursor: wait;
+  }
+  .voucher-dropzone-icon { font-size: 28px; line-height: 1; }
+  .voucher-dropzone-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .voucher-dropzone-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .voucher-card {
+    display: none;
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    background: var(--verde-light);
+    border: 1px solid var(--verde);
+    border-radius: 12px;
+  }
+  .voucher-card.shown { display: block; }
+  .voucher-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+  .voucher-card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--verde-dark);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .voucher-card-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+    color: var(--text-muted);
+    padding: 0;
+    line-height: 1;
+  }
+  .voucher-card-rows {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 14px;
+    font-size: 12px;
+  }
+  .voucher-card-row span:first-child {
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 10px;
+    display: block;
+  }
+  .voucher-card-row span:last-child {
+    color: var(--text);
+    font-weight: 500;
+  }
+  .voucher-card-row.code span:last-child {
+    font-family: monospace;
+  }
+
+  /* Promo checkbox inline en label */
+  .label-with-toggle {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+  .promo-toggle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 400;
+    cursor: pointer;
+    user-select: none;
+  }
+  .promo-toggle input { width: 13px; height: 13px; accent-color: var(--verde-dark); cursor: pointer; }
+  .promo-toggle.disabled { opacity: 0.4; cursor: not-allowed; }
+  .promo-toggle.disabled input { cursor: not-allowed; }
+
+  /* Saldo "Pagada" */
+  #fSaldoNote.pagada {
+    color: var(--verde-dark);
+    font-weight: 700;
+  }
+
   .modal-footer {
     display: flex;
     justify-content: flex-end;
@@ -1896,29 +2014,49 @@
         </div>
       </label>
     </div>
+    <!-- Voucher dropzone (arriba) — solo Directa -->
+    <div id="voucherSection">
+      <input type="file" id="fVoucher" accept="image/*" style="display:none;" onchange="handleVoucherUpload(event)">
+      <div id="voucherDropzone" class="voucher-dropzone" onclick="document.getElementById('fVoucher').click()">
+        <div class="voucher-dropzone-icon">📷</div>
+        <div class="voucher-dropzone-title" id="voucherDropzoneTitle">Subir voucher de pago</div>
+        <div class="voucher-dropzone-hint" id="voucherDropzoneHint">Toca para abrir galería o cámara</div>
+      </div>
+      <div id="voucherCard" class="voucher-card">
+        <div class="voucher-card-header">
+          <div class="voucher-card-title">✓ <span>Voucher procesado</span></div>
+          <button type="button" class="voucher-card-close" onclick="clearVoucher()" aria-label="Quitar voucher">✕</button>
+        </div>
+        <div class="voucher-card-rows">
+          <div class="voucher-card-row"><span>Remitente</span><span id="vcSender">—</span></div>
+          <div class="voucher-card-row"><span>Monto</span><span id="vcMonto">—</span></div>
+          <div class="voucher-card-row"><span>Fecha</span><span id="vcFecha">—</span></div>
+          <div class="voucher-card-row code"><span>Confirmación</span><span id="vcCodigo">—</span></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Fila 1: Huésped + Pago -->
     <div class="form-row">
       <div class="form-group">
         <label>Huésped</label>
-        <input type="text" id="fName" placeholder="Nombre completo" oninput="syncPagador()">
+        <input type="text" id="fName" placeholder="Nombre completo">
       </div>
       <div class="form-group">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-          <label style="margin:0;">Pago</label>
-          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;color:var(--text-muted);font-weight:400;margin:0;">
-            <input type="checkbox" id="fPagadorSync" onchange="togglePagadorSync()" style="width:13px;height:13px;accent-color:var(--verde-dark);cursor:pointer;">
-            = huésped
-          </label>
-        </div>
+        <label>Pago</label>
         <input type="text" id="fPagador" placeholder="Nombre en transferencia">
       </div>
     </div>
 
-    <!-- Fila 2: Email (ancho completo) -->
+    <!-- Fila 2: Email + Teléfono -->
     <div class="form-row">
-      <div class="form-group" style="grid-column: 1 / -1;">
-        <label>Email <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— para confirmación</span></label>
+      <div class="form-group">
+        <label>Email <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— confirmación</span></label>
         <input type="email" id="fEmail" placeholder="correo@ejemplo.com">
+      </div>
+      <div class="form-group">
+        <label>Teléfono</label>
+        <input type="tel" id="fTelefono" placeholder="6000-0000">
       </div>
     </div>
 
@@ -1976,48 +2114,30 @@
       </div>
     </div>
 
-    <!-- Fila 6: Abono + Total + Saldo -->
+    <!-- Fila 6: Abono + Total (con checkbox promo) + Saldo -->
     <div class="form-row">
       <div class="form-group">
         <label>Abono recibido ($)</label>
         <input type="number" id="fDeposit" placeholder="0.00" step="0.01" oninput="calcSaldo()">
       </div>
       <div class="form-group">
-        <label>Monto total ($)</label>
+        <div class="label-with-toggle">
+          <label style="margin:0;">Monto total ($)</label>
+          <label class="promo-toggle disabled" id="promoToggleLabel" title="Disponible al cargar voucher">
+            <input type="checkbox" id="fPromoTarifa" onchange="togglePromoTarifa()" disabled>
+            Promo
+          </label>
+        </div>
         <input type="number" id="fAmount" placeholder="0.00" step="0.01" oninput="calcSaldo()">
       </div>
     </div>
     <div class="form-row">
       <div class="form-group" style="grid-column: 1 / -1;">
-        <label style="color:var(--text-muted);">Saldo pendiente</label>
+        <label style="color:var(--text-muted);" id="fSaldoLabel">Saldo pendiente</label>
         <div id="fSaldoNote" style="font-size:15px;font-weight:600;color:var(--text);padding:4px 0;">$0.00</div>
       </div>
     </div>
 
-    <!-- Voucher de pago -->
-    <div id="voucherSection" style="display:none;margin-bottom:4px;">
-      <div style="font-size:12px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">
-        Voucher <span style="font-weight:400;text-transform:none;font-size:11px;">(Yappy / ACH)</span>
-      </div>
-      <input type="file" id="fVoucher" accept="image/*" style="display:none;" onchange="handleVoucherUpload(event)">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <button type="button" class="btn btn-ghost" style="font-size:13px;padding:8px 14px;"
-          onclick="document.getElementById('fVoucher').click()">
-          📎 Subir voucher
-        </button>
-        <span id="voucherStatus" style="font-size:13px;color:var(--text-muted);"></span>
-      </div>
-      <div id="voucherResult" style="display:none;margin-top:10px;padding:12px 14px;background:var(--bg);border:1px solid var(--border);border-radius:10px;">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-          <div>
-            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Código extraído</div>
-            <div id="voucherCode" style="font-size:15px;font-weight:600;color:var(--verde-dark);font-family:monospace;letter-spacing:0.03em;"></div>
-            <div id="voucherMonto" style="font-size:12px;color:var(--text-muted);margin-top:3px;"></div>
-          </div>
-          <button type="button" onclick="clearVoucher()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-muted);padding:0;line-height:1;">✕</button>
-        </div>
-      </div>
-    </div>
     <!-- precio calculado eliminado: ya visible en campo Total -->
     <div id="pricePreview" style="display:none;"></div>
     </div><!-- end modal-body -->
@@ -3318,15 +3438,16 @@ function openModal(cabin, date) {
   document.getElementById('fOrigin').value = 'Directa';
   document.getElementById('fFechaReserva').value = new Date().toISOString().slice(0,10);
   document.getElementById('fPagador').value = '';
+  document.getElementById('fTelefono').value = '';
   document.getElementById('fSaldoNote').textContent = '$0.00';
   document.getElementById('fSaldoNote').style.color = 'var(--verde-dark)';
-  document.getElementById('fPagador').disabled = false;
-  document.getElementById('fPagador').style.opacity = '1';
-  document.getElementById('fPagadorSync').checked = false;
+  document.getElementById('fSaldoNote').classList.remove('pagada');
+  document.getElementById('fSaldoLabel').textContent = 'Saldo pendiente';
   document.getElementById('fDeposit').value = '';
   document.getElementById('fComentarios').value = '';
   document.getElementById('fNotificarActualizacion').checked = false;
   document.getElementById('notificarWrap').style.display = 'none';
+  document.getElementById('fPromoTarifa').checked = false;
   // 110 si es viernes o sábado, 90 el resto
   if (date) {
     const d = new Date(date + 'T12:00:00');
@@ -3357,12 +3478,11 @@ function editReservation(id) {
   document.getElementById('fPersons').value = r.persons;
   document.getElementById('fOrigin').value = r.origin;
   document.getElementById('fPagador').value = r.pagador || r.name;
-  document.getElementById('fPagador').disabled = false;
-  document.getElementById('fPagador').style.opacity = '1';
-  document.getElementById('fPagadorSync').checked = (r.pagador === r.name || !r.pagador);
+  document.getElementById('fTelefono').value = r.telefono || '';
   document.getElementById('fDeposit').value = r.deposit;
   document.getElementById('fAmount').value = r.amount;
   document.getElementById('fComentarios').value = r.comentarios || '';
+  document.getElementById('fPromoTarifa').checked = false;
   calcSaldo();
   clearVoucher();
   document.getElementById('voucherSection').style.display = (r.origin === 'Directa') ? 'block' : 'none';
@@ -3413,9 +3533,19 @@ function calcSaldo() {
   const amount  = parseFloat(document.getElementById('fAmount').value)  || 0;
   const deposit = parseFloat(document.getElementById('fDeposit').value) || 0;
   const saldo   = Math.max(0, amount - deposit);
-  const el = document.getElementById('fSaldoNote');
-  el.textContent = '$' + (saldo > 0 ? saldo.toFixed(2) : '0.00');
-  el.style.color = saldo > 0 ? '#c0392b' : 'var(--verde-dark)';
+  const el      = document.getElementById('fSaldoNote');
+  const labelEl = document.getElementById('fSaldoLabel');
+  if (amount > 0 && deposit >= amount) {
+    el.textContent = '✓ Pagada';
+    el.style.color = '';
+    el.classList.add('pagada');
+    if (labelEl) labelEl.textContent = 'Estado de pago';
+  } else {
+    el.textContent = '$' + (saldo > 0 ? saldo.toFixed(2) : '0.00');
+    el.style.color = saldo > 0 ? '#c0392b' : 'var(--verde-dark)';
+    el.classList.remove('pagada');
+    if (labelEl) labelEl.textContent = 'Saldo pendiente';
+  }
 }
 
 // ─── VOUCHER ──────────────────────────────────────────────────────
@@ -3527,13 +3657,37 @@ function showVoucherAlert(msg, tipo) {
   alertEl.textContent         = msg;
 }
 
+// Normaliza el monto del voucher (acepta número o string tipo "$90.00")
+function _voucherMontoNumber(v) {
+  if (v == null || v === '') return 0;
+  if (typeof v === 'number') return v;
+  return parseFloat(v.toString().replace(/[^0-9.,-]/g, '').replace(',', '.')) || 0;
+}
+
+function _formatVoucherFecha(isoStr) {
+  if (!isoStr) return '—';
+  const m = isoStr.toString().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return isoStr;
+  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return parseInt(m[3]) + ' ' + meses[parseInt(m[2]) - 1] + ' ' + m[1];
+}
+
 function clearVoucher() {
   pendingVoucher = null;
-  document.getElementById('fVoucher').value = '';
-  document.getElementById('voucherStatus').textContent = '';
-  document.getElementById('voucherResult').style.display = 'none';
-  document.getElementById('voucherCode').textContent = '';
-  document.getElementById('voucherMonto').textContent = '';
+  const fileInp = document.getElementById('fVoucher');     if (fileInp) fileInp.value = '';
+  const dz      = document.getElementById('voucherDropzone');
+  const dzTitle = document.getElementById('voucherDropzoneTitle');
+  const dzHint  = document.getElementById('voucherDropzoneHint');
+  if (dz)      { dz.classList.remove('loading'); dz.style.display = 'flex'; }
+  if (dzTitle) dzTitle.textContent = 'Subir voucher de pago';
+  if (dzHint)  dzHint.textContent  = 'Toca para abrir galería o cámara';
+  const card = document.getElementById('voucherCard');
+  if (card) card.classList.remove('shown');
+  // Promo toggle se deshabilita
+  const promoChk = document.getElementById('fPromoTarifa');
+  const promoLab = document.getElementById('promoToggleLabel');
+  if (promoChk) { promoChk.checked = false; promoChk.disabled = true; }
+  if (promoLab) promoLab.classList.add('disabled');
   const alertEl = document.getElementById('voucherValidationAlert');
   if (alertEl) alertEl.style.display = 'none';
 }
@@ -3542,10 +3696,15 @@ async function handleVoucherUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
 
-  const status = document.getElementById('voucherStatus');
-  const result = document.getElementById('voucherResult');
-  status.textContent = '⏳ Analizando voucher…';
-  result.style.display = 'none';
+  const dz      = document.getElementById('voucherDropzone');
+  const dzTitle = document.getElementById('voucherDropzoneTitle');
+  const dzHint  = document.getElementById('voucherDropzoneHint');
+  const card    = document.getElementById('voucherCard');
+
+  if (dz)      dz.classList.add('loading');
+  if (dzTitle) dzTitle.textContent = '⏳ Analizando voucher…';
+  if (dzHint)  dzHint.textContent  = 'Esto toma unos segundos';
+  if (card)    card.classList.remove('shown');
 
   // Convertir a base64
   const base64 = await new Promise((resolve, reject) => {
@@ -3566,45 +3725,78 @@ async function handleVoucherUpload(event) {
     });
     const data = await res.json();
 
-    if (data.ok) {
-      pendingVoucher = {
-        base64,
-        mimeType:         file.type,
-        fileName:         file.name,
-        codTransferencia: data.codTransferencia || '',
-        monto:            data.monto || ''
-      };
-      document.getElementById('voucherCode').textContent =
-        data.codTransferencia || '(no detectado)';
-      document.getElementById('voucherMonto').textContent =
-        data.monto ? '💰 ' + data.monto : '';
-      status.textContent = '✓ Listo';
-      result.style.display = 'block';
-    } else {
-      status.textContent = '⚠ No se pudo leer el voucher';
+    if (!data.ok) {
+      if (dz)      dz.classList.remove('loading');
+      if (dzTitle) dzTitle.textContent = '⚠ No se pudo leer el voucher';
+      if (dzHint)  dzHint.textContent  = 'Toca para reintentar';
+      return;
     }
+
+    const montoNum = _voucherMontoNumber(data.monto);
+    const codigo   = (data.codTransferencia || '').toString().replace(/^#/, '');
+
+    pendingVoucher = {
+      base64,
+      mimeType:         file.type,
+      fileName:         file.name,
+      codTransferencia: codigo,
+      monto:            montoNum,
+      sender:           data.sender         || '',
+      fechaPago:        data.fechaPago      || '',
+      mensaje:          data.mensaje        || '',
+      nombreCompleto:   data.nombreCompleto || null,
+      email:            data.email          || null,
+      telefono:         data.telefono       || null
+    };
+
+    // Auto-llenar formulario
+    const fName     = document.getElementById('fName');
+    const fPagador  = document.getElementById('fPagador');
+    const fEmail    = document.getElementById('fEmail');
+    const fTelefono = document.getElementById('fTelefono');
+    const fDeposit  = document.getElementById('fDeposit');
+
+    const nombreFinal = pendingVoucher.nombreCompleto || pendingVoucher.sender || '';
+    if (nombreFinal) fName.value = nombreFinal;
+    if (pendingVoucher.sender) fPagador.value = pendingVoucher.sender;
+    if (pendingVoucher.email) fEmail.value = pendingVoucher.email;
+    if (pendingVoucher.telefono) fTelefono.value = pendingVoucher.telefono;
+    if (montoNum > 0) {
+      fDeposit.value = montoNum.toFixed(2);
+      calcSaldo();
+    }
+
+    // Habilitar promo y rellenar card
+    const promoChk = document.getElementById('fPromoTarifa');
+    const promoLab = document.getElementById('promoToggleLabel');
+    if (promoChk) promoChk.disabled = false;
+    if (promoLab) promoLab.classList.remove('disabled');
+
+    document.getElementById('vcSender').textContent = pendingVoucher.sender || '—';
+    document.getElementById('vcMonto').textContent  = montoNum > 0 ? '$' + montoNum.toFixed(2) : '—';
+    document.getElementById('vcFecha').textContent  = _formatVoucherFecha(pendingVoucher.fechaPago);
+    document.getElementById('vcCodigo').textContent = codigo || '—';
+
+    if (dz)   dz.style.display = 'none';
+    if (card) card.classList.add('shown');
   } catch(e) {
-    status.textContent = '⚠ Error al procesar';
+    if (dz)      dz.classList.remove('loading');
+    if (dzTitle) dzTitle.textContent = '⚠ Error al procesar';
+    if (dzHint)  dzHint.textContent  = 'Toca para reintentar';
     console.error('Voucher error:', e);
   }
 }
 
-function syncPagador() {
-  if (document.getElementById('fPagadorSync').checked) {
-    document.getElementById('fPagador').value = document.getElementById('fName').value;
-  }
-}
-
-function togglePagadorSync() {
-  const checked = document.getElementById('fPagadorSync').checked;
-  const pagador = document.getElementById('fPagador');
-  if (checked) {
-    pagador.value = document.getElementById('fName').value;
-    pagador.disabled = true;
-    pagador.style.opacity = '0.5';
-  } else {
-    pagador.disabled = false;
-    pagador.style.opacity = '1';
+function togglePromoTarifa() {
+  const chk = document.getElementById('fPromoTarifa');
+  if (!chk || chk.disabled) return;
+  if (!pendingVoucher) { chk.checked = false; return; }
+  if (chk.checked) {
+    const monto = _voucherMontoNumber(pendingVoucher.monto);
+    if (monto > 0) {
+      document.getElementById('fAmount').value = monto.toFixed(2);
+      calcSaldo();
+    }
   }
 }
 
@@ -3626,16 +3818,17 @@ function handleOriginChange() {
 }
 
 async function saveReservation() {
-  const name    = document.getElementById('fName').value.trim();
-  const email   = document.getElementById('fEmail').value.trim();
-  const pagador = document.getElementById('fPagador').value.trim() || name;
-  const cabin   = document.getElementById('fCabin').value;
-  const checkin = document.getElementById('fCheckin').value;
-  const checkout= document.getElementById('fCheckout').value;
-  const persons = document.getElementById('fPersons').value;
-  const origin  = document.getElementById('fOrigin').value;
-  const deposit = parseFloat(document.getElementById('fDeposit').value) || 0;
-  const amount  = parseFloat(document.getElementById('fAmount').value) || 0;
+  const name     = document.getElementById('fName').value.trim();
+  const email    = document.getElementById('fEmail').value.trim();
+  const telefono = document.getElementById('fTelefono').value.trim();
+  const pagador  = document.getElementById('fPagador').value.trim() || name;
+  const cabin    = document.getElementById('fCabin').value;
+  const checkin  = document.getElementById('fCheckin').value;
+  const checkout = document.getElementById('fCheckout').value;
+  const persons  = document.getElementById('fPersons').value;
+  const origin   = document.getElementById('fOrigin').value;
+  const deposit  = parseFloat(document.getElementById('fDeposit').value) || 0;
+  const amount   = parseFloat(document.getElementById('fAmount').value) || 0;
 
   if(!name || !checkin || !checkout) { showToast('Por favor completa los campos requeridos'); return; }
   if(checkout <= checkin) { showToast('La fecha de salida debe ser posterior a la entrada'); return; }
@@ -3666,16 +3859,15 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
   // Código de transferencia del voucher (va en columna aparte, no en confirmCode)
   const codTransferencia = (pendingVoucher && origin === 'Directa')
     ? pendingVoucher.codTransferencia : null;
-  const montoVoucherNuevo = (pendingVoucher && origin === 'Directa')
-    ? pendingVoucher.monto : null;
+  const montoVoucherNum = (pendingVoucher && origin === 'Directa')
+    ? _voucherMontoNumber(pendingVoucher.monto) : 0;
 
   // Accumulate: if editing and there's a new voucher, add to existing total
-  let montoVoucher = montoVoucherNuevo;
-  if (editId && montoVoucherNuevo) {
+  let montoVoucher = montoVoucherNum > 0 ? '$' + montoVoucherNum.toFixed(2) : null;
+  if (editId && montoVoucherNum > 0) {
     const prev = reservations.find(r => r.id === editId);
-    const anterior = prev ? (parseFloat(prev.montoVoucher) || 0) : 0;
-    const nuevo    = parseFloat(montoVoucherNuevo.toString().replace(/[^0-9.]/g,'')) || 0;
-    const acumulado = anterior + nuevo;
+    const anterior = prev ? (parseFloat((prev.montoVoucher || '').toString().replace(/[^0-9.]/g,'')) || 0) : 0;
+    const acumulado = anterior + montoVoucherNum;
     montoVoucher = '$' + acumulado.toFixed(2);
   }
 
@@ -3704,7 +3896,7 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
 
   const comentarios = document.getElementById('fComentarios').value.trim();
   const notificar   = document.getElementById('fNotificarActualizacion').checked;
-  const reservation = { id, name, email, pagador, cabin, checkin, checkout, persons, origin, deposit, amount,
+  const reservation = { id, name, email, telefono, pagador, cabin, checkin, checkout, persons, origin, deposit, amount,
                         confirmCode: id, serviceFee: 0, neto: amount,
                         fechaReserva, codTransferencia, montoVoucher, estadoPago, comentarios };
 
