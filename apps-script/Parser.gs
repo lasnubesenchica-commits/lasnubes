@@ -2089,9 +2089,8 @@ NOMBRE COMPLETO — nombre de una persona DENTRO del mensaje (ej: "Reserva Karin
 Responde solo el JSON.`;
 
     const payload = {
-      model: 'claude-opus-4-7',
+      model: 'claude-opus-4-6',
       max_tokens: 500,
-      temperature: 0,
       messages: [{ role: 'user', content: [
         { type: 'image', source: { type: 'base64', media_type: mimeType, data: imageBase64 } },
         { type: 'text', text: prompt }
@@ -2105,10 +2104,17 @@ Responde solo el JSON.`;
       muteHttpExceptions: true
     });
 
-    const result = JSON.parse(response.getContentText());
+    const rawBody = response.getContentText();
+    const status  = response.getResponseCode();
+    const result  = JSON.parse(rawBody);
     if (!result.content || !result.content[0]) {
-      Logger.log('Voucher Claude API error: ' + response.getContentText());
-      return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'Claude API error' })).setMimeType(ContentService.MimeType.JSON);
+      Logger.log('Voucher Claude API error (status ' + status + '): ' + rawBody);
+      const errMsg = (result.error && result.error.message) ? result.error.message : 'Claude API error';
+      return ContentService.createTextOutput(JSON.stringify({
+        ok: false,
+        error: errMsg,
+        _debug: { status, rawBody, payloadModel: payload.model }
+      })).setMimeType(ContentService.MimeType.JSON);
     }
     const text = result.content[0].text.trim();
     Logger.log('Voucher Claude raw response: ' + text);
