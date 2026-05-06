@@ -2115,9 +2115,11 @@ Formato:
       return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'Claude API error' })).setMimeType(ContentService.MimeType.JSON);
     }
     const text = result.content[0].text.trim();
+    Logger.log('Voucher Claude raw response: ' + text);
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'No JSON' })).setMimeType(ContentService.MimeType.JSON);
     const data = JSON.parse(jsonMatch[0]);
+    Logger.log('Voucher parsed JSON: ' + JSON.stringify(data));
 
     // Normalizaciones defensivas (por si Claude devuelve string con "$" o "#")
     const codTransferencia = (data.codTransferencia || '').toString().replace(/^#/, '').trim();
