@@ -2207,7 +2207,7 @@
         <input type="number" id="fAmount" placeholder="0.00" step="0.01" oninput="calcSaldo()">
         <label class="promo-toggle disabled" id="promoToggleLabel" title="Disponible al cargar voucher">
           <input type="checkbox" id="fPromoTarifa" onchange="togglePromoTarifa()" disabled>
-          Tarifa promocional
+          Promocional
         </label>
       </div>
     </div>
@@ -3883,7 +3883,11 @@ function _addDaysISO(s, n) {
 }
 
 function handleTipoChange() {
-  const tipo = document.getElementById('fTipo').value;
+  const sel = document.getElementById('fTipo');
+  const tipo = sel.value;
+  const prevTipo = sel.dataset.prevTipo || 'noche';
+  sel.dataset.prevTipo = tipo;
+
   const ciInp = document.getElementById('fCheckin');
   const coInp = document.getElementById('fCheckout');
   const amountInp = document.getElementById('fAmount');
@@ -3892,27 +3896,38 @@ function handleTipoChange() {
 
   if (!ciInp.value) { calcSaldo(); return; }
 
-  // Calcular noches actuales
-  const cinDate = new Date(ciInp.value + 'T12:00:00');
-  const couDate = coInp.value ? new Date(coInp.value + 'T12:00:00') : null;
-  const nights = couDate ? Math.round((couDate - cinDate) / 86400000) : 0;
+  // Derivar la fecha REAL de la reserva (día que el huésped efectivamente está)
+  // a partir del estado actual + tipo previo.
+  let real = ciInp.value;
+  if (prevTipo === 'early' || prevTipo === 'pasadia-largo') {
+    // Estaba con entrada = real - 1
+    real = _addDaysISO(ciInp.value, 1);
+  }
+  // Para 'late', 'noche', 'pasadia': real = ciInp.value (entrada coincide con el día real)
 
-  // Auto-ajuste de fechas según tipo (solo cuando el rango es 1 noche estándar, para no pisar al usuario)
-  if (tipo === 'noche' || tipo === 'pasadia') {
-    if (nights !== 1) coInp.value = _addDaysISO(ciInp.value, 1);
+  // Aplicar fechas según el nuevo tipo
+  if (tipo === 'noche') {
+    ciInp.value = real;
+    if (!coInp.value || coInp.value <= real) {
+      coInp.value = _addDaysISO(real, 1);
+    } else if (prevTipo === 'late') {
+      // venía con salida = real + 2; restablecer a 1 noche
+      coInp.value = _addDaysISO(real, 1);
+    } else if (prevTipo === 'early' || prevTipo === 'pasadia-largo') {
+      // salida ya estaba en real + 1, ok
+    }
+  } else if (tipo === 'pasadia') {
+    ciInp.value = real;
+    coInp.value = _addDaysISO(real, 1);
   } else if (tipo === 'early' || tipo === 'pasadia-largo') {
-    // Bloquea noche anterior + día del pasadía/early. Range entrada-1 → entrada+1 = 2 días.
-    if (nights === 1) {
-      ciInp.value = _addDaysISO(ciInp.value, -1);
-    }
+    ciInp.value = _addDaysISO(real, -1);
+    coInp.value = _addDaysISO(real, 1);
   } else if (tipo === 'late') {
-    // Entra 2pm día X, salida 4pm día X+1. Bloquea noche X+1. Range entrada → X+2.
-    if (nights === 1) {
-      coInp.value = _addDaysISO(coInp.value, 1);
-    }
+    ciInp.value = real;
+    coInp.value = _addDaysISO(real, 2);
   }
 
-  // Default monto
+  // Default monto para pasadías
   if (tipo === 'pasadia' || tipo === 'pasadia-largo') {
     amountInp.value = '75.00';
   }
@@ -3984,7 +3999,7 @@ function openModal(cabin, date) {
     document.getElementById('fAmount').value = '90.00';
   }
   const _tipo = document.getElementById('fTipo');
-  if (_tipo) _tipo.value = 'noche';
+  if (_tipo) { _tipo.value = 'noche'; _tipo.dataset.prevTipo = 'noche'; }
   const _hint = document.getElementById('fTipoHint');
   if (_hint) _hint.textContent = TIPO_HINTS.noche;
   const _pp = document.getElementById('pricePreview'); if(_pp) _pp.style.display = 'none';
@@ -4016,7 +4031,11 @@ function editReservation(id) {
   document.getElementById('fComentarios').value = r.comentarios || '';
   document.getElementById('fPromoTarifa').checked = false;
   const _tipoEl = document.getElementById('fTipo');
-  if (_tipoEl) _tipoEl.value = r.tipo || 'noche';
+  if (_tipoEl) {
+    const _t = r.tipo || 'noche';
+    _tipoEl.value = _t;
+    _tipoEl.dataset.prevTipo = _t;
+  }
   const _hintEl = document.getElementById('fTipoHint');
   if (_hintEl) _hintEl.textContent = TIPO_HINTS[r.tipo || 'noche'] || '';
   calcSaldo();
