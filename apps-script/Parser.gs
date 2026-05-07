@@ -1697,6 +1697,61 @@ function nightCount(checkin, checkout) {
   return Math.round((b - a) / (1000 * 60 * 60 * 24));
 }
 
+// Devuelve metadata visual del email según tipo de reserva (noche/pasadia/pasadia-largo/early/late).
+// Las fechas/horas mostradas reflejan la realidad del huésped (no el rango bloqueado en hoja).
+function tipoEmailMeta(r) {
+  const tipo = (r.tipo || 'noche').toString();
+  const checkinStored  = r.checkin instanceof Date  ? Utilities.formatDate(r.checkin,  'America/Panama', 'yyyy-MM-dd') : r.checkin.toString().slice(0,10);
+  const checkoutStored = r.checkout instanceof Date ? Utilities.formatDate(r.checkout, 'America/Panama', 'yyyy-MM-dd') : r.checkout.toString().slice(0,10);
+  const addDaysISO = (s, n) => {
+    const d = new Date(s + 'T12:00:00');
+    d.setDate(d.getDate() + n);
+    return Utilities.formatDate(d, 'America/Panama', 'yyyy-MM-dd');
+  };
+  let displayCheckin  = checkinStored;
+  let displayCheckout = checkoutStored;
+  let checkinHora     = 'a partir de las 2:00 pm';
+  let checkoutHora    = 'antes de las 11:00 am';
+  let estanciaLabel   = 'Noches';
+  let estanciaValue;
+  if (tipo === 'pasadia') {
+    displayCheckout = checkinStored;
+    checkinHora     = 'a partir de las 12:30 pm';
+    checkoutHora    = 'salida 7:00 pm';
+    estanciaLabel   = 'Estancia';
+    estanciaValue   = 'Pasadía';
+  } else if (tipo === 'pasadia-largo') {
+    displayCheckin  = addDaysISO(checkinStored, 1);
+    displayCheckout = displayCheckin;
+    checkinHora     = 'a partir de las 9:00 am';
+    checkoutHora    = 'salida 5:00 pm';
+    estanciaLabel   = 'Estancia';
+    estanciaValue   = 'Pasadía';
+  } else if (tipo === 'early') {
+    displayCheckin  = addDaysISO(checkinStored, 1);
+    checkinHora     = 'a partir de las 9:00 am';
+    estanciaValue   = 1;
+  } else if (tipo === 'late') {
+    displayCheckout = addDaysISO(checkoutStored, -1);
+    checkoutHora    = 'antes de las 4:00 pm';
+    estanciaValue   = 1;
+  } else {
+    estanciaValue   = nightCount(checkinStored, checkoutStored);
+  }
+  return {
+    tipo,
+    displayCheckin,
+    displayCheckout,
+    checkinFmt:  formatDateES(displayCheckin),
+    checkoutFmt: formatDateES(displayCheckout),
+    checkinHora,
+    checkoutHora,
+    estanciaLabel,
+    estanciaValue,
+    isPasadia: tipo === 'pasadia' || tipo === 'pasadia-largo'
+  };
+}
+
 function toCalDate(dateStr) {
   return dateStr.toString().slice(0,10).replace(/-/g, '');
 }
@@ -1801,19 +1856,18 @@ function buildGuiaHTML(cabin) {
 function buildEmailHTML(r) {
   const cabin       = CABIN_NAMES_EMAIL[r.cabin] || r.cabin;
   const color       = CABIN_COLORS_EMAIL[r.cabin] || '#6a9e62';
-  const checkinStr  = r.checkin  instanceof Date ? Utilities.formatDate(r.checkin,  'America/Panama', 'yyyy-MM-dd') : r.checkin.toString().slice(0,10);
-  const checkoutStr = r.checkout instanceof Date ? Utilities.formatDate(r.checkout, 'America/Panama', 'yyyy-MM-dd') : r.checkout.toString().slice(0,10);
-  const checkinFmt  = formatDateES(checkinStr);
-  const checkoutFmt = formatDateES(checkoutStr);
-  const nights      = nightCount(checkinStr, checkoutStr);
+  const meta        = tipoEmailMeta(r);
+  const checkinFmt  = meta.checkinFmt;
+  const checkoutFmt = meta.checkoutFmt;
   const gcalUrl     = googleCalLink(r);
   const amount      = parseFloat(r.amount)  || 0;
   const deposit     = parseFloat(r.deposit) || 0;
   const saldo       = (amount - deposit).toFixed(2);
-  const hasSaldo    = deposit > 0 && parseFloat(saldo) > 0;
+  const hasSaldo    = amount > 0 && parseFloat(saldo) > 0;
   const ics         = icsContent(r);
   const icsB64      = Utilities.base64Encode(ics);
   const icsUri      = 'data:text/calendar;base64,' + icsB64;
+  const pagarUrl    = 'https://wa.me/50769812266?text=' + encodeURIComponent('Deseo cancelar el saldo restante de mi reserva. Me comparte los métodos de pago?');
 
   return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>' +
 '<body style="margin:0;padding:0;background:#f5f3f0;font-family:\'Helvetica Neue\',Helvetica,Arial,sans-serif;">' +
@@ -1831,12 +1885,12 @@ function buildEmailHTML(r) {
 '<td style="padding:20px 24px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Cabaña</p><p style="margin:0;font-size:17px;font-weight:600;color:' + color + ';">' + cabin + '</p></td>' +
 '<td style="padding:20px 24px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Personas</p><p style="margin:0;font-size:17px;font-weight:600;color:#3a3530;">' + r.persons + '</p></td>' +
 '</tr><tr>' +
-'<td style="padding:20px 24px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Check-in</p><p style="margin:0;font-size:15px;color:#3a3530;font-weight:500;">' + checkinFmt + '</p><p style="margin:4px 0 0;font-size:12px;color:#8a8078;">a partir de las 2:00 pm</p></td>' +
-'<td style="padding:20px 24px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Check-out</p><p style="margin:0;font-size:15px;color:#3a3530;font-weight:500;">' + checkoutFmt + '</p><p style="margin:4px 0 0;font-size:12px;color:#8a8078;">antes de las 11:00 am</p></td>' +
+'<td style="padding:20px 24px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Check-in</p><p style="margin:0;font-size:15px;color:#3a3530;font-weight:500;">' + checkinFmt + '</p><p style="margin:4px 0 0;font-size:12px;color:#8a8078;">' + meta.checkinHora + '</p></td>' +
+'<td style="padding:20px 24px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Check-out</p><p style="margin:0;font-size:15px;color:#3a3530;font-weight:500;">' + checkoutFmt + '</p><p style="margin:4px 0 0;font-size:12px;color:#8a8078;">' + meta.checkoutHora + '</p></td>' +
 '</tr><tr>' +
-'<td style="padding:20px 24px;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Noches</p><p style="margin:0;font-size:17px;font-weight:600;color:#3a3530;">' + nights + '</p></td>' +
+'<td style="padding:20px 24px;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">' + meta.estanciaLabel + '</p><p style="margin:0;font-size:17px;font-weight:600;color:#3a3530;">' + meta.estanciaValue + '</p></td>' +
 '<td style="padding:20px 24px;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Total</p><p style="margin:0;font-size:17px;font-weight:600;color:#3a3530;">$' + amount.toFixed(2) + '</p>' + (deposit > 0 ? '<p style="margin:4px 0 0;font-size:12px;color:#8a8078;">Abono: $' + deposit.toFixed(2) + '</p>' : '') + '</td>' +
-'</tr>' + (hasSaldo ? '<tr><td colspan="2" style="padding:16px 24px;background:#fff8e1;border-top:1px solid #e8e4de;border-radius:0 0 12px 12px;"><p style="margin:0;font-size:13px;color:#8a6000;">⚠️ Saldo pendiente al llegar: <strong>$' + saldo + '</strong></p></td></tr>' : '') +
+'</tr>' + (hasSaldo ? '<tr><td colspan="2" style="padding:18px 24px;background:#fff8e1;border-top:1px solid #e8e4de;border-radius:0 0 12px 12px;"><p style="margin:0 0 4px;font-size:13px;color:#8a6000;">⚠️ <strong>Saldo pendiente: $' + saldo + '</strong></p><p style="margin:0 0 12px;font-size:12px;color:#8a6000;line-height:1.5;">Te pedimos cancelar el saldo antes del día de tu reserva.</p><a href="' + pagarUrl + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:13px;font-weight:600;padding:9px 20px;border-radius:8px;text-decoration:none;">&#128172; Pagar saldo</a></td></tr>' : '') +
 '</table>' +
 '<p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#3a3530;">Agregar a tu calendario</p>' +
 '<table cellpadding="0" cellspacing="0" style="margin-bottom:32px;"><tr>' +
@@ -1845,7 +1899,7 @@ function buildEmailHTML(r) {
 '</tr></table>' +
 '<hr style="border:none;border-top:1px solid #e8e4de;margin:0 0 28px;">' +
 '<h2 style="margin:0 0 20px;font-size:17px;font-weight:600;color:#3a3530;">Lo que necesitas saber</h2>' +
-'<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:18px;"><tr><td style="vertical-align:top;padding-right:12px;font-size:22px;width:36px;">&#127859;</td><td><p style="margin:0 0 3px;font-size:14px;font-weight:600;color:#3a3530;">Cocina y alimentación</p><p style="margin:0;font-size:13px;color:#6b6560;line-height:1.6;">La cabaña cuenta con cocina completamente equipada y área de BBQ. Incluye café, azúcar, especias básicas y un cooler grande (no contamos con nevera). Solo trae hielo y tus alimentos. También ofrecemos menú sencillo de comida con reserva previa.</p></td></tr></table>' +
+'<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:18px;"><tr><td style="vertical-align:top;padding-right:12px;font-size:22px;width:36px;">&#127859;</td><td><p style="margin:0 0 3px;font-size:14px;font-weight:600;color:#3a3530;">Cocina y alimentación</p><p style="margin:0;font-size:13px;color:#6b6560;line-height:1.6;">La cabaña cuenta con cocina completamente equipada y área de BBQ. Incluye café, azúcar, especias básicas y un cooler grande (no contamos con nevera). Solo trae hielo y tus alimentos.</p></td></tr></table>' +
 '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:18px;"><tr><td style="vertical-align:top;padding-right:12px;font-size:22px;width:36px;">&#9728;&#65039;</td><td><p style="margin:0 0 3px;font-size:14px;font-weight:600;color:#3a3530;">Electricidad solar</p><p style="margin:0;font-size:13px;color:#6b6560;line-height:1.6;">La cabaña no cuenta con luz eléctrica convencional. Está completamente iluminada a través de paneles solares. Contamos con inversor para cargar celulares y la señal de las telefónicas es excelente.</p></td></tr></table>' +
 '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:18px;"><tr><td style="vertical-align:top;padding-right:12px;font-size:22px;width:36px;">&#128703;</td><td><p style="margin:0 0 3px;font-size:14px;font-weight:600;color:#3a3530;">Baño</p><p style="margin:0;font-size:13px;color:#6b6560;line-height:1.6;">El baño cuenta con jabón, papel higiénico y toallas limpias. Fumigamos semanalmente, pero si eres sensible a los mosquitos, te recomendamos traer repelente.</p></td></tr></table>' +
 '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:18px;"><tr><td style="vertical-align:top;padding-right:12px;font-size:22px;width:36px;">&#128274;</td><td><p style="margin:0 0 3px;font-size:14px;font-weight:600;color:#3a3530;">Privacidad total</p><p style="margin:0;font-size:13px;color:#6b6560;line-height:1.6;">Todas las instalaciones de la cabaña son de uso exclusivo de quienes la reservan.</p></td></tr></table>' +
@@ -1945,6 +1999,12 @@ function buildUpdateEmailHTML(reservation, cabin, color, checkinFmt, checkoutFmt
   const ics    = icsContent(reservation);
   const icsB64 = Utilities.base64Encode(ics);
   const icsUri = 'data:text/calendar;base64,' + icsB64;
+  // Recalcular usando el tipo de reserva (overrides los valores pasados en posicionales legacy)
+  const meta     = tipoEmailMeta(reservation);
+  checkinFmt     = meta.checkinFmt;
+  checkoutFmt    = meta.checkoutFmt;
+  hasSaldo       = amount > 0 && parseFloat(saldo) > 0;
+  const pagarUrl = 'https://wa.me/50769812266?text=' + encodeURIComponent('Deseo cancelar el saldo restante de mi reserva. Me comparte los métodos de pago?');
 
   return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"></head>' +
 '<body style="margin:0;padding:0;background:#f5f3f0;font-family:\'Helvetica Neue\',Helvetica,Arial,sans-serif;">' +
@@ -1960,11 +2020,11 @@ function buildUpdateEmailHTML(reservation, cabin, color, checkinFmt, checkoutFmt
 '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f8f6;border-radius:12px;border:1px solid #e8e4de;margin-bottom:24px;">' +
 '<tr><td style="padding:20px 24px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Cabaña</p><p style="margin:0;font-size:17px;font-weight:600;color:' + color + ';">' + cabin + '</p></td>' +
 '<td style="padding:20px 24px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Personas</p><p style="margin:0;font-size:17px;font-weight:600;color:#3a3530;">' + reservation.persons + '</p></td></tr>' +
-'<tr><td style="padding:20px 24px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Check-in</p><p style="margin:0;font-size:15px;color:#3a3530;font-weight:500;">' + checkinFmt + '</p><p style="margin:4px 0 0;font-size:12px;color:#8a8078;">a partir de las 2:00 pm</p></td>' +
-'<td style="padding:20px 24px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Check-out</p><p style="margin:0;font-size:15px;color:#3a3530;font-weight:500;">' + checkoutFmt + '</p><p style="margin:4px 0 0;font-size:12px;color:#8a8078;">antes de las 11:00 am</p></td></tr>' +
-'<tr><td style="padding:20px 24px;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Noches</p><p style="margin:0;font-size:17px;font-weight:600;color:#3a3530;">' + nights + '</p></td>' +
+'<tr><td style="padding:20px 24px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Check-in</p><p style="margin:0;font-size:15px;color:#3a3530;font-weight:500;">' + checkinFmt + '</p><p style="margin:4px 0 0;font-size:12px;color:#8a8078;">' + meta.checkinHora + '</p></td>' +
+'<td style="padding:20px 24px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Check-out</p><p style="margin:0;font-size:15px;color:#3a3530;font-weight:500;">' + checkoutFmt + '</p><p style="margin:4px 0 0;font-size:12px;color:#8a8078;">' + meta.checkoutHora + '</p></td></tr>' +
+'<tr><td style="padding:20px 24px;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">' + meta.estanciaLabel + '</p><p style="margin:0;font-size:17px;font-weight:600;color:#3a3530;">' + meta.estanciaValue + '</p></td>' +
 '<td style="padding:20px 24px;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Total</p><p style="margin:0;font-size:17px;font-weight:600;color:#3a3530;">$' + amount.toFixed(2) + '</p>' + (deposit > 0 ? '<p style="margin:4px 0 0;font-size:12px;color:#8a8078;">Abono: $' + deposit.toFixed(2) + '</p>' : '') + '</td></tr>' +
-(hasSaldo ? '<tr><td colspan="2" style="padding:16px 24px;background:#fff8e1;border-top:1px solid #e8e4de;"><p style="margin:0;font-size:13px;color:#8a6000;">⚠️ Saldo pendiente: <strong>$' + saldo + '</strong></p></td></tr>' : '') +
+(hasSaldo ? '<tr><td colspan="2" style="padding:18px 24px;background:#fff8e1;border-top:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:13px;color:#8a6000;">⚠️ <strong>Saldo pendiente: $' + saldo + '</strong></p><p style="margin:0 0 12px;font-size:12px;color:#8a6000;line-height:1.5;">Te pedimos cancelar el saldo antes del día de tu reserva.</p><a href="' + pagarUrl + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:13px;font-weight:600;padding:9px 20px;border-radius:8px;text-decoration:none;">&#128172; Pagar saldo</a></td></tr>' : '') +
 '</table>' +
 (comentarios ? '<table width="100%" cellpadding="0" cellspacing="0" style="background:#fff8e1;border-radius:12px;padding:20px;margin-bottom:24px;"><tr><td><p style="margin:0 0 8px;font-size:12px;color:#999;text-transform:uppercase;">Comentarios</p><p style="margin:0;font-size:14px;color:#555;line-height:1.6;">' + comentarios + '</p></td></tr></table>' : '') +
 '<p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#3a3530;">Actualizar tu calendario</p>' +
