@@ -2705,38 +2705,97 @@ function renderReservasHoy() {
 
   const CABIN_NAMES = { verde: 'Paseo por Las Nubes', azul: 'Portal hacia Las Nubes', lila: 'Puente entre Las Nubes' };
 
-  list.innerHTML = items.map(it => {
-    const r = it.r;
-    const tipo = r.tipo || 'noche';
-    const cabinDark  = 'var(--' + r.cabin + '-dark)';
-    const cabinLight = 'var(--' + r.cabin + '-light)';
-    const cabinName  = CABIN_NAMES[r.cabin] || r.cabin;
-    const tipoLbl    = TIPO_LABEL[tipo] || tipo;
-    const horaText = (() => {
-      if (it.kind === 'salida')  return tipo === 'late'  ? 'sale 4pm' : 'sale 11am';
-      if (it.kind === 'entrada') return tipo === 'early' ? 'entra 9am' : 'entra 2pm';
-      if (it.kind === 'pasadia') return tipo === 'pasadia-largo' ? '9am – 5pm' : '12:30pm – 7pm';
-      return '';
-    })();
-    const cmt = (r.comentarios || '').toString().trim();
-    const isOut = it.kind === 'salida';
-    const bg = isOut ? '#f5f3f0' : cabinLight;
-    const accent = isOut ? 'var(--border)' : cabinDark;
-    const labelText = it.kind === 'salida' ? 'SALE' : (it.kind === 'pasadia' ? 'PASADÍA' : 'ENTRA');
-    const labelColor = isOut ? 'var(--text-muted)' : cabinDark;
-    const nameColor  = isOut ? 'var(--text-muted)' : cabinDark;
-    return `
-      <div onclick="showDispDetail('${r.id}')" style="cursor:pointer;background:${bg};border-left:3px solid ${accent};padding:10px 12px;border-radius:8px;margin-bottom:8px;font-size:13px;${isOut ? 'opacity:0.85;' : ''}">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px;">
-          <span style="font-size:10px;font-weight:700;letter-spacing:.06em;color:${labelColor};">${labelText}</span>
-          <strong style="color:${nameColor};">${r.name}</strong>
-          ${horaText ? '<span style="font-size:11px;color:var(--text-muted);">· ' + horaText + '</span>' : ''}
-        </div>
-        <div style="font-size:12px;color:var(--text-muted);">${cabinName}${tipo !== 'noche' ? ' · ' + tipoLbl : ''}${r.persons ? ' · ' + r.persons + ' personas' : ''}</div>
-        ${cmt ? '<div style="margin-top:6px;padding:6px 8px;background:rgba(0,0,0,0.04);border-radius:4px;font-size:12px;font-style:italic;color:var(--text);white-space:pre-wrap;">' + cmt + '</div>' : ''}
+  // Agrupar por cabaña
+  const grouped = { verde: [], azul: [], lila: [] };
+  items.forEach(it => { (grouped[it.r.cabin] || (grouped[it.r.cabin] = [])).push(it); });
+
+  let html = '';
+  let firstGroup = true;
+  ['verde','azul','lila'].forEach(cabin => {
+    const group = grouped[cabin] || [];
+    if (group.length === 0) return;
+    const cabinDark = 'var(--' + cabin + '-dark)';
+    html += '<div style="' + (firstGroup ? '' : 'border-top:1px solid var(--border);margin-top:10px;padding-top:10px;') + '">';
+    html += '<div style="font-size:11px;font-weight:600;color:'+cabinDark+';text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">'+(CABIN_NAMES[cabin] || cabin)+'</div>';
+    group.forEach(it => { html += _reservaHoyItemHtml(it); });
+    html += '</div>';
+    firstGroup = false;
+  });
+  list.innerHTML = html;
+}
+
+function _reservaHoyItemHtml(it) {
+  const r = it.r;
+  const tipo = r.tipo || 'noche';
+  const cabinDark  = 'var(--' + r.cabin + '-dark)';
+  const cabinLight = 'var(--' + r.cabin + '-light)';
+  const tipoLbl    = TIPO_LABEL[tipo] || tipo;
+  const horaText = (() => {
+    if (it.kind === 'salida')  return tipo === 'late'  ? 'sale 4pm' : 'sale 11am';
+    if (it.kind === 'entrada') return tipo === 'early' ? 'entra 9am' : 'entra 2pm';
+    if (it.kind === 'pasadia') return tipo === 'pasadia-largo' ? '9am – 5pm' : '12:30pm – 7pm';
+    return '';
+  })();
+  const cmt = (r.comentarios || '').toString().trim();
+  const isOut = it.kind === 'salida';
+  const bg = isOut ? '#f5f3f0' : cabinLight;
+  const accent = isOut ? 'var(--border)' : cabinDark;
+  const labelText = it.kind === 'salida' ? 'SALE' : (it.kind === 'pasadia' ? 'PASADÍA' : 'ENTRA');
+  const labelColor = isOut ? 'var(--text-muted)' : cabinDark;
+  const nameColor  = isOut ? 'var(--text-muted)' : cabinDark;
+  const hasPhone = !!_waPhone(r.telefono);
+  const waBtn = hasPhone
+    ? '<button onclick="event.stopPropagation();openWhatsApp(\''+r.id+'\',\''+it.kind+'\')" title="Escribir por WhatsApp" style="background:#25D366;color:#fff;border:none;padding:4px 10px;border-radius:14px;font-size:11px;cursor:pointer;font-weight:600;font-family:inherit;letter-spacing:.02em;flex-shrink:0;">WhatsApp</button>'
+    : '<button disabled title="Sin teléfono" style="background:var(--bg);color:var(--text-muted);border:1px solid var(--border);padding:4px 10px;border-radius:14px;font-size:11px;cursor:not-allowed;font-weight:500;font-family:inherit;flex-shrink:0;opacity:0.6;">WhatsApp</button>';
+  return `
+    <div onclick="showDispDetail('${r.id}')" style="cursor:pointer;background:${bg};border-left:3px solid ${accent};padding:10px 12px;border-radius:8px;margin-bottom:8px;font-size:13px;${isOut ? 'opacity:0.85;' : ''}">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px;">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.06em;color:${labelColor};">${labelText}</span>
+        <strong style="color:${nameColor};">${r.name}</strong>
+        ${horaText ? '<span style="font-size:11px;color:var(--text-muted);">· ' + horaText + '</span>' : ''}
+        <span style="margin-left:auto;">${waBtn}</span>
       </div>
-    `;
-  }).join('');
+      <div style="font-size:12px;color:var(--text-muted);">${tipo !== 'noche' ? tipoLbl + ' · ' : ''}${r.persons ? r.persons + ' personas' : ''}</div>
+      ${cmt ? '<div style="margin-top:6px;padding:6px 8px;background:rgba(0,0,0,0.04);border-radius:4px;font-size:12px;font-style:italic;color:var(--text);white-space:pre-wrap;">' + cmt + '</div>' : ''}
+    </div>
+  `;
+}
+
+function _waPhone(t) {
+  if (!t) return null;
+  const digits = t.toString().replace(/\D/g, '');
+  if (digits.length === 8)  return '507' + digits;       // panameño sin código
+  if (digits.length === 11 && digits.startsWith('507')) return digits;
+  if (digits.length >= 10) return digits;                // ya con código de país
+  return null;
+}
+
+function _waMessage(r, kind) {
+  const tipo = r.tipo || 'noche';
+  const firstName = (r.name || '').trim().split(/\s+/)[0] || '';
+  if (kind === 'salida') {
+    const hora = tipo === 'late' ? 'las 4pm como acordamos' : 'la hora de su salida';
+    return 'Buenos días ' + firstName + ', ¿cómo terminaron de pasar su estadía? Quedo atento para abrirles el portón a ' + hora + '.';
+  }
+  if (kind === 'entrada') {
+    const hora = tipo === 'early' ? '9am como acordamos' : '2pm';
+    return 'Hola ' + firstName + ', todo listo para recibirles hoy a partir de las ' + hora + '. Cualquier cosa estamos a la orden.';
+  }
+  if (kind === 'pasadia') {
+    const hora = tipo === 'pasadia-largo' ? '9am' : '12:30pm';
+    return 'Hola ' + firstName + ', todo listo para recibirles hoy a las ' + hora + ' para su pasadía. Quedamos atentos a su llegada.';
+  }
+  return 'Hola ' + firstName + ', espero estén bien.';
+}
+
+function openWhatsApp(id, kind) {
+  const r = reservations.find(x => x.id === id);
+  if (!r) return;
+  const phone = _waPhone(r.telefono);
+  if (!phone) { if (typeof showToast === 'function') showToast('Esta reserva no tiene teléfono'); return; }
+  const msg = _waMessage(r, kind);
+  const url = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(msg);
+  window.open(url, '_blank');
 }
 
 function renderDisponibilidad() {
