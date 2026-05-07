@@ -1950,12 +1950,192 @@ function sendConfirmationEmail(reservation) {
     if (!email) return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'No hay email de huésped' })).setMimeType(ContentService.MimeType.JSON);
     const cabin   = CABIN_NAMES_EMAIL[reservation.cabin] || reservation.cabin;
     const subject = '✅ Confirmación de reserva — ' + cabin + ' · Las Nubes';
-    GmailApp.sendEmail(email, subject, '', { htmlBody: buildEmailHTML(reservation), name: 'Las Nubes', replyTo: REPLY_TO_EMAIL });
+
+    // Adjuntar recibo PDF si la reserva tiene voucher (codTransferencia o montoVoucher)
+    const attachments = [];
+    const montoVoucherNum = reservation.montoVoucher ? parseFloat(String(reservation.montoVoucher).replace(/[^\d.]/g, '')) || 0 : 0;
+    const hasVoucher = !!(reservation.codTransferencia || montoVoucherNum > 0);
+    if (hasVoucher) {
+      try {
+        const receipt = generateReceiptPDF(reservation);
+        attachments.push(receipt.blob);
+        Logger.log('📄 Recibo ' + receipt.number + ' adjuntado');
+      } catch(rcpErr) {
+        Logger.log('⚠ No se pudo generar recibo PDF: ' + rcpErr);
+      }
+    }
+
+    GmailApp.sendEmail(email, subject, '', {
+      htmlBody:    buildEmailHTML(reservation),
+      attachments: attachments,
+      name:        'Las Nubes',
+      replyTo:     REPLY_TO_EMAIL
+    });
     Logger.log('📧 Confirmación enviada a: ' + email);
     return ContentService.createTextOutput(JSON.stringify({ ok: true, status: 'email_sent' })).setMimeType(ContentService.MimeType.JSON);
   } catch(e) {
     return ContentService.createTextOutput(JSON.stringify({ ok: false, error: e.toString() })).setMimeType(ContentService.MimeType.JSON);
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Recibos PDF
+// ═══════════════════════════════════════════════════════════
+
+const RECIBOS_FOLDER_NAME = 'Recibos Las Nubes';
+const RECIBO_LOGO_URL     = 'https://lasnubes.cloud/logo-black.png';
+
+function nextReceiptNumber() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const cur = parseInt(props.getProperty('RECEIPT_COUNTER') || '0', 10);
+    const next = cur + 1;
+    props.setProperty('RECEIPT_COUNTER', String(next));
+    return next;
+  } finally {
+    try { lock.releaseLock(); } catch(_) {}
+  }
+}
+
+function getOrCreateRecibosFolder() {
+  const folders = DriveApp.getFoldersByName(RECIBOS_FOLDER_NAME);
+  return folders.hasNext() ? folders.next() : DriveApp.createFolder(RECIBOS_FOLDER_NAME);
+}
+
+function generateReceiptPDF(r) {
+  const numStr   = 'LN-' + String(nextReceiptNumber()).padStart(4, '0');
+  const meta     = tipoEmailMeta(r);
+  const cabin    = CABIN_NAMES_EMAIL[r.cabin] || r.cabin;
+  const today    = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd');
+  const todayFmt = formatDateES(today);
+
+  // Texto de estancia según tipo
+  let estanciaText;
+  if (meta.tipo === 'pasadia-largo') {
+    estanciaText = meta.checkinFmt + ' · Pasadía 9am – 5pm';
+  } else if (meta.tipo === 'pasadia') {
+    estanciaText = meta.checkinFmt + ' · Pasadía 12:30pm – 7pm';
+  } else if (meta.tipo === 'early') {
+    estanciaText = meta.checkinFmt + ' → ' + meta.checkoutFmt + ' · 1 noche (entra 9am)';
+  } else if (meta.tipo === 'late') {
+    estanciaText = meta.checkinFmt + ' → ' + meta.checkoutFmt + ' · 1 noche (sale 4pm)';
+  } else {
+    const n = meta.estanciaValue;
+    estanciaText = meta.checkinFmt + ' → ' + meta.checkoutFmt + ' · ' + n + (n === 1 ? ' noche' : ' noches');
+  }
+
+  const amount       = parseFloat(r.amount)  || 0;
+  const deposit      = parseFloat(r.deposit) || 0;
+  const monto        = deposit > 0 ? deposit : amount;
+  const saldo        = (amount - deposit).toFixed(2);
+  const ref          = (r.codTransferencia || '').toString().trim();
+  let metodo         = 'Otro';
+  if (r.origin === 'Airbnb') metodo = 'Airbnb';
+  else if (ref)              metodo = 'Yappy / Pago digital';
+  else if (r.origin === 'Cortesia' || r.origin === 'Colaboracion' || r.origin === 'Personal') metodo = 'Sin cobro';
+
+  // Crear Doc temporal
+  const doc  = DocumentApp.create('Recibo ' + numStr + ' (temp)');
+  const body = doc.getBody();
+  body.setMarginTop(50).setMarginBottom(50).setMarginLeft(60).setMarginRight(60);
+
+  // Logo (best-effort: si falla, sigue sin logo)
+  try {
+    const logoBlob = UrlFetchApp.fetch(RECIBO_LOGO_URL).getBlob();
+    const logoP    = body.appendParagraph('');
+    logoP.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+    const img = logoP.appendInlineImage(logoBlob);
+    img.setWidth(90).setHeight(90);
+  } catch(e) {
+    Logger.log('Logo recibo error: ' + e);
+  }
+
+  // Encabezado
+  body.appendParagraph('Las Nubes')
+      .setAlignment(DocumentApp.HorizontalAlignment.CENTER)
+      .editAsText().setFontSize(26).setBold(true).setForegroundColor('#3a3530');
+  body.appendParagraph('Buenos Aires, Chame · Panamá Oeste')
+      .setAlignment(DocumentApp.HorizontalAlignment.CENTER)
+      .editAsText().setFontSize(10).setForegroundColor('#8a8078');
+  body.appendParagraph(' ').editAsText().setFontSize(6); // espaciador
+  body.appendHorizontalRule();
+
+  // Cabecera del recibo (label izq, número/fecha der)
+  const headerTbl = body.appendTable([['RECIBO DE PAGO', 'N°  ' + numStr]]);
+  headerTbl.setBorderWidth(0);
+  headerTbl.getCell(0,0).editAsText().setFontSize(11).setBold(true).setForegroundColor('#3a3530');
+  headerTbl.getCell(0,1).setColumnAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+  headerTbl.getCell(0,1).editAsText().setFontSize(11).setBold(true).setForegroundColor('#3a3530');
+  const dateP = body.appendParagraph('Emitido ' + todayFmt);
+  dateP.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+  dateP.editAsText().setFontSize(9).setBold(false).setForegroundColor('#8a8078');
+
+  body.appendHorizontalRule();
+
+  // Recibido de
+  body.appendParagraph('RECIBIDO DE').editAsText().setFontSize(9).setBold(false).setForegroundColor('#8a8078');
+  body.appendParagraph(r.name || '—').editAsText().setFontSize(15).setBold(true).setForegroundColor('#3a3530');
+
+  // Por concepto de
+  body.appendParagraph(' ').editAsText().setFontSize(4);
+  body.appendParagraph('POR CONCEPTO DE').editAsText().setFontSize(9).setBold(false).setForegroundColor('#8a8078');
+  body.appendParagraph('Reserva — ' + cabin).editAsText().setFontSize(12).setBold(true).setForegroundColor('#3a3530');
+  body.appendParagraph(estanciaText).editAsText().setFontSize(11).setBold(false).setForegroundColor('#6b6560');
+
+  body.appendHorizontalRule();
+
+  // Detalle de pago (tabla 2 cols)
+  const payRows = [
+    ['Monto recibido',  '$ ' + monto.toFixed(2) + ' USD'],
+    ['Método de pago',  metodo]
+  ];
+  if (ref) payRows.push(['Referencia', ref]);
+  payRows.push(['Saldo pendiente', '$ ' + saldo + (parseFloat(saldo) > 0 ? '' : '  (saldo cero)')]);
+
+  const payTbl = body.appendTable(payRows);
+  payTbl.setBorderWidth(0);
+  for (let i = 0; i < payRows.length; i++) {
+    const labelCell = payTbl.getCell(i, 0);
+    const valueCell = payTbl.getCell(i, 1);
+    labelCell.editAsText().setFontSize(10).setBold(false).setForegroundColor('#8a8078');
+    valueCell.editAsText().setFontSize(11).setBold(true).setForegroundColor('#3a3530');
+    valueCell.setColumnAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+  }
+
+  body.appendHorizontalRule();
+
+  // Footer
+  body.appendParagraph('Gracias por elegir Las Nubes')
+      .setAlignment(DocumentApp.HorizontalAlignment.CENTER)
+      .editAsText().setFontSize(11).setBold(false).setItalic(true).setForegroundColor('#6b6560');
+  body.appendParagraph('WhatsApp +507 6981-2266 · lasnubes.cloud')
+      .setAlignment(DocumentApp.HorizontalAlignment.CENTER)
+      .editAsText().setFontSize(9).setBold(false).setItalic(false).setForegroundColor('#8a8078');
+
+  doc.saveAndClose();
+
+  // Exportar a PDF
+  const safeName = ((r.name || 'huesped').toString())
+    .replace(/\s+/g, '_')
+    .replace(/[^A-Za-z0-9_]/g, '')
+    .slice(0, 40) || 'huesped';
+  const pdfBlob = DriveApp.getFileById(doc.getId()).getAs('application/pdf');
+  pdfBlob.setName('Recibo_' + numStr + '_' + safeName + '.pdf');
+
+  // Guardar copia en carpeta archivada
+  try {
+    const folder = getOrCreateRecibosFolder();
+    folder.createFile(pdfBlob.copyBlob().setName(pdfBlob.getName()));
+  } catch(e) {
+    Logger.log('Error guardando recibo en Drive: ' + e);
+  }
+
+  // Trash temp doc
+  try { DriveApp.getFileById(doc.getId()).setTrashed(true); } catch(_) {}
+
+  return { blob: pdfBlob, number: numStr };
 }
 
 function buildCancellationEmailHTML(r) {
