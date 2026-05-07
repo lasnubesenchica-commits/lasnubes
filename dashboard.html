@@ -82,6 +82,12 @@
   .disp-day.occupied.azul.direct  { background:#8fb3d4; color:#1e3f5c; }
   .disp-day.occupied.lila.direct  { background:#b09fd4; color:#3a1f6e; }
 
+  /* Día de cortesía en disponibilidad — rayas diagonales para indicar bloqueo sin huésped activo */
+  .disp-day.courtesy.verde { background: repeating-linear-gradient(45deg, var(--bg) 0 5px, #a8c9a0 5px 10px); color:var(--verde-dark); border:1px dashed var(--verde-dark); }
+  .disp-day.courtesy.azul  { background: repeating-linear-gradient(45deg, var(--bg) 0 5px, #8fb3d4 5px 10px); color:var(--azul-dark);  border:1px dashed var(--azul-dark); }
+  .disp-day.courtesy.lila  { background: repeating-linear-gradient(45deg, var(--bg) 0 5px, #b09fd4 5px 10px); color:var(--lila-dark);  border:1px dashed var(--lila-dark); }
+  .disp-day.courtesy .day-num { font-weight:500; opacity:0.85; }
+
   /* Alerta de modificación — amarillo, sobreescribe color de cabaña */
   .disp-day.alerta-mod { background:#f59e0b !important; color:#fff !important; }
   .disp-day.alerta-mod .day-num,
@@ -621,6 +627,12 @@
   .verde-block { background: var(--verde-light); color: var(--verde-dark); border-left: 3px solid var(--verde-dark); }
   .azul-block { background: var(--azul-light); color: var(--azul-dark); border-left: 3px solid var(--azul-dark); }
   .lila-block { background: var(--lila-light); color: var(--lila-dark); border-left: 3px solid var(--lila-dark); }
+
+  /* Día de cortesía (bloqueado por early/late/pasadía-extendida pero sin huésped activo) */
+  .reservation-block.courtesy { font-style: italic; opacity: 0.85; }
+  .verde-block.courtesy { background: repeating-linear-gradient(45deg, transparent 0 4px, var(--verde-light) 4px 8px); border-left: 3px dashed var(--verde-dark); }
+  .azul-block.courtesy  { background: repeating-linear-gradient(45deg, transparent 0 4px, var(--azul-light)  4px 8px); border-left: 3px dashed var(--azul-dark); }
+  .lila-block.courtesy  { background: repeating-linear-gradient(45deg, transparent 0 4px, var(--lila-light)  4px 8px); border-left: 3px dashed var(--lila-dark); }
 
   /* TABLE VIEW */
   .table-view {
@@ -1939,9 +1951,10 @@
 <div class="modal-overlay" id="detailOverlay" onclick="if(event.target===this)closeDetail()">
   <div class="modal" style="max-width:380px;padding:32px;">
     <div class="modal-title" id="detailName" style="font-size:18px;"></div>
-    <div style="margin-top:4px; margin-bottom:12px; display:flex; align-items:center; gap:10px;">
+    <div style="margin-top:4px; margin-bottom:12px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
       <span style="font-size:13px; color:var(--text-muted);" id="detailCabin"></span>
       <span id="detailEstadoPago"></span>
+      <span id="detailTipo"></span>
     </div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:20px;">
       <div>
@@ -1980,6 +1993,10 @@
         Pago Airbnb: <span id="detailFechaPago" style="color:var(--text);"></span>
         · <span id="detailMontoPagado" style="color:var(--verde-dark);font-weight:500;"></span>
       </div>
+    </div>
+    <div id="detailComentariosWrap" style="display:none;background:#fef9f0;border-left:3px solid var(--verde-dark);padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;">
+      <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Comentarios</div>
+      <div id="detailComentarios" style="white-space:pre-wrap;color:var(--text);"></div>
     </div>
     <div id="detailAlerta" style="display:none;background:#fff3cd;color:#856404;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:16px;">
       ⚠ <strong>Verificar itinerario</strong> — Airbnb notificó un cambio. Revisa fechas y monto en la app de Airbnb.
@@ -2594,7 +2611,8 @@ function buildDispMonth(firstDay, cabinRes, today) {
     const initials = r.name.trim().split(/\s+/).map(w => w[0]).join('').slice(0,3).toUpperCase();
     for (let cur = new Date(start); cur < end; cur.setDate(cur.getDate() + 1)) {
       const key = cur.toISOString().slice(0,10);
-      occupied[key] = { initials, id: r.id, origin: r.origin || 'Airbnb', checkin: r.checkin, checkout: r.checkout, alerta: (r.origin === 'Airbnb' && r.alerta) ? r.alerta : '', tipo: r.tipo || 'noche' };
+      const kind = getDayKind(r, key);
+      occupied[key] = { initials, id: r.id, origin: r.origin || 'Airbnb', checkin: r.checkin, checkout: r.checkout, alerta: (r.origin === 'Airbnb' && r.alerta) ? r.alerta : '', tipo: r.tipo || 'noche', kind };
     }
   });
 
@@ -2610,7 +2628,9 @@ function buildDispMonth(firstDay, cabinRes, today) {
     const isPast   = thisDate < today;
     const occ = occupied[dateStr];
 
-    if (occ && occ.checkin === dateStr) {
+    const hasCourtesy = occ && ['early','late','pasadia-largo'].includes(occ.tipo);
+
+    if (occ && occ.checkin === dateStr && !hasCourtesy) {
       const totalNights = Math.round((new Date(occ.checkout + 'T12:00:00') - new Date(occ.checkin + 'T12:00:00')) / 86400000);
       const span = Math.min(totalNights, daysInMonth - day + 1);
       const isDirect = occ.origin && occ.origin !== 'Airbnb';
@@ -2636,8 +2656,13 @@ function buildDispMonth(firstDay, cabinRes, today) {
     let cls = 'disp-day';
     if (occ) {
       const isDirect = occ.origin && occ.origin !== 'Airbnb';
-      cls += ' occupied ' + dispCabin + (isDirect ? ' direct' : '');
-      if (occ.alerta) cls += ' alerta-mod';
+      const isCourtesy = occ.kind === 'courtesy';
+      if (isCourtesy) {
+        cls += ' courtesy ' + dispCabin;
+      } else {
+        cls += ' occupied ' + dispCabin + (isDirect ? ' direct' : '');
+      }
+      if (occ.alerta && !isCourtesy) cls += ' alerta-mod';
     } else {
       cls += ' free';
     }
@@ -2651,11 +2676,16 @@ function buildDispMonth(firstDay, cabinRes, today) {
       clickAttr = 'onclick="openModal(\'' + dispCabin + '\',\'' + dateStr + '\')"';
     }
 
+    const titleAttr = (occ && occ.kind === 'courtesy')
+      ? ' title="Bloqueo cortesía (' + (TIPO_LABEL[occ.tipo]||occ.tipo) + ')"'
+      : '';
     const inner = occ
-      ? '<span class="day-num">' + day + '</span><span class="day-initials">' + occ.initials + '</span>' + tipoDotHtml(occ.tipo)
+      ? (occ.kind === 'courtesy'
+          ? '<span class="day-num">' + day + '</span>'
+          : '<span class="day-num">' + day + '</span><span class="day-initials">' + occ.initials + '</span>' + tipoDotHtml(occ.tipo))
       : '<span class="day-num">' + day + '</span>';
 
-    grid += '<div class="' + cls + '" ' + clickAttr + '>' + inner + '</div>';
+    grid += '<div class="' + cls + '"' + titleAttr + ' ' + clickAttr + '>' + inner + '</div>';
     day++;
   }
 
@@ -2671,14 +2701,42 @@ function showDispDetail(id) {
   const r = reservations.find(x => x.id === id);
   if (!r) return;
   const CABIN_NAMES = { verde: 'Paseo por Las Nubes', azul: 'Portal hacia Las Nubes', lila: 'Puente entre Las Nubes' };
-  const nights = r.checkin && r.checkout
+  const days = r.checkin && r.checkout
     ? Math.round((new Date(r.checkout+'T12:00:00') - new Date(r.checkin+'T12:00:00')) / 86400000)
-    : '?';
+    : 0;
+  const tipo = r.tipo || 'noche';
+  let duracionLabel = '?';
+  if (days > 0) {
+    if (tipo === 'pasadia')         duracionLabel = 'Pasadía 12:30pm – 7pm';
+    else if (tipo === 'pasadia-largo') duracionLabel = 'Pasadía 9am – 5pm';
+    else if (tipo === 'early')      duracionLabel = '1 noche · entra 9am';
+    else if (tipo === 'late')       duracionLabel = '1 noche · sale 4pm';
+    else                            duracionLabel = days + (days === 1 ? ' noche' : ' noches');
+  }
   document.getElementById('detailName').textContent    = r.name;
   document.getElementById('detailCabin').textContent   = CABIN_NAMES[r.cabin] || r.cabin;
   document.getElementById('detailCheckin').textContent = formatDate(r.checkin);
   document.getElementById('detailCheckout').textContent= formatDate(r.checkout);
-  document.getElementById('detailNights').textContent  = nights + (nights === 1 ? ' noche' : ' noches');
+  document.getElementById('detailNights').textContent  = duracionLabel;
+  // Chip de tipo
+  const tipoEl = document.getElementById('detailTipo');
+  if (tipoEl) {
+    if (tipo === 'noche') {
+      tipoEl.innerHTML = '';
+    } else {
+      const lbl = TIPO_LABEL[tipo] || tipo;
+      const sty = TIPO_COLOR[tipo] || '';
+      tipoEl.innerHTML = '<span style="display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;'+sty+'">'+lbl+'</span>';
+    }
+  }
+  // Comentarios (si los hay)
+  const cmtWrap = document.getElementById('detailComentariosWrap');
+  const cmtEl   = document.getElementById('detailComentarios');
+  if (cmtWrap && cmtEl) {
+    const c = (r.comentarios || '').toString().trim();
+    if (c) { cmtEl.textContent = c; cmtWrap.style.display = ''; }
+    else   { cmtEl.textContent = ''; cmtWrap.style.display = 'none'; }
+  }
   document.getElementById('detailPersons').textContent = r.persons + (r.persons === 1 ? ' persona' : ' personas');
   document.getElementById('detailAmount').textContent  = '$' + parseFloat(r.amount || 0).toFixed(2);
   document.getElementById('detailOrigin').textContent  = r.origin || 'Airbnb';
@@ -2758,26 +2816,38 @@ function renderCalendar() {
       const isToday = today.getFullYear()===year && today.getMonth()===month && today.getDate()===d;
       const res = getReservationForDay(cabin, dateStr);
       const tc = isToday ? " today" : "";
-      if(res && res.checkin === dateStr) {
-        const span = Math.round((new Date(res.checkout+"T12:00:00")-new Date(dateStr+"T12:00:00"))/86400000);
-        const spanM = Math.min(span, daysInMonth-d+1);
+      if(res) {
+        const tipo = res.tipo || 'noche';
+        const hasCourtesy = ['early','late','pasadia-largo'].includes(tipo);
         const alertStyle = res.alerta ? 'background:#f59e0b!important;color:#fff!important;' : '';
-        const tipoPfx = TIPO_PREFIX[res.tipo || 'noche'] || '';
-        const tipoTitle = res.tipo && res.tipo !== 'noche' ? ' ('+TIPO_LABEL[res.tipo]+')' : '';
-        if(spanM > 1) {
-          html += "<td class=\"day-cell"+tc+"\" colspan=\""+spanM+"\" style=\"padding:2px 0;\" onclick=\"handleDayClick('"+cabin+"','"+dateStr+"')\">";
-          html += "<div class=\"reservation-block "+cabin+"-block\" title=\""+res.name+tipoTitle+"\" style=\"border-radius:6px;margin:2px 2px;text-align:left;padding-left:8px;"+alertStyle+"\">"+tipoPfx+res.name.split(" ")[0]+"</div></td>";
-          d += spanM;
+        const tipoPfx = TIPO_PREFIX[tipo] || '';
+        const tipoTitle = tipo !== 'noche' ? ' ('+TIPO_LABEL[tipo]+')' : '';
+
+        if (res.checkin === dateStr && !hasCourtesy) {
+          // Reserva sin día de cortesía: spanear como antes
+          const span = Math.round((new Date(res.checkout+"T12:00:00")-new Date(dateStr+"T12:00:00"))/86400000);
+          const spanM = Math.min(span, daysInMonth-d+1);
+          if(spanM > 1) {
+            html += "<td class=\"day-cell"+tc+"\" colspan=\""+spanM+"\" style=\"padding:2px 0;\" onclick=\"handleDayClick('"+cabin+"','"+dateStr+"')\">";
+            html += "<div class=\"reservation-block "+cabin+"-block\" title=\""+res.name+tipoTitle+"\" style=\"border-radius:6px;margin:2px 2px;text-align:left;padding-left:8px;"+alertStyle+"\">"+tipoPfx+res.name.split(" ")[0]+"</div></td>";
+            d += spanM;
+          } else {
+            html += "<td class=\"day-cell"+tc+"\" onclick=\"handleDayClick('"+cabin+"','"+dateStr+"')\">";
+            html += "<div class=\"reservation-block "+cabin+"-block\" title=\""+res.name+tipoTitle+"\" style=\""+alertStyle+"\">"+tipoPfx+res.name.split(" ")[0]+"</div></td>";
+            d++;
+          }
         } else {
+          // Reserva con día de cortesía O día intermedio cross-month: render día por día
+          const kind = getDayKind(res, dateStr);
+          const courtesyCls = kind === 'courtesy' ? ' courtesy' : '';
+          const courtesyTitle = kind === 'courtesy' ? ' — bloqueo cortesía' : '';
+          const text = kind === 'courtesy'
+            ? '·'
+            : (res.checkin === dateStr || hasCourtesy ? tipoPfx + res.name.split(" ")[0] : '·');
           html += "<td class=\"day-cell"+tc+"\" onclick=\"handleDayClick('"+cabin+"','"+dateStr+"')\">";
-          html += "<div class=\"reservation-block "+cabin+"-block\" title=\""+res.name+tipoTitle+"\" style=\""+alertStyle+"\">"+tipoPfx+res.name.split(" ")[0]+"</div></td>";
+          html += "<div class=\"reservation-block "+cabin+"-block"+courtesyCls+"\" title=\""+res.name+tipoTitle+courtesyTitle+"\" style=\""+alertStyle+"\">"+text+"</div></td>";
           d++;
         }
-      } else if(res) {
-        const alertStyle = res.alerta ? 'background:#f59e0b!important;color:#fff!important;' : '';
-        html += "<td class=\"day-cell"+tc+"\" onclick=\"handleDayClick('"+cabin+"','"+dateStr+"')\">";
-        html += "<div class=\"reservation-block "+cabin+"-block\" title=\""+res.name+"\" style=\""+alertStyle+"\">·</div></td>";
-        d++;
       } else {
         html += "<td class=\"day-cell"+tc+"\" onclick=\"handleDayClick('"+cabin+"','"+dateStr+"')\"></td>";
         d++;
@@ -2911,6 +2981,24 @@ function tipoDotHtml(tipo) {
   const c = TIPO_DOT_COLOR[tipo];
   if (!c) return '';
   return '<span title="'+(TIPO_LABEL[tipo]||tipo)+'" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+c+';border:1.5px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.2);position:absolute;top:4px;right:4px;flex-shrink:0;z-index:2;"></span>';
+}
+
+// Devuelve 'courtesy' (día bloqueado por cortesía sin huésped activo) o 'main' (día con huésped)
+// Para early/pasadia-largo: el primer día es cortesía; para late: el último (checkout-1) es cortesía.
+function getDayKind(r, dateStr) {
+  const tipo = r.tipo || 'noche';
+  if (tipo === 'noche' || tipo === 'pasadia') return 'main';
+  if (tipo === 'early' || tipo === 'pasadia-largo') {
+    return dateStr === r.checkin ? 'courtesy' : 'main';
+  }
+  if (tipo === 'late') {
+    if (!r.checkout) return 'main';
+    const d = new Date(r.checkout + 'T12:00:00');
+    d.setDate(d.getDate() - 1);
+    const last = d.toISOString().slice(0, 10);
+    return dateStr === last ? 'courtesy' : 'main';
+  }
+  return 'main';
 }
 
 function tipoBadgeHtml(r) {
