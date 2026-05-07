@@ -2908,7 +2908,7 @@ const TIPO_DOT_COLOR = {
 function tipoDotHtml(tipo) {
   const c = TIPO_DOT_COLOR[tipo];
   if (!c) return '';
-  return '<span title="'+(TIPO_LABEL[tipo]||tipo)+'" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:'+c+';margin-left:3px;flex-shrink:0;"></span>';
+  return '<span title="'+(TIPO_LABEL[tipo]||tipo)+'" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+c+';border:1.5px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.2);position:absolute;top:4px;right:4px;flex-shrink:0;z-index:2;"></span>';
 }
 
 function tipoBadgeHtml(r) {
