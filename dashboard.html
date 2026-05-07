@@ -4130,6 +4130,7 @@ async function saveReservation() {
   const dup = reservations.find(r => {
     if (editId && r.id == editId) return false; // skip self when editing
     if (r.cabin !== cabin) return false;
+    if (r.origin === 'Abierta') return false; // reservas abiertas no bloquean fechas
     if (r.estadoPago === 'CANCELADA') return false;
     // Overlap: existing checkin falls within new range, or new checkin falls within existing range
     return (r.checkin >= checkin && r.checkin < checkout) ||
