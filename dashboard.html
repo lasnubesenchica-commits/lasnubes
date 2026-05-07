@@ -2369,7 +2369,9 @@ async function syncFromSheets() {
           fechaPago:        r.fechaPago ? String(r.fechaPago).trim() : '',
           montoPagado:      r.montoPagado       || '',
           email:            r.email             || '',
-          comentarios:      r.comentarios       || ''
+          comentarios:      r.comentarios       || '',
+          telefono:         r.telefono          || '',
+          tipo:             r.tipo              || 'noche'
         };
       });
 
