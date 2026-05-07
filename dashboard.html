@@ -805,32 +805,8 @@
     position: relative;
   }
 
-  /* Tinte de cabaña en modal de reserva */
-  #reservaModal .modal::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 4px;
-    background: var(--verde-dark);
-    transition: background .2s ease;
-    pointer-events: none;
-    z-index: 1;
-  }
-  #reservaModal .modal.tint-azul::before { background: var(--azul-dark); }
-  #reservaModal .modal.tint-lila::before { background: var(--lila-dark); }
-  #reservaModal .modal.tint-azul .btn-primary { background: var(--azul-dark); border-color: var(--azul-dark); }
-  #reservaModal .modal.tint-azul .btn-primary:hover { background: #1e3f5c; }
-  #reservaModal .modal.tint-lila .btn-primary { background: var(--lila-dark); border-color: var(--lila-dark); }
-  #reservaModal .modal.tint-lila .btn-primary:hover { background: #3a1f6e; }
-  #reservaModal .modal.tint-azul .voucher-dropzone:hover,
-  #reservaModal .modal.tint-azul .voucher-dropzone:active,
-  #reservaModal .modal.tint-azul .voucher-dropzone.loading { border-color: var(--azul-dark); background: var(--azul-light); }
-  #reservaModal .modal.tint-lila .voucher-dropzone:hover,
-  #reservaModal .modal.tint-lila .voucher-dropzone:active,
-  #reservaModal .modal.tint-lila .voucher-dropzone.loading { border-color: var(--lila-dark); background: var(--lila-light); }
-  #reservaModal #fCabin { border-left: 4px solid var(--verde-dark); transition: border-color .2s ease; }
-  #reservaModal .modal.tint-azul #fCabin { border-left-color: var(--azul-dark); }
-  #reservaModal .modal.tint-lila #fCabin { border-left-color: var(--lila-dark); }
+  /* Tinte de cabaña en modal de reserva — colores aplicados via inline style desde applyModalCabinTint() */
+  #reservaModal #fCabin { border-left: 4px solid #6a9e62; transition: border-color .2s ease; }
 
   .modal-body {
     padding: 28px 32px 8px;
@@ -3853,11 +3829,37 @@ function renderList() {
 }
 
 // ─── MODAL ───────────────────────────────────────────────────
+const CABIN_TINT = {
+  verde: { dark: '#6a9e62', light: '#e8f2e6' },
+  azul:  { dark: '#5a85b0', light: '#e4eff8' },
+  lila:  { dark: '#8060b0', light: '#ede8f5' }
+};
+
 function applyModalCabinTint(cabin) {
   const modal = document.querySelector('#reservaModal .modal');
   if (!modal) return;
-  modal.classList.remove('tint-verde', 'tint-azul', 'tint-lila');
-  if (cabin === 'azul' || cabin === 'lila') modal.classList.add('tint-' + cabin);
+  const t = CABIN_TINT[cabin] || CABIN_TINT.verde;
+
+  // Barra superior (creada al primer uso)
+  let bar = modal.querySelector('#modalTintBar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'modalTintBar';
+    bar.style.cssText = 'position:absolute;top:0;left:0;right:0;height:4px;pointer-events:none;z-index:10;transition:background .2s ease;';
+    modal.insertBefore(bar, modal.firstChild);
+  }
+  bar.style.background = t.dark;
+
+  // Botón Guardar reserva
+  const btn = modal.querySelector('.btn-primary');
+  if (btn) {
+    btn.style.background  = t.dark;
+    btn.style.borderColor = t.dark;
+  }
+
+  // Borde izquierdo del select Cabaña
+  const sel = document.getElementById('fCabin');
+  if (sel) sel.style.borderLeft = '4px solid ' + t.dark;
 }
 
 const TIPO_HINTS = {
