@@ -1955,13 +1955,14 @@ function sendConfirmationEmail(reservation) {
     const attachments = [];
     const montoVoucherNum = reservation.montoVoucher ? parseFloat(String(reservation.montoVoucher).replace(/[^\d.]/g, '')) || 0 : 0;
     const hasVoucher = !!(reservation.codTransferencia || montoVoucherNum > 0);
+    Logger.log('🧾 sendConfirmationEmail · hasVoucher=' + hasVoucher + ' codT=' + (reservation.codTransferencia || 'null') + ' montoVoucher=' + (reservation.montoVoucher || 'null'));
     if (hasVoucher) {
       try {
         const receipt = generateReceiptPDF(reservation);
         attachments.push(receipt.blob);
-        Logger.log('📄 Recibo ' + receipt.number + ' adjuntado');
+        Logger.log('📄 Recibo ' + receipt.number + ' adjuntado (' + (receipt.blob.getBytes().length) + ' bytes)');
       } catch(rcpErr) {
-        Logger.log('⚠ No se pudo generar recibo PDF: ' + rcpErr);
+        Logger.log('⚠ No se pudo generar recibo PDF: ' + rcpErr + '\n' + (rcpErr && rcpErr.stack ? rcpErr.stack : ''));
       }
     }
 
