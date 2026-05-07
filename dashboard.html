@@ -1789,11 +1789,15 @@
       <button id="reservasHoyToggle" onclick="toggleReservasHoy()" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--surface);border:none;padding:10px 14px;cursor:pointer;font-family:inherit;font-size:13px;color:var(--text);text-align:left;">
         <span style="display:flex;align-items:center;gap:8px;">
           <span id="reservasHoyChevron" style="display:inline-block;transition:transform .2s;color:var(--text-muted);">▸</span>
-          <strong>Reservas de hoy</strong>
+          <strong id="reservasHoyTitle">Reservas de hoy</strong>
           <span id="reservasHoyCount" style="font-size:11px;color:var(--text-muted);font-weight:400;"></span>
         </span>
       </button>
       <div id="reservasHoyContent" style="display:none;padding:10px 14px 14px;background:var(--surface);border-top:1px solid var(--border);">
+        <div style="display:flex;gap:6px;justify-content:flex-end;margin-bottom:10px;">
+          <button onclick="reservasHoyReset()" style="padding:5px 12px;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);cursor:pointer;font-family:inherit;letter-spacing:.04em;">HOY</button>
+          <button onclick="reservasHoyShift(1)" style="padding:5px 12px;font-size:13px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);cursor:pointer;font-family:inherit;" title="Día siguiente">›</button>
+        </div>
         <div id="reservasHoyList"></div>
       </div>
     </div>
@@ -2640,23 +2644,53 @@ function toggleReservasHoy() {
   if (chev) chev.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
 }
 
+let reservasHoyOffset = 0;
+
+function reservasHoyShift(delta) {
+  reservasHoyOffset += delta;
+  renderReservasHoy();
+}
+
+function reservasHoyReset() {
+  reservasHoyOffset = 0;
+  renderReservasHoy();
+}
+
+function _formatDayLabel(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  const days = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  const months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return days[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()];
+}
+
 function renderReservasHoy() {
-  const today = new Date().toISOString().slice(0, 10);
+  const base = new Date();
+  base.setHours(0, 0, 0, 0);
+  base.setDate(base.getDate() + reservasHoyOffset);
+  const targetDate = base.toISOString().slice(0, 10);
   const items = [];
   reservations
     .filter(r => r.origin !== 'Abierta' && r.estadoPago !== 'CANCELADA' && r.checkin && r.checkout)
     .forEach(r => {
       const { displayCheckin, displayCheckout } = reservaDisplayDates(r);
-      if (displayCheckin === today && displayCheckout === today) {
+      if (displayCheckin === targetDate && displayCheckout === targetDate) {
         items.push({ kind: 'pasadia', r });
       } else {
-        if (displayCheckin === today)  items.push({ kind: 'entrada', r });
-        if (displayCheckout === today) items.push({ kind: 'salida',  r });
+        if (displayCheckin === targetDate)  items.push({ kind: 'entrada', r });
+        if (displayCheckout === targetDate) items.push({ kind: 'salida',  r });
       }
     });
 
   const order = { entrada: 0, pasadia: 1, salida: 2 };
   items.sort((a, b) => order[a.kind] - order[b.kind]);
+
+  // Título dinámico según offset
+  const titleEl = document.getElementById('reservasHoyTitle');
+  if (titleEl) {
+    if (reservasHoyOffset === 0)      titleEl.textContent = 'Reservas de hoy';
+    else if (reservasHoyOffset === 1) titleEl.textContent = 'Reservas de mañana';
+    else                              titleEl.textContent = 'Reservas — ' + _formatDayLabel(targetDate);
+  }
 
   const countEl = document.getElementById('reservasHoyCount');
   if (countEl) countEl.textContent = items.length === 0 ? '· sin movimientos' : '· ' + items.length + (items.length === 1 ? ' movimiento' : ' movimientos');
@@ -2664,7 +2698,8 @@ function renderReservasHoy() {
   const list = document.getElementById('reservasHoyList');
   if (!list) return;
   if (items.length === 0) {
-    list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:10px;text-align:center;">Hoy no hay entradas ni salidas.</div>';
+    const dayWord = reservasHoyOffset === 0 ? 'Hoy' : (reservasHoyOffset === 1 ? 'Mañana' : 'Este día');
+    list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:10px;text-align:center;">'+dayWord+' no hay entradas ni salidas.</div>';
     return;
   }
 
