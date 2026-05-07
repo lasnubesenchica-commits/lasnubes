@@ -2592,7 +2592,7 @@ function buildDispMonth(firstDay, cabinRes, today) {
     const initials = r.name.trim().split(/\s+/).map(w => w[0]).join('').slice(0,3).toUpperCase();
     for (let cur = new Date(start); cur < end; cur.setDate(cur.getDate() + 1)) {
       const key = cur.toISOString().slice(0,10);
-      occupied[key] = { initials, id: r.id, origin: r.origin || 'Airbnb', checkin: r.checkin, checkout: r.checkout, alerta: (r.origin === 'Airbnb' && r.alerta) ? r.alerta : '' };
+      occupied[key] = { initials, id: r.id, origin: r.origin || 'Airbnb', checkin: r.checkin, checkout: r.checkout, alerta: (r.origin === 'Airbnb' && r.alerta) ? r.alerta : '', tipo: r.tipo || 'noche' };
     }
   });
 
@@ -2624,6 +2624,7 @@ function buildDispMonth(firstDay, cabinRes, today) {
         grid += '<div class="' + cls + '" onclick="showDispDetail(\'' + occ.id + '\')" style="' + style + '">'
           + '<span class="day-num" style="font-size:12px;min-width:16px;">' + day + '</span>'
           + '<span class="day-initials">' + occ.initials + '</span>'
+          + tipoDotHtml(occ.tipo)
           + '</div>';
         day += span;
         continue;
@@ -2649,7 +2650,7 @@ function buildDispMonth(firstDay, cabinRes, today) {
     }
 
     const inner = occ
-      ? '<span class="day-num">' + day + '</span><span class="day-initials">' + occ.initials + '</span>'
+      ? '<span class="day-num">' + day + '</span><span class="day-initials">' + occ.initials + '</span>' + tipoDotHtml(occ.tipo)
       : '<span class="day-num">' + day + '</span>';
 
     grid += '<div class="' + cls + '" ' + clickAttr + '>' + inner + '</div>';
@@ -2897,6 +2898,18 @@ const TIPO_COLOR  = {
   early:           'background:#e0e7ff;color:#3730a3;',
   late:            'background:#fce7f3;color:#9d174d;'
 };
+const TIPO_DOT_COLOR = {
+  pasadia:         '#f59e0b',
+  'pasadia-largo': '#ea580c',
+  early:           '#6366f1',
+  late:            '#ec4899'
+};
+
+function tipoDotHtml(tipo) {
+  const c = TIPO_DOT_COLOR[tipo];
+  if (!c) return '';
+  return '<span title="'+(TIPO_LABEL[tipo]||tipo)+'" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:'+c+';margin-left:3px;flex-shrink:0;"></span>';
+}
 
 function tipoBadgeHtml(r) {
   const t = r.tipo || 'noche';
