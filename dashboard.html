@@ -802,7 +802,35 @@
     max-width: 480px;
     box-shadow: 0 20px 60px rgba(0,0,0,0.15);
     animation: slideUp 0.25s ease;
+    position: relative;
   }
+
+  /* Tinte de cabaña en modal de reserva */
+  #reservaModal .modal::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 4px;
+    background: var(--verde-dark);
+    transition: background .2s ease;
+    pointer-events: none;
+    z-index: 1;
+  }
+  #reservaModal .modal.tint-azul::before { background: var(--azul-dark); }
+  #reservaModal .modal.tint-lila::before { background: var(--lila-dark); }
+  #reservaModal .modal.tint-azul .btn-primary { background: var(--azul-dark); border-color: var(--azul-dark); }
+  #reservaModal .modal.tint-azul .btn-primary:hover { background: #1e3f5c; }
+  #reservaModal .modal.tint-lila .btn-primary { background: var(--lila-dark); border-color: var(--lila-dark); }
+  #reservaModal .modal.tint-lila .btn-primary:hover { background: #3a1f6e; }
+  #reservaModal .modal.tint-azul .voucher-dropzone:hover,
+  #reservaModal .modal.tint-azul .voucher-dropzone:active,
+  #reservaModal .modal.tint-azul .voucher-dropzone.loading { border-color: var(--azul-dark); background: var(--azul-light); }
+  #reservaModal .modal.tint-lila .voucher-dropzone:hover,
+  #reservaModal .modal.tint-lila .voucher-dropzone:active,
+  #reservaModal .modal.tint-lila .voucher-dropzone.loading { border-color: var(--lila-dark); background: var(--lila-light); }
+  #reservaModal #fCabin { border-left: 4px solid var(--verde-dark); transition: border-color .2s ease; }
+  #reservaModal .modal.tint-azul #fCabin { border-left-color: var(--azul-dark); }
+  #reservaModal .modal.tint-lila #fCabin { border-left-color: var(--lila-dark); }
 
   .modal-body {
     padding: 28px 32px 8px;
@@ -2126,7 +2154,7 @@
     <div class="form-row">
       <div class="form-group">
         <label>Cabaña</label>
-        <select id="fCabin">
+        <select id="fCabin" onchange="applyModalCabinTint(this.value);">
           <option value="verde">Paseo por Las Nubes</option>
           <option value="azul">Portal hacia Las Nubes</option>
           <option value="lila">Puente entre Las Nubes</option>
@@ -3825,6 +3853,13 @@ function renderList() {
 }
 
 // ─── MODAL ───────────────────────────────────────────────────
+function applyModalCabinTint(cabin) {
+  const modal = document.querySelector('#reservaModal .modal');
+  if (!modal) return;
+  modal.classList.remove('tint-verde', 'tint-azul', 'tint-lila');
+  if (cabin === 'azul' || cabin === 'lila') modal.classList.add('tint-' + cabin);
+}
+
 const TIPO_HINTS = {
   noche:           'Una noche estándar. Entrada 2pm, salida 11am día siguiente.',
   pasadia:         'Pasadía 12:30pm – 7pm. Bloquea solo el día de entrada (la noche siguiente queda libre).',
@@ -3949,6 +3984,7 @@ function openModal(cabin, date) {
   document.getElementById('reservaModal').classList.add('open');
   clearVoucher();
   document.getElementById('voucherSection').style.display = 'block'; // Directa por defecto
+  applyModalCabinTint(document.getElementById('fCabin').value);
   calcPrice();
 }
 
@@ -3980,6 +4016,7 @@ function editReservation(id) {
   clearVoucher();
   document.getElementById('voucherSection').style.display = (r.origin === 'Directa') ? 'block' : 'none';
   document.getElementById('reservaModal').classList.add('open');
+  applyModalCabinTint(r.cabin);
   calcPrice();
 }
 
