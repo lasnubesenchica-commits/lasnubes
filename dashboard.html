@@ -1783,13 +1783,28 @@
       </div>
       <button class="btn btn-primary" onclick="openModal()">+ Nueva reserva</button>
     </div>
+
+    <!-- Reservas de hoy (colapsable, default cerrado) -->
+    <div style="margin:10px 0 14px;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+      <button id="reservasHoyToggle" onclick="toggleReservasHoy()" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--surface);border:none;padding:10px 14px;cursor:pointer;font-family:inherit;font-size:13px;color:var(--text);text-align:left;">
+        <span style="display:flex;align-items:center;gap:8px;">
+          <span id="reservasHoyChevron" style="display:inline-block;transition:transform .2s;color:var(--text-muted);">▸</span>
+          <strong>Reservas de hoy</strong>
+          <span id="reservasHoyCount" style="font-size:11px;color:var(--text-muted);font-weight:400;"></span>
+        </span>
+      </button>
+      <div id="reservasHoyContent" style="display:none;padding:10px 14px 14px;background:var(--surface);border-top:1px solid var(--border);">
+        <div id="reservasHoyList"></div>
+      </div>
+    </div>
+
     <div style="display:flex;gap:16px;margin-bottom:10px;font-size:11px;color:var(--text-muted);align-items:center;">
       <span style="display:flex;align-items:center;gap:5px;">
-        <span style="width:14px;height:14px;border-radius:3px;background:var(--verde-dark);display:inline-block;"></span>
+        <span id="legendDotAirbnb" style="width:14px;height:14px;border-radius:3px;background:var(--verde-dark);display:inline-block;"></span>
         Airbnb
       </span>
       <span style="display:flex;align-items:center;gap:5px;">
-        <span style="width:14px;height:14px;border-radius:3px;background:#a8c9a0;display:inline-block;"></span>
+        <span id="legendDotDirect" style="width:14px;height:14px;border-radius:3px;background:#a8c9a0;display:inline-block;"></span>
         Directa / Otro
       </span>
     </div>
@@ -2580,16 +2595,118 @@ function showSection(id) {
 // ─── DISPONIBILIDAD ──────────────────────────────────────
 let dispCabin = 'verde';
 let dispMonthsShown = 3;
+const CABIN_DIRECT_COLOR = { verde: '#a8c9a0', azul: '#8fb3d4', lila: '#b09fd4' };
+
+function updateDispLegend() {
+  const a = document.getElementById('legendDotAirbnb');
+  const d = document.getElementById('legendDotDirect');
+  if (a) a.style.background = 'var(--' + dispCabin + '-dark)';
+  if (d) d.style.background = CABIN_DIRECT_COLOR[dispCabin] || '#a8c9a0';
+}
 
 function setDispCabin(cabin, btn) {
   dispCabin = cabin;
   dispMonthsShown = 3;
   document.querySelectorAll('.disp-cabin-tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
+  updateDispLegend();
   renderDisponibilidad();
 }
 
+// Devuelve las fechas "reales" de check-in/out según el tipo (sin mutar storage).
+function reservaDisplayDates(r) {
+  const tipo = r.tipo || 'noche';
+  let displayCheckin = r.checkin;
+  let displayCheckout = r.checkout;
+  if (tipo === 'pasadia') {
+    displayCheckout = r.checkin;
+  } else if (tipo === 'pasadia-largo') {
+    displayCheckin = _addDaysISO(r.checkin, 1);
+    displayCheckout = displayCheckin;
+  } else if (tipo === 'early') {
+    displayCheckin = _addDaysISO(r.checkin, 1);
+  } else if (tipo === 'late') {
+    displayCheckout = _addDaysISO(r.checkout, -1);
+  }
+  return { displayCheckin, displayCheckout };
+}
+
+function toggleReservasHoy() {
+  const content = document.getElementById('reservasHoyContent');
+  const chev    = document.getElementById('reservasHoyChevron');
+  if (!content) return;
+  const isOpen = content.style.display !== 'none';
+  content.style.display = isOpen ? 'none' : 'block';
+  if (chev) chev.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
+}
+
+function renderReservasHoy() {
+  const today = new Date().toISOString().slice(0, 10);
+  const items = [];
+  reservations
+    .filter(r => r.origin !== 'Abierta' && r.estadoPago !== 'CANCELADA' && r.checkin && r.checkout)
+    .forEach(r => {
+      const { displayCheckin, displayCheckout } = reservaDisplayDates(r);
+      if (displayCheckin === today && displayCheckout === today) {
+        items.push({ kind: 'pasadia', r });
+      } else {
+        if (displayCheckin === today)  items.push({ kind: 'entrada', r });
+        if (displayCheckout === today) items.push({ kind: 'salida',  r });
+      }
+    });
+
+  const order = { entrada: 0, pasadia: 1, salida: 2 };
+  items.sort((a, b) => order[a.kind] - order[b.kind]);
+
+  const countEl = document.getElementById('reservasHoyCount');
+  if (countEl) countEl.textContent = items.length === 0 ? '· sin movimientos' : '· ' + items.length + (items.length === 1 ? ' movimiento' : ' movimientos');
+
+  const list = document.getElementById('reservasHoyList');
+  if (!list) return;
+  if (items.length === 0) {
+    list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:10px;text-align:center;">Hoy no hay entradas ni salidas.</div>';
+    return;
+  }
+
+  const CABIN_NAMES = { verde: 'Paseo por Las Nubes', azul: 'Portal hacia Las Nubes', lila: 'Puente entre Las Nubes' };
+
+  list.innerHTML = items.map(it => {
+    const r = it.r;
+    const tipo = r.tipo || 'noche';
+    const cabinDark  = 'var(--' + r.cabin + '-dark)';
+    const cabinLight = 'var(--' + r.cabin + '-light)';
+    const cabinName  = CABIN_NAMES[r.cabin] || r.cabin;
+    const tipoLbl    = TIPO_LABEL[tipo] || tipo;
+    const horaText = (() => {
+      if (it.kind === 'salida')  return tipo === 'late'  ? 'sale 4pm' : 'sale 11am';
+      if (it.kind === 'entrada') return tipo === 'early' ? 'entra 9am' : 'entra 2pm';
+      if (it.kind === 'pasadia') return tipo === 'pasadia-largo' ? '9am – 5pm' : '12:30pm – 7pm';
+      return '';
+    })();
+    const cmt = (r.comentarios || '').toString().trim();
+    const isOut = it.kind === 'salida';
+    const bg = isOut ? '#f5f3f0' : cabinLight;
+    const accent = isOut ? 'var(--border)' : cabinDark;
+    const labelText = it.kind === 'salida' ? 'SALE' : (it.kind === 'pasadia' ? 'PASADÍA' : 'ENTRA');
+    const labelColor = isOut ? 'var(--text-muted)' : cabinDark;
+    const nameColor  = isOut ? 'var(--text-muted)' : cabinDark;
+    return `
+      <div onclick="showDispDetail('${r.id}')" style="cursor:pointer;background:${bg};border-left:3px solid ${accent};padding:10px 12px;border-radius:8px;margin-bottom:8px;font-size:13px;${isOut ? 'opacity:0.85;' : ''}">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px;">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.06em;color:${labelColor};">${labelText}</span>
+          <strong style="color:${nameColor};">${r.name}</strong>
+          ${horaText ? '<span style="font-size:11px;color:var(--text-muted);">· ' + horaText + '</span>' : ''}
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);">${cabinName}${tipo !== 'noche' ? ' · ' + tipoLbl : ''}${r.persons ? ' · ' + r.persons + ' personas' : ''}</div>
+        ${cmt ? '<div style="margin-top:6px;padding:6px 8px;background:rgba(0,0,0,0.04);border-radius:4px;font-size:12px;font-style:italic;color:var(--text);white-space:pre-wrap;">' + cmt + '</div>' : ''}
+      </div>
+    `;
+  }).join('');
+}
+
 function renderDisponibilidad() {
+  renderReservasHoy();
+  updateDispLegend();
   const container = document.getElementById('dispCalendars');
   if (!container) return;
   const allRes = reservations;
