@@ -2133,7 +2133,7 @@ MENSAJE — solo si hay un campo "Mensaje", "Concepto", "Comentario", "Descripci
 
 NOMBRE COMPLETO — nombre de una persona DENTRO del mensaje (ej: "Reserva Karina" → "Karina", "Pago Juan Pérez" → "Juan Pérez", "ManuelFlores" → "Manuel Flores"). Acepta nombres simples y nombres pegados sin espacio (separa "ManuelFlores" → "Manuel Flores"). Excluye palabras tipo "abono", "pago", "reserva", "saldo", "anticipo", "deposito", "transferencia", fechas, montos, números → null. Es el nombre del HUÉSPED, distinto del SENDER.
 
-EMAIL — cualquier dirección de correo (`algo@dominio.xxx`) que aparezca en el mensaje. Devuélvela tal cual, en minúsculas. Si no hay, null.
+EMAIL — cualquier dirección de correo (algo@dominio.xxx) que aparezca en el mensaje. Devuélvela tal cual, en minúsculas. Si no hay, null.
 
 TELÉFONO — cualquier número panameño de 8 dígitos en el mensaje, ya sea con guión ("6300-4489"), sin guión ("63004489") o con espacios ("6300 4489"). Devuélvelo SIEMPRE en formato XXXX-XXXX (insertando el guión si no lo tiene). NO confundas con el monto, fechas, ni el código de confirmación. Si no hay número de 8 dígitos, null.
 
