@@ -1797,7 +1797,17 @@ function icsContent(reservation) {
   ].join('\r\n');
 }
 
-function buildGuiaHTML(cabin) {
+function buildGuiaHTML(cabin, tipo) {
+  tipo = tipo || 'noche';
+  var checkoutTitleMap = {
+    'noche':         'Check-out &middot; 11:00 am',
+    'pasadia':       'Salida &middot; 7:00 pm',
+    'pasadia-largo': 'Salida &middot; 5:00 pm',
+    'early':         'Check-out &middot; 11:00 am',
+    'late':          'Check-out &middot; 4:00 pm'
+  };
+  var checkoutTitle = checkoutTitleMap[tipo] || checkoutTitleMap.noche;
+  var checkoutBody  = 'Dejar la cocina limpia &middot; Llevarse la basura &middot; Cerrar la puerta y dejar la llave dentro del key box.';
   var steps = {
     verde: [
       ['&#128273;', 'Acceso', 'Key Box c&#243;digo <strong>0507</strong>. El control blanco del port&#243;n abre la entrada si necesitan salir.'],
@@ -1805,7 +1815,7 @@ function buildGuiaHTML(cabin) {
       ['&#128267;', 'Carga de dispositivos', 'Inversor en la rec&#225;mara para celulares y dispositivos.'],
       ['&#127869;', 'Cocina', 'Guarda todos los alimentos &mdash; no dejar nada expuesto para evitar animalitos.'],
       ['&#9834;', 'Convivencia', 'M&#250;sica y conversaciones a volumen moderado.'],
-      ['&#10003;', 'Check-out &middot; 11:00 am', 'Dejar la cocina limpia &middot; Llevarse la basura &middot; Cerrar la puerta y dejar la llave dentro del key box.']
+      ['&#10003;', checkoutTitle, checkoutBody]
     ],
     azul: [
       ['&#128273;', 'Acceso', 'Key Box c&#243;digo <strong>0507</strong> &mdash; luego deslizar la puerta corrediza de metal. El control abre el port&#243;n.'],
@@ -1813,7 +1823,7 @@ function buildGuiaHTML(cabin) {
       ['&#128267;', 'Carga de dispositivos', 'Powerbank en la rec&#225;mara para celulares.'],
       ['&#127869;', 'Cocina', 'Guarda todos los alimentos &mdash; no dejar nada expuesto para evitar animalitos.'],
       ['&#9834;', 'Convivencia', 'M&#250;sica y conversaciones a volumen moderado.'],
-      ['&#10003;', 'Check-out &middot; 11:00 am', 'Dejar la cocina limpia &middot; Llevarse la basura &middot; Cerrar la puerta y dejar la llave dentro del key box.']
+      ['&#10003;', checkoutTitle, checkoutBody]
     ],
     lila: [
       ['&#128273;', 'Acceso', 'Key Box c&#243;digo <strong>0507</strong>. El control abre el port&#243;n.'],
@@ -1821,7 +1831,7 @@ function buildGuiaHTML(cabin) {
       ['&#128267;', 'Carga de dispositivos', 'Inversor en la rec&#225;mara para celulares y dispositivos.'],
       ['&#127869;', 'Cocina', 'Guarda todos los alimentos &mdash; no dejar nada expuesto para evitar animalitos.'],
       ['&#9834;', 'Convivencia', 'M&#250;sica y conversaciones a volumen moderado.'],
-      ['&#10003;', 'Check-out &middot; 11:00 am', 'Dejar la cocina limpia &middot; Llevarse la basura &middot; Cerrar la puerta y dejar la llave dentro del key box.']
+      ['&#10003;', checkoutTitle, checkoutBody]
     ]
   };
 
@@ -1867,7 +1877,7 @@ function buildEmailHTML(r) {
   const ics         = icsContent(r);
   const icsB64      = Utilities.base64Encode(ics);
   const icsUri      = 'data:text/calendar;base64,' + icsB64;
-  const pagarUrl    = 'https://wa.me/50769812266?text=' + encodeURIComponent('Deseo cancelar el saldo restante de mi reserva. Me comparte los métodos de pago?');
+  const pagarUrl    = 'https://wa.me/50769812266?text=' + encodeURIComponent('Deseo cancelar el saldo restante de mi reserva del día ' + meta.checkinFmt + ' en la cabaña ' + cabin + '. ¿Me comparte los métodos de pago?');
 
   return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>' +
 '<body style="margin:0;padding:0;background:#f5f3f0;font-family:\'Helvetica Neue\',Helvetica,Arial,sans-serif;">' +
@@ -1905,7 +1915,7 @@ function buildEmailHTML(r) {
 '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:18px;"><tr><td style="vertical-align:top;padding-right:12px;font-size:22px;width:36px;">&#128274;</td><td><p style="margin:0 0 3px;font-size:14px;font-weight:600;color:#3a3530;">Privacidad total</p><p style="margin:0;font-size:13px;color:#6b6560;line-height:1.6;">Todas las instalaciones de la cabaña son de uso exclusivo de quienes la reservan.</p></td></tr></table>' +
 '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;"><tr><td style="vertical-align:top;padding-right:12px;font-size:22px;width:36px;">&#128506;&#65039;</td><td><p style="margin:0 0 3px;font-size:14px;font-weight:600;color:#3a3530;">Cómo llegar</p><p style="margin:0 0 8px;font-size:13px;color:#6b6560;line-height:1.6;">Por carretera interamericana, entrar por el Pío Pío de Bejuco hacia carretera Bejuco–Sorá. Al llegar al pueblo de Buenos Aires, doblar a la derecha hacia el pueblo de Chicá. La cabaña queda a 100 metros.</p><p style="margin:0 0 12px;font-size:13px;color:#6b6560;line-height:1.6;">La manera más fácil es colocar en <strong>Waze: &quot;Aires de Chicá&quot;</strong>. Te llevará directo al portón verde.</p><a href="https://maps.google.com/?q=8.639400,-79.945900" target="_blank" style="display:inline-block;background:#f0ede8;color:#3a3530;font-size:13px;font-weight:500;padding:8px 16px;border-radius:8px;text-decoration:none;border:1px solid #e8e4de;">&#128205; Ver en Google Maps</a></td></tr></table>' +
 '<hr style="border:none;border-top:1px solid #e8e4de;margin:24px 0;">' +
-buildGuiaHTML(r.cabin) +
+buildGuiaHTML(r.cabin, meta.tipo) +
 '<hr style="border:none;border-top:1px solid #e8e4de;margin:24px 0;">' +
 '<h2 style="margin:0 0 6px;font-size:17px;font-weight:600;color:#3a3530;">&#127978; Tiendita Las Nubes</h2>' +
 '<p style="margin:0 0 16px;font-size:13px;color:#8a8078;">Tenemos insumos disponibles — te los llevamos directo a la cabaña.</p>' +
@@ -2004,7 +2014,7 @@ function buildUpdateEmailHTML(reservation, cabin, color, checkinFmt, checkoutFmt
   checkinFmt     = meta.checkinFmt;
   checkoutFmt    = meta.checkoutFmt;
   hasSaldo       = amount > 0 && parseFloat(saldo) > 0;
-  const pagarUrl = 'https://wa.me/50769812266?text=' + encodeURIComponent('Deseo cancelar el saldo restante de mi reserva. Me comparte los métodos de pago?');
+  const pagarUrl = 'https://wa.me/50769812266?text=' + encodeURIComponent('Deseo cancelar el saldo restante de mi reserva del día ' + meta.checkinFmt + ' en la cabaña ' + cabin + '. ¿Me comparte los métodos de pago?');
 
   return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"></head>' +
 '<body style="margin:0;padding:0;background:#f5f3f0;font-family:\'Helvetica Neue\',Helvetica,Arial,sans-serif;">' +
@@ -2033,7 +2043,7 @@ function buildUpdateEmailHTML(reservation, cabin, color, checkinFmt, checkoutFmt
 '<td><a href="' + icsUri + '" style="display:inline-block;background:#3a3530;color:#ffffff;font-size:13px;font-weight:500;padding:10px 20px;border-radius:8px;text-decoration:none;">&#127822; Apple / Outlook</a></td>' +
 '</tr></table>' +
 '<hr style="border:none;border-top:1px solid #e8e4de;margin:0 0 28px;">' +
-buildGuiaHTML(reservation.cabin) +
+buildGuiaHTML(reservation.cabin, meta.tipo) +
 '</td></tr>' +
 '<tr><td style="background:#3a3530;border-radius:0 0 16px 16px;padding:24px 40px;text-align:center;">' +
 '<p style="margin:0 0 8px;font-size:18px;font-weight:300;color:#ffffff;font-family:Georgia,serif;">Las <em>Nubes</em></p>' +
