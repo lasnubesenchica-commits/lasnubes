@@ -872,21 +872,22 @@
     gap: 6px;
     padding: 22px 16px;
     margin-bottom: 14px;
-    border: 2px dashed var(--border);
+    border: 2px dashed var(--cabin-tint-dark, var(--verde-dark));
     border-radius: 14px;
-    background: var(--bg);
+    background: var(--cabin-tint-light, var(--verde-light));
     cursor: pointer;
     transition: all 0.2s;
     text-align: center;
   }
   .voucher-dropzone:hover,
   .voucher-dropzone:active {
-    border-color: var(--verde-dark);
-    background: var(--verde-light);
+    border-color: var(--cabin-tint-dark, var(--verde-dark));
+    background: var(--cabin-tint-light, var(--verde-light));
+    filter: brightness(0.97);
   }
   .voucher-dropzone.loading {
-    border-color: var(--verde-dark);
-    background: var(--verde-light);
+    border-color: var(--cabin-tint-dark, var(--verde-dark));
+    background: var(--cabin-tint-light, var(--verde-light));
     cursor: wait;
   }
   .voucher-dropzone-icon { font-size: 28px; line-height: 1; }
@@ -3839,6 +3840,10 @@ function applyModalCabinTint(cabin) {
   const modal = document.querySelector('#reservaModal .modal');
   if (!modal) return;
   const t = CABIN_TINT[cabin] || CABIN_TINT.verde;
+
+  // CSS vars para que dropzone y otros elementos heredados tinten correctamente
+  modal.style.setProperty('--cabin-tint-dark',  t.dark);
+  modal.style.setProperty('--cabin-tint-light', t.light);
 
   // Barra superior (creada al primer uso)
   let bar = modal.querySelector('#modalTintBar');
