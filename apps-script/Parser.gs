@@ -298,6 +298,15 @@ function getOrCreateSheet() {
     ]]);
     sheet.getRange(1, 1, 1, 25).setFontWeight('bold');
     sheet.setFrozenRows(1);
+  } else {
+    // Auto-asegurar que la columna Tipo (25) existe sin requerir migración manual
+    if (sheet.getLastColumn() < 25) {
+      const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+      if (!headers.includes('Tipo')) {
+        sheet.getRange(1, 25).setValue('Tipo');
+        sheet.getRange(1, 25).setFontWeight('bold');
+      }
+    }
   }
 
   return sheet;
@@ -1600,23 +1609,39 @@ function migrarColumnasV3() {
   Logger.log(cambios ? '✓ Migración V3 — ' + cambios + ' columna(s)' : '✓ Columnas V3 ya existían');
 }
 
-// V4: agrega columna Tipo (noche | pasadia | early | late). Default 'noche' en filas existentes.
+// V4: agrega columna Tipo (noche | pasadia | pasadia-largo | early | late) en col 25.
+// Default 'noche' SOLO en celdas vacías (preserva valores ya escritos por saveReservation).
 function migrarColumnasV4() {
   const sheet = getOrCreateSheet();
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const lastCol = sheet.getLastColumn();
+  const lastRow = sheet.getLastRow();
+  const headers = sheet.getRange(1, 1, 1, Math.max(lastCol, 25)).getValues()[0];
+
+  const TIPO_COL = 25;
+  // Si Tipo ya está en alguna columna, no tocamos nada
   if (headers.includes('Tipo')) {
-    Logger.log('✓ Columna Tipo ya existía');
+    Logger.log('✓ Columna Tipo ya existía en col ' + (headers.indexOf('Tipo') + 1));
     return;
   }
-  const col = headers.length + 1;
-  sheet.getRange(1, col).setValue('Tipo');
-  sheet.getRange(1, col).setFontWeight('bold');
-  const lastRow = sheet.getLastRow();
+  // Forzar header en col 25 (no usar headers.length+1 porque appendRow pudo haber extendido el sheet)
+  sheet.getRange(1, TIPO_COL).setValue('Tipo');
+  sheet.getRange(1, TIPO_COL).setFontWeight('bold');
+
   if (lastRow >= 2) {
-    const values = Array(lastRow - 1).fill(['noche']);
-    sheet.getRange(2, col, lastRow - 1, 1).setValues(values);
+    const range = sheet.getRange(2, TIPO_COL, lastRow - 1, 1);
+    const existing = range.getValues();
+    let updated = 0;
+    for (let i = 0; i < existing.length; i++) {
+      if (!existing[i][0] || existing[i][0].toString().trim() === '') {
+        existing[i][0] = 'noche';
+        updated++;
+      }
+    }
+    if (updated > 0) range.setValues(existing);
+    Logger.log('✓ Migración V4 — header en col 25, ' + updated + ' filas con default "noche" (preservadas las que ya tenían valor)');
+    return;
   }
-  Logger.log('✓ Migración V4 — columna Tipo agregada con default "noche"');
+  Logger.log('✓ Migración V4 — header Tipo agregado, sin filas existentes');
 }
 
 function limpiarDuplicadosAirbnb() {
