@@ -3082,14 +3082,22 @@ function showDispDetail(id) {
   if (detailEstado) detailEstado.innerHTML = estadoPagoBadge(r);
   document.getElementById('detailEditBtn').onclick   = () => { closeDetail(); editReservation(id); };
   document.getElementById('detailDeleteBtn').onclick = () => { closeDetail(); deleteReservation(id); };
-  // Botón "Ver voucher" si la reserva tiene voucherURL
+  // Botón "Ver voucher" si la reserva tiene voucherURL (soporta multiples separados por |)
   const voucherBtn = document.getElementById('detailVoucherBtn');
   if (voucherBtn) {
-    if (r.voucherURL) {
-      voucherBtn.style.display = '';
-      voucherBtn.onclick = () => window.open(r.voucherURL, '_blank');
-    } else {
+    const urls = r.voucherURL
+      ? r.voucherURL.toString().split('|').map(s => s.trim()).filter(Boolean)
+      : [];
+    if (urls.length === 0) {
       voucherBtn.style.display = 'none';
+    } else if (urls.length === 1) {
+      voucherBtn.style.display = '';
+      voucherBtn.textContent = '🧾 Ver voucher';
+      voucherBtn.onclick = () => window.open(urls[0], '_blank');
+    } else {
+      voucherBtn.style.display = '';
+      voucherBtn.textContent = '🧾 Ver vouchers (' + urls.length + ')';
+      voucherBtn.onclick = () => urls.forEach(u => window.open(u, '_blank'));
     }
   }
   const resendBtn = document.getElementById('detailResendBtn');
@@ -4440,7 +4448,13 @@ async function handleVoucherUpload(event) {
     if (pendingVoucher.email) fEmail.value = pendingVoucher.email;
     if (pendingVoucher.telefono) fTelefono.value = pendingVoucher.telefono;
     if (montoNum > 0) {
-      fDeposit.value = montoNum.toFixed(2);
+      // En edicion con abono previo: acumular en vez de sobreescribir
+      const currentDeposit = parseFloat(fDeposit.value) || 0;
+      if (editId && currentDeposit > 0) {
+        fDeposit.value = (currentDeposit + montoNum).toFixed(2);
+      } else {
+        fDeposit.value = montoNum.toFixed(2);
+      }
       calcSaldo();
     }
 
@@ -4602,18 +4616,25 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
   const fechaReserva = (fFechaReservaEl && fFechaReservaEl.value) || new Date().toISOString().slice(0,10);
 
   // Código de transferencia del voucher (va en columna aparte, no en confirmCode)
-  const codTransferencia = (pendingVoucher && origin === 'Directa')
+  const codNuevo = (pendingVoucher && origin === 'Directa')
     ? pendingVoucher.codTransferencia : null;
   const montoVoucherNum = (pendingVoucher && origin === 'Directa')
     ? _voucherMontoNumber(pendingVoucher.monto) : 0;
 
-  // Accumulate: if editing and there's a new voucher, add to existing total
+  // Acumulacion: en edicion con voucher nuevo, agregar al total/lista existente
   let montoVoucher = montoVoucherNum > 0 ? '$' + montoVoucherNum.toFixed(2) : null;
-  if (editId && montoVoucherNum > 0) {
+  let codTransferencia = codNuevo;
+  if (editId && pendingVoucher && origin === 'Directa') {
     const prev = reservations.find(r => r.id === editId);
-    const anterior = prev ? (parseFloat((prev.montoVoucher || '').toString().replace(/[^0-9.]/g,'')) || 0) : 0;
-    const acumulado = anterior + montoVoucherNum;
-    montoVoucher = '$' + acumulado.toFixed(2);
+    if (montoVoucherNum > 0) {
+      const anterior = prev ? (parseFloat((prev.montoVoucher || '').toString().replace(/[^0-9.]/g,'')) || 0) : 0;
+      const acumulado = anterior + montoVoucherNum;
+      montoVoucher = '$' + acumulado.toFixed(2);
+    }
+    if (codNuevo) {
+      const codAnterior = prev && prev.codTransferencia ? prev.codTransferencia.toString().trim() : '';
+      codTransferencia = codAnterior ? (codAnterior + '|' + codNuevo) : codNuevo;
+    }
   }
 
   // Validar voucher y calcular estado de pago
@@ -4717,9 +4738,15 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
   // Enviar email de actualización si checkbox activo (solo en edición)
   if (editId && notificar && email) {
     try {
+      const updatePayload = { action: 'sendUpdateEmail', reservation };
+      // Si hay voucher nuevo en la edicion, adjuntarlo para generar recibo PDF
+      if (pendingVoucher && pendingVoucher.base64 && origin === 'Directa') {
+        updatePayload.voucherBase64   = pendingVoucher.base64;
+        updatePayload.voucherMimeType = pendingVoucher.mimeType || 'image/jpeg';
+      }
       const res = await fetch(SHEETS_API_URL, {
         method: 'POST',
-        body: JSON.stringify({ action: 'sendUpdateEmail', reservation })
+        body: JSON.stringify(updatePayload)
       });
       const data = await res.json();
       showToast(data.ok ? '📧 Email de actualización enviado ✓' : '⚠ No se pudo enviar el email');
@@ -4727,6 +4754,7 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
       console.warn('No se pudo enviar el email de actualización:', e);
     }
   }
+
 
   // Enviar email de confirmación si es reserva nueva y hay email
   if (!editId && email) {

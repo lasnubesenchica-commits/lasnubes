@@ -52,5 +52,11 @@ Helpers equivalentes en backend (`Parser.gs`):
 
 - **Origen `'Cortesia'`** (sin tilde) — toda referencia debe ser sin tilde. La forma con tilde es solo el label visible en UI.
 - **`SIN_PAGO_ORIGINS`**: constante global en dashboard.html con `['Cortesia','Colaboracion','Personal','Abierta']`.
-- **Recibo PDF**: generado por `generateReceiptPDF(r)` en backend. Numeración correlativa `LN-NNNN` en Script Properties (`RECEIPT_COUNTER`). Adjuntado al email de confirmación si la reserva tiene voucher.
+- **Recibo PDF**: generado por `generateReceiptPDF(r)` en backend. Numeración correlativa `LN-NNNN` en Script Properties (`RECEIPT_COUNTER`). Adjuntado al email de confirmación si la reserva tiene voucher. `sendUpdateEmail` también lo adjunta cuando la edición incluye un voucher nuevo.
 - **Vouchers en Drive**: subidos por `saveVoucherToDrive` a la carpeta `Las Nubes - Pagos`. URL persistido en columna 26.
+- **Multi-voucher por reserva** (abonos parciales): cuando se sube un segundo voucher en edición, el sistema acumula:
+  - `montoVoucher`: suma total ($45 + $45 = $90).
+  - `codTransferencia`: lista separada por `|` (ej. `UYAFL-111|UYAFL-222`).
+  - col 26 `VoucherURL`: lista separada por `|` (cada subida agrega).
+  - `deposit`: si ya hay abono previo y se sube otro voucher, `handleVoucherUpload` lo suma al campo en lugar de sobrescribir.
+  El botón "Ver voucher" del detalle abre cada URL en pestaña separada si hay múltiples. `deleteReservation` con `deleteVoucher=true` itera todas las URLs.
