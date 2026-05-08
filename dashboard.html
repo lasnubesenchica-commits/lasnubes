@@ -3934,6 +3934,11 @@ function handleTipoChange() {
 
   if (!ciInp.value) { calcSaldo(); return; }
 
+  // Calcular noches actuales para la heurística legacy
+  const cinDate = new Date(ciInp.value + 'T12:00:00');
+  const couDate = coInp.value ? new Date(coInp.value + 'T12:00:00') : null;
+  const nights = couDate ? Math.round((couDate - cinDate) / 86400000) : 0;
+
   // Derivar la fecha REAL de la reserva (día que el huésped efectivamente está)
   // a partir del estado actual + tipo previo.
   let real = ciInp.value;
