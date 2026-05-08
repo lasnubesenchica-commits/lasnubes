@@ -2023,6 +2023,55 @@ function sendConfirmationEmail(reservation, voucherBase64, voucherMimeType) {
 const RECIBOS_FOLDER_NAME = 'Recibos Las Nubes';
 const RECIBO_LOGO_URL     = 'https://lasnubes.cloud/logo-black.png';
 
+// Ejecutar UNA VEZ desde el editor para retro-poblar la columna VoucherURL
+// usando el codTransferencia (description) y el nombre (filename) como criterio.
+// Solo actualiza filas con codTransferencia y VoucherURL vacío.
+function repoblarVoucherURLs() {
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+  const folders = DriveApp.getFoldersByName(VOUCHER_FOLDER_NAME);
+  if (!folders.hasNext()) {
+    Logger.log('⚠ Carpeta "' + VOUCHER_FOLDER_NAME + '" no existe.');
+    return;
+  }
+  const folder = folders.next();
+
+  // Pre-cargar archivos en memoria (una sola pasada por la carpeta)
+  const files = [];
+  const it = folder.getFiles();
+  while (it.hasNext()) {
+    const f = it.next();
+    files.push({ name: f.getName().toLowerCase(), desc: f.getDescription() || '', url: f.getUrl() });
+  }
+  Logger.log('📁 ' + files.length + ' archivos en ' + VOUCHER_FOLDER_NAME);
+
+  let updated = 0, skipped = 0, notFound = 0;
+  for (let i = 1; i < data.length; i++) {
+    const nombre      = data[i][1]  ? data[i][1].toString()              : '';
+    const codTransf   = data[i][18] ? data[i][18].toString().trim()      : '';
+    const existingURL = data[i][25] ? data[i][25].toString().trim()      : '';
+    if (existingURL) { skipped++; continue; }
+    if (!codTransf && !nombre) continue;
+
+    let match = null;
+    if (codTransf) {
+      match = files.find(f => f.desc.includes(codTransf));
+    }
+    if (!match && nombre) {
+      const nombreSafe = nombre.replace(/\s+/g, '_').slice(0, 20).toLowerCase();
+      if (nombreSafe) match = files.find(f => f.name.includes(nombreSafe));
+    }
+
+    if (match) {
+      sheet.getRange(i + 1, 26).setValue(match.url);
+      updated++;
+    } else if (codTransf) {
+      notFound++;
+    }
+  }
+  Logger.log('✓ Migración VoucherURL: ' + updated + ' actualizados, ' + skipped + ' ya tenían URL, ' + notFound + ' con codTransf sin match.');
+}
+
 // Ejecutar UNA VEZ desde el editor para otorgar los permisos necesarios
 // (DocumentApp, DriveApp, UrlFetchApp, LockService) que usa generateReceiptPDF.
 // Después de aceptar la consola OAuth, el web app podrá generar recibos PDF.
