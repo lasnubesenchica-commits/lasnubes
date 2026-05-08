@@ -2565,6 +2565,10 @@ const CABINS = {
   lila: 'Puente entre Las Nubes'
 };
 
+// Origenes que no generan cobro (cortesía, colaboraciones, uso interno, abiertas).
+// 'Abierta' incluye reservas sin fechas confirmadas (no aplican para cobro).
+const SIN_PAGO_ORIGINS = SIN_PAGO_ORIGINS;
+
 const RATES = { weekday: 90, weekend: 110 }; // Vie/Sáb = 110
 
 // ─── ESTIMACIÓN DE COMISIÓN AIRBNB ───────────────────────────
@@ -2956,7 +2960,6 @@ function buildDispMonth(firstDay, cabinRes, today) {
         grid += '<div class="' + cls + '" onclick="showDispDetail(\'' + occ.id + '\')" style="' + style + '">'
           + '<span class="day-num" style="font-size:12px;min-width:16px;">' + day + '</span>'
           + '<span class="day-initials">' + occ.initials + '</span>'
-          + tipoDotHtml(occ.tipo)
           + pasadiaCommentMarkHtml(occ)
           + '</div>';
         day += span;
@@ -2997,7 +3000,7 @@ function buildDispMonth(firstDay, cabinRes, today) {
     const inner = occ
       ? (occ.kind === 'courtesy'
           ? '<span class="day-num">' + day + '</span>' + pasadiaCommentMarkHtml(occ)
-          : '<span class="day-num">' + day + '</span><span class="day-initials">' + occ.initials + '</span>' + tipoDotHtml(occ.tipo) + pasadiaCommentMarkHtml(occ))
+          : '<span class="day-num">' + day + '</span><span class="day-initials">' + occ.initials + '</span>' + pasadiaCommentMarkHtml(occ))
       : '<span class="day-num">' + day + '</span>';
 
     grid += '<div class="' + cls + '"' + titleAttr + ' ' + clickAttr + '>' + inner + '</div>';
@@ -3323,11 +3326,6 @@ function estadoPagoBadge(r) {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
-function codigoDisplay(r) {
-  if (r.origin === 'Airbnb') return r.confirmCode || '—';
-  return r.codTransferencia || '—';
-}
-
 function netoDisplay(r) {
   const neto = parseFloat(r.neto || r.amount || 0);
   return '$' + neto.toFixed(2);
@@ -3342,7 +3340,7 @@ function recibidoDisplay(r) {
 
 function porCobrarDisplay(r) {
   if (r.origin === 'Airbnb') return '<span style="color:#ccc;">—</span>';
-  const sinPago = ['Cortesia','Colaboracion','Personal','Abierta'];
+  const sinPago = SIN_PAGO_ORIGINS;
   if (sinPago.includes(r.origin)) return '<span style="color:#ccc;">—</span>';
   const total    = parseFloat(r.neto || r.amount || 0);
   const recibido = parseFloat(r.montoVoucher) || parseFloat(r.deposit) || 0;
@@ -3352,21 +3350,12 @@ function porCobrarDisplay(r) {
 }
 
 const TIPO_LABEL  = { noche: 'Noche',   pasadia: 'Pasadía',  'pasadia-largo': 'Pasadía 9-5', early: 'Early',  late: 'Late' };
-const TIPO_PREFIX = { noche: '',        pasadia: '☼ ',       'pasadia-largo': '☀ ',          early: '🕗 ',    late: '🌙 ' };
 const TIPO_COLOR  = {
   pasadia:         'background:#fff3cd;color:#856404;',
   'pasadia-largo': 'background:#fed7aa;color:#9a3412;',
   early:           'background:#e0e7ff;color:#3730a3;',
   late:            'background:#fce7f3;color:#9d174d;'
 };
-const TIPO_DOT_COLOR = {
-  pasadia:         '#f59e0b',
-  'pasadia-largo': '#ea580c',
-  early:           '#6366f1',
-  late:            '#ec4899'
-};
-
-function tipoDotHtml(_tipo) { return ''; }
 
 // Marca para reservas tipo pasadía / pasadía-largo (visual quick-id en calendario)
 function pasadiaCommentMarkHtml(occ) {
@@ -3392,12 +3381,6 @@ function getDayKind(r, dateStr) {
     return dateStr === last ? 'courtesy' : 'main';
   }
   return 'main';
-}
-
-function tipoBadgeHtml(r) {
-  const t = r.tipo || 'noche';
-  if (t === 'noche') return '';
-  return ` <span style="display:inline-block;font-size:10px;padding:1px 6px;border-radius:20px;${TIPO_COLOR[t]||''}font-weight:500;margin-left:4px;">${TIPO_LABEL[t]||t}</span>`;
 }
 
 function recentRowHtml(r) {
@@ -3613,7 +3596,7 @@ function _renderWidgetContent(recent, prev, dStartStr, dEndStr, days, isCustom) 
     const totalNeto7   = sorted7.reduce((s,r) => s + parseFloat(r.neto||r.amount||0), 0);
     const totalAbono7  = sorted7.reduce((s,r) => {
       if (r.origin === 'Airbnb') return s + (r.fechaPago ? parseFloat(r.neto||r.amount||0) : 0);
-      const sinPago = ['Cortesia','Colaboracion','Personal','Abierta'];
+      const sinPago = SIN_PAGO_ORIGINS;
       if (sinPago.includes(r.origin)) return s;
       return s + (parseFloat(r.montoVoucher||0) || parseFloat(r.deposit||0));
     }, 0);
@@ -3688,7 +3671,7 @@ function renderCxC() {
   const tbody = document.getElementById('cxcTbody');
   if (!sel || !tbody) return;
   const month = sel.value;
-  const sinPago = ['Cortesia','Colaboracion','Personal','Abierta'];
+  const sinPago = SIN_PAGO_ORIGINS;
 
   let data = reservations.filter(r => {
     if (!r.checkin || !r.checkin.startsWith(month)) return false;
@@ -3764,7 +3747,7 @@ function renderCxC() {
 function descargarCxCExcel() {
   const sel = document.getElementById('cxcMonth');
   const month = sel ? sel.value : '';
-  const sinPago = ['Cortesia','Colaboracion','Personal','Abierta'];
+  const sinPago = SIN_PAGO_ORIGINS;
 
   let data = reservations.filter(r => {
     if (!r.checkin || !r.checkin.startsWith(month)) return false;
@@ -3870,7 +3853,7 @@ function renderList() {
     const totalNetoFR  = dataFR.reduce((s,r) => s + parseFloat(r.neto||r.amount||0), 0);
     const totalAbonoFR = dataFR.reduce((s,r) => {
       if (r.origin === 'Airbnb') return s + (r.fechaPago ? parseFloat(r.neto||r.amount||0) : 0);
-      const sinPago = ['Cortesia','Colaboracion','Personal','Abierta'];
+      const sinPago = SIN_PAGO_ORIGINS;
       if (sinPago.includes(r.origin)) return s;
       return s + (parseFloat(r.montoVoucher||0) || parseFloat(r.deposit||0));
     }, 0);
@@ -3899,7 +3882,7 @@ function renderList() {
     const totalNetoCi  = dataCi.reduce((s,r) => s + parseFloat(r.neto||r.amount||0), 0);
     const totalAbonoCi = dataCi.reduce((s,r) => {
       if (r.origin === 'Airbnb') return s + (r.fechaPago ? parseFloat(r.neto||r.amount||0) : 0);
-      const sinPago = ['Cortesia','Colaboracion','Personal','Abierta'];
+      const sinPago = SIN_PAGO_ORIGINS;
       if (sinPago.includes(r.origin)) return s;
       return s + (parseFloat(r.montoVoucher||0) || parseFloat(r.deposit||0));
     }, 0);
@@ -4640,7 +4623,7 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
     }
   } else if (!editId) {
     // New reservation without voucher — set initial state
-    const sinPago = ['Cortesia', 'Colaboracion', 'Personal', 'Abierta'];
+    const sinPago = SIN_PAGO_ORIGINS;
     if (origin === 'Airbnb') estadoPago = 'PAGA';
     else if (!sinPago.includes(origin) && parseFloat(amount) > 0) estadoPago = 'PENDIENTE';
   }
