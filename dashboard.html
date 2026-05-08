@@ -1454,6 +1454,12 @@
       <div id="breakdownCatGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;"></div>
     </div>
 
+    <!-- Mix de producto (Directas) — visible solo si hay reservas directas en el período -->
+    <div id="mixProductoCard" style="display:none;margin-bottom:20px; padding:14px 18px; background:var(--card-bg); border:1px solid var(--border); border-radius:12px;">
+      <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;font-weight:600;">Mix de producto — Directas</div>
+      <div id="mixProductoGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;"></div>
+    </div>
+
     <!-- Flujo de caja chart -->
     <div class="contab-panel" style="margin-bottom:20px;">
       <div class="contab-panel-header" style="justify-content:space-between;">
@@ -5197,12 +5203,38 @@ function renderContabilidad() {
 
   // KPI cards
   document.getElementById('statIngresos').textContent = `$${totalIn.toFixed(2)}`;
+
+  // Breakdown por tipo entre las directas (para mostrar mix en el contador)
+  const tipoStats = { noche:0, pasadia:0, 'pasadia-largo':0, early:0, late:0 };
+  let tipoIngresos = { noche:0, pasadia:0, 'pasadia-largo':0, early:0, late:0 };
+  if (origenFilter !== 'Airbnb') {
+    filteredDirectas.forEach(r => {
+      const t = r.tipo || 'noche';
+      if (tipoStats[t] !== undefined) {
+        tipoStats[t]++;
+        tipoIngresos[t] += parseFloat(r.amount||0);
+      }
+    });
+  }
+  const tipoLabels = { noche:'noche', pasadia:'pasadía', 'pasadia-largo':'pasadía 9-5', early:'early', late:'late' };
+  const breakdownParts = Object.keys(tipoStats)
+    .filter(k => tipoStats[k] > 0)
+    .map(k => tipoStats[k] + ' ' + tipoLabels[k] + (tipoStats[k]>1 && k.startsWith('pasadia') ? 's' : (tipoStats[k]>1 && k==='noche' ? 's' : '')));
+
   const totalCount = (origenFilter !== 'Directa' ? filteredPagos.length : 0)
                    + (origenFilter !== 'Airbnb'  ? filteredDirectas.length : 0);
-  document.getElementById('statIngresosCount').textContent =
-    origenFilter === 'Airbnb'
-      ? `${filteredPagos.length} cobro${filteredPagos.length!==1?'s':''}`
-      : `${filteredDirectas.length + (origenFilter==='all'?filteredPagos.length:0)} registro${totalCount!==1?'s':''}`;
+
+  let countText;
+  if (origenFilter === 'Airbnb') {
+    countText = `${filteredPagos.length} cobro${filteredPagos.length!==1?'s':''}`;
+  } else if (origenFilter === 'Directa') {
+    countText = `${filteredDirectas.length} reserva${filteredDirectas.length!==1?'s':''}`;
+    if (breakdownParts.length) countText += ` · ${breakdownParts.join(' · ')}`;
+  } else {
+    countText = `${totalCount} registro${totalCount!==1?'s':''}`;
+    if (breakdownParts.length) countText += ` · ${breakdownParts.join(' · ')}`;
+  }
+  document.getElementById('statIngresosCount').textContent = countText;
 
   document.getElementById('statEgresos').textContent = `$${totalOut.toFixed(2)}`;
   document.getElementById('statEgresosCount').textContent = `${filteredEgr.length} registro${filteredEgr.length!==1?'s':''}`;
@@ -5249,6 +5281,43 @@ function renderContabilidad() {
           <div style="font-size:11px;color:var(--text-muted);">$${monto.toFixed(2)}</div>
         </div>`;
       }).join('');
+    }
+  }
+
+  // ── Mix de producto (Directas por tipo) ────────────────────────────
+  const mixCard = document.getElementById('mixProductoCard');
+  const mixGrid = document.getElementById('mixProductoGrid');
+  if (mixCard && mixGrid) {
+    const totalDirCount = Object.values(tipoStats).reduce((s,v)=>s+v,0);
+    const totalDirRev   = Object.values(tipoIngresos).reduce((s,v)=>s+v,0);
+    if (totalDirCount === 0 || origenFilter === 'Airbnb') {
+      mixCard.style.display = 'none';
+    } else {
+      mixCard.style.display = '';
+      const tipoMeta = {
+        noche:           { label:'Noches',           color:'#6a9e62' },
+        pasadia:         { label:'Pasadía 12:30-7',  color:'#f59e0b' },
+        'pasadia-largo': { label:'Pasadía 9-5',      color:'#ea580c' },
+        early:           { label:'Early check-in',   color:'#6366f1' },
+        late:            { label:'Late check-out',   color:'#ec4899' }
+      };
+      const fmt = v => '$' + v.toLocaleString('es-PA',{minimumFractionDigits:0,maximumFractionDigits:0});
+      mixGrid.innerHTML = Object.keys(tipoMeta)
+        .filter(k => tipoStats[k] > 0)
+        .map(k => {
+          const m = tipoMeta[k];
+          const c = tipoStats[k];
+          const r = tipoIngresos[k];
+          const pctRev = totalDirRev > 0 ? Math.round(r / totalDirRev * 100) : 0;
+          return `<div style="background:var(--bg);border-radius:10px;padding:10px 12px;border-left:3px solid ${m.color};">
+            <div style="font-size:11px;font-weight:600;color:${m.color};text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">${m.label}</div>
+            <div style="font-size:18px;font-weight:700;color:var(--text);line-height:1;">${c} <span style="font-size:11px;font-weight:400;color:var(--text-muted);">${c===1?'reserva':'reservas'}</span></div>
+            <div style="margin:6px 0 4px;height:3px;background:var(--border);border-radius:3px;">
+              <div style="height:3px;width:${pctRev}%;background:${m.color};border-radius:3px;transition:width .4s;"></div>
+            </div>
+            <div style="font-size:11px;color:var(--text-muted);">${fmt(r)} · ${pctRev}%</div>
+          </div>`;
+        }).join('');
     }
   }
 
@@ -5309,10 +5378,21 @@ function renderContabilidad() {
         const r = item.r;
         const fi = getFechaIngreso(r);
         const origenDot = `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--azul-dark);margin-right:3px;"></span>`;
+        const tipoLbl = (() => {
+          const t = r.tipo;
+          if (t === 'pasadia')         return { txt:'Pasadía',     bg:'#fff3cd', fg:'#856404' };
+          if (t === 'pasadia-largo')   return { txt:'Pasadía 9-5', bg:'#fed7aa', fg:'#9a3412' };
+          if (t === 'early')           return { txt:'Early',       bg:'#e0e7ff', fg:'#3730a3' };
+          if (t === 'late')            return { txt:'Late',        bg:'#fce7f3', fg:'#9d174d' };
+          return null;
+        })();
+        const tipoChip = tipoLbl
+          ? `<span style="display:inline-block;font-size:10px;padding:1px 6px;border-radius:20px;background:${tipoLbl.bg};color:${tipoLbl.fg};font-weight:600;margin-left:6px;letter-spacing:.02em;">${tipoLbl.txt}</span>`
+          : '';
         return `
         <li class="contab-item">
           <div class="item-info">
-            <div class="item-desc">${r.name}</div>
+            <div class="item-desc">${r.name}${tipoChip}</div>
             <div class="item-meta">${origenDot}${r.origin} · ${formatDate(fi)} · <span style="color:var(--${r.cabin}-dark)">${CABINS[r.cabin]?.split(' ')[0]||r.cabin}</span></div>
           </div>
           <div style="text-align:right;">
