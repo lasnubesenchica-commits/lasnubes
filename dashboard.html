@@ -4453,15 +4453,18 @@ async function saveReservation() {
   if (editId && tipoActual !== 'noche') {
     const prevRes = reservations.find(r => r.id === editId);
     const prevTipoSaved = prevRes && prevRes.tipo ? prevRes.tipo : 'noche';
-    if (prevTipoSaved === 'noche') {
+    if (prevTipoSaved === 'noche' && prevRes) {
+      // IMPORTANTE: usar las fechas ORIGINALES (prevRes), no las del form,
+      // porque handleTipoChange ya las modificó antes de llegar aquí.
       let adjacentDate = null;
       if (tipoActual === 'pasadia' || tipoActual === 'pasadia-largo' || tipoActual === 'early') {
-        const d = new Date(checkin + 'T12:00:00');
+        const d = new Date(prevRes.checkin + 'T12:00:00');
         d.setDate(d.getDate() - 1);
         adjacentDate = d.toISOString().slice(0,10);
       } else if (tipoActual === 'late') {
-        adjacentDate = checkout;
+        adjacentDate = prevRes.checkout;
       }
+      console.log('[guard] tipo=', tipoActual, ' prevCheckin=', prevRes.checkin, ' adjacentDate=', adjacentDate, ' formCheckin=', checkin, ' formCheckout=', checkout);
       if (adjacentDate) {
         const adj = reservations.find(r =>
           r.id !== editId &&
@@ -4472,12 +4475,12 @@ async function saveReservation() {
         );
         const adjFmt = formatDate(adjacentDate);
         const sameName = adj && adj.name && adj.name.trim().toLowerCase() === name.trim().toLowerCase();
+        console.log('[guard] adj=', adj ? {id: adj.id, name: adj.name, ci: adj.checkin, co: adj.checkout} : null, ' sameName=', sameName);
         if (!adj) {
           if (!confirm('⚠️ La noche del ' + adjFmt + ' está libre — no se encontró otra reserva bajo el mismo nombre.\n\n¿Continuar con la conversión a "' + tipoActual + '"?')) return;
         } else if (!sameName) {
           if (!confirm('⚠️ La noche del ' + adjFmt + ' tiene reserva de "' + adj.name + '" (nombre distinto).\n\n¿Continuar de todas formas?')) return;
         } else {
-          // Mismo nombre → es la duplicada legacy. Confirmar el cleanup.
           const ok = confirm('🧹 Detectada reserva duplicada en la noche del ' + adjFmt + ' bajo el mismo nombre (' + adj.name + ').\n\nAl guardar:\n  • Esta reserva se convertirá en "' + tipoActual + '"\n  • La reserva duplicada del ' + adjFmt + ' será ELIMINADA\n\n¿Continuar?');
           if (!ok) return;
           adjacentToDelete = adj.id;
