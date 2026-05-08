@@ -1989,6 +1989,20 @@ function sendConfirmationEmail(reservation) {
 const RECIBOS_FOLDER_NAME = 'Recibos Las Nubes';
 const RECIBO_LOGO_URL     = 'https://lasnubes.cloud/logo-black.png';
 
+// Ejecutar UNA VEZ desde el editor para otorgar los permisos necesarios
+// (DocumentApp, DriveApp, UrlFetchApp, LockService) que usa generateReceiptPDF.
+// Después de aceptar la consola OAuth, el web app podrá generar recibos PDF.
+function autorizarPermisosRecibo() {
+  PropertiesService.getScriptProperties().getProperty('RECEIPT_COUNTER');
+  const lock = LockService.getScriptLock();
+  try { lock.tryLock(100); lock.releaseLock(); } catch(_) {}
+  const doc = DocumentApp.create('test-permisos-recibo-' + Date.now());
+  DocumentApp.openById(doc.getId()); // abrir explicito
+  DriveApp.getFileById(doc.getId()).setTrashed(true);
+  try { UrlFetchApp.fetch(RECIBO_LOGO_URL).getBlob(); } catch(_) {}
+  Logger.log('✓ Permisos OK. Recibos PDF deberían funcionar a partir de ahora.');
+}
+
 function nextReceiptNumber() {
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
