@@ -288,23 +288,27 @@ function getOrCreateSheet() {
 
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
-    sheet.getRange(1, 1, 1, 25).setValues([[
+    sheet.getRange(1, 1, 1, 26).setValues([[
       'ID', 'Nombre', 'Cabaña', 'CabañaCodigo',
       'Entrada', 'Salida', 'Personas',
       'Monto', 'Abono', 'Origen', 'CodConfirmacion',
       'ServiceFee', 'Neto', 'Alerta', 'Pagador', 'FechaReserva',
       'FechaPago', 'MontoPagado', 'CodTransferencia', 'MontoVoucher', 'EstadoPago',
-      'Email', 'Comentarios', 'Telefono', 'Tipo'
+      'Email', 'Comentarios', 'Telefono', 'Tipo', 'VoucherURL'
     ]]);
-    sheet.getRange(1, 1, 1, 25).setFontWeight('bold');
+    sheet.getRange(1, 1, 1, 26).setFontWeight('bold');
     sheet.setFrozenRows(1);
   } else {
-    // Auto-asegurar que la columna Tipo (25) existe sin requerir migración manual
-    if (sheet.getLastColumn() < 25) {
+    // Auto-asegurar columnas Tipo (25) y VoucherURL (26)
+    if (sheet.getLastColumn() < 26) {
       const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
       if (!headers.includes('Tipo')) {
         sheet.getRange(1, 25).setValue('Tipo');
         sheet.getRange(1, 25).setFontWeight('bold');
+      }
+      if (!headers.includes('VoucherURL')) {
+        sheet.getRange(1, 26).setValue('VoucherURL');
+        sheet.getRange(1, 26).setFontWeight('bold');
       }
     }
   }
@@ -986,7 +990,8 @@ function doGet(e) {
         email:            r[21] || '',
         comentarios:      r[22] || '',
         telefono:         r[23] || '',
-        tipo:             r[24] || 'noche'
+        tipo:             r[24] || 'noche',
+        voucherURL:       r[25] || ''
       }));
 
     return ContentService
@@ -1455,7 +1460,7 @@ function doPost(e) {
 
     // ── SEND EMAILS ───────────────────────────────────────────
     if (action === 'sendCancellationEmail') return sendCancellationEmail(payload.reservation);
-    if (action === 'sendConfirmationEmail') return sendConfirmationEmail(payload.reservation);
+    if (action === 'sendConfirmationEmail') return sendConfirmationEmail(payload.reservation, payload.voucherBase64, payload.voucherMimeType);
     if (action === 'sendUpdateEmail')       return sendUpdateEmail(payload.reservation);
 
     // ── SYNC PAGOS Y ESTADOS ──────────────────────────────────
@@ -1944,7 +1949,7 @@ buildGuiaHTML(r.cabin, meta.tipo) +
 '</td></tr></table></td></tr></table></body></html>';
 }
 
-function sendConfirmationEmail(reservation) {
+function sendConfirmationEmail(reservation, voucherBase64, voucherMimeType) {
   try {
     const email = reservation.email;
     if (!email) return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'No hay email de huésped' })).setMimeType(ContentService.MimeType.JSON);
@@ -1955,7 +1960,7 @@ function sendConfirmationEmail(reservation) {
     const attachments = [];
     const montoVoucherNum = reservation.montoVoucher ? parseFloat(String(reservation.montoVoucher).replace(/[^\d.]/g, '')) || 0 : 0;
     const hasVoucher = !!(reservation.codTransferencia || montoVoucherNum > 0);
-    Logger.log('🧾 sendConfirmationEmail · hasVoucher=' + hasVoucher + ' codT=' + (reservation.codTransferencia || 'null') + ' montoVoucher=' + (reservation.montoVoucher || 'null'));
+    Logger.log('🧾 sendConfirmationEmail · hasVoucher=' + hasVoucher + ' codT=' + (reservation.codTransferencia || 'null') + ' montoVoucher=' + (reservation.montoVoucher || 'null') + ' voucherBytes=' + (voucherBase64 ? voucherBase64.length : 0));
     const debug = { hasVoucher, codT: reservation.codTransferencia || null, montoVoucher: reservation.montoVoucher || null };
     if (hasVoucher) {
       try {
@@ -1966,6 +1971,22 @@ function sendConfirmationEmail(reservation) {
       } catch(rcpErr) {
         Logger.log('⚠ No se pudo generar recibo PDF: ' + rcpErr + '\n' + (rcpErr && rcpErr.stack ? rcpErr.stack : ''));
         debug.receiptError = rcpErr.toString();
+      }
+    }
+
+    // Adjuntar voucher original (imagen) si el dashboard lo envió
+    if (voucherBase64 && voucherMimeType) {
+      try {
+        const ext = voucherMimeType.includes('png') ? '.png' : voucherMimeType.includes('gif') ? '.gif' : voucherMimeType.includes('webp') ? '.webp' : '.jpg';
+        const safeName = ((reservation.name || 'huesped').toString())
+          .replace(/\s+/g, '_').replace(/[^A-Za-z0-9_]/g, '').slice(0, 40) || 'huesped';
+        const voucherBlob = Utilities.newBlob(Utilities.base64Decode(voucherBase64), voucherMimeType, 'Voucher_' + safeName + ext);
+        attachments.push(voucherBlob);
+        Logger.log('🧾 Voucher imagen adjuntada (' + voucherBlob.getBytes().length + ' bytes)');
+        debug.voucherAttached = voucherBlob.getBytes().length;
+      } catch(vErr) {
+        Logger.log('⚠ No se pudo adjuntar voucher imagen: ' + vErr);
+        debug.voucherAttachError = vErr.toString();
       }
     }
 
@@ -2538,8 +2559,26 @@ function saveVoucherToDrive(reservation, imageBase64, mimeType, fileName) {
     const blob  = Utilities.newBlob(bytes, mimeType, archName);
     const file  = folder.createFile(blob);
     file.setDescription(descripcion);
+    const fileUrl = file.getUrl();
 
-    return ContentService.createTextOutput(JSON.stringify({ ok: true, fileUrl: file.getUrl(), fileName: archName })).setMimeType(ContentService.MimeType.JSON);
+    // Persistir el URL en la columna 26 (VoucherURL) de la fila correspondiente
+    try {
+      const sheet = getOrCreateSheet();
+      const data  = sheet.getDataRange().getValues();
+      const stripId = id => id ? id.toString().replace(/^(airbnb_)+/, '') : '';
+      const targetId = stripId(reservation.id);
+      for (let i = 1; i < data.length; i++) {
+        const rowId = stripId(data[i][0]);
+        if (rowId && rowId === targetId) {
+          sheet.getRange(i + 1, 26).setValue(fileUrl);
+          break;
+        }
+      }
+    } catch(persistErr) {
+      Logger.log('⚠ No se pudo persistir VoucherURL en hoja: ' + persistErr);
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({ ok: true, fileUrl: fileUrl, fileName: archName })).setMimeType(ContentService.MimeType.JSON);
   } catch(e) {
     return ContentService.createTextOutput(JSON.stringify({ ok: false, error: e.message })).setMimeType(ContentService.MimeType.JSON);
   }
