@@ -4465,6 +4465,43 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
     if (!confirm(msg)) return;
   }
 
+  // ── Guard de conversión: al cambiar de noche a pasadía/early/late, validar ────
+  // que la noche adyacente (que sería liberada o quedaría como duplicada) tenga
+  // el mismo nombre de huésped.
+  const tipoActual = (document.getElementById('fTipo') || {}).value || 'noche';
+  if (editId && tipoActual !== 'noche') {
+    const prevRes = reservations.find(r => r.id === editId);
+    const prevTipoSaved = prevRes && prevRes.tipo ? prevRes.tipo : 'noche';
+    if (prevTipoSaved === 'noche') {
+      // Noche adyacente que el legacy podría tener como bloqueo manual duplicado
+      let adjacentDate = null;
+      if (tipoActual === 'pasadia' || tipoActual === 'pasadia-largo' || tipoActual === 'early') {
+        const d = new Date(checkin + 'T12:00:00');
+        d.setDate(d.getDate() - 1);
+        adjacentDate = d.toISOString().slice(0,10);
+      } else if (tipoActual === 'late') {
+        adjacentDate = checkout; // la noche posterior al stay original
+      }
+      if (adjacentDate) {
+        const adj = reservations.find(r =>
+          r.id !== editId &&
+          r.cabin === cabin &&
+          r.origin !== 'Abierta' &&
+          r.estadoPago !== 'CANCELADA' &&
+          r.checkin <= adjacentDate && r.checkout > adjacentDate
+        );
+        const adjFmt = formatDate(adjacentDate);
+        const sameName = adj && adj.name && adj.name.trim().toLowerCase() === name.trim().toLowerCase();
+        if (!adj) {
+          if (!confirm('⚠️ La noche del ' + adjFmt + ' está libre — no se encontró otra reserva bajo el mismo nombre.\n\n¿Estás seguro que quieres convertir esta reserva a "' + tipoActual + '"?')) return;
+        } else if (!sameName) {
+          if (!confirm('⚠️ La noche del ' + adjFmt + ' tiene una reserva de "' + adj.name + '" (nombre distinto).\n\n¿Continuar de todas formas?')) return;
+        }
+        // Si mismo nombre: silencioso (es la duplicada esperada — el usuario debe eliminarla manualmente)
+      }
+    }
+  }
+
   const id = editId || Date.now().toString();
   const fFechaReservaEl = document.getElementById('fFechaReserva');
   const fechaReserva = (fFechaReservaEl && fFechaReservaEl.value) || new Date().toISOString().slice(0,10);
