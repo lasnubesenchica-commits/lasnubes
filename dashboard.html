@@ -2885,11 +2885,10 @@ function buildDispMonth(firstDay, cabinRes, today) {
     const start = new Date(r.checkin  + 'T12:00:00');
     const end   = new Date(r.checkout + 'T12:00:00');
     const initials = r.name.trim().split(/\s+/).map(w => w[0]).join('').slice(0,3).toUpperCase();
-    const hasPasadiaComment = !!(r.comentarios && /pasad[ií]a/i.test(r.comentarios));
     for (let cur = new Date(start); cur < end; cur.setDate(cur.getDate() + 1)) {
       const key = cur.toISOString().slice(0,10);
       const kind = getDayKind(r, key);
-      occupied[key] = { initials, id: r.id, origin: r.origin || 'Airbnb', checkin: r.checkin, checkout: r.checkout, alerta: (r.origin === 'Airbnb' && r.alerta) ? r.alerta : '', tipo: r.tipo || 'noche', kind, hasPasadiaComment };
+      occupied[key] = { initials, id: r.id, origin: r.origin || 'Airbnb', checkin: r.checkin, checkout: r.checkout, alerta: (r.origin === 'Airbnb' && r.alerta) ? r.alerta : '', tipo: r.tipo || 'noche', kind };
     }
   });
 
@@ -3333,10 +3332,12 @@ const TIPO_DOT_COLOR = {
 
 function tipoDotHtml(_tipo) { return ''; }
 
-// Marca para reservas cuyo comentario menciona "pasadía" (legacy a revisar)
+// Marca para reservas tipo pasadía / pasadía-largo (visual quick-id en calendario)
 function pasadiaCommentMarkHtml(occ) {
-  if (!occ || !occ.hasPasadiaComment) return '';
-  return '<span title="Comentario menciona pasadía — revisar tipo" style="position:absolute;top:3px;left:3px;background:#f59e0b;color:#fff;width:14px;height:14px;border-radius:50%;font-size:10px;font-weight:700;line-height:1;display:inline-flex;align-items:center;justify-content:center;z-index:3;box-shadow:0 0 0 1.5px #fff;">!</span>';
+  if (!occ) return '';
+  const t = occ.tipo;
+  if (t !== 'pasadia' && t !== 'pasadia-largo') return '';
+  return '<span title="' + (TIPO_LABEL[t] || t) + '" style="position:absolute;top:3px;left:3px;background:#f59e0b;color:#fff;width:14px;height:14px;border-radius:50%;font-size:10px;font-weight:700;line-height:1;display:inline-flex;align-items:center;justify-content:center;z-index:3;box-shadow:0 0 0 1.5px #fff;">P</span>';
 }
 
 // Devuelve 'courtesy' (día bloqueado por cortesía sin huésped activo) o 'main' (día con huésped)
