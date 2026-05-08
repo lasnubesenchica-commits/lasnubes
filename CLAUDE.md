@@ -18,6 +18,39 @@
 
 ## Stack relevante
 
-- Hoja: 24 columnas (la #24 es `Telefono`, agregada en `migrarColumnasV3`).
-- Modelo IA: `claude-opus-4-7` para OCR de vouchers/facturas (en `parseVoucherWithClaude` y `parseFacturaEgresoConClaude`).
+- Hoja `Reservas`: 26 columnas. La #25 es `Tipo` (noche/pasadia/pasadia-largo/early/late, agregada en `migrarColumnasV4`). La #26 es `VoucherURL` (link al voucher en Drive, persistido por `saveVoucherToDrive`). `getOrCreateSheet` auto-asegura ambas columnas en cada llamada.
+- Modelo IA: `claude-opus-4-6` para OCR de vouchers/facturas (en `parseVoucherWithClaude` y `parseFacturaEgresoConClaude`). `parseVoucherWithClaude` tiene retry con fallback a Sonnet 4.6.
 - API key Anthropic: en Script Properties (`CLAUDE_API_KEY`), nunca en código cliente.
+
+## Modelo de datos para tipos de reserva
+
+Cada reserva se almacena con un rango de bloqueo (checkin/checkout) y un `tipo`. El frontend tiene dos representaciones:
+
+- **Storage** (lo que está en la hoja): rango de días bloqueados.
+- **Form / display** (lo que ve el usuario): día real del huésped.
+
+| Tipo            | Storage `checkin`    | Storage `checkout`    | Form `entrada`    | Form `salida`     |
+|-----------------|----------------------|-----------------------|-------------------|-------------------|
+| `noche`         | día llegada          | día salida            | igual             | igual             |
+| `pasadia`       | día pasadía          | día pasadía + 1       | día pasadía       | día pasadía       |
+| `pasadia-largo` | día pasadía − 1 (cortesía) | día pasadía + 1 | día pasadía       | día pasadía       |
+| `early`         | día llegada − 1 (cortesía) | día salida real | día llegada (9am) | día salida (11am) |
+| `late`          | día llegada          | día salida + 1 (cortesía) | día llegada (2pm) | día salida (4pm)  |
+
+Helpers en `dashboard.html`:
+- `_formFromStored(r)` y `_storedFromForm(entrada, salida, tipo)`: traducen entre representaciones.
+- `reservaDisplayDates(r)`: para mostrar en tablas/popups (devuelve `displayCheckin`, `displayCheckout`).
+- `reservaNochesReales(r)`: 0 para pasadías, 1 para early/late, N para noche.
+- `reservaDuracionLabel(r)`: "Pasadía" / "1 noche" / "N noches" / etc.
+- `getDayKind(r, dateStr)`: `'main'` o `'courtesy'`.
+
+Helpers equivalentes en backend (`Parser.gs`):
+- `tipoEmailMeta(r)`: para emails de confirmación/actualización.
+- `buildGuiaHTML(cabin, tipo)`: ajusta hora de check-out en la guía según tipo.
+
+## Notas operativas
+
+- **Origen `'Cortesia'`** (sin tilde) — toda referencia debe ser sin tilde. La forma con tilde es solo el label visible en UI.
+- **`SIN_PAGO_ORIGINS`**: constante global en dashboard.html con `['Cortesia','Colaboracion','Personal','Abierta']`.
+- **Recibo PDF**: generado por `generateReceiptPDF(r)` en backend. Numeración correlativa `LN-NNNN` en Script Properties (`RECEIPT_COUNTER`). Adjuntado al email de confirmación si la reserva tiene voucher.
+- **Vouchers en Drive**: subidos por `saveVoucherToDrive` a la carpeta `Las Nubes - Pagos`. URL persistido en columna 26.

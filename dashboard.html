@@ -2798,7 +2798,7 @@ function _reservaHoyItemHtml(it) {
     <div onclick="showDispDetail('${r.id}')" style="cursor:pointer;background:${bg};border-left:3px solid ${accent};padding:10px 12px;border-radius:8px;margin-bottom:8px;font-size:13px;${isOut ? 'opacity:0.85;' : ''}">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px;">
         <span style="font-size:10px;font-weight:700;letter-spacing:.06em;color:${labelColor};">${labelText}</span>
-        <strong style="color:${nameColor};">${r.name}</strong>
+        <strong style="color:${nameColor};">${escapeHtml(r.name)}</strong>
         ${horaText ? '<span style="font-size:11px;color:var(--text-muted);">· ' + horaText + '</span>' : ''}
         <span style="margin-left:auto;">${waBtn}</span>
       </div>
@@ -3386,7 +3386,7 @@ function getDayKind(r, dateStr) {
 function recentRowHtml(r) {
   return `
     <tr style="${r.alerta ? 'background:#fffde7;' : ''}">
-      <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><strong title="${r.name}">${r.name}</strong>${r.alerta ? ' <span style="font-size:10px;background:#fff3cd;color:#856404;padding:1px 6px;border-radius:20px;">⚠</span>' : ''}</td>
+      <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><strong title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</strong>${r.alerta ? ' <span style="font-size:10px;background:#fff3cd;color:#856404;padding:1px 6px;border-radius:20px;">⚠</span>' : ''}</td>
       <td><span class="cabin-badge badge-${r.cabin}">${CABINS[r.cabin]}</span></td>
       <td>${formatDate(r.fechaReserva || r.checkin)}</td>
       <td><span class="origin-badge">${r.origin}</span></td>
@@ -3407,7 +3407,7 @@ function checkinRowHtml(r) {
   const duracion = reservaDuracionLabel(r);
   return `
     <tr style="${r.alerta ? 'background:#fffde7;' : ''}">
-      <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><strong title="${r.name}">${r.name}</strong>${r.alerta ? ' <span style="font-size:10px;background:#fff3cd;color:#856404;padding:1px 6px;border-radius:20px;">⚠</span>' : ''}</td>
+      <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><strong title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</strong>${r.alerta ? ' <span style="font-size:10px;background:#fff3cd;color:#856404;padding:1px 6px;border-radius:20px;">⚠</span>' : ''}</td>
       <td><span class="cabin-badge badge-${r.cabin}">${CABINS[r.cabin]}</span></td>
       <td>${formatDate(dispCheckin)}</td>
       <td style="text-align:center;font-size:12px;">${duracion}</td>
@@ -3619,12 +3619,12 @@ function renderAbiertas() {
   section.style.display = abiertas.length ? '' : 'none';
   tbody.innerHTML = abiertas.map(r => `
     <tr>
-      <td><strong>${r.name}</strong></td>
+      <td><strong>${escapeHtml(r.name)}</strong></td>
       <td><span class="cabin-badge badge-${r.cabin}">${CABINS[r.cabin]}</span></td>
       <td>${formatDate(r.fechaReserva || '')}</td>
       <td><strong>$${parseFloat(r.amount||0).toFixed(2)}</strong></td>
       <td>${estadoPagoBadge(r)}</td>
-      <td style="font-size:12px;color:var(--text-muted);max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.comentarios||'—'}</td>
+      <td style="font-size:12px;color:var(--text-muted);max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.comentarios)||'—'}</td>
       <td>
         <button class="icon-btn" onclick="editReservation('${r.id}')" title="Asignar fecha / Editar">✏️</button>
         <button class="icon-btn" onclick="showDispDetail('${r.id}')" title="Ver detalle">👁️</button>
@@ -3719,7 +3719,7 @@ function renderCxC() {
       : (recibido > 0 ? '$'+recibido.toFixed(2) : '<span style="color:#ccc;">—</span>');
     const _dd = reservaDisplayDates(r);
     return `<tr>
-      <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.name}"><strong>${r.name}</strong></td>
+      <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(r.name)}"><strong>${escapeHtml(r.name)}</strong></td>
       <td><span class="cabin-badge badge-${r.cabin}">${CABINS[r.cabin]}</span></td>
       <td>${formatDate(_dd.displayCheckin)}</td>
       <td>${formatDate(_dd.displayCheckout)}</td>
@@ -3942,6 +3942,17 @@ const TIPO_HINTS = {
   early:           'Entrada 9am día de llegada. Bloquea automáticamente la noche anterior. Sale 11am día siguiente.',
   late:            'Salida 4pm. Bloquea automáticamente la noche siguiente al check-out estándar. Entrada 2pm día normal.'
 };
+
+// Escapa caracteres HTML peligrosos para uso seguro en innerHTML / atributos.
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 function _addDaysISO(s, n) {
   if (!s) return s;
@@ -5433,7 +5444,7 @@ function renderContabilidad() {
         return `
         <li class="contab-item">
           <div class="item-info">
-            <div class="item-desc">${r.name}${tipoChip}</div>
+            <div class="item-desc">${escapeHtml(r.name)}${tipoChip}</div>
             <div class="item-meta">${origenDot}${r.origin} · ${formatDate(fi)} · <span style="color:var(--${r.cabin}-dark)">${CABINS[r.cabin]?.split(' ')[0]||r.cabin}</span></div>
           </div>
           <div style="text-align:right;">
@@ -6087,7 +6098,7 @@ function renderVentasChart() {
             ${barRes.map(r => {
               const color = CABIN_COLORS[r.cabin] || '#ccc';
               return `<tr style="border-bottom:1px solid var(--border);">
-                <td style="padding:6px 8px 6px 0;">${r.name}</td>
+                <td style="padding:6px 8px 6px 0;">${escapeHtml(r.name)}</td>
                 <td style="padding:6px 8px;">
                   <span style="display:inline-flex;align-items:center;gap:4px;">
                     <span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${color};"></span>
@@ -6496,7 +6507,7 @@ function renderCheckinChart() {
               const ciMes=(r.checkin||'').slice(0,7)||'__sin_checkin__';
               const color=mesColors[ciMes]||'#ccc';
               return `<tr style="border-bottom:1px solid var(--border);">
-                <td style="padding:6px 8px 6px 0;">${r.name}</td>
+                <td style="padding:6px 8px 6px 0;">${escapeHtml(r.name)}</td>
                 <td style="padding:6px 8px;">${CABIN_SHORT[r.cabin]||r.cabin}</td>
                 <td style="padding:6px 8px;color:var(--text-muted);">${formatDate(reservaDisplayDates(r).displayCheckin||'')}</td>
                 <td style="padding:6px 8px;color:var(--text-muted);">${formatDate(reservaDisplayDates(r).displayCheckout||'')}</td>
@@ -6815,7 +6826,7 @@ function renderOcuResTable(res) {
         ? '<span class="pago-badge pago-PAGA">✓ Paga</span>'
         : '<span class="pago-badge pago-PENDIENTE">○ Pendiente</span>';
     return `<tr>
-      <td>${r.name||'—'}</td>
+      <td>${escapeHtml(r.name)||'—'}</td>
       <td style="color:var(--${r.cabin||'verde'}-dark);font-weight:600;">${C[r.cabin]||r.cabin||'—'}</td>
       <td>${formatDate(_dd.displayCheckin)}</td>
       <td>${formatDate(_dd.displayCheckout)}</td>
