@@ -2660,6 +2660,24 @@ function reservaDisplayDates(r) {
   return { displayCheckin, displayCheckout };
 }
 
+// Noches reales según tipo (0 para pasadías, 1 para early/late, N para noche)
+function reservaNochesReales(r) {
+  const tipo = r.tipo || 'noche';
+  if (tipo === 'pasadia' || tipo === 'pasadia-largo') return 0;
+  if (tipo === 'early' || tipo === 'late') return 1;
+  if (!r.checkin || !r.checkout) return 0;
+  return Math.round((new Date(r.checkout+'T12:00:00') - new Date(r.checkin+'T12:00:00')) / 86400000);
+}
+
+// Label corto de duración para mostrar en tablas/listas
+function reservaDuracionLabel(r) {
+  const tipo = r.tipo || 'noche';
+  if (tipo === 'pasadia')         return 'Pasadía';
+  if (tipo === 'pasadia-largo')   return 'Pasadía 9-5';
+  const n = reservaNochesReales(r);
+  return n + (n === 1 ? ' noche' : ' noches');
+}
+
 function toggleReservasHoy() {
   const content = document.getElementById('reservasHoyContent');
   const chev    = document.getElementById('reservasHoyChevron');
@@ -2900,7 +2918,7 @@ function buildDispMonth(firstDay, cabinRes, today) {
     if (!r.checkin || !r.checkout) return;
     const start = new Date(r.checkin  + 'T12:00:00');
     const end   = new Date(r.checkout + 'T12:00:00');
-    const initials = r.name.trim().split(/\s+/).map(w => w[0]).join('').slice(0,3).toUpperCase();
+    const initials = ((r.name || '').toString().trim() || '?').split(/\s+/).map(w => w[0]).join('').slice(0,3).toUpperCase();
     for (let cur = new Date(start); cur < end; cur.setDate(cur.getDate() + 1)) {
       const key = cur.toISOString().slice(0,10);
       const kind = getDayKind(r, key);
@@ -3240,7 +3258,9 @@ function handleDayClick(cabin, date) {
       showCourtesyDetail(res.id, date);
       return;
     }
-    if(confirm(`¿Ver detalles de ${res.name}?\n${CABINS[cabin]}\n${formatDate(res.checkin)} → ${formatDate(res.checkout)}\n$${res.amount}`)) {
+    const _dd = reservaDisplayDates(res);
+    const _dur = reservaDuracionLabel(res);
+    if(confirm(`¿Ver detalles de ${res.name}?\n${CABINS[cabin]} · ${_dur}\n${formatDate(_dd.displayCheckin)} → ${formatDate(_dd.displayCheckout)}\n$${res.amount}`)) {
       editReservation(res.id);
     }
   } else {
@@ -3400,15 +3420,14 @@ function recentRowHtml(r) {
 }
 
 function checkinRowHtml(r) {
-  const nights = r.checkin && r.checkout
-    ? Math.round((new Date(r.checkout+'T12:00:00') - new Date(r.checkin+'T12:00:00')) / 86400000)
-    : null;
+  const dispCheckin = r.checkin ? reservaDisplayDates(r).displayCheckin : '';
+  const duracion = reservaDuracionLabel(r);
   return `
     <tr style="${r.alerta ? 'background:#fffde7;' : ''}">
       <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><strong title="${r.name}">${r.name}</strong>${r.alerta ? ' <span style="font-size:10px;background:#fff3cd;color:#856404;padding:1px 6px;border-radius:20px;">⚠</span>' : ''}</td>
       <td><span class="cabin-badge badge-${r.cabin}">${CABINS[r.cabin]}</span></td>
-      <td>${formatDate(r.checkin||'')}</td>
-      <td style="text-align:center;">${nights !== null ? nights : '—'}</td>
+      <td>${formatDate(dispCheckin)}</td>
+      <td style="text-align:center;font-size:12px;">${duracion}</td>
       <td><span class="origin-badge">${r.origin}</span></td>
       <td><strong>${netoDisplay(r)}</strong></td>
       <td style="font-size:13px;color:var(--verde-dark);font-weight:500;">${recibidoDisplay(r)}</td>
@@ -3478,10 +3497,11 @@ function renderWidgets7d() {
     dStartStr = document.getElementById('customDateFrom')?.value || today;
     const dTo = document.getElementById('customDateTo')?.value   || today;
     // For custom mode, "prev period" mirrors the same span before dStartStr
-    const spanMs  = new Date(dTo) - new Date(dStartStr);
-    const prevEnd = new Date(dStartStr);
+    // Usar T12:00:00 para evitar offsets de timezone que corren la fecha
+    const spanMs  = new Date(dTo + 'T12:00:00') - new Date(dStartStr + 'T12:00:00');
+    const prevEnd = new Date(dStartStr + 'T12:00:00');
     prevEnd.setDate(prevEnd.getDate() - 1);
-    const prevStart = new Date(prevEnd - spanMs);
+    const prevStart = new Date(prevEnd.getTime() - spanMs);
     dPrevStr = prevStart.toISOString().slice(0,10);
     // Override filter to use dTo instead of today
     const dToFinal = dTo;
@@ -3714,11 +3734,12 @@ function renderCxC() {
     const recibidoLabel = r.origin === 'Airbnb' && !r.fechaPago
       ? '<span style="color:#ccc;font-size:12px;">Pendiente de Airbnb</span>'
       : (recibido > 0 ? '$'+recibido.toFixed(2) : '<span style="color:#ccc;">—</span>');
+    const _dd = reservaDisplayDates(r);
     return `<tr>
       <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.name}"><strong>${r.name}</strong></td>
       <td><span class="cabin-badge badge-${r.cabin}">${CABINS[r.cabin]}</span></td>
-      <td>${formatDate(r.checkin)}</td>
-      <td>${formatDate(r.checkout)}</td>
+      <td>${formatDate(_dd.displayCheckin)}</td>
+      <td>${formatDate(_dd.displayCheckout)}</td>
       <td><span style="font-size:11px;background:var(--bg);padding:2px 8px;border-radius:20px;color:var(--text-muted);">${r.origin}</span></td>
       <td><strong>$${total.toFixed(2)}</strong></td>
       <td style="color:var(--verde-dark);">${recibidoLabel}</td>
@@ -3772,11 +3793,12 @@ function descargarCxCExcel() {
       ? (r.fechaPago ? total : 0)
       : (parseFloat(r.montoVoucher||0) || parseFloat(r.deposit||0));
     const pendiente = Math.max(0, total - recibido);
+    const _dd = reservaDisplayDates(r);
     return [
       r.name || '',
       CABINS[r.cabin] || r.cabin || '',
-      r.checkin || '',
-      r.checkout || '',
+      _dd.displayCheckin || '',
+      _dd.displayCheckout || '',
       r.origin || '',
       r.confirmCode || '',
       total.toFixed(2),
@@ -4769,8 +4791,9 @@ async function deleteReservation(id) {
   const chk      = document.getElementById('chkCancelEmail');
   if (r.name) {
     const cabin = { verde: 'Paseo', azul: 'Portal', lila: 'Puente' }[r.cabin] || r.cabin || '';
+    const _dd = reservaDisplayDates(r);
     nameEl.textContent  = r.name + (cabin ? ' · ' + cabin : '');
-    datesEl.textContent = (r.checkin || '').slice(0,10) + ' → ' + (r.checkout || '').slice(0,10);
+    datesEl.textContent = (_dd.displayCheckin || '').slice(0,10) + ' → ' + (_dd.displayCheckout || '').slice(0,10);
     if (r.email) {
       emailEl.textContent    = r.email;
       emailRow.style.display = 'flex';
@@ -5186,7 +5209,7 @@ function renderContabilidad() {
   // Directas usan reservations[] con fechaReserva
 
   const filteredPagos = pagos.filter(p => !selectedMonth || p.fechaCobro.startsWith(selectedMonth));
-  const isRevenue = r => r.origin !== 'Cortesía' && parseFloat(r.amount||0) > 0;
+  const isRevenue = r => r.origin !== 'Cortesia' && parseFloat(r.amount||0) > 0;
   const filteredDirectas = reservations.filter(r => {
     if (r.origin === 'Airbnb') return false; // Airbnb viene de pagos[]
     const fi = getFechaIngreso(r);
@@ -5859,7 +5882,7 @@ function renderVentasChart() {
 
   // -- Directas: iterate reservations
   if (origenFilter !== 'Airbnb') reservations.filter(r => {
-    if (r.origin === 'Airbnb' || r.origin === 'Cortesía') return false;
+    if (r.origin === 'Airbnb' || r.origin === 'Cortesia') return false;
     const fi = r.fechaReserva || r.checkin || '';
     return fi && (!selectedMonth || fi.startsWith(selectedMonth));
   }).forEach(r => {
@@ -6088,8 +6111,8 @@ function renderVentasChart() {
                     ${CABIN_SHORT[r.cabin]||r.cabin}
                   </span>
                 </td>
-                <td style="padding:6px 8px;color:var(--text-muted);">${formatDate(r.checkin||'')}</td>
-                <td style="padding:6px 8px;color:var(--text-muted);">${formatDate(r.checkout||'')}</td>
+                <td style="padding:6px 8px;color:var(--text-muted);">${formatDate(reservaDisplayDates(r).displayCheckin||'')}</td>
+                <td style="padding:6px 8px;color:var(--text-muted);">${formatDate(reservaDisplayDates(r).displayCheckout||'')}</td>
                 <td style="padding:6px 0 6px 8px;text-align:right;font-weight:600;">$${(r._netoReal != null ? r._netoReal : parseFloat(r.amount||0)).toFixed(2)}</td>
               </tr>`;
             }).join('')}
@@ -6254,7 +6277,7 @@ function renderCheckinChart() {
 
   // -- Directas: use r.neto, group by check-in month
   if (origenFilter !== 'Airbnb') reservations.filter(r => {
-    if (r.origin === 'Airbnb' || r.origin === 'Cortesía') return false;
+    if (r.origin === 'Airbnb' || r.origin === 'Cortesia') return false;
     const fi = r.fechaReserva || r.checkin || '';
     return fi && (!selectedMonth || fi.startsWith(selectedMonth));
   }).forEach(r => {
@@ -6492,8 +6515,8 @@ function renderCheckinChart() {
               return `<tr style="border-bottom:1px solid var(--border);">
                 <td style="padding:6px 8px 6px 0;">${r.name}</td>
                 <td style="padding:6px 8px;">${CABIN_SHORT[r.cabin]||r.cabin}</td>
-                <td style="padding:6px 8px;color:var(--text-muted);">${formatDate(r.checkin||'')}</td>
-                <td style="padding:6px 8px;color:var(--text-muted);">${formatDate(r.checkout||'')}</td>
+                <td style="padding:6px 8px;color:var(--text-muted);">${formatDate(reservaDisplayDates(r).displayCheckin||'')}</td>
+                <td style="padding:6px 8px;color:var(--text-muted);">${formatDate(reservaDisplayDates(r).displayCheckout||'')}</td>
                 <td style="padding:6px 0 6px 8px;text-align:right;font-weight:600;">
                   <span style="display:inline-flex;align-items:center;gap:5px;">
                     <span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${color};flex-shrink:0;"></span>
@@ -6798,10 +6821,10 @@ function renderOcuResTable(res) {
 
   let totalNoches = 0, totalMonto = 0;
   tbody.innerHTML = rows.map(r => {
-    const nights = r.checkin && r.checkout
-      ? Math.round((new Date(r.checkout+'T12:00:00') - new Date(r.checkin+'T12:00:00')) / 86400000)
-      : 0;
-    totalNoches += typeof nights === 'number' ? nights : 0;
+    const nights = reservaNochesReales(r);
+    const duracion = reservaDuracionLabel(r);
+    const _dd = reservaDisplayDates(r);
+    totalNoches += nights;
     totalMonto  += parseFloat(r.neto||r.amount||0);
     const badge = r.estadoPago === 'CANCELADA'
       ? '<span class="pago-badge pago-CANCELADA">✕ Cancelada</span>'
@@ -6811,9 +6834,9 @@ function renderOcuResTable(res) {
     return `<tr>
       <td>${r.name||'—'}</td>
       <td style="color:var(--${r.cabin||'verde'}-dark);font-weight:600;">${C[r.cabin]||r.cabin||'—'}</td>
-      <td>${formatDate(r.checkin)}</td>
-      <td>${formatDate(r.checkout)}</td>
-      <td style="text-align:center;">${typeof nights==='number'?nights:'—'}</td>
+      <td>${formatDate(_dd.displayCheckin)}</td>
+      <td>${formatDate(_dd.displayCheckout)}</td>
+      <td style="text-align:center;font-size:12px;">${duracion}</td>
       <td>${r.origin||'—'}</td>
       <td style="text-align:right;">$${parseFloat(r.neto||r.amount||0).toFixed(2)}</td>
       <td>${badge}</td>
