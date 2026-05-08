@@ -4528,9 +4528,14 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
   // Enviar email de confirmación si es reserva nueva y hay email
   if (!editId && email) {
     try {
+      const emailPayload = { action: 'sendConfirmationEmail', reservation };
+      if (pendingVoucher && pendingVoucher.base64 && origin === 'Directa') {
+        emailPayload.voucherBase64   = pendingVoucher.base64;
+        emailPayload.voucherMimeType = pendingVoucher.mimeType || 'image/jpeg';
+      }
       const _emailRes = await fetch(SHEETS_API_URL, {
         method: 'POST',
-        body: JSON.stringify({ action: 'sendConfirmationEmail', reservation })
+        body: JSON.stringify(emailPayload)
       });
       const _emailData = await _emailRes.json();
       console.log('[email] sendConfirmationEmail response', _emailData);
