@@ -1215,19 +1215,32 @@ function doPost(e) {
         if (match) {
           if (deleteVoucher) {
             try {
-              const codTransf = data[i][18] ? data[i][18].toString() : '';
-              const nombre    = data[i][1]  ? data[i][1].toString().replace(/\s+/g,'_').slice(0,20) : '';
-              const folders   = DriveApp.getFoldersByName(VOUCHER_FOLDER_NAME);
-              if (folders.hasNext()) {
-                const folder = folders.next();
-                const files  = folder.getFiles();
-                while (files.hasNext()) {
-                  const file = files.next();
-                  const desc = file.getDescription() || '';
-                  const fname = file.getName() || '';
-                  if ((codTransf && desc.includes(codTransf)) ||
-                      (nombre && fname.toLowerCase().includes(nombre.toLowerCase()))) {
-                    file.setTrashed(true);
+              // 1) Vía precisa: usar VoucherURL (col 26) y extraer fileId
+              const voucherUrl = data[i][25] ? data[i][25].toString() : '';
+              const m = voucherUrl.match(/\/d\/([A-Za-z0-9_-]+)/);
+              if (m && m[1]) {
+                try {
+                  DriveApp.getFileById(m[1]).setTrashed(true);
+                  Logger.log('✓ Voucher trasheado por URL: ' + m[1]);
+                } catch(idErr) {
+                  Logger.log('⚠ No se pudo trashear por fileId ' + m[1] + ': ' + idErr.message);
+                }
+              } else {
+                // 2) Fallback fuzzy: buscar por código de transferencia / nombre del huésped
+                const codTransf = data[i][18] ? data[i][18].toString() : '';
+                const nombre    = data[i][1]  ? data[i][1].toString().replace(/\s+/g,'_').slice(0,20) : '';
+                const folders   = DriveApp.getFoldersByName(VOUCHER_FOLDER_NAME);
+                if (folders.hasNext()) {
+                  const folder = folders.next();
+                  const files  = folder.getFiles();
+                  while (files.hasNext()) {
+                    const file = files.next();
+                    const desc = file.getDescription() || '';
+                    const fname = file.getName() || '';
+                    if ((codTransf && desc.includes(codTransf)) ||
+                        (nombre && fname.toLowerCase().includes(nombre.toLowerCase()))) {
+                      file.setTrashed(true);
+                    }
                   }
                 }
               }
