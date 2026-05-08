@@ -3987,11 +3987,15 @@ function autoCheckout() {
   const cin  = document.getElementById('fCheckin').value;
   const cout = document.getElementById('fCheckout');
   if (!cin) return;
-  // Only auto-fill if checkout is empty or <= checkin
-  if (!cout.value || cout.value <= cin) {
-    const next = new Date(cin + 'T12:00:00');
-    next.setDate(next.getDate() + 1);
-    cout.value = next.toISOString().slice(0,10);
+  const tipo = (document.getElementById('fTipo') || {}).value || 'noche';
+  // Para tipos no-noche, el delta entre entrada y salida es fijo según el tipo,
+  // así que cambiar entrada SIEMPRE recalcula salida (no respeta el valor previo).
+  // Para noche, solo autocompletar si salida está vacía o inválida.
+  const TIPO_DELTA = { 'noche': 1, 'pasadia': 1, 'pasadia-largo': 2, 'early': 2, 'late': 2 };
+  if (tipo !== 'noche') {
+    cout.value = _addDaysISO(cin, TIPO_DELTA[tipo] || 1);
+  } else if (!cout.value || cout.value <= cin) {
+    cout.value = _addDaysISO(cin, 1);
   }
 }
 
