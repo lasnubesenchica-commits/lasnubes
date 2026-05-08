@@ -2028,6 +2028,7 @@
     <div id="detailAlerta2" style="display:none;margin-bottom:12px;"></div>
     <div class="modal-footer" style="flex-wrap:wrap;gap:8px;">
       <button class="btn btn-ghost" onclick="closeDetail()">Cerrar</button>
+      <button class="btn btn-ghost" id="detailVoucherBtn" style="font-size:13px;display:none;" title="Abrir voucher en Drive">🧾 Ver voucher</button>
       <button class="btn btn-ghost" id="detailResendBtn" style="font-size:13px;" title="Reenviar email al huésped">📧 Reenviar</button>
       <button class="btn btn-danger" id="detailDeleteBtn">Eliminar</button>
       <button class="btn btn-primary" id="detailEditBtn">Editar</button>
@@ -2443,7 +2444,8 @@ async function syncFromSheets() {
           email:            r.email             || '',
           comentarios:      r.comentarios       || '',
           telefono:         r.telefono          || '',
-          tipo:             r.tipo              || 'noche'
+          tipo:             r.tipo              || 'noche',
+          voucherURL:       r.voucherURL        || ''
         };
       });
 
@@ -3016,6 +3018,16 @@ function showDispDetail(id) {
   if (detailEstado) detailEstado.innerHTML = estadoPagoBadge(r);
   document.getElementById('detailEditBtn').onclick   = () => { closeDetail(); editReservation(id); };
   document.getElementById('detailDeleteBtn').onclick = () => { closeDetail(); deleteReservation(id); };
+  // Botón "Ver voucher" si la reserva tiene voucherURL
+  const voucherBtn = document.getElementById('detailVoucherBtn');
+  if (voucherBtn) {
+    if (r.voucherURL) {
+      voucherBtn.style.display = '';
+      voucherBtn.onclick = () => window.open(r.voucherURL, '_blank');
+    } else {
+      voucherBtn.style.display = 'none';
+    }
+  }
   const resendBtn = document.getElementById('detailResendBtn');
   if (resendBtn) {
     resendBtn.style.display = r.email ? '' : 'none';
