@@ -2606,6 +2606,7 @@ function showSection(id) {
 // ─── DISPONIBILIDAD ──────────────────────────────────────
 let dispCabin = 'verde';
 let dispMonthsShown = 3;
+let dispMonthsBack  = 0;
 const CABIN_DIRECT_COLOR = { verde: '#a8c9a0', azul: '#8fb3d4', lila: '#b09fd4' };
 
 function updateDispLegend() {
@@ -2618,6 +2619,7 @@ function updateDispLegend() {
 function setDispCabin(cabin, btn) {
   dispCabin = cabin;
   dispMonthsShown = 3;
+  dispMonthsBack  = 0;
   document.querySelectorAll('.disp-cabin-tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
   updateDispLegend();
@@ -2817,7 +2819,20 @@ function renderDisponibilidad() {
   today.setHours(0,0,0,0);
 
   let html = '';
-  for (let m = 0; m < dispMonthsShown; m++) {
+  // Botón "Cargar meses anteriores ↑" arriba
+  html += `<div style="text-align:center;padding:0 0 16px;">
+    <button onclick="loadMoreDispMonthsPast()" style="
+      background:none;border:1.5px solid var(--border);border-radius:20px;
+      padding:8px 24px;font-size:13px;color:var(--text-muted);cursor:pointer;
+      transition:all .15s;font-family:inherit;
+    " onmouseover="this.style.borderColor='var(--text-muted)';this.style.color='var(--text)'"
+      onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-muted)'">
+      ${dispMonthsBack > 0 ? '↑ Cargar 3 meses anteriores · viendo ' + dispMonthsBack + ' atrás' : '↑ Ver histórico (meses anteriores)'}
+    </button>
+  </div>`;
+
+  // Iterar desde -dispMonthsBack hasta dispMonthsShown-1
+  for (let m = -dispMonthsBack; m < dispMonthsShown; m++) {
     const d = new Date(today.getFullYear(), today.getMonth() + m, 1);
     html += buildDispMonth(d, cabinRes, today);
   }
@@ -2840,8 +2855,19 @@ function loadMoreDispMonths() {
   // Scroll to the newly loaded months
   const container = document.getElementById('dispCalendars');
   if (container) {
-    const btn = container.querySelector('button');
+    const btn = container.querySelector('button:last-of-type');
     if (btn) btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
+function loadMoreDispMonthsPast() {
+  dispMonthsBack += 3;
+  renderDisponibilidad();
+  // Scroll al primer mes (el más antiguo recién cargado)
+  const container = document.getElementById('dispCalendars');
+  if (container) {
+    const firstMonth = container.querySelector('.disp-month-block');
+    if (firstMonth) firstMonth.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 }
 
