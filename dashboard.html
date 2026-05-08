@@ -3920,6 +3920,39 @@ function _addDaysISO(s, n) {
   return d.toISOString().slice(0, 10);
 }
 
+// Convierte fechas almacenadas (rango de bloqueo) a fechas del FORM (día real).
+// El form expone "Entrada/Salida" como las fechas que el huésped percibe.
+function _formFromStored(r) {
+  const tipo = r.tipo || 'noche';
+  const ci = r.checkin;
+  const co = r.checkout;
+  if (tipo === 'pasadia')         return { entrada: ci, salida: ci }; // 1 día
+  if (tipo === 'pasadia-largo')   { const e = _addDaysISO(ci, 1); return { entrada: e, salida: e }; }
+  if (tipo === 'early')           return { entrada: _addDaysISO(ci, 1), salida: co };
+  if (tipo === 'late')            return { entrada: ci, salida: _addDaysISO(co, -1) };
+  return { entrada: ci, salida: co };
+}
+
+// Convierte fechas del FORM (día real) al rango de bloqueo a guardar en hoja.
+function _storedFromForm(formEntrada, formSalida, tipo) {
+  if (tipo === 'pasadia')         return { checkin: formEntrada, checkout: _addDaysISO(formEntrada, 1) };
+  if (tipo === 'pasadia-largo')   return { checkin: _addDaysISO(formEntrada, -1), checkout: _addDaysISO(formEntrada, 1) };
+  if (tipo === 'early')           return { checkin: _addDaysISO(formEntrada, -1), checkout: formSalida };
+  if (tipo === 'late')            return { checkin: formEntrada, checkout: _addDaysISO(formSalida, 1) };
+  return { checkin: formEntrada, checkout: formSalida };
+}
+
+// Bloquea o libera el campo Salida según el tipo (pasadías son single-day).
+function _updateSalidaLock(tipo) {
+  const cout = document.getElementById('fCheckout');
+  if (!cout) return;
+  const lock = (tipo === 'pasadia' || tipo === 'pasadia-largo');
+  cout.disabled = lock;
+  cout.style.opacity = lock ? '0.55' : '';
+  cout.style.cursor  = lock ? 'not-allowed' : '';
+  cout.style.background = lock ? 'var(--bg)' : '';
+}
+
 function handleTipoChange() {
   const sel = document.getElementById('fTipo');
   const tipo = sel.value;
@@ -3932,54 +3965,43 @@ function handleTipoChange() {
   const hint = document.getElementById('fTipoHint');
   if (hint) hint.textContent = TIPO_HINTS[tipo] || '';
 
-  if (!ciInp.value) { calcSaldo(); return; }
+  if (!ciInp.value) { _updateSalidaLock(tipo); calcSaldo(); return; }
 
-  // Calcular noches actuales para la heurística legacy
+  // FORM en modo "real-day": entrada = día que el huésped percibe como llegada.
+  // Calcular noches actuales solo para la heurística legacy.
   const cinDate = new Date(ciInp.value + 'T12:00:00');
   const couDate = coInp.value ? new Date(coInp.value + 'T12:00:00') : null;
   const nights = couDate ? Math.round((couDate - cinDate) / 86400000) : 0;
 
-  // Derivar la fecha REAL de la reserva (día que el huésped efectivamente está)
-  // a partir del estado actual + tipo previo.
-  let real = ciInp.value;
-  if (prevTipo === 'early' || prevTipo === 'pasadia-largo') {
-    // Estaba con entrada = real - 1
-    real = _addDaysISO(ciInp.value, 1);
-  } else if ((prevTipo === 'noche' || prevTipo === 'pasadia') && nights >= 2 &&
-             (tipo === 'pasadia' || tipo === 'pasadia-largo' || tipo === 'early')) {
-    // Heurística legacy: si el usuario blockeó 2+ noches y ahora convierte a pasadía/early,
-    // probablemente el día real era el ÚLTIMO del rango (patrón típico de pasadías viejas
-    // donde se bloqueaba manualmente la noche anterior).
-    real = _addDaysISO(ciInp.value, nights - 1);
+  // Anchor = día real ancla. Por default es el form entrada (ya que está en real-day).
+  // Heurística legacy: para multi-night noche convertido a tipo de un solo día,
+  // asumir que el día real era el ÚLTIMO del rango (patrón típico de pasadía vieja).
+  let anchor = ciInp.value;
+  if (prevTipo === 'noche' && nights >= 2 &&
+      (tipo === 'pasadia' || tipo === 'pasadia-largo')) {
+    anchor = _addDaysISO(ciInp.value, nights - 1);
   }
-  // Para 'late', 'noche': real = ciInp.value (entrada coincide con el día real)
 
-  // Aplicar fechas según el nuevo tipo
+  // Aplicar nuevo tipo en términos de form (real-day)
   if (tipo === 'noche') {
-    ciInp.value = real;
-    if (!coInp.value || coInp.value <= real) {
-      coInp.value = _addDaysISO(real, 1);
-    } else if (prevTipo === 'late') {
-      // venía con salida = real + 2; restablecer a 1 noche
-      coInp.value = _addDaysISO(real, 1);
-    } else if (prevTipo === 'early' || prevTipo === 'pasadia-largo') {
-      // salida ya estaba en real + 1, ok
+    ciInp.value = anchor;
+    // 1 noche por default si veníamos de un tipo distinto o no hay salida válida
+    if (prevTipo !== 'noche' || anchor !== ciInp.value || !coInp.value || coInp.value <= anchor) {
+      coInp.value = _addDaysISO(anchor, 1);
     }
-  } else if (tipo === 'pasadia') {
-    ciInp.value = real;
-    coInp.value = _addDaysISO(real, 1);
-  } else if (tipo === 'early' || tipo === 'pasadia-largo') {
-    ciInp.value = _addDaysISO(real, -1);
-    coInp.value = _addDaysISO(real, 1);
-  } else if (tipo === 'late') {
-    ciInp.value = real;
-    coInp.value = _addDaysISO(real, 2);
+  } else if (tipo === 'pasadia' || tipo === 'pasadia-largo') {
+    ciInp.value = anchor;
+    coInp.value = anchor; // single-day, salida = entrada
+  } else if (tipo === 'early' || tipo === 'late') {
+    ciInp.value = anchor;
+    coInp.value = _addDaysISO(anchor, 1);
   }
 
   // Default monto para pasadías
   if (tipo === 'pasadia' || tipo === 'pasadia-largo') {
     amountInp.value = '75.00';
   }
+  _updateSalidaLock(tipo);
   calcSaldo();
 }
 
@@ -3988,12 +4010,12 @@ function autoCheckout() {
   const cout = document.getElementById('fCheckout');
   if (!cin) return;
   const tipo = (document.getElementById('fTipo') || {}).value || 'noche';
-  // Para tipos no-noche, el delta entre entrada y salida es fijo según el tipo,
-  // así que cambiar entrada SIEMPRE recalcula salida (no respeta el valor previo).
-  // Para noche, solo autocompletar si salida está vacía o inválida.
-  const TIPO_DELTA = { 'noche': 1, 'pasadia': 1, 'pasadia-largo': 2, 'early': 2, 'late': 2 };
-  if (tipo !== 'noche') {
-    cout.value = _addDaysISO(cin, TIPO_DELTA[tipo] || 1);
+  // Form en real-day: para pasadía/pasadía-largo salida = entrada (single-day);
+  // para early/late delta fijo de 1 día; para noche, autocompletar 1 noche si vacío/inválido.
+  if (tipo === 'pasadia' || tipo === 'pasadia-largo') {
+    cout.value = cin;
+  } else if (tipo === 'early' || tipo === 'late') {
+    cout.value = _addDaysISO(cin, 1);
   } else if (!cout.value || cout.value <= cin) {
     cout.value = _addDaysISO(cin, 1);
   }
@@ -4055,6 +4077,7 @@ function openModal(cabin, date) {
   if (_tipo) { _tipo.value = 'noche'; _tipo.dataset.prevTipo = 'noche'; }
   const _hint = document.getElementById('fTipoHint');
   if (_hint) _hint.textContent = TIPO_HINTS.noche;
+  _updateSalidaLock('noche');
   const _pp = document.getElementById('pricePreview'); if(_pp) _pp.style.display = 'none';
   document.getElementById('reservaModal').classList.add('open');
   clearVoucher();
@@ -4072,9 +4095,11 @@ function editReservation(id) {
   document.getElementById('fName').value = r.name;
   document.getElementById('fEmail').value = r.email || '';
   document.getElementById('fCabin').value = r.cabin;
-  document.getElementById('fCheckin').value = r.checkin;
+  // FORM en real-day: convertir las fechas almacenadas (rango bloqueo) a las que ve el usuario
+  const _fd = _formFromStored(r);
+  document.getElementById('fCheckin').value  = _fd.entrada;
+  document.getElementById('fCheckout').value = _fd.salida;
   document.getElementById('fFechaReserva').value = r.fechaReserva || new Date().toISOString().slice(0,10);
-  document.getElementById('fCheckout').value = r.checkout;
   document.getElementById('fPersons').value = r.persons;
   document.getElementById('fOrigin').value = r.origin;
   document.getElementById('fPagador').value = r.pagador || r.name;
@@ -4091,6 +4116,7 @@ function editReservation(id) {
   }
   const _hintEl = document.getElementById('fTipoHint');
   if (_hintEl) _hintEl.textContent = TIPO_HINTS[r.tipo || 'noche'] || '';
+  _updateSalidaLock(r.tipo || 'noche');
   calcSaldo();
   clearVoucher();
   document.getElementById('voucherSection').style.display = (r.origin === 'Directa') ? 'block' : 'none';
@@ -4444,36 +4470,47 @@ async function saveReservation() {
   const telefono = document.getElementById('fTelefono').value.trim();
   const pagador  = document.getElementById('fPagador').value.trim() || name;
   const cabin    = document.getElementById('fCabin').value;
-  const checkin  = document.getElementById('fCheckin').value;
-  const checkout = document.getElementById('fCheckout').value;
+  // FORM en real-day. Tomar valores y traducir al rango de bloqueo según tipo.
+  const tipoForm = (document.getElementById('fTipo') || {}).value || 'noche';
+  const formCheckin  = document.getElementById('fCheckin').value;
+  let   formCheckout = document.getElementById('fCheckout').value;
+  // Para pasadía/pasadía-largo, salida debe igual a entrada
+  if (tipoForm === 'pasadia' || tipoForm === 'pasadia-largo') formCheckout = formCheckin;
+  const _stored = _storedFromForm(formCheckin, formCheckout, tipoForm);
+  const checkin  = _stored.checkin;
+  const checkout = _stored.checkout;
   const persons  = document.getElementById('fPersons').value;
   const origin   = document.getElementById('fOrigin').value;
   const deposit  = parseFloat(document.getElementById('fDeposit').value) || 0;
   const amount   = parseFloat(document.getElementById('fAmount').value) || 0;
 
-  if(!name || !checkin || !checkout) { showToast('Por favor completa los campos requeridos'); return; }
-  if(checkout <= checkin) { showToast('La fecha de salida debe ser posterior a la entrada'); return; }
+  if(!name || !formCheckin) { showToast('Por favor completa los campos requeridos'); return; }
+  if (tipoForm === 'noche' || tipoForm === 'early' || tipoForm === 'late') {
+    if (!formCheckout || formCheckout <= formCheckin) {
+      showToast('La fecha de salida debe ser posterior a la entrada'); return;
+    }
+  }
 
   // ── Guard de conversión legacy: al cambiar de noche a pasadía/early/late, ────
   // detectar reserva duplicada en noche adyacente (mismo nombre = bloqueo legacy
   // que se debe eliminar al consolidar).
-  const tipoActual = (document.getElementById('fTipo') || {}).value || 'noche';
+  const tipoActual = tipoForm;
   let adjacentToDelete = null;
   if (editId && tipoActual !== 'noche') {
     const prevRes = reservations.find(r => r.id === editId);
     const prevTipoSaved = prevRes && prevRes.tipo ? prevRes.tipo : 'noche';
     if (prevTipoSaved === 'noche' && prevRes) {
-      // IMPORTANTE: usar las fechas ORIGINALES (prevRes), no las del form,
-      // porque handleTipoChange ya las modificó antes de llegar aquí.
+      // En modo real-day, las fechas del form representan el día real del huésped.
+      // Para detectar duplicada legacy:
+      //  - pasadía/pasadía-largo/early: noche anterior = formCheckin - 1
+      //  - late: noche posterior = formCheckout
       let adjacentDate = null;
       if (tipoActual === 'pasadia' || tipoActual === 'pasadia-largo' || tipoActual === 'early') {
-        const d = new Date(prevRes.checkin + 'T12:00:00');
-        d.setDate(d.getDate() - 1);
-        adjacentDate = d.toISOString().slice(0,10);
+        adjacentDate = _addDaysISO(formCheckin, -1);
       } else if (tipoActual === 'late') {
-        adjacentDate = prevRes.checkout;
+        adjacentDate = formCheckout;
       }
-      console.log('[guard] tipo=', tipoActual, ' prevCheckin=', prevRes.checkin, ' adjacentDate=', adjacentDate, ' formCheckin=', checkin, ' formCheckout=', checkout);
+      console.log('[guard] tipo=', tipoActual, ' formCheckin=', formCheckin, ' adjacentDate=', adjacentDate, ' storedCheckin=', checkin, ' storedCheckout=', checkout);
       if (adjacentDate) {
         const adj = reservations.find(r =>
           r.id !== editId &&
