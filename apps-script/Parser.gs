@@ -1956,13 +1956,16 @@ function sendConfirmationEmail(reservation) {
     const montoVoucherNum = reservation.montoVoucher ? parseFloat(String(reservation.montoVoucher).replace(/[^\d.]/g, '')) || 0 : 0;
     const hasVoucher = !!(reservation.codTransferencia || montoVoucherNum > 0);
     Logger.log('🧾 sendConfirmationEmail · hasVoucher=' + hasVoucher + ' codT=' + (reservation.codTransferencia || 'null') + ' montoVoucher=' + (reservation.montoVoucher || 'null'));
+    const debug = { hasVoucher, codT: reservation.codTransferencia || null, montoVoucher: reservation.montoVoucher || null };
     if (hasVoucher) {
       try {
         const receipt = generateReceiptPDF(reservation);
         attachments.push(receipt.blob);
         Logger.log('📄 Recibo ' + receipt.number + ' adjuntado (' + (receipt.blob.getBytes().length) + ' bytes)');
+        debug.receipt = { number: receipt.number, bytes: receipt.blob.getBytes().length };
       } catch(rcpErr) {
         Logger.log('⚠ No se pudo generar recibo PDF: ' + rcpErr + '\n' + (rcpErr && rcpErr.stack ? rcpErr.stack : ''));
+        debug.receiptError = rcpErr.toString();
       }
     }
 
@@ -1973,9 +1976,9 @@ function sendConfirmationEmail(reservation) {
       replyTo:     REPLY_TO_EMAIL
     });
     Logger.log('📧 Confirmación enviada a: ' + email);
-    return ContentService.createTextOutput(JSON.stringify({ ok: true, status: 'email_sent' })).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ ok: true, status: 'email_sent', _debug: debug, version: 'recibo-v2' })).setMimeType(ContentService.MimeType.JSON);
   } catch(e) {
-    return ContentService.createTextOutput(JSON.stringify({ ok: false, error: e.toString() })).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ ok: false, error: e.toString(), stack: e.stack })).setMimeType(ContentService.MimeType.JSON);
   }
 }
 

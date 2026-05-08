@@ -4528,10 +4528,12 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
   // Enviar email de confirmación si es reserva nueva y hay email
   if (!editId && email) {
     try {
-      await fetch(SHEETS_API_URL, {
+      const _emailRes = await fetch(SHEETS_API_URL, {
         method: 'POST',
         body: JSON.stringify({ action: 'sendConfirmationEmail', reservation })
       });
+      const _emailData = await _emailRes.json();
+      console.log('[email] sendConfirmationEmail response', _emailData);
       showToast('📧 Email de confirmación enviado ✓');
     } catch(e) {
       console.warn('No se pudo enviar el email:', e);
