@@ -4445,42 +4445,22 @@ async function saveReservation() {
   if(!name || !checkin || !checkout) { showToast('Por favor completa los campos requeridos'); return; }
   if(checkout <= checkin) { showToast('La fecha de salida debe ser posterior a la entrada'); return; }
 
-  // ── Duplicate check: same cabin + overlapping checkin ────────
-  const dup = reservations.find(r => {
-    if (editId && r.id == editId) return false; // skip self when editing
-    if (r.cabin !== cabin) return false;
-    if (r.origin === 'Abierta') return false; // reservas abiertas no bloquean fechas
-    if (r.estadoPago === 'CANCELADA') return false;
-    // Overlap: existing checkin falls within new range, or new checkin falls within existing range
-    return (r.checkin >= checkin && r.checkin < checkout) ||
-           (checkin >= r.checkin && checkin < r.checkout);
-  });
-  if (dup) {
-    const msg = `⚠️ Conflicto de fechas
-
-Ya existe una reserva en esta cabaña:
-${dup.name} · ${dup.checkin} → ${dup.checkout}
-
-¿Deseas guardar de todas formas?`;
-    if (!confirm(msg)) return;
-  }
-
-  // ── Guard de conversión: al cambiar de noche a pasadía/early/late, validar ────
-  // que la noche adyacente (que sería liberada o quedaría como duplicada) tenga
-  // el mismo nombre de huésped.
+  // ── Guard de conversión legacy: al cambiar de noche a pasadía/early/late, ────
+  // detectar reserva duplicada en noche adyacente (mismo nombre = bloqueo legacy
+  // que se debe eliminar al consolidar).
   const tipoActual = (document.getElementById('fTipo') || {}).value || 'noche';
+  let adjacentToDelete = null;
   if (editId && tipoActual !== 'noche') {
     const prevRes = reservations.find(r => r.id === editId);
     const prevTipoSaved = prevRes && prevRes.tipo ? prevRes.tipo : 'noche';
     if (prevTipoSaved === 'noche') {
-      // Noche adyacente que el legacy podría tener como bloqueo manual duplicado
       let adjacentDate = null;
       if (tipoActual === 'pasadia' || tipoActual === 'pasadia-largo' || tipoActual === 'early') {
         const d = new Date(checkin + 'T12:00:00');
         d.setDate(d.getDate() - 1);
         adjacentDate = d.toISOString().slice(0,10);
       } else if (tipoActual === 'late') {
-        adjacentDate = checkout; // la noche posterior al stay original
+        adjacentDate = checkout;
       }
       if (adjacentDate) {
         const adj = reservations.find(r =>
@@ -4493,13 +4473,38 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
         const adjFmt = formatDate(adjacentDate);
         const sameName = adj && adj.name && adj.name.trim().toLowerCase() === name.trim().toLowerCase();
         if (!adj) {
-          if (!confirm('⚠️ La noche del ' + adjFmt + ' está libre — no se encontró otra reserva bajo el mismo nombre.\n\n¿Estás seguro que quieres convertir esta reserva a "' + tipoActual + '"?')) return;
+          if (!confirm('⚠️ La noche del ' + adjFmt + ' está libre — no se encontró otra reserva bajo el mismo nombre.\n\n¿Continuar con la conversión a "' + tipoActual + '"?')) return;
         } else if (!sameName) {
-          if (!confirm('⚠️ La noche del ' + adjFmt + ' tiene una reserva de "' + adj.name + '" (nombre distinto).\n\n¿Continuar de todas formas?')) return;
+          if (!confirm('⚠️ La noche del ' + adjFmt + ' tiene reserva de "' + adj.name + '" (nombre distinto).\n\n¿Continuar de todas formas?')) return;
+        } else {
+          // Mismo nombre → es la duplicada legacy. Confirmar el cleanup.
+          const ok = confirm('🧹 Detectada reserva duplicada en la noche del ' + adjFmt + ' bajo el mismo nombre (' + adj.name + ').\n\nAl guardar:\n  • Esta reserva se convertirá en "' + tipoActual + '"\n  • La reserva duplicada del ' + adjFmt + ' será ELIMINADA\n\n¿Continuar?');
+          if (!ok) return;
+          adjacentToDelete = adj.id;
         }
-        // Si mismo nombre: silencioso (es la duplicada esperada — el usuario debe eliminarla manualmente)
       }
     }
+  }
+
+  // ── Duplicate check: same cabin + overlapping checkin ────────
+  // (excluyendo la fila que vamos a eliminar como parte del cleanup legacy)
+  const dup = reservations.find(r => {
+    if (editId && r.id == editId) return false; // skip self when editing
+    if (adjacentToDelete && r.id === adjacentToDelete) return false; // será eliminada
+    if (r.cabin !== cabin) return false;
+    if (r.origin === 'Abierta') return false;
+    if (r.estadoPago === 'CANCELADA') return false;
+    return (r.checkin >= checkin && r.checkin < checkout) ||
+           (checkin >= r.checkin && checkin < r.checkout);
+  });
+  if (dup) {
+    const msg = `⚠️ Conflicto de fechas
+
+Ya existe una reserva en esta cabaña:
+${dup.name} · ${dup.checkin} → ${dup.checkout}
+
+¿Deseas guardar de todas formas?`;
+    if (!confirm(msg)) return;
   }
 
   const id = editId || Date.now().toString();
@@ -4590,6 +4595,33 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
     }
   } else {
     showToast(editId ? 'Reserva actualizada ✓' : 'Reserva guardada ✓');
+  }
+
+  // ── Cleanup: eliminar la reserva duplicada legacy (si fue confirmado por el guard)
+  if (adjacentToDelete) {
+    try {
+      const idx = reservations.findIndex(r => r.id === adjacentToDelete);
+      if (idx >= 0) reservations.splice(idx, 1);
+      save();
+      renderCalendar();
+      renderList();
+      renderDisponibilidad();
+      if (USE_SHEETS) {
+        const rawId = adjacentToDelete.replace(/^(airbnb_|csv_)+/g, '');
+        await fetch(SHEETS_API_URL, {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'deleteReservation',
+            id: rawId,
+            confirmCode: rawId,
+            deleteVoucher: false
+          })
+        });
+      }
+      showToast('🧹 Duplicada legacy eliminada ✓');
+    } catch(e) {
+      console.warn('No se pudo eliminar la duplicada legacy:', e);
+    }
   }
 
   // Enviar email de actualización si checkbox activo (solo en edición)
