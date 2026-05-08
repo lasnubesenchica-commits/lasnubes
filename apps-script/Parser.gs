@@ -1215,15 +1215,21 @@ function doPost(e) {
         if (match) {
           if (deleteVoucher) {
             try {
-              // 1) Vía precisa: usar VoucherURL (col 26) y extraer fileId
+              // 1) Vía precisa: usar VoucherURL (col 26) y extraer fileId(s).
+              // Soporta multiples URLs separadas por '|' (acumuladas via saveVoucherToDrive).
               const voucherUrl = data[i][25] ? data[i][25].toString() : '';
-              const m = voucherUrl.match(/\/d\/([A-Za-z0-9_-]+)/);
-              if (m && m[1]) {
-                try {
-                  DriveApp.getFileById(m[1]).setTrashed(true);
-                  Logger.log('✓ Voucher trasheado por URL: ' + m[1]);
-                } catch(idErr) {
-                  Logger.log('⚠ No se pudo trashear por fileId ' + m[1] + ': ' + idErr.message);
+              const urls = voucherUrl.split('|').map(s => s.trim()).filter(Boolean);
+              const ids = urls
+                .map(u => { const mm = u.match(/\/d\/([A-Za-z0-9_-]+)/); return mm ? mm[1] : null; })
+                .filter(Boolean);
+              if (ids.length > 0) {
+                for (const fid of ids) {
+                  try {
+                    DriveApp.getFileById(fid).setTrashed(true);
+                    Logger.log('✓ Voucher trasheado por URL: ' + fid);
+                  } catch(idErr) {
+                    Logger.log('⚠ No se pudo trashear por fileId ' + fid + ': ' + idErr.message);
+                  }
                 }
               } else {
                 // 2) Fallback fuzzy: buscar por código de transferencia / nombre del huésped
@@ -1474,7 +1480,7 @@ function doPost(e) {
     // ── SEND EMAILS ───────────────────────────────────────────
     if (action === 'sendCancellationEmail') return sendCancellationEmail(payload.reservation);
     if (action === 'sendConfirmationEmail') return sendConfirmationEmail(payload.reservation, payload.voucherBase64, payload.voucherMimeType);
-    if (action === 'sendUpdateEmail')       return sendUpdateEmail(payload.reservation);
+    if (action === 'sendUpdateEmail')       return sendUpdateEmail(payload.reservation, payload.voucherBase64, payload.voucherMimeType);
 
     // ── SYNC PAGOS Y ESTADOS ──────────────────────────────────
     if (action === 'syncPayoutsYEstados') {
@@ -2342,7 +2348,7 @@ buildGuiaHTML(reservation.cabin, meta.tipo) +
 '</td></tr></table></td></tr></table></body></html>';
 }
 
-function sendUpdateEmail(reservation) {
+function sendUpdateEmail(reservation, voucherBase64, voucherMimeType) {
   try {
     const email = reservation.email;
     if (!email) return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'No hay email de huésped' })).setMimeType(ContentService.MimeType.JSON);
@@ -2356,9 +2362,32 @@ function sendUpdateEmail(reservation) {
     const hasSaldo    = deposit > 0 && parseFloat(saldo) > 0;
     const subject     = 'Actualización de reserva — ' + cabin + ' · Las Nubes';
     const html = buildUpdateEmailHTML(reservation, cabin, color, formatDateES(checkinStr), formatDateES(checkoutStr), nightCount(checkinStr, checkoutStr), amount, deposit, saldo, hasSaldo, reservation.comentarios || '', googleCalLink(reservation));
-    GmailApp.sendEmail(email, subject, '', { htmlBody: html, name: 'Las Nubes', replyTo: REPLY_TO_EMAIL });
-    Logger.log('📧 Update enviado a: ' + email);
-    return ContentService.createTextOutput(JSON.stringify({ ok: true, status: 'update_email_sent' })).setMimeType(ContentService.MimeType.JSON);
+
+    // Si la edicion incluye un voucher nuevo, generar recibo PDF y adjuntar
+    // (mismo flujo que sendConfirmationEmail).
+    const attachments = [];
+    if (voucherBase64 && voucherMimeType) {
+      try {
+        const receipt = generateReceiptPDF(reservation);
+        attachments.push(receipt.blob);
+        Logger.log('📄 Recibo ' + receipt.number + ' adjuntado en update');
+      } catch(rcpErr) {
+        Logger.log('⚠ No se pudo generar recibo PDF en update: ' + rcpErr);
+      }
+      try {
+        const ext = voucherMimeType.includes('png') ? '.png' : voucherMimeType.includes('gif') ? '.gif' : voucherMimeType.includes('webp') ? '.webp' : '.jpg';
+        const safeName = ((reservation.name || 'huesped').toString())
+          .replace(/\s+/g, '_').replace(/[^A-Za-z0-9_]/g, '').slice(0, 40) || 'huesped';
+        const voucherBlob = Utilities.newBlob(Utilities.base64Decode(voucherBase64), voucherMimeType, 'Voucher_' + safeName + ext);
+        attachments.push(voucherBlob);
+      } catch(vErr) {
+        Logger.log('⚠ No se pudo adjuntar voucher imagen en update: ' + vErr);
+      }
+    }
+
+    GmailApp.sendEmail(email, subject, '', { htmlBody: html, attachments: attachments, name: 'Las Nubes', replyTo: REPLY_TO_EMAIL });
+    Logger.log('📧 Update enviado a: ' + email + ' (adjuntos: ' + attachments.length + ')');
+    return ContentService.createTextOutput(JSON.stringify({ ok: true, status: 'update_email_sent', attachments: attachments.length })).setMimeType(ContentService.MimeType.JSON);
   } catch(e) {
     return ContentService.createTextOutput(JSON.stringify({ ok: false, error: e.toString() })).setMimeType(ContentService.MimeType.JSON);
   }
@@ -2623,7 +2652,8 @@ function saveVoucherToDrive(reservation, imageBase64, mimeType, fileName) {
     file.setDescription(descripcion);
     const fileUrl = file.getUrl();
 
-    // Persistir el URL en la columna 26 (VoucherURL) de la fila correspondiente
+    // Persistir el URL en la columna 26 (VoucherURL) de la fila correspondiente.
+    // Si ya hay URL(s), agregar la nueva separada por '|' (multiples vouchers por reserva).
     try {
       const sheet = getOrCreateSheet();
       const data  = sheet.getDataRange().getValues();
@@ -2632,7 +2662,9 @@ function saveVoucherToDrive(reservation, imageBase64, mimeType, fileName) {
       for (let i = 1; i < data.length; i++) {
         const rowId = stripId(data[i][0]);
         if (rowId && rowId === targetId) {
-          sheet.getRange(i + 1, 26).setValue(fileUrl);
+          const existing = data[i][25] ? data[i][25].toString().trim() : '';
+          const merged   = existing ? (existing + '|' + fileUrl) : fileUrl;
+          sheet.getRange(i + 1, 26).setValue(merged);
           break;
         }
       }
