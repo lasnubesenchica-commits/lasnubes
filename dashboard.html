@@ -1858,6 +1858,13 @@
 
     <!-- KPI widgets -->
     <div class="ocu-kpi-grid" id="ocuKpis"></div>
+    <div class="ocu-kpi-grid" id="ocuKpisExtra" style="margin-top:12px;"></div>
+
+    <!-- Sección Pasadías (visible solo si hay pasadías) -->
+    <div class="ocu-chart-card" id="ocuPasadiasCard" style="margin:16px 0;display:none;">
+      <div class="ocu-chart-title">Pasadías del período</div>
+      <div id="ocuPasadiasContent"></div>
+    </div>
 
     <!-- Tendencia full width -->
     <div class="ocu-chart-card" id="ocuTrendCard" style="margin-bottom:16px;">
@@ -1874,12 +1881,15 @@
         <thead>
           <tr>
             <th>Mes</th>
-            <th>Total</th>
+            <th>% Total</th>
+            <th>% Prod.</th>
             <th>Paseo</th>
             <th>Portal</th>
             <th>Puente</th>
-            <th>Noches ocu.</th>
-            <th>Noches disp.</th>
+            <th>Noches</th>
+            <th>Pasadías</th>
+            <th>Cortesía</th>
+            <th>Días disp.</th>
           </tr>
         </thead>
         <tbody id="ocuTableBody"></tbody>
@@ -6745,39 +6755,99 @@ function renderOcupacion() {
     return Math.round((new Date(end) - new Date(start)) / 86400000);
   }
 
+  // Stats por reserva en el período: separa días por categoría según tipo.
+  // Retorna { totalDias, diasNoche, diasPasadia, diasCortesia, pasadiaCount }
+  // - noche: todos los días son diasNoche.
+  // - pasadia: el día stored.checkin es 1 día pasadía.
+  // - pasadia-largo: stored.checkin = cortesía, stored.checkin+1 = pasadía.
+  // - early: stored.checkin = cortesía, stored.checkin+1 = noche real.
+  // - late: stored.checkin = noche real, stored.checkin+1 = cortesía.
+  function reservationStats(r, a, bExcl) {
+    const out = { totalDias: 0, diasNoche: 0, diasPasadia: 0, diasCortesia: 0, pasadiaCount: 0 };
+    if (!r.checkin || !r.checkout) return out;
+    const tipo = r.tipo || 'noche';
+    const inPeriod = (d) => d >= a && d < bExcl;
+    if (tipo === 'noche') {
+      out.diasNoche = nightsInPeriod(r, a, bExcl);
+    } else if (tipo === 'pasadia') {
+      if (inPeriod(r.checkin)) { out.diasPasadia = 1; out.pasadiaCount = 1; }
+    } else if (tipo === 'pasadia-largo') {
+      const cortesiaDay = r.checkin;
+      const mainDay = (() => { const d = new Date(r.checkin + 'T12:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); })();
+      if (inPeriod(cortesiaDay)) out.diasCortesia++;
+      if (inPeriod(mainDay))     { out.diasPasadia = 1; out.pasadiaCount = 1; }
+    } else if (tipo === 'early') {
+      const cortesiaDay = r.checkin;
+      const realDay     = (() => { const d = new Date(r.checkin + 'T12:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); })();
+      if (inPeriod(cortesiaDay)) out.diasCortesia++;
+      if (inPeriod(realDay))     out.diasNoche++;
+    } else if (tipo === 'late') {
+      const nightDay    = r.checkin;
+      const cortesiaDay = (() => { const d = new Date(r.checkin + 'T12:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); })();
+      if (inPeriod(nightDay))    out.diasNoche++;
+      if (inPeriod(cortesiaDay)) out.diasCortesia++;
+    }
+    out.totalDias = out.diasNoche + out.diasPasadia + out.diasCortesia;
+    return out;
+  }
+
   // All reservations that overlap the period at all, excluding cancelled
   const periodRes = reservations.filter(r =>
     r.checkin && r.checkout && r.checkout > fromStr && r.checkin <= toStr && r.estadoPago !== 'CANCELADA'
   );
 
-  // ── Nights per cabin per month (for % occupancy & table) ─────────
+  // ── Días ocupados por cabaña por mes (con breakdown noche/pasadía/cortesía) ──
   let totalDays = 0, totalOcc = 0;
-  const cabinTotals = { verde:{occ:0,avail:0}, azul:{occ:0,avail:0}, lila:{occ:0,avail:0} };
+  let totalDiasNoche = 0, totalDiasPasadia = 0, totalDiasCortesia = 0, totalPasadiaCount = 0;
+  const cabinTotals = {
+    verde: { occ:0, avail:0, diasNoche:0, diasPasadia:0, diasCortesia:0, pasadiaCount:0 },
+    azul:  { occ:0, avail:0, diasNoche:0, diasPasadia:0, diasCortesia:0, pasadiaCount:0 },
+    lila:  { occ:0, avail:0, diasNoche:0, diasPasadia:0, diasCortesia:0, pasadiaCount:0 },
+  };
 
   const monthData = months.map(m => {
     const dim   = new Date(m.year, m.month+1, 0).getDate();
     const mFrom = m.year + '-' + String(m.month+1).padStart(2,'0') + '-01';
-    // mTo es el primer día del mes SIGUIENTE (exclusive) para que nightsInPeriod
-    // cuente correctamente la última noche del mes (ej: noche del 27→28 feb)
-    const nextM  = new Date(m.year, m.month+1, 1);
-    const mTo    = nextM.getFullYear() + '-' + String(nextM.getMonth()+1).padStart(2,'0') + '-01';
+    const nextM = new Date(m.year, m.month+1, 1);
+    const mTo   = nextM.getFullYear() + '-' + String(nextM.getMonth()+1).padStart(2,'0') + '-01';
     const row = { year:m.year, month:m.month, days:dim, cabins:{} };
     CABINS_LIST.forEach(c => {
-      const occ = periodRes.filter(r => r.cabin === c.key)
-                           .reduce((s,r) => s + nightsInPeriod(r, mFrom, mTo), 0);
-      row.cabins[c.key] = { occ, pct: Math.round(occ/dim*100) };
-      cabinTotals[c.key].occ   += occ;
-      cabinTotals[c.key].avail += dim;
+      const cabRes = periodRes.filter(r => r.cabin === c.key);
+      let dN=0, dP=0, dC=0, pCount=0;
+      cabRes.forEach(r => {
+        const s = reservationStats(r, mFrom, mTo);
+        dN += s.diasNoche; dP += s.diasPasadia; dC += s.diasCortesia; pCount += s.pasadiaCount;
+      });
+      const occ = dN + dP + dC;
+      row.cabins[c.key] = { occ, diasNoche:dN, diasPasadia:dP, diasCortesia:dC, pasadiaCount:pCount, pct: Math.round(occ/dim*100), pctProd: Math.round((dN+dP)/dim*100) };
+      cabinTotals[c.key].occ          += occ;
+      cabinTotals[c.key].avail        += dim;
+      cabinTotals[c.key].diasNoche    += dN;
+      cabinTotals[c.key].diasPasadia  += dP;
+      cabinTotals[c.key].diasCortesia += dC;
+      cabinTotals[c.key].pasadiaCount += pCount;
     });
-    const allOcc   = Object.values(row.cabins).reduce((s,v) => s+v.occ, 0);
-    row.totalPct = Math.round(allOcc / (dim*3) * 100);
-    row.totalOcc = allOcc;
-    totalDays   += dim * 3;
-    totalOcc    += allOcc;
+    const allOcc = Object.values(row.cabins).reduce((s,v) => s+v.occ, 0);
+    const allN   = Object.values(row.cabins).reduce((s,v) => s+v.diasNoche, 0);
+    const allP   = Object.values(row.cabins).reduce((s,v) => s+v.diasPasadia, 0);
+    const allC   = Object.values(row.cabins).reduce((s,v) => s+v.diasCortesia, 0);
+    row.totalPct      = Math.round(allOcc / (dim*3) * 100);
+    row.totalProd     = Math.round((allN+allP) / (dim*3) * 100);
+    row.totalOcc      = allOcc;
+    row.totalNoche    = allN;
+    row.totalPasadia  = allP;
+    row.totalCortesia = allC;
+    totalDays         += dim * 3;
+    totalOcc          += allOcc;
+    totalDiasNoche    += allN;
+    totalDiasPasadia  += allP;
+    totalDiasCortesia += allC;
+    totalPasadiaCount += Object.values(row.cabins).reduce((s,v) => s+v.pasadiaCount, 0);
     return row;
   });
 
-  const overallPct = totalDays ? Math.round(totalOcc/totalDays*100) : 0;
+  const overallPct  = totalDays ? Math.round(totalOcc/totalDays*100) : 0;
+  const overallProd = totalDays ? Math.round((totalDiasNoche+totalDiasPasadia)/totalDays*100) : 0;
 
   // Flat cabin nights (same as cabinTotals[x].occ)
   const cabinNights = {};
@@ -6797,13 +6867,25 @@ function renderOcupacion() {
   const totalOccNights = Object.values(originNightsMap).reduce((s,v)=>s+v,0);
 
   // ── KPI widgets ──────────────────────────────────────────────────
+  // Breakdown helper: chip "12 noches · 3 pasadías · 1 cortesía"
+  const breakdownChip = (n, p, c) => {
+    const parts = [];
+    if (n > 0) parts.push(n + (n === 1 ? ' noche' : ' noches'));
+    if (p > 0) parts.push(p + (p === 1 ? ' pasadía' : ' pasadías'));
+    if (c > 0) parts.push(c + (c === 1 ? ' día cortesía' : ' días cortesía'));
+    return parts.length ? parts.join(' · ') : 'sin actividad';
+  };
   const kpiData = [
-    { label:'Ocupación total', value: overallPct+'%',
-      sub: totalOcc+' noches de '+totalDays+' disp.', cls:'' },
+    { label:'Ocupación total',
+      value: overallPct + '%',
+      sub:   totalOcc + ' días de ' + totalDays + ' disp.',
+      bd:    breakdownChip(totalDiasNoche, totalDiasPasadia, totalDiasCortesia),
+      cls:'' },
     ...CABINS_LIST.map(c => ({
       label: c.name,
-      value: Math.round(cabinTotals[c.key].occ/(cabinTotals[c.key].avail||1)*100)+'%',
-      sub:   cabinNights[c.key]+' noches de '+cabinTotals[c.key].avail+' disp.',
+      value: Math.round(cabinTotals[c.key].occ/(cabinTotals[c.key].avail||1)*100) + '%',
+      sub:   cabinNights[c.key] + ' días de ' + cabinTotals[c.key].avail + ' disp.',
+      bd:    breakdownChip(cabinTotals[c.key].diasNoche, cabinTotals[c.key].diasPasadia, cabinTotals[c.key].diasCortesia),
       cls:   c.key
     }))
   ];
@@ -6812,8 +6894,108 @@ function renderOcupacion() {
       <div class="ocu-kpi-label">${k.label}</div>
       <div class="ocu-kpi-value ${k.cls}">${k.value}</div>
       <div class="ocu-kpi-sub">${k.sub}</div>
+      <div class="ocu-kpi-sub" style="font-size:11px;color:var(--text-muted);margin-top:2px;font-style:italic;">${k.bd}</div>
     </div>
   `).join('');
+
+  // ── KPI secundario: Productivo (sin cortesía) + Pasadías ────────
+  const ocuKpisExtra = document.getElementById('ocuKpisExtra');
+  if (ocuKpisExtra) {
+    const ingresos = (() => {
+      let n=0, p=0;
+      periodRes.forEach(r => {
+        const t = r.tipo || 'noche';
+        const a = parseFloat(r.neto) || parseFloat(r.amount) || 0;
+        if (t === 'pasadia' || t === 'pasadia-largo') p += a; else n += a;
+      });
+      return { revNoche: n, revPasadia: p };
+    })();
+    const adrUnits = totalDiasNoche + totalDiasPasadia;
+    const adr = adrUnits > 0 ? (ingresos.revNoche + ingresos.revPasadia) / adrUnits : 0;
+    const fmtMoney = v => '$' + v.toLocaleString('es-PA',{minimumFractionDigits:0,maximumFractionDigits:0});
+    ocuKpisExtra.innerHTML = `
+      <div class="ocu-kpi">
+        <div class="ocu-kpi-label">% Productivo (sin cortesía)</div>
+        <div class="ocu-kpi-value">${overallProd}%</div>
+        <div class="ocu-kpi-sub">${totalDiasNoche + totalDiasPasadia} días con huésped activo</div>
+      </div>
+      <div class="ocu-kpi">
+        <div class="ocu-kpi-label">Pasadías</div>
+        <div class="ocu-kpi-value">${totalPasadiaCount}</div>
+        <div class="ocu-kpi-sub">${fmtMoney(ingresos.revPasadia)} ingresos</div>
+      </div>
+      <div class="ocu-kpi">
+        <div class="ocu-kpi-label">Noches reales</div>
+        <div class="ocu-kpi-value">${totalDiasNoche}</div>
+        <div class="ocu-kpi-sub">${fmtMoney(ingresos.revNoche)} ingresos</div>
+      </div>
+      <div class="ocu-kpi">
+        <div class="ocu-kpi-label">ADR (avg por unidad)</div>
+        <div class="ocu-kpi-value">${fmtMoney(adr)}</div>
+        <div class="ocu-kpi-sub">ingreso ÷ (noches + pasadías)</div>
+      </div>
+    `;
+  }
+
+  // ── Sección Pasadías: detalle por tipo y por cabaña ─────────────
+  const pasadiasCard = document.getElementById('ocuPasadiasCard');
+  const pasadiasContent = document.getElementById('ocuPasadiasContent');
+  if (pasadiasCard && pasadiasContent) {
+    if (totalPasadiaCount === 0) {
+      pasadiasCard.style.display = 'none';
+    } else {
+      pasadiasCard.style.display = '';
+      // Filtrar reservas pasadía cuyo "main day" cae en el período
+      const pasadiaResEnPeriodo = periodRes.filter(r => {
+        const t = r.tipo;
+        if (t !== 'pasadia' && t !== 'pasadia-largo') return false;
+        const mainDay = (t === 'pasadia') ? r.checkin : (() => { const d = new Date(r.checkin + 'T12:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); })();
+        return mainDay >= fromStr && mainDay <= toStr;
+      });
+      const pCorta  = pasadiaResEnPeriodo.filter(r => r.tipo === 'pasadia');
+      const pLarga  = pasadiaResEnPeriodo.filter(r => r.tipo === 'pasadia-largo');
+      const sumRev  = arr => arr.reduce((s,r) => s + (parseFloat(r.neto)||parseFloat(r.amount)||0), 0);
+      const fmtM    = v => '$' + v.toLocaleString('es-PA',{minimumFractionDigits:0,maximumFractionDigits:0});
+      const totalP  = pasadiaResEnPeriodo.length;
+      const totalR  = sumRev(pasadiaResEnPeriodo);
+      const byCabin = { verde: 0, azul: 0, lila: 0 };
+      const revByCabin = { verde: 0, azul: 0, lila: 0 };
+      pasadiaResEnPeriodo.forEach(r => {
+        if (byCabin[r.cabin] !== undefined) {
+          byCabin[r.cabin]++;
+          revByCabin[r.cabin] += parseFloat(r.neto)||parseFloat(r.amount)||0;
+        }
+      });
+      pasadiasContent.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:14px;">
+          <div style="padding:12px;background:var(--bg);border-radius:10px;border:1px solid var(--border);">
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Total pasadías</div>
+            <div style="font-size:22px;font-weight:700;color:#f59e0b;">${totalP}</div>
+            <div style="font-size:12px;color:var(--text-muted);">${fmtM(totalR)} ingresos</div>
+          </div>
+          <div style="padding:12px;background:var(--bg);border-radius:10px;border:1px solid var(--border);">
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Pasadía corta · 12:30–7pm</div>
+            <div style="font-size:18px;font-weight:600;color:var(--text);">${pCorta.length}</div>
+            <div style="font-size:12px;color:var(--text-muted);">${fmtM(sumRev(pCorta))}</div>
+          </div>
+          <div style="padding:12px;background:var(--bg);border-radius:10px;border:1px solid var(--border);">
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Pasadía extendida · 9–5</div>
+            <div style="font-size:18px;font-weight:600;color:var(--text);">${pLarga.length}</div>
+            <div style="font-size:12px;color:var(--text-muted);">${fmtM(sumRev(pLarga))}</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+          ${CABINS_LIST.map(c => `
+            <div style="padding:10px 12px;background:var(--bg);border-radius:8px;border-left:3px solid ${c.color};">
+              <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">${c.name}</div>
+              <div style="font-size:16px;font-weight:600;color:${c.color};">${byCabin[c.key]} ${byCabin[c.key]===1?'pasadía':'pasadías'}</div>
+              <div style="font-size:11px;color:var(--text-muted);">${fmtM(revByCabin[c.key])}</div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+  }
 
   // ── Cabin bars ───────────────────────────────────────────────────
   document.getElementById('ocuBars').innerHTML = CABINS_LIST.map(c => {
@@ -6823,7 +7005,7 @@ function renderOcupacion() {
       <div class="ocu-bar-row">
         <div class="ocu-bar-label">
           <strong>${c.name}</strong>
-          <span>${n} noches · ${pct}%</span>
+          <span>${n} días · ${pct}%</span>
         </div>
         <div class="ocu-bar-track">
           <div class="ocu-bar-fill" style="width:${pct}%;background:${c.color};"></div>
@@ -6841,7 +7023,7 @@ function renderOcupacion() {
         <div class="ocu-bar-row">
           <div class="ocu-bar-label">
             <strong>${grp}</strong>
-            <span>${n} noches · ${pct}%</span>
+            <span>${n} días · ${pct}%</span>
           </div>
           <div class="ocu-bar-track">
             <div class="ocu-bar-fill" style="width:${pct}%;background:${ORIGIN_BAR_COLORS[grp]};"></div>
@@ -6897,10 +7079,13 @@ function renderOcupacion() {
     <tr>
       <td style="font-weight:500;">${MONTHS_ES[m.month]} ${m.year}</td>
       <td>${pctPill(m.totalPct)}</td>
+      <td>${pctPill(m.totalProd)}</td>
       <td>${pctPill(m.cabins.verde.pct)}</td>
       <td>${pctPill(m.cabins.azul.pct)}</td>
       <td>${pctPill(m.cabins.lila.pct)}</td>
-      <td>${m.totalOcc}</td>
+      <td>${m.totalNoche}</td>
+      <td>${m.totalPasadia}</td>
+      <td style="color:var(--text-muted);">${m.totalCortesia}</td>
       <td>${m.days * 3}</td>
     </tr>
   `).join('');
