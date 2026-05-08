@@ -2885,10 +2885,11 @@ function buildDispMonth(firstDay, cabinRes, today) {
     const start = new Date(r.checkin  + 'T12:00:00');
     const end   = new Date(r.checkout + 'T12:00:00');
     const initials = r.name.trim().split(/\s+/).map(w => w[0]).join('').slice(0,3).toUpperCase();
+    const hasPasadiaComment = !!(r.comentarios && /pasad[ií]a/i.test(r.comentarios));
     for (let cur = new Date(start); cur < end; cur.setDate(cur.getDate() + 1)) {
       const key = cur.toISOString().slice(0,10);
       const kind = getDayKind(r, key);
-      occupied[key] = { initials, id: r.id, origin: r.origin || 'Airbnb', checkin: r.checkin, checkout: r.checkout, alerta: (r.origin === 'Airbnb' && r.alerta) ? r.alerta : '', tipo: r.tipo || 'noche', kind };
+      occupied[key] = { initials, id: r.id, origin: r.origin || 'Airbnb', checkin: r.checkin, checkout: r.checkout, alerta: (r.origin === 'Airbnb' && r.alerta) ? r.alerta : '', tipo: r.tipo || 'noche', kind, hasPasadiaComment };
     }
   });
 
@@ -2923,6 +2924,7 @@ function buildDispMonth(firstDay, cabinRes, today) {
           + '<span class="day-num" style="font-size:12px;min-width:16px;">' + day + '</span>'
           + '<span class="day-initials">' + occ.initials + '</span>'
           + tipoDotHtml(occ.tipo)
+          + pasadiaCommentMarkHtml(occ)
           + '</div>';
         day += span;
         continue;
@@ -2961,8 +2963,8 @@ function buildDispMonth(firstDay, cabinRes, today) {
       : '';
     const inner = occ
       ? (occ.kind === 'courtesy'
-          ? '<span class="day-num">' + day + '</span>'
-          : '<span class="day-num">' + day + '</span><span class="day-initials">' + occ.initials + '</span>' + tipoDotHtml(occ.tipo))
+          ? '<span class="day-num">' + day + '</span>' + pasadiaCommentMarkHtml(occ)
+          : '<span class="day-num">' + day + '</span><span class="day-initials">' + occ.initials + '</span>' + tipoDotHtml(occ.tipo) + pasadiaCommentMarkHtml(occ))
       : '<span class="day-num">' + day + '</span>';
 
     grid += '<div class="' + cls + '"' + titleAttr + ' ' + clickAttr + '>' + inner + '</div>';
@@ -3330,6 +3332,12 @@ const TIPO_DOT_COLOR = {
 };
 
 function tipoDotHtml(_tipo) { return ''; }
+
+// Marca para reservas cuyo comentario menciona "pasadía" (legacy a revisar)
+function pasadiaCommentMarkHtml(occ) {
+  if (!occ || !occ.hasPasadiaComment) return '';
+  return '<span title="Comentario menciona pasadía — revisar tipo" style="position:absolute;top:3px;left:3px;background:#f59e0b;color:#fff;width:14px;height:14px;border-radius:50%;font-size:10px;font-weight:700;line-height:1;display:inline-flex;align-items:center;justify-content:center;z-index:3;box-shadow:0 0 0 1.5px #fff;">!</span>';
+}
 
 // Devuelve 'courtesy' (día bloqueado por cortesía sin huésped activo) o 'main' (día con huésped)
 // Para early/pasadia-largo: el primer día es cortesía; para late: el último (checkout-1) es cortesía.
