@@ -5034,6 +5034,41 @@ async function saveEgreso() {
   if (!date)           { showToast('Indica la fecha'); return; }
   if (!validItems.length) { showToast('Agrega al menos un ítem con monto'); return; }
 
+  // ── Duplicate check ────────────────────────────────────────────────
+  const totalMonto = validItems.reduce((s,i) => s + parseFloat(i.monto || 0), 0);
+  let dupGroup = null;
+  if (numFactura) {
+    // Match estricto por numFactura
+    const tag = '[' + numFactura + ']';
+    const matches = egresos.filter(e => e.desc && e.desc.includes(tag));
+    if (matches.length) {
+      const sum = matches.reduce((s,e) => s + parseFloat(e.amount||0), 0);
+      dupGroup = { matches, sum, key: 'N° factura ' + numFactura };
+    }
+  }
+  if (!dupGroup && proveedor) {
+    // Fallback: misma fecha + proveedor + monto total exacto (±$0.01)
+    const provLower = proveedor.toLowerCase();
+    const sameDayProv = egresos.filter(e =>
+      e.date === date &&
+      e.proveedor && e.proveedor.toLowerCase().trim() === provLower
+    );
+    if (sameDayProv.length) {
+      const sum = sameDayProv.reduce((s,e) => s + parseFloat(e.amount||0), 0);
+      if (Math.abs(sum - totalMonto) < 0.01) {
+        dupGroup = { matches: sameDayProv, sum, key: proveedor + ' · ' + formatDate(date) + ' · $' + sum.toFixed(2) };
+      }
+    }
+  }
+  if (dupGroup) {
+    const msg = '⚠️ Posible duplicado detectado.\n\n' +
+                'Ya existe un egreso con: ' + dupGroup.key + '\n' +
+                '(' + dupGroup.matches.length + (dupGroup.matches.length===1?' ítem':' ítems') + ' · total $' + dupGroup.sum.toFixed(2) + ')\n\n' +
+                'Nuevo egreso: $' + totalMonto.toFixed(2) + '\n\n' +
+                '¿Guardar de todas formas?';
+    if (!confirm(msg)) return;
+  }
+
   const saveBtn = document.getElementById('eSaveBtn');
   saveBtn.disabled = true; saveBtn.textContent = 'Guardando...';
 
