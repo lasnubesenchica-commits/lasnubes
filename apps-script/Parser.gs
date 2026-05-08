@@ -2022,6 +2022,16 @@ function getOrCreateRecibosFolder() {
   return folders.hasNext() ? folders.next() : DriveApp.createFolder(RECIBOS_FOLDER_NAME);
 }
 
+// Alinear horizontalmente todos los párrafos dentro de una celda de tabla.
+function _alignCell(cell, alignment) {
+  for (let i = 0; i < cell.getNumChildren(); i++) {
+    const ch = cell.getChild(i);
+    if (ch.getType && ch.getType() === DocumentApp.ElementType.PARAGRAPH) {
+      ch.asParagraph().setAlignment(alignment);
+    }
+  }
+}
+
 function generateReceiptPDF(r) {
   const numStr   = 'LN-' + String(nextReceiptNumber()).padStart(4, '0');
   const meta     = tipoEmailMeta(r);
@@ -2084,7 +2094,7 @@ function generateReceiptPDF(r) {
   const headerTbl = body.appendTable([['RECIBO DE PAGO', 'N°  ' + numStr]]);
   headerTbl.setBorderWidth(0);
   headerTbl.getCell(0,0).editAsText().setFontSize(11).setBold(true).setForegroundColor('#3a3530');
-  headerTbl.getCell(0,1).setColumnAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+  _alignCell(headerTbl.getCell(0,1), DocumentApp.HorizontalAlignment.RIGHT);
   headerTbl.getCell(0,1).editAsText().setFontSize(11).setBold(true).setForegroundColor('#3a3530');
   const dateP = body.appendParagraph('Emitido ' + todayFmt);
   dateP.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
@@ -2119,7 +2129,7 @@ function generateReceiptPDF(r) {
     const valueCell = payTbl.getCell(i, 1);
     labelCell.editAsText().setFontSize(10).setBold(false).setForegroundColor('#8a8078');
     valueCell.editAsText().setFontSize(11).setBold(true).setForegroundColor('#3a3530');
-    valueCell.setColumnAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+    _alignCell(valueCell, DocumentApp.HorizontalAlignment.RIGHT);
   }
 
   body.appendHorizontalRule();
