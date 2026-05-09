@@ -54,6 +54,7 @@ Helpers equivalentes en backend (`Parser.gs`):
 - **`SIN_PAGO_ORIGINS`**: constante global en dashboard.html con `['Cortesia','Colaboracion','Personal','Abierta']`.
 - **Recibo PDF**: generado por `generateReceiptPDF(r)` en backend. Numeración correlativa `LN-NNNN` en Script Properties (`RECEIPT_COUNTER`). Adjuntado al email de confirmación si la reserva tiene voucher. `sendUpdateEmail` también lo adjunta cuando la edición incluye un voucher nuevo.
 - **Vouchers en Drive**: subidos por `saveVoucherToDrive` a la carpeta `Las Nubes - Pagos`. URL persistido en columna 26.
+- **Recordatorio de check-in** (email automático 1 día antes): trigger `enviarRecordatoriosCheckin` corre diario a las 10am Panamá. Escanea Reservas y manda email a quienes tienen `displayCheckin === mañana` (excluyendo CANCELADA, origen Abierta, sin email). Para activarlo, correr una vez desde el editor: `instalarTriggerRecordatorios()`. Para preview: `enviarRecordatorioPrueba()` (envía al email del usuario que corre el script). Configuración (WiFi, indicaciones, maps URL) en Script Properties: `CHECKIN_WIFI_SSID`, `CHECKIN_WIFI_PASSWORD`, `CHECKIN_MAPS_URL`, `CHECKIN_INDICACIONES`, `CHECKIN_ACCESO_EXTRA`.
 - **Multi-voucher por reserva** (abonos parciales): cuando se sube un segundo voucher en edición, el sistema acumula:
   - `montoVoucher`: suma total ($45 + $45 = $90).
   - `codTransferencia`: lista separada por `|` (ej. `UYAFL-111|UYAFL-222`).
