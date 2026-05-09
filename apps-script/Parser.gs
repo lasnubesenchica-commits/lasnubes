@@ -1481,6 +1481,7 @@ function doPost(e) {
     if (action === 'sendCancellationEmail') return sendCancellationEmail(payload.reservation);
     if (action === 'sendConfirmationEmail') return sendConfirmationEmail(payload.reservation, payload.voucherBase64, payload.voucherMimeType);
     if (action === 'sendUpdateEmail')       return sendUpdateEmail(payload.reservation, payload.voucherBase64, payload.voucherMimeType);
+    if (action === 'sendCheckinReminder')   return sendCheckinReminderEmail(payload.reservation);
 
     // ── SYNC PAGOS Y ESTADOS ──────────────────────────────────
     if (action === 'syncPayoutsYEstados') {
@@ -2391,6 +2392,231 @@ function sendUpdateEmail(reservation, voucherBase64, voucherMimeType) {
   } catch(e) {
     return ContentService.createTextOutput(JSON.stringify({ ok: false, error: e.toString() })).setMimeType(ContentService.MimeType.JSON);
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Recordatorio de check-in (email automatico 1 dia antes)
+// ═══════════════════════════════════════════════════════════
+
+// Configuracion editable via Script Properties (sin tocar codigo).
+// Defaults razonables para que el preview se vea completo aunque no
+// se hayan configurado todas las claves.
+function getCheckinReminderConfig() {
+  const props = PropertiesService.getScriptProperties();
+  return {
+    wifiSSID:      props.getProperty('CHECKIN_WIFI_SSID')      || 'Las Nubes',
+    wifiPassword:  props.getProperty('CHECKIN_WIFI_PASSWORD')  || '(configurar en Script Properties: CHECKIN_WIFI_PASSWORD)',
+    mapsUrl:       props.getProperty('CHECKIN_MAPS_URL')       || 'https://maps.google.com/?q=Buenos+Aires+Chame+Panama',
+    indicaciones:  props.getProperty('CHECKIN_INDICACIONES')   || 'Al entrar a Buenos Aires de Chame, sigue el camino principal. Te enviaremos un pin exacto por WhatsApp el día de tu llegada.',
+    accesoExtra:   props.getProperty('CHECKIN_ACCESO_EXTRA')   || ''
+  };
+}
+
+function buildCheckinReminderHTML(r, meta, config) {
+  const cabin   = CABIN_NAMES_EMAIL[r.cabin] || r.cabin;
+  const color   = CABIN_COLORS_EMAIL[r.cabin] || '#6a9e62';
+  const amount  = parseFloat(r.amount)  || 0;
+  const deposit = parseFloat(r.deposit) || 0;
+  const saldo   = (amount - deposit).toFixed(2);
+  const hasSaldo = amount > 0 && parseFloat(saldo) > 0;
+  const pagarUrl = 'https://wa.me/50769812266?text=' + encodeURIComponent('Hola! Quiero cancelar el saldo restante de mi reserva del ' + meta.checkinFmt + ' en la cabaña ' + cabin + '.');
+  const llegadaUrl = 'https://wa.me/50769812266?text=' + encodeURIComponent('Hola! Soy ' + (r.name || 'huésped') + ', llego mañana a Las Nubes (' + cabin + ').');
+
+  // Instrucciones de acceso por cabaña (key box code 0507 — mismo que buildGuiaHTML)
+  const accesoTexto = 'Key Box código <strong>0507</strong>' +
+    (r.cabin === 'azul'  ? ' &middot; luego desliza la puerta corrediza de metal' : '') +
+    '. El control blanco abre el portón.';
+  const accesoExtraHtml = config.accesoExtra
+    ? '<p style="margin:6px 0 0;font-size:12px;color:#8a8078;line-height:1.5;">' + config.accesoExtra + '</p>'
+    : '';
+
+  return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"></head>' +
+'<body style="margin:0;padding:0;background:#f5f3f0;font-family:\'Helvetica Neue\',Helvetica,Arial,sans-serif;">' +
+'<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f3f0;padding:32px 16px;"><tr><td align="center">' +
+'<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">' +
+
+// HERO
+'<tr><td style="background:' + color + ';border-radius:16px 16px 0 0;padding:36px 40px;text-align:center;">' +
+'<p style="margin:0 0 6px;font-size:12px;color:rgba(255,255,255,0.75);letter-spacing:2px;text-transform:uppercase;">Te esperamos mañana</p>' +
+'<h1 style="margin:0;font-size:32px;font-weight:300;color:#ffffff;font-family:Georgia,serif;">Las <em>Nubes</em></h1>' +
+'<p style="margin:12px 0 0;font-size:14px;color:rgba(255,255,255,0.9);">' + meta.checkinFmt + ' &middot; ' + meta.checkinHora + '</p>' +
+'</td></tr>' +
+
+// CUERPO
+'<tr><td style="background:#ffffff;padding:32px 40px;">' +
+'<p style="margin:0 0 24px;font-size:16px;color:#3a3530;line-height:1.6;">Hola <strong>' + (r.name || '') + '</strong>, falta solo un día para tu llegada a <strong style="color:' + color + ';">' + cabin + '</strong>. Aquí lo esencial para tu check-in.</p>' +
+
+// RESUMEN (cabaña / personas / llegada / salida)
+'<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f8f6;border-radius:12px;border:1px solid #e8e4de;margin-bottom:20px;">' +
+'<tr><td style="padding:18px 22px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Cabaña</p><p style="margin:0;font-size:16px;font-weight:600;color:' + color + ';">' + cabin + '</p></td>' +
+'<td style="padding:18px 22px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Personas</p><p style="margin:0;font-size:16px;font-weight:600;color:#3a3530;">' + (r.persons || '—') + '</p></td></tr>' +
+'<tr><td style="padding:18px 22px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Llegada</p><p style="margin:0;font-size:14px;color:#3a3530;font-weight:500;">' + meta.checkinFmt + '</p><p style="margin:4px 0 0;font-size:12px;color:#8a8078;">' + meta.checkinHora + '</p></td>' +
+'<td style="padding:18px 22px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Salida</p><p style="margin:0;font-size:14px;color:#3a3530;font-weight:500;">' + meta.checkoutFmt + '</p><p style="margin:4px 0 0;font-size:12px;color:#8a8078;">' + meta.checkoutHora + '</p></td></tr>' +
+'<tr><td colspan="2" style="padding:14px 22px;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">' + meta.estanciaLabel + '</p><p style="margin:0;font-size:15px;font-weight:600;color:#3a3530;">' + meta.estanciaValue + '</p></td></tr>' +
+'</table>' +
+
+// CÓMO LLEGAR
+'<table width="100%" cellpadding="0" cellspacing="0" style="background:#eaf4e6;border-radius:12px;border:1px solid #d0e6c6;margin-bottom:20px;"><tr><td style="padding:20px 22px;">' +
+'<p style="margin:0 0 6px;font-size:11px;color:#4a7340;text-transform:uppercase;letter-spacing:1px;font-weight:700;">📍 Cómo llegar</p>' +
+'<p style="margin:0 0 12px;font-size:14px;color:#3a3530;line-height:1.5;"><strong>Buenos Aires, Chame</strong> &middot; Panamá Oeste</p>' +
+'<p style="margin:0 0 14px;font-size:13px;color:#5a5550;line-height:1.6;">' + config.indicaciones + '</p>' +
+'<a href="' + config.mapsUrl + '" target="_blank" style="display:inline-block;background:#4285f4;color:#ffffff;font-size:13px;font-weight:500;padding:10px 20px;border-radius:8px;text-decoration:none;">🗺 Ver en Google Maps</a>' +
+'</td></tr></table>' +
+
+// ACCESO + WIFI (lado a lado en desktop, apilados en mobile via 100% width)
+'<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;"><tr>' +
+'<td width="50%" style="padding-right:8px;vertical-align:top;">' +
+  '<table width="100%" cellpadding="0" cellspacing="0" style="background:#fdf8f0;border-radius:12px;border:1px solid #f0e8d8;height:100%;"><tr><td style="padding:18px 20px;">' +
+    '<p style="margin:0 0 6px;font-size:11px;color:#8a6000;text-transform:uppercase;letter-spacing:1px;font-weight:700;">🔑 Acceso</p>' +
+    '<p style="margin:0;font-size:13px;color:#3a3530;line-height:1.6;">' + accesoTexto + '</p>' +
+    accesoExtraHtml +
+  '</td></tr></table>' +
+'</td>' +
+'<td width="50%" style="padding-left:8px;vertical-align:top;">' +
+  '<table width="100%" cellpadding="0" cellspacing="0" style="background:#eef0f4;border-radius:12px;border:1px solid #dde1e8;height:100%;"><tr><td style="padding:18px 20px;">' +
+    '<p style="margin:0 0 6px;font-size:11px;color:#4a5570;text-transform:uppercase;letter-spacing:1px;font-weight:700;">📶 WiFi</p>' +
+    '<p style="margin:0 0 4px;font-size:13px;color:#3a3530;"><strong>Red:</strong> ' + config.wifiSSID + '</p>' +
+    '<p style="margin:0;font-size:13px;color:#3a3530;"><strong>Clave:</strong> ' + config.wifiPassword + '</p>' +
+  '</td></tr></table>' +
+'</td>' +
+'</tr></table>' +
+
+// SALDO PENDIENTE
+(hasSaldo ? '<table width="100%" cellpadding="0" cellspacing="0" style="background:#fff3cd;border-radius:12px;border:1px solid #ffe6a3;margin-bottom:20px;"><tr><td style="padding:18px 22px;">' +
+'<p style="margin:0 0 4px;font-size:13px;color:#8a6000;font-weight:700;">⚠️ Saldo pendiente: $' + saldo + '</p>' +
+'<p style="margin:0 0 12px;font-size:12px;color:#8a6000;line-height:1.5;">Te pedimos cancelar el saldo antes de tu llegada para agilizar el check-in.</p>' +
+'<a href="' + pagarUrl + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:13px;font-weight:600;padding:9px 20px;border-radius:8px;text-decoration:none;">💬 Coordinar pago</a>' +
+'</td></tr></table>' : '') +
+
+// QUÉ LLEVAR
+'<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f8f6;border-radius:12px;border:1px solid #e8e4de;margin-bottom:20px;"><tr><td style="padding:18px 22px;">' +
+'<p style="margin:0 0 8px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;font-weight:700;">🎒 Te recomendamos llevar</p>' +
+'<p style="margin:0;font-size:13px;color:#5a5550;line-height:1.7;">Linterna o frontal &middot; Ropa de abrigo (refresca de noche) &middot; Repelente &middot; Calzado cómodo &middot; Lo que vayas a cocinar</p>' +
+'</td></tr></table>' +
+
+// EMERGENCIAS
+'<p style="margin:0 0 8px;font-size:13px;color:#3a3530;text-align:center;">¿Algún cambio o duda?</p>' +
+'<p style="margin:0 0 24px;text-align:center;"><a href="' + llegadaUrl + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:14px;font-weight:600;padding:11px 24px;border-radius:10px;text-decoration:none;">💬 Escríbenos por WhatsApp</a></p>' +
+
+'<p style="margin:0;font-size:14px;color:#6b6560;line-height:1.6;text-align:center;font-style:italic;">¡Nos vemos mañana!</p>' +
+'</td></tr>' +
+
+// FOOTER
+'<tr><td style="background:#3a3530;border-radius:0 0 16px 16px;padding:24px 40px;text-align:center;">' +
+'<p style="margin:0 0 8px;font-size:18px;font-weight:300;color:#ffffff;font-family:Georgia,serif;">Las <em>Nubes</em></p>' +
+'<a href="https://wa.me/50769812266" style="color:rgba(255,255,255,0.8);font-size:13px;text-decoration:none;">💬 WhatsApp +507 6981-2266</a>' +
+'</td></tr>' +
+
+'</table></td></tr></table></body></html>';
+}
+
+function sendCheckinReminderEmail(reservation) {
+  try {
+    const email = reservation.email;
+    if (!email) return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'No hay email de huésped' })).setMimeType(ContentService.MimeType.JSON);
+    const cabin   = CABIN_NAMES_EMAIL[reservation.cabin] || reservation.cabin;
+    const meta    = tipoEmailMeta(reservation);
+    const config  = getCheckinReminderConfig();
+    const subject = '🌿 Te esperamos mañana — ' + cabin + ' · Las Nubes';
+    const html    = buildCheckinReminderHTML(reservation, meta, config);
+    GmailApp.sendEmail(email, subject, '', { htmlBody: html, name: 'Las Nubes', replyTo: REPLY_TO_EMAIL });
+    Logger.log('📧 Recordatorio check-in enviado a: ' + email);
+    return ContentService.createTextOutput(JSON.stringify({ ok: true, status: 'reminder_sent' })).setMimeType(ContentService.MimeType.JSON);
+  } catch(e) {
+    return ContentService.createTextOutput(JSON.stringify({ ok: false, error: e.toString() })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// Trigger diario @ 10am Panama. Escanea Reservas y manda recordatorio
+// a quienes hacen check-in REAL (display) mañana.
+// Excluye CANCELADA, origen Abierta, y reservas sin email.
+function enviarRecordatoriosCheckin() {
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = Utilities.formatDate(tomorrow, 'America/Panama', 'yyyy-MM-dd');
+
+  let sent = 0, skipped = 0, errors = 0;
+  for (let i = 1; i < data.length; i++) {
+    const r = {
+      id:         data[i][0],
+      name:       data[i][1],
+      cabin:      data[i][3],
+      checkin:    data[i][4],
+      checkout:   data[i][5],
+      persons:    data[i][6],
+      amount:     data[i][7],
+      deposit:    data[i][8],
+      origin:     data[i][9],
+      estadoPago: data[i][20] || '',
+      email:      data[i][21] || '',
+      telefono:   data[i][23] || '',
+      tipo:       data[i][24] || 'noche'
+    };
+    if (!r.checkin) continue;
+    if (r.estadoPago === 'CANCELADA') continue;
+    if (r.origin === 'Abierta') continue;
+    const meta = tipoEmailMeta(r);
+    if (meta.displayCheckin !== tomorrowStr) continue;
+    if (!r.email) { skipped++; Logger.log('⊘ Sin email: ' + r.name); continue; }
+    try {
+      sendCheckinReminderEmail(r);
+      sent++;
+    } catch(e) {
+      errors++;
+      Logger.log('⚠ Error con ' + r.name + ' (' + r.email + '): ' + e);
+    }
+  }
+  Logger.log('✓ Recordatorios: ' + sent + ' enviados, ' + skipped + ' sin email, ' + errors + ' errores');
+}
+
+// Ejecutar UNA VEZ desde el editor de Apps Script para activar el envio diario.
+// Idempotente: borra triggers previos de la misma funcion antes de crear el nuevo.
+function instalarTriggerRecordatorios() {
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'enviarRecordatoriosCheckin') {
+      ScriptApp.deleteTrigger(t);
+    }
+  });
+  ScriptApp.newTrigger('enviarRecordatoriosCheckin')
+    .timeBased()
+    .atHour(10)
+    .everyDays(1)
+    .inTimezone('America/Panama')
+    .create();
+  Logger.log('✓ Trigger creado: enviarRecordatoriosCheckin diario @ 10am America/Panama');
+}
+
+// Ejecutar desde el editor para previsualizar el email — se envia al
+// correo del usuario que corre el script (no al cliente real).
+function enviarRecordatorioPrueba() {
+  const myEmail = Session.getActiveUser().getEmail();
+  if (!myEmail) {
+    Logger.log('⚠ No se pudo obtener el email del usuario activo. Ejecuta desde el editor de Apps Script.');
+    return;
+  }
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const dayAfter = new Date();
+  dayAfter.setDate(dayAfter.getDate() + 2);
+  const sample = {
+    id:         'PREVIEW-' + Date.now(),
+    name:       'Juan de Prueba',
+    email:      myEmail,
+    cabin:      'verde',
+    checkin:    Utilities.formatDate(tomorrow, 'America/Panama', 'yyyy-MM-dd'),
+    checkout:   Utilities.formatDate(dayAfter, 'America/Panama', 'yyyy-MM-dd'),
+    persons:    2,
+    amount:     180,
+    deposit:    90,
+    origin:     'Directa',
+    estadoPago: 'ABONADO',
+    telefono:   '+507 1234-5678',
+    tipo:       'noche'
+  };
+  sendCheckinReminderEmail(sample);
+  Logger.log('✓ Recordatorio de prueba enviado a ' + myEmail);
 }
 
 // ═══════════════════════════════════════════════════════════
