@@ -2404,8 +2404,6 @@ function sendUpdateEmail(reservation, voucherBase64, voucherMimeType) {
 function getCheckinReminderConfig() {
   const props = PropertiesService.getScriptProperties();
   return {
-    wifiSSID:      props.getProperty('CHECKIN_WIFI_SSID')      || 'Las Nubes',
-    wifiPassword:  props.getProperty('CHECKIN_WIFI_PASSWORD')  || '(configurar en Script Properties: CHECKIN_WIFI_PASSWORD)',
     mapsUrl:       props.getProperty('CHECKIN_MAPS_URL')       || 'https://maps.google.com/?q=Buenos+Aires+Chame+Panama',
     indicaciones:  props.getProperty('CHECKIN_INDICACIONES')   || 'Al entrar a Buenos Aires de Chame, sigue el camino principal. Te enviaremos un pin exacto por WhatsApp el día de tu llegada.',
     accesoExtra:   props.getProperty('CHECKIN_ACCESO_EXTRA')   || ''
@@ -2463,23 +2461,12 @@ function buildCheckinReminderHTML(r, meta, config) {
 '<a href="' + config.mapsUrl + '" target="_blank" style="display:inline-block;background:#4285f4;color:#ffffff;font-size:13px;font-weight:500;padding:10px 20px;border-radius:8px;text-decoration:none;">🗺 Ver en Google Maps</a>' +
 '</td></tr></table>' +
 
-// ACCESO + WIFI (lado a lado en desktop, apilados en mobile via 100% width)
-'<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;"><tr>' +
-'<td width="50%" style="padding-right:8px;vertical-align:top;">' +
-  '<table width="100%" cellpadding="0" cellspacing="0" style="background:#fdf8f0;border-radius:12px;border:1px solid #f0e8d8;height:100%;"><tr><td style="padding:18px 20px;">' +
-    '<p style="margin:0 0 6px;font-size:11px;color:#8a6000;text-transform:uppercase;letter-spacing:1px;font-weight:700;">🔑 Acceso</p>' +
-    '<p style="margin:0;font-size:13px;color:#3a3530;line-height:1.6;">' + accesoTexto + '</p>' +
-    accesoExtraHtml +
-  '</td></tr></table>' +
-'</td>' +
-'<td width="50%" style="padding-left:8px;vertical-align:top;">' +
-  '<table width="100%" cellpadding="0" cellspacing="0" style="background:#eef0f4;border-radius:12px;border:1px solid #dde1e8;height:100%;"><tr><td style="padding:18px 20px;">' +
-    '<p style="margin:0 0 6px;font-size:11px;color:#4a5570;text-transform:uppercase;letter-spacing:1px;font-weight:700;">📶 WiFi</p>' +
-    '<p style="margin:0 0 4px;font-size:13px;color:#3a3530;"><strong>Red:</strong> ' + config.wifiSSID + '</p>' +
-    '<p style="margin:0;font-size:13px;color:#3a3530;"><strong>Clave:</strong> ' + config.wifiPassword + '</p>' +
-  '</td></tr></table>' +
-'</td>' +
-'</tr></table>' +
+// ACCESO
+'<table width="100%" cellpadding="0" cellspacing="0" style="background:#fdf8f0;border-radius:12px;border:1px solid #f0e8d8;margin-bottom:20px;"><tr><td style="padding:18px 22px;">' +
+'<p style="margin:0 0 6px;font-size:11px;color:#8a6000;text-transform:uppercase;letter-spacing:1px;font-weight:700;">🔑 Acceso</p>' +
+'<p style="margin:0;font-size:13px;color:#3a3530;line-height:1.6;">' + accesoTexto + '</p>' +
+accesoExtraHtml +
+'</td></tr></table>' +
 
 // SALDO PENDIENTE
 (hasSaldo ? '<table width="100%" cellpadding="0" cellspacing="0" style="background:#fff3cd;border-radius:12px;border:1px solid #ffe6a3;margin-bottom:20px;"><tr><td style="padding:18px 22px;">' +
