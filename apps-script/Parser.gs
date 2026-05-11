@@ -1925,7 +1925,7 @@ function buildEmailHTML(r) {
 '</tr><tr>' +
 '<td style="padding:20px 24px;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">' + meta.estanciaLabel + '</p><p style="margin:0;font-size:17px;font-weight:600;color:#3a3530;">' + meta.estanciaValue + '</p></td>' +
 '<td style="padding:20px 24px;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Total</p><p style="margin:0;font-size:17px;font-weight:600;color:#3a3530;">$' + amount.toFixed(2) + '</p>' + (deposit > 0 ? '<p style="margin:4px 0 0;font-size:12px;color:#8a8078;">Abono: $' + deposit.toFixed(2) + '</p>' : '') + '</td>' +
-'</tr>' + (hasSaldo ? '<tr><td colspan="2" style="padding:18px 24px;background:#fff8e1;border-top:1px solid #e8e4de;border-radius:0 0 12px 12px;"><p style="margin:0 0 4px;font-size:13px;color:#8a6000;">⚠️ <strong>Saldo pendiente: $' + saldo + '</strong></p><p style="margin:0 0 12px;font-size:12px;color:#8a6000;line-height:1.5;">Te pedimos cancelar el saldo antes del día de tu reserva.</p><a href="' + pagarUrl + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:13px;font-weight:600;padding:9px 20px;border-radius:8px;text-decoration:none;">&#128172; Pagar saldo</a></td></tr>' : '') +
+'</tr>' + (hasSaldo ? '<tr><td colspan="2" style="padding:18px 24px;background:#fff8e1;border-top:1px solid #e8e4de;border-radius:0 0 12px 12px;"><p style="margin:0 0 4px;font-size:13px;color:#8a6000;">&#9888; <strong>Saldo pendiente: $' + saldo + '</strong></p><p style="margin:0 0 12px;font-size:12px;color:#8a6000;line-height:1.5;">Te pedimos cancelar el saldo antes del día de tu reserva.</p><a href="' + pagarUrl + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:13px;font-weight:600;padding:9px 20px;border-radius:8px;text-decoration:none;">&#128172; Pagar saldo</a></td></tr>' : '') +
 '</table>' +
 '<p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#3a3530;">Agregar a tu calendario</p>' +
 '<table cellpadding="0" cellspacing="0" style="margin-bottom:32px;"><tr>' +
@@ -2332,7 +2332,7 @@ function buildUpdateEmailHTML(reservation, cabin, color, checkinFmt, checkoutFmt
 '<td style="padding:20px 24px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Check-out</p><p style="margin:0;font-size:15px;color:#3a3530;font-weight:500;">' + checkoutFmt + '</p><p style="margin:4px 0 0;font-size:12px;color:#8a8078;">' + meta.checkoutHora + '</p></td></tr>' +
 '<tr><td style="padding:20px 24px;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">' + meta.estanciaLabel + '</p><p style="margin:0;font-size:17px;font-weight:600;color:#3a3530;">' + meta.estanciaValue + '</p></td>' +
 '<td style="padding:20px 24px;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Total</p><p style="margin:0;font-size:17px;font-weight:600;color:#3a3530;">$' + amount.toFixed(2) + '</p>' + (deposit > 0 ? '<p style="margin:4px 0 0;font-size:12px;color:#8a8078;">Abono: $' + deposit.toFixed(2) + '</p>' : '') + '</td></tr>' +
-(hasSaldo ? '<tr><td colspan="2" style="padding:18px 24px;background:#fff8e1;border-top:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:13px;color:#8a6000;">⚠️ <strong>Saldo pendiente: $' + saldo + '</strong></p><p style="margin:0 0 12px;font-size:12px;color:#8a6000;line-height:1.5;">Te pedimos cancelar el saldo antes del día de tu reserva.</p><a href="' + pagarUrl + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:13px;font-weight:600;padding:9px 20px;border-radius:8px;text-decoration:none;">&#128172; Pagar saldo</a></td></tr>' : '') +
+(hasSaldo ? '<tr><td colspan="2" style="padding:18px 24px;background:#fff8e1;border-top:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:13px;color:#8a6000;">&#9888; <strong>Saldo pendiente: $' + saldo + '</strong></p><p style="margin:0 0 12px;font-size:12px;color:#8a6000;line-height:1.5;">Te pedimos cancelar el saldo antes del día de tu reserva.</p><a href="' + pagarUrl + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:13px;font-weight:600;padding:9px 20px;border-radius:8px;text-decoration:none;">&#128172; Pagar saldo</a></td></tr>' : '') +
 '</table>' +
 (comentarios ? '<table width="100%" cellpadding="0" cellspacing="0" style="background:#fff8e1;border-radius:12px;padding:20px;margin-bottom:24px;"><tr><td><p style="margin:0 0 8px;font-size:12px;color:#999;text-transform:uppercase;">Comentarios</p><p style="margin:0;font-size:14px;color:#555;line-height:1.6;">' + comentarios + '</p></td></tr></table>' : '') +
 '<p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#3a3530;">Actualizar tu calendario</p>' +
@@ -2455,35 +2455,35 @@ function buildCheckinReminderHTML(r, meta, config) {
 
 // CÓMO LLEGAR
 '<table width="100%" cellpadding="0" cellspacing="0" style="background:#eaf4e6;border-radius:12px;border:1px solid #d0e6c6;margin-bottom:20px;"><tr><td style="padding:20px 22px;">' +
-'<p style="margin:0 0 6px;font-size:11px;color:#4a7340;text-transform:uppercase;letter-spacing:1px;font-weight:700;">📍 Cómo llegar</p>' +
+'<p style="margin:0 0 6px;font-size:11px;color:#4a7340;text-transform:uppercase;letter-spacing:1px;font-weight:700;">&#128205; Cómo llegar</p>' +
 '<p style="margin:0 0 12px;font-size:14px;color:#3a3530;line-height:1.5;"><strong>Buenos Aires, Chame</strong> &middot; Panamá Oeste</p>' +
 '<p style="margin:0 0 14px;font-size:13px;color:#5a5550;line-height:1.6;">' + config.indicaciones + '</p>' +
-'<a href="' + config.mapsUrl + '" target="_blank" style="display:inline-block;background:#4285f4;color:#ffffff;font-size:13px;font-weight:500;padding:10px 20px;border-radius:8px;text-decoration:none;">🗺 Ver en Google Maps</a>' +
+'<a href="' + config.mapsUrl + '" target="_blank" style="display:inline-block;background:#4285f4;color:#ffffff;font-size:13px;font-weight:500;padding:10px 20px;border-radius:8px;text-decoration:none;">&#128506; Ver en Google Maps</a>' +
 '</td></tr></table>' +
 
 // ACCESO
 '<table width="100%" cellpadding="0" cellspacing="0" style="background:#fdf8f0;border-radius:12px;border:1px solid #f0e8d8;margin-bottom:20px;"><tr><td style="padding:18px 22px;">' +
-'<p style="margin:0 0 6px;font-size:11px;color:#8a6000;text-transform:uppercase;letter-spacing:1px;font-weight:700;">🔑 Acceso</p>' +
+'<p style="margin:0 0 6px;font-size:11px;color:#8a6000;text-transform:uppercase;letter-spacing:1px;font-weight:700;">&#128273; Acceso</p>' +
 '<p style="margin:0;font-size:13px;color:#3a3530;line-height:1.6;">' + accesoTexto + '</p>' +
 accesoExtraHtml +
 '</td></tr></table>' +
 
 // SALDO PENDIENTE
 (hasSaldo ? '<table width="100%" cellpadding="0" cellspacing="0" style="background:#fff3cd;border-radius:12px;border:1px solid #ffe6a3;margin-bottom:20px;"><tr><td style="padding:18px 22px;">' +
-'<p style="margin:0 0 4px;font-size:13px;color:#8a6000;font-weight:700;">⚠️ Saldo pendiente: $' + saldo + '</p>' +
+'<p style="margin:0 0 4px;font-size:13px;color:#8a6000;font-weight:700;">&#9888; Saldo pendiente: $' + saldo + '</p>' +
 '<p style="margin:0 0 12px;font-size:12px;color:#8a6000;line-height:1.5;">Te pedimos cancelar el saldo antes de tu llegada para agilizar el check-in.</p>' +
-'<a href="' + pagarUrl + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:13px;font-weight:600;padding:9px 20px;border-radius:8px;text-decoration:none;">💬 Coordinar pago</a>' +
+'<a href="' + pagarUrl + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:13px;font-weight:600;padding:9px 20px;border-radius:8px;text-decoration:none;">&#128172; Coordinar pago</a>' +
 '</td></tr></table>' : '') +
 
 // QUÉ LLEVAR
 '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f8f6;border-radius:12px;border:1px solid #e8e4de;margin-bottom:20px;"><tr><td style="padding:18px 22px;">' +
-'<p style="margin:0 0 8px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;font-weight:700;">🎒 Te recomendamos llevar</p>' +
+'<p style="margin:0 0 8px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;font-weight:700;">&#127890; Te recomendamos llevar</p>' +
 '<p style="margin:0;font-size:13px;color:#5a5550;line-height:1.7;">Linterna o frontal &middot; Ropa de abrigo (refresca de noche) &middot; Repelente &middot; Calzado cómodo &middot; Lo que vayas a cocinar</p>' +
 '</td></tr></table>' +
 
 // EMERGENCIAS
 '<p style="margin:0 0 8px;font-size:13px;color:#3a3530;text-align:center;">¿Algún cambio o duda?</p>' +
-'<p style="margin:0 0 24px;text-align:center;"><a href="' + llegadaUrl + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:14px;font-weight:600;padding:11px 24px;border-radius:10px;text-decoration:none;">💬 Escríbenos por WhatsApp</a></p>' +
+'<p style="margin:0 0 24px;text-align:center;"><a href="' + llegadaUrl + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:14px;font-weight:600;padding:11px 24px;border-radius:10px;text-decoration:none;">&#128172; Escríbenos por WhatsApp</a></p>' +
 
 '<p style="margin:0;font-size:14px;color:#6b6560;line-height:1.6;text-align:center;font-style:italic;">¡Nos vemos mañana!</p>' +
 '</td></tr>' +
@@ -2491,7 +2491,7 @@ accesoExtraHtml +
 // FOOTER
 '<tr><td style="background:#3a3530;border-radius:0 0 16px 16px;padding:24px 40px;text-align:center;">' +
 '<p style="margin:0 0 8px;font-size:18px;font-weight:300;color:#ffffff;font-family:Georgia,serif;">Las <em>Nubes</em></p>' +
-'<a href="https://wa.me/50769812266" style="color:rgba(255,255,255,0.8);font-size:13px;text-decoration:none;">💬 WhatsApp +507 6981-2266</a>' +
+'<a href="https://wa.me/50769812266" style="color:rgba(255,255,255,0.8);font-size:13px;text-decoration:none;">&#128172; WhatsApp +507 6981-2266</a>' +
 '</td></tr>' +
 
 '</table></td></tr></table></body></html>';
@@ -2504,7 +2504,7 @@ function sendCheckinReminderEmail(reservation) {
     const cabin   = CABIN_NAMES_EMAIL[reservation.cabin] || reservation.cabin;
     const meta    = tipoEmailMeta(reservation);
     const config  = getCheckinReminderConfig();
-    const subject = '🌿 Te esperamos mañana — ' + cabin + ' · Las Nubes';
+    const subject = 'Te esperamos mañana — ' + cabin + ' · Las Nubes';
     const html    = buildCheckinReminderHTML(reservation, meta, config);
     GmailApp.sendEmail(email, subject, '', { htmlBody: html, name: 'Las Nubes', replyTo: REPLY_TO_EMAIL });
     Logger.log('📧 Recordatorio check-in enviado a: ' + email);
