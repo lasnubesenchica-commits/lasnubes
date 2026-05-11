@@ -1968,6 +1968,11 @@
       <span id="ttNightsLabel" style="font-size:13px;color:var(--muted);min-width:80px;text-align:center;"></span>
       <button onclick="changeNights(1)" style="width:34px;height:34px;border-radius:50%;border:1px solid var(--border);background:none;font-size:20px;cursor:pointer;color:var(--text);display:flex;align-items:center;justify-content:center;touch-action:manipulation;">+</button>
     </div>
+    <div id="ttPersonasRow" style="display:none;align-items:center;justify-content:center;gap:14px;margin:4px 0 4px;">
+      <button onclick="changePersonas(-1)" style="width:34px;height:34px;border-radius:50%;border:1px solid var(--border);background:none;font-size:20px;cursor:pointer;color:var(--text);display:flex;align-items:center;justify-content:center;touch-action:manipulation;">−</button>
+      <span id="ttPersonasLabel" style="font-size:13px;color:var(--muted);min-width:90px;text-align:center;"></span>
+      <button onclick="changePersonas(1)" style="width:34px;height:34px;border-radius:50%;border:1px solid var(--border);background:none;font-size:20px;cursor:pointer;color:var(--text);display:flex;align-items:center;justify-content:center;touch-action:manipulation;">+</button>
+    </div>
     <div class="tooltip-price" id="ttPrice"></div>
     <div class="tooltip-cabins" id="ttCabins"></div>
     <button class="tooltip-close" onclick="closeTooltip()">Cerrar</button>
@@ -2215,12 +2220,37 @@ const IS_ADMIN = new URLSearchParams(window.location.search).get('admin') === '1
 let _adminBaseDate = null;
 let _adminNights   = 1;
 let _adminTipo     = 'hospedaje'; // 'hospedaje' | 'pasadia' | 'pasadia-largo'
+let _adminPersonas = 2;           // 2..6 (solo aplica a hospedaje)
 
 // Tarifas planas para pasadias (2 personas, no varian por dia ni cabaña)
 const PASADIA_RATE       = 60;
 const PASADIA_LARGO_RATE = 75;
 const PASADIA_HORARIO       = '12:30 pm – 7:00 pm';
 const PASADIA_LARGO_HORARIO = '9:00 am – 5:00 pm';
+
+// Recargos por persona extra en hospedaje (3-4 personas), por noche.
+// Portal solo tiene 1 cama matrimonial → traer colchon inflable.
+const RECARGO_PERSONA_GRANDE  = 20;  // Puente (lila) y Paseo (verde)
+const RECARGO_PERSONA_PORTAL  = 10;  // Portal (azul)
+const RECARGO_COMBO_GRUPO     = 80;  // 5-6 personas: Puente + Portal contiguas, por noche
+
+// Descripciones de camas por cabaña (para texto 3-4 personas en hospedaje)
+const CABIN_CAMAS = {
+  verde: 'La cabaña cuenta con una cama matrimonial king y una cama auxiliar twin.',
+  azul:  'La cabaña solo cuenta con una cama matrimonial full. Puede traer colchón inflable.',
+  lila:  'La cabaña cuenta con una cama matrimonial queen y una cama auxiliar full.'
+};
+
+function _precioCabinTotal(cabinKey, dateStr, nights, personas) {
+  const base = getTotalPrecio(dateStr, nights);
+  if (personas <= 2) return base;
+  const perPersona = (cabinKey === 'azul') ? RECARGO_PERSONA_PORTAL : RECARGO_PERSONA_GRANDE;
+  return base + perPersona * (personas - 2) * nights;
+}
+
+function _precioComboTotal(dateStr, nights) {
+  return getTotalPrecio(dateStr, nights) + RECARGO_COMBO_GRUPO * nights;
+}
 
 function _addDaysISO(isoStr, n) {
   const d = new Date(isoStr + 'T12:00:00');
@@ -2246,6 +2276,7 @@ function showDetail(dateStr) {
   _adminBaseDate = dateStr;
   _adminNights   = 1;
   _adminTipo     = 'hospedaje';
+  _adminPersonas = 2;
   const d     = new Date(dateStr + 'T12:00:00');
   const label = d.toLocaleDateString('es-PA', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
   document.getElementById('ttDate').textContent = label;
@@ -2259,7 +2290,7 @@ function showDetail(dateStr) {
 
 function setAdminTipo(tipo) {
   _adminTipo = tipo;
-  if (tipo !== 'hospedaje') _adminNights = 1;
+  if (tipo !== 'hospedaje') { _adminNights = 1; _adminPersonas = 2; }
   _refreshTipoTabsUI();
   updateModalPriceAndCabins();
 }
@@ -2281,30 +2312,50 @@ function changeNights(delta) {
   updateModalPriceAndCabins();
 }
 
+function changePersonas(delta) {
+  const newVal = _adminPersonas + delta;
+  if (newVal < 2 || newVal > 6) return;
+  _adminPersonas = newVal;
+  updateModalPriceAndCabins();
+}
+
 function updateModalPriceAndCabins() {
-  const dateStr = _adminBaseDate;
-  const tipo    = _adminTipo;
-  const isHosp  = tipo === 'hospedaje';
-  const nights  = isHosp ? _adminNights : 1;
-  const dates   = isHosp ? getNightDates(dateStr, nights) : [dateStr];
+  const dateStr  = _adminBaseDate;
+  const tipo     = _adminTipo;
+  const isHosp   = tipo === 'hospedaje';
+  const personas = isHosp ? _adminPersonas : 2;
+  const isCombo  = isHosp && personas >= 5;
+  const nights   = isHosp ? _adminNights : 1;
+  const dates    = isHosp ? getNightDates(dateStr, nights) : [dateStr];
 
   // Para pasadia-largo: storage incluye dia-1 (cortesia). Tambien debe estar libre.
   const datesToCheck = (tipo === 'pasadia-largo')
     ? [_addDaysISO(dateStr, -1)].concat(dates)
     : dates;
 
-  const nightsRow = document.getElementById('ttNightsRow');
-  if (nightsRow) nightsRow.style.display = (IS_ADMIN && isHosp) ? 'flex' : 'none';
+  const nightsRow   = document.getElementById('ttNightsRow');
+  const personasRow = document.getElementById('ttPersonasRow');
+  if (nightsRow)   nightsRow.style.display   = (IS_ADMIN && isHosp) ? 'flex' : 'none';
+  if (personasRow) personasRow.style.display = (IS_ADMIN && isHosp) ? 'flex' : 'none';
   if (IS_ADMIN && isHosp) {
     document.getElementById('ttNightsLabel').textContent =
       nights === 1 ? '1 noche' : nights + ' noches';
+    document.getElementById('ttPersonasLabel').textContent =
+      personas + ' personas';
   }
 
   const priceEl = document.getElementById('ttPrice');
   if (!isHosp) {
-    const flat = tipo === 'pasadia' ? PASADIA_RATE : PASADIA_LARGO_RATE;
+    const flat    = tipo === 'pasadia' ? PASADIA_RATE : PASADIA_LARGO_RATE;
     const horario = tipo === 'pasadia' ? PASADIA_HORARIO : PASADIA_LARGO_HORARIO;
     priceEl.textContent = '$' + flat + ' · ' + horario;
+  } else if (isCombo) {
+    const total = _precioComboTotal(dateStr, nights);
+    priceEl.textContent = '$' + total + ' · combo Puente + Portal · hasta 6 personas' + (nights > 1 ? ' · ' + nights + ' noches' : '');
+  } else if (personas >= 3) {
+    const minP = _precioCabinTotal('azul', dateStr, nights, personas); // Portal
+    const maxP = _precioCabinTotal('lila', dateStr, nights, personas); // Puente / Paseo
+    priceEl.textContent = '$' + minP + ' - $' + maxP + ' · ' + personas + ' personas' + (nights > 1 ? ' · ' + nights + ' noches' : '');
   } else if (nights === 1) {
     priceEl.textContent = '$' + getTotalPrecio(dateStr, 1) + ' por noche';
   } else {
@@ -2315,39 +2366,89 @@ function updateModalPriceAndCabins() {
 
   const occMap = {};
   CABINS.forEach(c => { occMap[c.key] = buildOccupied(c.key); });
-  const visibleCabins = activeFilter === 'all' ? CABINS : CABINS.filter(c => c.key === activeFilter);
 
-  const cabinsHtml = visibleCabins.map(c => {
-    const blockedNights = datesToCheck.filter(ds => occMap[c.key].has(ds));
-    const rangeAvail    = blockedNights.length === 0;
-    const firstAvail    = !occMap[c.key].has(dateStr);
+  let cabinsHtml;
+  if (isCombo) {
+    const blockedPuente = datesToCheck.filter(ds => occMap['lila'].has(ds));
+    const blockedPortal = datesToCheck.filter(ds => occMap['azul'].has(ds));
+    const comboAvail    = blockedPuente.length === 0 && blockedPortal.length === 0;
+    const total         = _precioComboTotal(dateStr, nights);
 
-    if (firstAvail || (nights > 1 && rangeAvail) || (!isHosp && rangeAvail)) {
+    if (comboAvail) {
       let copyBtn = '';
       if (IS_ADMIN) {
-        copyBtn = rangeAvail
-          ? '<button onclick="event.stopPropagation();copyPromo(\'' + dateStr + '\',\'' + c.key + '\',' + nights + ',\'' + tipo + '\')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:3px 8px;font-size:12px;cursor:pointer;color:var(--muted);margin-right:6px;touch-action:manipulation;" title="Copiar texto promocional">📋</button>'
-          : '<button disabled style="background:none;border:1px solid var(--border);border-radius:8px;padding:3px 8px;font-size:12px;margin-right:6px;cursor:default;opacity:0.3;">📋</button>';
+        copyBtn = '<button onclick="event.stopPropagation();copyPromo(\'' + dateStr + '\',\'combo\',' + nights + ',\'' + tipo + '\',' + personas + ')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:3px 8px;font-size:12px;cursor:pointer;color:var(--muted);margin-right:6px;touch-action:manipulation;" title="Copiar texto promocional">📋</button>';
       }
-      return '<div class="tooltip-cabin avail">'
-        + '<div class="tc-left" onclick="openWA(\'' + dateStr + '\',\'' + c.key + '\')" style="cursor:pointer;flex:1;">'
-        + '<div class="tc-dot" style="background:var(--' + c.key + ');"></div>'
-        + '<span>' + c.name + '</span>'
+      cabinsHtml = '<div class="tooltip-cabin avail">'
+        + '<div class="tc-left" onclick="openWAcombo(\'' + dateStr + '\')" style="cursor:pointer;flex:1;">'
+        + '<div style="display:flex;gap:2px;margin-right:8px;">'
+        +   '<div class="tc-dot" style="background:var(--lila);"></div>'
+        +   '<div class="tc-dot" style="background:var(--azul);"></div>'
+        + '</div>'
+        + '<span>Puente + Portal <span style="color:var(--muted);font-size:12px;">· $' + total + (nights > 1 ? ' total' : '/noche') + '</span></span>'
         + '</div>'
         + '<div style="display:flex;align-items:center;">'
         + copyBtn
-        + '<span class="tc-badge avail" onclick="openWA(\'' + dateStr + '\',\'' + c.key + '\')" style="cursor:pointer;">Reservar</span>'
+        + '<span class="tc-badge avail" onclick="openWAcombo(\'' + dateStr + '\')" style="cursor:pointer;">Reservar</span>'
         + '</div>'
         + '</div>';
     } else {
-      return '<div class="tooltip-cabin occ">'
-        + '<div class="tc-left"><div class="tc-dot" style="background:var(--border);"></div><span>' + c.name + '</span></div>'
-        + '<span class="tc-badge occ">Ocupada</span>'
+      cabinsHtml = '<div class="tooltip-cabin occ">'
+        + '<div class="tc-left">'
+        + '<div style="display:flex;gap:2px;margin-right:8px;">'
+        +   '<div class="tc-dot" style="background:var(--border);"></div>'
+        +   '<div class="tc-dot" style="background:var(--border);"></div>'
+        + '</div>'
+        + '<span>Puente + Portal</span>'
+        + '</div>'
+        + '<span class="tc-badge occ">No disponible</span>'
         + '</div>';
     }
-  }).join('');
+  } else {
+    const visibleCabins = activeFilter === 'all' ? CABINS : CABINS.filter(c => c.key === activeFilter);
+    cabinsHtml = visibleCabins.map(c => {
+      const blockedNights = datesToCheck.filter(ds => occMap[c.key].has(ds));
+      const rangeAvail    = blockedNights.length === 0;
+      const firstAvail    = !occMap[c.key].has(dateStr);
+      const cabinTotal    = isHosp ? _precioCabinTotal(c.key, dateStr, nights, personas) : null;
+      const priceTag      = (isHosp && personas >= 3)
+        ? ' <span style="color:var(--muted);font-size:12px;">· $' + cabinTotal + (nights > 1 ? ' total' : '/noche') + '</span>'
+        : '';
+
+      if (firstAvail || (nights > 1 && rangeAvail) || (!isHosp && rangeAvail)) {
+        let copyBtn = '';
+        if (IS_ADMIN) {
+          copyBtn = rangeAvail
+            ? '<button onclick="event.stopPropagation();copyPromo(\'' + dateStr + '\',\'' + c.key + '\',' + nights + ',\'' + tipo + '\',' + personas + ')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:3px 8px;font-size:12px;cursor:pointer;color:var(--muted);margin-right:6px;touch-action:manipulation;" title="Copiar texto promocional">📋</button>'
+            : '<button disabled style="background:none;border:1px solid var(--border);border-radius:8px;padding:3px 8px;font-size:12px;margin-right:6px;cursor:default;opacity:0.3;">📋</button>';
+        }
+        return '<div class="tooltip-cabin avail">'
+          + '<div class="tc-left" onclick="openWA(\'' + dateStr + '\',\'' + c.key + '\')" style="cursor:pointer;flex:1;">'
+          + '<div class="tc-dot" style="background:var(--' + c.key + ');"></div>'
+          + '<span>' + c.name + priceTag + '</span>'
+          + '</div>'
+          + '<div style="display:flex;align-items:center;">'
+          + copyBtn
+          + '<span class="tc-badge avail" onclick="openWA(\'' + dateStr + '\',\'' + c.key + '\')" style="cursor:pointer;">Reservar</span>'
+          + '</div>'
+          + '</div>';
+      } else {
+        return '<div class="tooltip-cabin occ">'
+          + '<div class="tc-left"><div class="tc-dot" style="background:var(--border);"></div><span>' + c.name + '</span></div>'
+          + '<span class="tc-badge occ">Ocupada</span>'
+          + '</div>';
+      }
+    }).join('');
+  }
 
   document.getElementById('ttCabins').innerHTML = cabinsHtml;
+}
+
+function openWAcombo(dateStr) {
+  const d     = new Date(dateStr + 'T12:00:00');
+  const label = d.toLocaleDateString('es-PA', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+  const msg   = encodeURIComponent('Hola! Me interesa reservar las cabañas *Puente entre Las Nubes* y *Portal hacia Las Nubes* para grupo, el *' + label + '*. ¿Estan disponibles?');
+  window.open('https://wa.me/' + WHATSAPP_NUMBER + '?text=' + msg, '_blank');
 }
 
 function openWA(dateStr, cabinKey) {
@@ -2363,9 +2464,12 @@ function closeTooltip() {
   _adminNights   = 1;
   _adminBaseDate = null;
   _adminTipo     = 'hospedaje';
+  _adminPersonas = 2;
   const row  = document.getElementById('ttNightsRow');
+  const prow = document.getElementById('ttPersonasRow');
   const tabs = document.getElementById('ttTipoTabs');
   if (row)  row.style.display  = 'none';
+  if (prow) prow.style.display = 'none';
   if (tabs) tabs.style.display = 'none';
 }
 
@@ -2461,11 +2565,13 @@ function formatDayLong(d) {
 }
 
 // ── COPY PROMO ────────────────────────────────────────────────────
-function copyPromo(dateStr, cabinKey, nights, tipo) {
-  nights = nights || 1;
-  tipo   = tipo   || 'hospedaje';
-  const cabin  = CABINS.find(c => c.key === cabinKey);
-  const d      = new Date(dateStr + 'T12:00:00');
+function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
+  nights   = nights   || 1;
+  tipo     = tipo     || 'hospedaje';
+  personas = personas || 2;
+  const isCombo = cabinKey === 'combo';
+  const cabin   = isCombo ? null : CABINS.find(c => c.key === cabinKey);
+  const d       = new Date(dateStr + 'T12:00:00');
   const dCheckout = new Date(d);
   dCheckout.setDate(dCheckout.getDate() + nights);
 
@@ -2480,7 +2586,7 @@ function copyPromo(dateStr, cabinKey, nights, tipo) {
     azul:  'Portal hacia Las Nubes',
     lila:  'Puente entre Las Nubes'
   };
-  const cabinNombre = CABIN_NOMBRES[cabinKey] || cabin.name;
+  const cabinNombre = isCombo ? null : (CABIN_NOMBRES[cabinKey] || cabin.name);
 
   const seccionesComunes =
       '\u{1F373} *Cocina & Alimentación*\n'
@@ -2519,19 +2625,42 @@ function copyPromo(dateStr, cabinKey, nights, tipo) {
       + '\n'
       + seccionesComunes;
   } else {
-    const total = getTotalPrecio(dateStr, nights);
+    // Hospedaje: ajustar tarifa y descripcion de personas
+    let total;
+    if (isCombo) {
+      total = _precioComboTotal(dateStr, nights);
+    } else {
+      total = _precioCabinTotal(cabinKey, dateStr, nights, personas);
+    }
+    const personasLabel = (personas >= 5) ? 'hasta 6 personas' : (personas + ' personas');
     let introLine;
     if (nights === 1) {
       introLine = PROMO_ACTIVE
-        ? 'Tengo la noche del ' + fechaLong + ' disponible para reserva en tarifa promocional de $' + total + '.00 para 2 personas.'
-        : 'Tengo la noche del ' + fechaLong + ' disponible para reserva a $' + total + '.00 para 2 personas.';
+        ? 'Tengo la noche del ' + fechaLong + ' disponible para reserva en tarifa promocional de $' + total + '.00 para ' + personasLabel + '.'
+        : 'Tengo la noche del ' + fechaLong + ' disponible para reserva a $' + total + '.00 para ' + personasLabel + '.';
     } else {
       introLine = PROMO_ACTIVE
-        ? 'Tengo las noches del ' + fechaLong + ' al ' + fechaCheckoutLong + ' disponibles para reserva en tarifa promocional de $' + total + '.00 para 2 personas.'
-        : 'Tengo las noches del ' + fechaLong + ' al ' + fechaCheckoutLong + ' disponibles para reserva a $' + total + '.00 para 2 personas.';
+        ? 'Tengo las noches del ' + fechaLong + ' al ' + fechaCheckoutLong + ' disponibles para reserva en tarifa promocional de $' + total + '.00 para ' + personasLabel + '.'
+        : 'Tengo las noches del ' + fechaLong + ' al ' + fechaCheckoutLong + ' disponibles para reserva a $' + total + '.00 para ' + personasLabel + '.';
     }
+
+    let cabinaBlock;
+    if (isCombo) {
+      cabinaBlock =
+          '\u{1F3E1} Cabañas:\n'
+        + 'Puente entre Las Nubes: 2 camas matrimoniales (queen y full)\n'
+        + 'Portal hacia Las Nubes: 1 cama matrimonial full\n'
+        + 'Las cabañas son contiguas y se comunican. Perfectas para grupos.\n';
+    } else if (personas >= 3) {
+      cabinaBlock =
+          '\u{1F3E1} Cabaña: ' + cabinNombre + '\n'
+        + CABIN_CAMAS[cabinKey] + '\n';
+    } else {
+      cabinaBlock = '\u{1F3E1} Cabaña: ' + cabinNombre + '\n';
+    }
+
     texto = introLine + '\n\n'
-      + '\u{1F3E1} Cabaña: ' + cabinNombre + '\n'
+      + cabinaBlock
       + 'Check in ' + checkinLabel + ': 2:00 pm\n'
       + 'Check out ' + checkoutLabel + ': 11:00 am\n'
       + (nights > 1 ? dias + ' dias, ' + nights + ' noches\n' : '')
