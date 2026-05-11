@@ -2512,7 +2512,7 @@ function copyPromo(dateStr, cabinKey, nights, tipo) {
     const horaIn  = tipo === 'pasadia' ? '12:30 pm'   : '9:00 am';
     const horaOut = tipo === 'pasadia' ? '7:00 pm'    : '5:00 pm';
     const label   = tipo === 'pasadia' ? 'pasadía'    : 'pasadía larga';
-    texto = 'Tengo disponible la ' + label + ' del ' + fechaLong + ' a $' + monto + '.00 para 2 personas.\n\n'
+    texto = 'Tengo disponible el ' + fechaLong + ' en concepto de ' + label + ' en $' + monto + '.00 para 2 personas.\n\n'
       + '\u{1F3E1} Cabaña: ' + cabinNombre + '\n'
       + 'Entrada ' + checkinLabel + ': ' + horaIn + '\n'
       + 'Salida '  + checkinLabel + ': ' + horaOut + '\n'
