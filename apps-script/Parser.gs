@@ -1835,8 +1835,8 @@ function buildGuiaHTML(cabin, tipo) {
   var checkoutBody  = 'Dejar la cocina limpia &middot; Llevarse la basura &middot; Cerrar la puerta y dejar la llave dentro del key box.';
   var steps = {
     verde: [
-      ['&#128273;', 'Acceso', 'Key Box c&#243;digo <strong>0507</strong>. El control blanco del port&#243;n abre la entrada si necesitan salir.'],
-      ['&#9728;', 'Iluminaci&#243;n', 'Energ&#237;a solar &mdash; luces encienden solas al anochecer.<br><strong>Control negro</strong> (c&#243;moda frente al espejo): guirnaldas del ba&#241;o.<br><strong>Control blanco</strong>: l&#225;mparas de cocina y rec&#225;mara.'],
+      ['&#128273;', 'Acceso', 'Key Box c&#243;digo <strong>0507</strong>. Dentro est&#225; la llave para acceder a la caba&#241;a y un control negro con botones verdes para abrir el port&#243;n de la entrada en el caso de que deseen salir del proyecto.'],
+      ['&#9728;', 'Iluminaci&#243;n', 'Energ&#237;a solar &mdash; luces encienden solas al anochecer.<br><strong>Guirnaldas del ba&#241;o</strong>: se encienden solas en la noche y se apagan con el bot&#243;n de encendido/apagado detr&#225;s del panel solar encima de la mesa de madera en el ba&#241;o.<br><strong>Control blanco</strong>: l&#225;mparas de cocina y rec&#225;mara.'],
       ['&#128267;', 'Carga de dispositivos', 'Inversor en la rec&#225;mara para celulares y dispositivos.'],
       ['&#127869;', 'Cocina', 'Guarda todos los alimentos &mdash; no dejar nada expuesto para evitar animalitos.'],
       ['&#9834;', 'Convivencia', 'M&#250;sica y conversaciones a volumen moderado.'],
