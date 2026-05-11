@@ -1843,7 +1843,7 @@ function buildGuiaHTML(cabin, tipo) {
       ['&#10003;', checkoutTitle, checkoutBody]
     ],
     azul: [
-      ['&#128273;', 'Acceso', 'Key Box c&#243;digo <strong>0507</strong> &mdash; luego deslizar la puerta corrediza de metal. El control abre el port&#243;n.'],
+      ['&#128273;', 'Acceso', 'Key Box c&#243;digo <strong>0507</strong>. Dentro est&#225; la llave para acceder a la caba&#241;a y un control negro con botones verdes para abrir el port&#243;n de la entrada en el caso de que deseen salir del proyecto. Con la llave abres el candado y luego deslizas la puerta corrediza de metal.'],
       ['&#9728;', 'Iluminaci&#243;n', 'Luces del comedor y jardines encienden autom&#225;ticamente al anochecer.<br><strong>Control blanco</strong> encima de la mesa verde: luces de rec&#225;mara y ba&#241;o.'],
       ['&#128267;', 'Carga de dispositivos', 'Powerbank en la rec&#225;mara para celulares.'],
       ['&#127869;', 'Cocina', 'Guarda todos los alimentos &mdash; no dejar nada expuesto para evitar animalitos.'],
@@ -1851,8 +1851,8 @@ function buildGuiaHTML(cabin, tipo) {
       ['&#10003;', checkoutTitle, checkoutBody]
     ],
     lila: [
-      ['&#128273;', 'Acceso', 'Key Box c&#243;digo <strong>0507</strong>. El control abre el port&#243;n.'],
-      ['&#9728;', 'Iluminaci&#243;n', 'Energ&#237;a solar &mdash; luces encienden entre 6:30&ndash;7:00 pm.<br><strong>3 controles blancos</strong> (c&#243;moda frente al espejo): rec&#225;mara, terraza y cocina.<br>Guirnaldas del jard&#237;n encienden autom&#225;ticamente.'],
+      ['&#128273;', 'Acceso', 'Key Box c&#243;digo <strong>0507</strong>. Dentro est&#225; la llave para acceder a la caba&#241;a y un control negro con botones verdes para abrir el port&#243;n de la entrada en el caso de que deseen salir del proyecto.'],
+      ['&#9728;', 'Iluminaci&#243;n', 'Energ&#237;a solar &mdash; guirnaldas del columpio encienden entre 6:30&ndash;7:00 pm autom&#225;ticamente.<br><strong>Control blanco</strong> en la c&#243;moda frente al espejo: luces de rec&#225;mara, terraza y cocina.'],
       ['&#128267;', 'Carga de dispositivos', 'Inversor en la rec&#225;mara para celulares y dispositivos.'],
       ['&#127869;', 'Cocina', 'Guarda todos los alimentos &mdash; no dejar nada expuesto para evitar animalitos.'],
       ['&#9834;', 'Convivencia', 'M&#250;sica y conversaciones a volumen moderado.'],
