@@ -1958,6 +1958,11 @@
 <div class="tooltip-overlay" id="tooltipOverlay" onclick="if(event.target===this)closeTooltip()">
   <div class="tooltip-box">
     <div class="tooltip-date" id="ttDate"></div>
+    <div id="ttTipoTabs" style="display:none;justify-content:center;gap:6px;margin:10px 0 4px;flex-wrap:wrap;">
+      <button data-tipo="hospedaje"     onclick="setAdminTipo('hospedaje')"     class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Hospedaje</button>
+      <button data-tipo="pasadia"       onclick="setAdminTipo('pasadia')"       class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Pasadía</button>
+      <button data-tipo="pasadia-largo" onclick="setAdminTipo('pasadia-largo')" class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Pasadía Largo</button>
+    </div>
     <div id="ttNightsRow" style="display:none;align-items:center;justify-content:center;gap:14px;margin:8px 0 4px;">
       <button onclick="changeNights(-1)" style="width:34px;height:34px;border-radius:50%;border:1px solid var(--border);background:none;font-size:20px;cursor:pointer;color:var(--text);display:flex;align-items:center;justify-content:center;touch-action:manipulation;">−</button>
       <span id="ttNightsLabel" style="font-size:13px;color:var(--muted);min-width:80px;text-align:center;"></span>
@@ -2209,6 +2214,19 @@ const IS_ADMIN = new URLSearchParams(window.location.search).get('admin') === '1
 // ── DETAIL POPUP ──────────────────────────────────────────────────
 let _adminBaseDate = null;
 let _adminNights   = 1;
+let _adminTipo     = 'hospedaje'; // 'hospedaje' | 'pasadia' | 'pasadia-largo'
+
+// Tarifas planas para pasadias (2 personas, no varian por dia ni cabaña)
+const PASADIA_RATE       = 60;
+const PASADIA_LARGO_RATE = 75;
+const PASADIA_HORARIO       = '12:30 pm – 7:00 pm';
+const PASADIA_LARGO_HORARIO = '9:00 am – 5:00 pm';
+
+function _addDaysISO(isoStr, n) {
+  const d = new Date(isoStr + 'T12:00:00');
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
 
 function getNightDates(baseDateStr, nights) {
   const dates = [];
@@ -2227,11 +2245,33 @@ function getTotalPrecio(baseDateStr, nights) {
 function showDetail(dateStr) {
   _adminBaseDate = dateStr;
   _adminNights   = 1;
+  _adminTipo     = 'hospedaje';
   const d     = new Date(dateStr + 'T12:00:00');
   const label = d.toLocaleDateString('es-PA', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
   document.getElementById('ttDate').textContent = label;
+  if (IS_ADMIN) {
+    document.getElementById('ttTipoTabs').style.display = 'flex';
+    _refreshTipoTabsUI();
+  }
   updateModalPriceAndCabins();
   document.getElementById('tooltipOverlay').classList.add('open');
+}
+
+function setAdminTipo(tipo) {
+  _adminTipo = tipo;
+  if (tipo !== 'hospedaje') _adminNights = 1;
+  _refreshTipoTabsUI();
+  updateModalPriceAndCabins();
+}
+
+function _refreshTipoTabsUI() {
+  const tabs = document.querySelectorAll('#ttTipoTabs .tt-tab');
+  tabs.forEach(b => {
+    const active = b.dataset.tipo === _adminTipo;
+    b.style.background = active ? 'var(--text)' : 'none';
+    b.style.color      = active ? 'var(--bg)'   : 'var(--text)';
+    b.style.fontWeight = active ? '600' : '400';
+  });
 }
 
 function changeNights(delta) {
@@ -2242,25 +2282,35 @@ function changeNights(delta) {
 }
 
 function updateModalPriceAndCabins() {
-  const nights  = _adminNights;
   const dateStr = _adminBaseDate;
-  const dates   = getNightDates(dateStr, nights);
-  const total   = getTotalPrecio(dateStr, nights);
+  const tipo    = _adminTipo;
+  const isHosp  = tipo === 'hospedaje';
+  const nights  = isHosp ? _adminNights : 1;
+  const dates   = isHosp ? getNightDates(dateStr, nights) : [dateStr];
+
+  // Para pasadia-largo: storage incluye dia-1 (cortesia). Tambien debe estar libre.
+  const datesToCheck = (tipo === 'pasadia-largo')
+    ? [_addDaysISO(dateStr, -1)].concat(dates)
+    : dates;
 
   const nightsRow = document.getElementById('ttNightsRow');
-  if (IS_ADMIN) {
-    nightsRow.style.display = 'flex';
+  if (nightsRow) nightsRow.style.display = (IS_ADMIN && isHosp) ? 'flex' : 'none';
+  if (IS_ADMIN && isHosp) {
     document.getElementById('ttNightsLabel').textContent =
       nights === 1 ? '1 noche' : nights + ' noches';
   }
 
   const priceEl = document.getElementById('ttPrice');
-  if (nights === 1) {
-    priceEl.textContent = '$' + total + ' por noche';
+  if (!isHosp) {
+    const flat = tipo === 'pasadia' ? PASADIA_RATE : PASADIA_LARGO_RATE;
+    const horario = tipo === 'pasadia' ? PASADIA_HORARIO : PASADIA_LARGO_HORARIO;
+    priceEl.textContent = '$' + flat + ' · ' + horario;
+  } else if (nights === 1) {
+    priceEl.textContent = '$' + getTotalPrecio(dateStr, 1) + ' por noche';
   } else {
     const checkoutD = new Date(dateStr + 'T12:00:00');
     checkoutD.setDate(checkoutD.getDate() + nights);
-    priceEl.textContent = '$' + total + ' total · ' + nights + ' noches · check-out ' + formatDayShort(checkoutD);
+    priceEl.textContent = '$' + getTotalPrecio(dateStr, nights) + ' total · ' + nights + ' noches · check-out ' + formatDayShort(checkoutD);
   }
 
   const occMap = {};
@@ -2268,15 +2318,15 @@ function updateModalPriceAndCabins() {
   const visibleCabins = activeFilter === 'all' ? CABINS : CABINS.filter(c => c.key === activeFilter);
 
   const cabinsHtml = visibleCabins.map(c => {
-    const blockedNights = dates.filter(ds => occMap[c.key].has(ds));
+    const blockedNights = datesToCheck.filter(ds => occMap[c.key].has(ds));
     const rangeAvail    = blockedNights.length === 0;
     const firstAvail    = !occMap[c.key].has(dateStr);
 
-    if (firstAvail || (nights > 1 && rangeAvail)) {
+    if (firstAvail || (nights > 1 && rangeAvail) || (!isHosp && rangeAvail)) {
       let copyBtn = '';
       if (IS_ADMIN) {
         copyBtn = rangeAvail
-          ? '<button onclick="event.stopPropagation();copyPromo(\'' + dateStr + '\',\'' + c.key + '\',' + nights + ')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:3px 8px;font-size:12px;cursor:pointer;color:var(--muted);margin-right:6px;touch-action:manipulation;" title="Copiar texto promocional">📋</button>'
+          ? '<button onclick="event.stopPropagation();copyPromo(\'' + dateStr + '\',\'' + c.key + '\',' + nights + ',\'' + tipo + '\')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:3px 8px;font-size:12px;cursor:pointer;color:var(--muted);margin-right:6px;touch-action:manipulation;" title="Copiar texto promocional">📋</button>'
           : '<button disabled style="background:none;border:1px solid var(--border);border-radius:8px;padding:3px 8px;font-size:12px;margin-right:6px;cursor:default;opacity:0.3;">📋</button>';
       }
       return '<div class="tooltip-cabin avail">'
@@ -2312,8 +2362,11 @@ function closeTooltip() {
   document.getElementById('tooltipOverlay').classList.remove('open');
   _adminNights   = 1;
   _adminBaseDate = null;
-  const row = document.getElementById('ttNightsRow');
-  if (row) row.style.display = 'none';
+  _adminTipo     = 'hospedaje';
+  const row  = document.getElementById('ttNightsRow');
+  const tabs = document.getElementById('ttTipoTabs');
+  if (row)  row.style.display  = 'none';
+  if (tabs) tabs.style.display = 'none';
 }
 
 // ── RATES MODAL ───────────────────────────────────────────────────
@@ -2408,14 +2461,14 @@ function formatDayLong(d) {
 }
 
 // ── COPY PROMO ────────────────────────────────────────────────────
-function copyPromo(dateStr, cabinKey, nights) {
+function copyPromo(dateStr, cabinKey, nights, tipo) {
   nights = nights || 1;
+  tipo   = tipo   || 'hospedaje';
   const cabin  = CABINS.find(c => c.key === cabinKey);
   const d      = new Date(dateStr + 'T12:00:00');
   const dCheckout = new Date(d);
   dCheckout.setDate(dCheckout.getDate() + nights);
 
-  const total             = getTotalPrecio(dateStr, nights);
   const checkinLabel      = formatDayShort(d);
   const checkoutLabel     = formatDayShort(dCheckout);
   const fechaLong         = formatDayLong(d);
@@ -2427,25 +2480,10 @@ function copyPromo(dateStr, cabinKey, nights) {
     azul:  'Portal hacia Las Nubes',
     lila:  'Puente entre Las Nubes'
   };
+  const cabinNombre = CABIN_NOMBRES[cabinKey] || cabin.name;
 
-  let introLine;
-  if (nights === 1) {
-    introLine = PROMO_ACTIVE
-      ? 'Tengo la noche del ' + fechaLong + ' disponible para reserva en tarifa promocional de $' + total + '.00 para 2 personas.'
-      : 'Tengo la noche del ' + fechaLong + ' disponible para reserva a $' + total + '.00 para 2 personas.';
-  } else {
-    introLine = PROMO_ACTIVE
-      ? 'Tengo las noches del ' + fechaLong + ' al ' + fechaCheckoutLong + ' disponibles para reserva en tarifa promocional de $' + total + '.00 para 2 personas.'
-      : 'Tengo las noches del ' + fechaLong + ' al ' + fechaCheckoutLong + ' disponibles para reserva a $' + total + '.00 para 2 personas.';
-  }
-
-  const texto = introLine + '\n\n'
-    + '\u{1F3E1} Cabaña: ' + (CABIN_NOMBRES[cabinKey] || cabin.name) + '\n'
-    + 'Check in ' + checkinLabel + ': 2:00 pm\n'
-    + 'Check out ' + checkoutLabel + ': 11:00 am\n'
-    + (nights > 1 ? dias + ' dias, ' + nights + ' noches\n' : '')
-    + '\n'
-    + '\u{1F373} *Cocina & Alimentación*\n'
+  const seccionesComunes =
+      '\u{1F373} *Cocina & Alimentación*\n'
     + '• Cocina completamente equipada para preparar sus alimentos\n'
     + '• Área de BBQ disponible\n'
     + '• Incluye café, azúcar y especias básicas\n'
@@ -2467,6 +2505,39 @@ function copyPromo(dateStr, cabinKey, nights) {
     + '\u{1F4B3} *Para Reservar*\n'
     + '• Pago disponible vía Yappy o ACH\n'
     + '• Quedo atento si desea proceder para compartirle las formas de pago';
+
+  let texto;
+  if (tipo === 'pasadia' || tipo === 'pasadia-largo') {
+    const monto   = tipo === 'pasadia' ? PASADIA_RATE : PASADIA_LARGO_RATE;
+    const horaIn  = tipo === 'pasadia' ? '12:30 pm'   : '9:00 am';
+    const horaOut = tipo === 'pasadia' ? '7:00 pm'    : '5:00 pm';
+    const label   = tipo === 'pasadia' ? 'pasadía'    : 'pasadía larga';
+    texto = 'Tengo disponible la ' + label + ' del ' + fechaLong + ' a $' + monto + '.00 para 2 personas.\n\n'
+      + '\u{1F3E1} Cabaña: ' + cabinNombre + '\n'
+      + 'Entrada ' + checkinLabel + ': ' + horaIn + '\n'
+      + 'Salida '  + checkinLabel + ': ' + horaOut + '\n'
+      + '\n'
+      + seccionesComunes;
+  } else {
+    const total = getTotalPrecio(dateStr, nights);
+    let introLine;
+    if (nights === 1) {
+      introLine = PROMO_ACTIVE
+        ? 'Tengo la noche del ' + fechaLong + ' disponible para reserva en tarifa promocional de $' + total + '.00 para 2 personas.'
+        : 'Tengo la noche del ' + fechaLong + ' disponible para reserva a $' + total + '.00 para 2 personas.';
+    } else {
+      introLine = PROMO_ACTIVE
+        ? 'Tengo las noches del ' + fechaLong + ' al ' + fechaCheckoutLong + ' disponibles para reserva en tarifa promocional de $' + total + '.00 para 2 personas.'
+        : 'Tengo las noches del ' + fechaLong + ' al ' + fechaCheckoutLong + ' disponibles para reserva a $' + total + '.00 para 2 personas.';
+    }
+    texto = introLine + '\n\n'
+      + '\u{1F3E1} Cabaña: ' + cabinNombre + '\n'
+      + 'Check in ' + checkinLabel + ': 2:00 pm\n'
+      + 'Check out ' + checkoutLabel + ': 11:00 am\n'
+      + (nights > 1 ? dias + ' dias, ' + nights + ' noches\n' : '')
+      + '\n'
+      + seccionesComunes;
+  }
 
   navigator.clipboard.writeText(texto).then(() => {
     showCopyToast();
