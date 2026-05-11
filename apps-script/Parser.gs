@@ -2404,8 +2404,9 @@ function sendUpdateEmail(reservation, voucherBase64, voucherMimeType) {
 function getCheckinReminderConfig() {
   const props = PropertiesService.getScriptProperties();
   return {
-    mapsUrl:       props.getProperty('CHECKIN_MAPS_URL')       || 'https://maps.google.com/?q=Buenos+Aires+Chame+Panama',
-    indicaciones:  props.getProperty('CHECKIN_INDICACIONES')   || 'Al entrar a Buenos Aires de Chame, sigue el camino principal. Te enviaremos un pin exacto por WhatsApp el día de tu llegada.',
+    mapsUrl:       props.getProperty('CHECKIN_MAPS_URL')       || 'https://maps.google.com/?q=8.639400,-79.945900',
+    wazeUrl:       props.getProperty('CHECKIN_WAZE_URL')       || 'https://waze.com/ul?ll=8.639400,-79.945900&navigate=yes',
+    indicaciones:  props.getProperty('CHECKIN_INDICACIONES')   || 'Por carretera interamericana, entra por el Pío Pío de Bejuco hacia carretera Bejuco–Sorá. Al llegar al pueblo de Buenos Aires, dobla a la derecha hacia Chicá. La cabaña queda a 100 metros. En Waze busca <strong>"Aires de Chicá"</strong> y te llevará directo al portón verde.',
     accesoExtra:   props.getProperty('CHECKIN_ACCESO_EXTRA')   || ''
   };
 }
@@ -2458,7 +2459,10 @@ function buildCheckinReminderHTML(r, meta, config) {
 '<p style="margin:0 0 6px;font-size:11px;color:#4a7340;text-transform:uppercase;letter-spacing:1px;font-weight:700;">&#128205; Cómo llegar</p>' +
 '<p style="margin:0 0 12px;font-size:14px;color:#3a3530;line-height:1.5;"><strong>Buenos Aires, Chame</strong> &middot; Panamá Oeste</p>' +
 '<p style="margin:0 0 14px;font-size:13px;color:#5a5550;line-height:1.6;">' + config.indicaciones + '</p>' +
-'<a href="' + config.mapsUrl + '" target="_blank" style="display:inline-block;background:#4285f4;color:#ffffff;font-size:13px;font-weight:500;padding:10px 20px;border-radius:8px;text-decoration:none;">&#128506; Ver en Google Maps</a>' +
+'<table cellpadding="0" cellspacing="0"><tr>' +
+'<td style="padding-right:8px;"><a href="' + config.mapsUrl + '" target="_blank" style="display:inline-block;background:#4285f4;color:#ffffff;font-size:13px;font-weight:500;padding:10px 18px;border-radius:8px;text-decoration:none;">&#128506; Google Maps</a></td>' +
+'<td><a href="' + config.wazeUrl + '" target="_blank" style="display:inline-block;background:#33ccff;color:#ffffff;font-size:13px;font-weight:500;padding:10px 18px;border-radius:8px;text-decoration:none;">&#128663; Waze</a></td>' +
+'</tr></table>' +
 '</td></tr></table>' +
 
 // ACCESO
@@ -2478,7 +2482,7 @@ accesoExtraHtml +
 // QUÉ LLEVAR
 '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f8f6;border-radius:12px;border:1px solid #e8e4de;margin-bottom:20px;"><tr><td style="padding:18px 22px;">' +
 '<p style="margin:0 0 8px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;font-weight:700;">&#127890; Te recomendamos llevar</p>' +
-'<p style="margin:0;font-size:13px;color:#5a5550;line-height:1.7;">Linterna o frontal &middot; Ropa de abrigo (refresca de noche) &middot; Repelente &middot; Calzado cómodo &middot; Lo que vayas a cocinar</p>' +
+'<p style="margin:0;font-size:13px;color:#5a5550;line-height:1.7;">Hielo y tus alimentos &middot; Repelente (si eres sensible a los mosquitos) &middot; Ropa de abrigo (refresca de noche) &middot; Calzado cómodo</p>' +
 '</td></tr></table>' +
 
 // EMERGENCIAS
