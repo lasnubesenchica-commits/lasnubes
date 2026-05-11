@@ -2423,7 +2423,7 @@ function buildCheckinReminderHTML(r, meta, config) {
   // Instrucciones de acceso por cabaña (key box code 0507 — mismo que buildGuiaHTML)
   const accesoTexto = 'Key Box código <strong>0507</strong>' +
     (r.cabin === 'azul'  ? ' &middot; luego desliza la puerta corrediza de metal' : '') +
-    '. El control blanco abre el portón.';
+    '.';
   const accesoExtraHtml = config.accesoExtra
     ? '<p style="margin:6px 0 0;font-size:12px;color:#8a8078;line-height:1.5;">' + config.accesoExtra + '</p>'
     : '';
