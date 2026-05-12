@@ -1960,8 +1960,8 @@
     <div class="tooltip-date" id="ttDate"></div>
     <div id="ttTipoTabs" style="display:none;justify-content:center;gap:6px;margin:10px 0 4px;flex-wrap:wrap;">
       <button data-tipo="hospedaje"     onclick="setAdminTipo('hospedaje')"     class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Hospedaje</button>
-      <button data-tipo="pasadia"       onclick="setAdminTipo('pasadia')"       class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Pasadía</button>
-      <button data-tipo="pasadia-largo" onclick="setAdminTipo('pasadia-largo')" class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Pasadía Largo</button>
+      <button data-tipo="pasatarde" onclick="setAdminTipo('pasatarde')" class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Pasatarde</button>
+      <button data-tipo="pasadia"   onclick="setAdminTipo('pasadia')"   class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Pasadía</button>
     </div>
     <div id="ttNightsRow" style="display:none;align-items:center;justify-content:center;gap:14px;margin:8px 0 4px;">
       <button onclick="changeNights(-1)" style="width:34px;height:34px;border-radius:50%;border:1px solid var(--border);background:none;font-size:20px;cursor:pointer;color:var(--text);display:flex;align-items:center;justify-content:center;touch-action:manipulation;">−</button>
@@ -2219,14 +2219,14 @@ const IS_ADMIN = new URLSearchParams(window.location.search).get('admin') === '1
 // ── DETAIL POPUP ──────────────────────────────────────────────────
 let _adminBaseDate = null;
 let _adminNights   = 1;
-let _adminTipo     = 'hospedaje'; // 'hospedaje' | 'pasadia' | 'pasadia-largo'
+let _adminTipo     = 'hospedaje'; // 'hospedaje' | 'pasatarde' | 'pasadia'
 let _adminPersonas = 2;           // 2..6 (solo aplica a hospedaje)
 
-// Tarifas planas para pasadias (2 personas, no varian por dia ni cabaña)
-const PASADIA_RATE       = 60;
-const PASADIA_LARGO_RATE = 75;
-const PASADIA_HORARIO       = '12:30 pm – 7:00 pm';
-const PASADIA_LARGO_HORARIO = '9:00 am – 5:00 pm';
+// Tarifas planas para pasatarde y pasadia (2 personas, no varian por dia ni cabaña)
+const PASATARDE_RATE  = 60;  // pasatarde 12:30-7pm
+const PASADIA_RATE    = 75;  // pasadia 9am-5pm
+const PASATARDE_HORARIO = '12:30 pm – 7:00 pm';
+const PASADIA_HORARIO   = '9:00 am – 5:00 pm';
 
 // Recargos por persona extra en hospedaje (3-4 personas), por noche.
 // Portal solo tiene 1 cama matrimonial → traer colchon inflable.
@@ -2235,9 +2235,9 @@ const RECARGO_PERSONA_PORTAL  = 10;  // Portal (azul)
 const RECARGO_COMBO_5         = 80;  // Hospedaje 5 personas: Puente + Portal contiguas, por noche
 const RECARGO_COMBO_6         = 100; // Hospedaje 6 personas
 
-// Pasadias: recargo por persona desde la 3ra. Largo cobra mas por las horas extra.
-const RECARGO_PASADIA_PERSONA       = 20;  // pasadia (12:30 pm – 7:00 pm)
-const RECARGO_PASADIA_LARGO_PERSONA = 25;  // pasadia-largo (9:00 am – 5:00 pm)
+// Pasatarde / Pasadia: recargo por persona desde la 3ra. Pasadia cobra mas por las horas extra.
+const RECARGO_PASATARDE_PERSONA = 20;  // pasatarde (12:30 pm – 7:00 pm)
+const RECARGO_PASADIA_PERSONA   = 25;  // pasadia (9:00 am – 5:00 pm)
 
 // Descripciones de camas por cabaña (para texto 3-4 personas en hospedaje)
 const CABIN_CAMAS = {
@@ -2259,8 +2259,8 @@ function _precioComboTotal(dateStr, nights, personas) {
 }
 
 function _precioPasadia(tipo, personas) {
-  const base    = tipo === 'pasadia' ? PASADIA_RATE : PASADIA_LARGO_RATE;
-  const recargo = tipo === 'pasadia' ? RECARGO_PASADIA_PERSONA : RECARGO_PASADIA_LARGO_PERSONA;
+  const base    = tipo === 'pasatarde' ? PASATARDE_RATE         : PASADIA_RATE;
+  const recargo = tipo === 'pasatarde' ? RECARGO_PASATARDE_PERSONA : RECARGO_PASADIA_PERSONA;
   if (personas <= 2) return base;
   return base + recargo * (personas - 2);
 }
@@ -2341,8 +2341,8 @@ function updateModalPriceAndCabins() {
   const nights   = isHosp ? _adminNights : 1;
   const dates    = isHosp ? getNightDates(dateStr, nights) : [dateStr];
 
-  // Para pasadia-largo: storage incluye dia-1 (cortesia). Tambien debe estar libre.
-  const datesToCheck = (tipo === 'pasadia-largo')
+  // Para pasadia (9-5): storage incluye dia-1 (cortesia, cabaña lista 9am). Tambien debe estar libre.
+  const datesToCheck = (tipo === 'pasadia')
     ? [_addDaysISO(dateStr, -1)].concat(dates)
     : dates;
 
@@ -2362,7 +2362,7 @@ function updateModalPriceAndCabins() {
   const priceEl = document.getElementById('ttPrice');
   if (!isHosp) {
     const total   = _precioPasadia(tipo, personas);
-    const horario = tipo === 'pasadia' ? PASADIA_HORARIO : PASADIA_LARGO_HORARIO;
+    const horario = tipo === 'pasatarde' ? PASATARDE_HORARIO : PASADIA_HORARIO;
     priceEl.textContent = '$' + total + ' · ' + horario + (personas > 2 ? ' · ' + personas + ' pers' : '');
   } else if (isCombo) {
     const total = _precioComboTotal(dateStr, nights, personas);
@@ -2628,11 +2628,11 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
     + '• Quedo atento si desea proceder para compartirle las formas de pago';
 
   let texto;
-  if (tipo === 'pasadia' || tipo === 'pasadia-largo') {
+  if (tipo === 'pasatarde' || tipo === 'pasadia') {
     const monto    = _precioPasadia(tipo, personas);
-    const horaIn   = tipo === 'pasadia' ? '12:30 pm'   : '9:00 am';
-    const horaOut  = tipo === 'pasadia' ? '7:00 pm'    : '5:00 pm';
-    const label    = tipo === 'pasadia' ? 'pasadía'    : 'pasadía larga';
+    const horaIn   = tipo === 'pasatarde' ? '12:30 pm'   : '9:00 am';
+    const horaOut  = tipo === 'pasatarde' ? '7:00 pm'    : '5:00 pm';
+    const label    = tipo === 'pasatarde' ? 'pasatarde'  : 'pasadía';
     const persLbl  = personas + ' personas';
     texto = 'Tengo disponible el ' + fechaLong + ' en concepto de ' + label + ' en $' + monto + '.00 para ' + persLbl + '.\n\n'
       + '\u{1F3E1} Cabaña: ' + cabinNombre + '\n'
