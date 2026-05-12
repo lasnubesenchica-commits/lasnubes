@@ -2235,8 +2235,9 @@ const RECARGO_PERSONA_PORTAL  = 10;  // Portal (azul)
 const RECARGO_COMBO_5         = 80;  // Hospedaje 5 personas: Puente + Portal contiguas, por noche
 const RECARGO_COMBO_6         = 100; // Hospedaje 6 personas
 
-// Pasadias: +$20 por persona desde la 3ra (aplica a pasadia y pasadia-largo)
-const RECARGO_PASADIA_PERSONA = 20;
+// Pasadias: recargo por persona desde la 3ra. Largo cobra mas por las horas extra.
+const RECARGO_PASADIA_PERSONA       = 20;  // pasadia (12:30 pm – 7:00 pm)
+const RECARGO_PASADIA_LARGO_PERSONA = 25;  // pasadia-largo (9:00 am – 5:00 pm)
 
 // Descripciones de camas por cabaña (para texto 3-4 personas en hospedaje)
 const CABIN_CAMAS = {
@@ -2258,9 +2259,10 @@ function _precioComboTotal(dateStr, nights, personas) {
 }
 
 function _precioPasadia(tipo, personas) {
-  const base = tipo === 'pasadia' ? PASADIA_RATE : PASADIA_LARGO_RATE;
+  const base    = tipo === 'pasadia' ? PASADIA_RATE : PASADIA_LARGO_RATE;
+  const recargo = tipo === 'pasadia' ? RECARGO_PASADIA_PERSONA : RECARGO_PASADIA_LARGO_PERSONA;
   if (personas <= 2) return base;
-  return base + RECARGO_PASADIA_PERSONA * (personas - 2);
+  return base + recargo * (personas - 2);
 }
 
 function _addDaysISO(isoStr, n) {
@@ -2632,10 +2634,8 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
     const horaOut  = tipo === 'pasadia' ? '7:00 pm'    : '5:00 pm';
     const label    = tipo === 'pasadia' ? 'pasadía'    : 'pasadía larga';
     const persLbl  = personas + ' personas';
-    let cabBlock   = '\u{1F3E1} Cabaña: ' + cabinNombre + '\n';
-    if (personas >= 3) cabBlock += CABIN_CAMAS[cabinKey] + '\n';
     texto = 'Tengo disponible el ' + fechaLong + ' en concepto de ' + label + ' en $' + monto + '.00 para ' + persLbl + '.\n\n'
-      + cabBlock
+      + '\u{1F3E1} Cabaña: ' + cabinNombre + '\n'
       + 'Entrada ' + checkinLabel + ': ' + horaIn + '\n'
       + 'Salida '  + checkinLabel + ': ' + horaOut + '\n'
       + '\n'
