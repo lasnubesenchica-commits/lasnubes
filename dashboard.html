@@ -628,7 +628,7 @@
   .azul-block { background: var(--azul-light); color: var(--azul-dark); border-left: 3px solid var(--azul-dark); }
   .lila-block { background: var(--lila-light); color: var(--lila-dark); border-left: 3px solid var(--lila-dark); }
 
-  /* Día de cortesía (bloqueado por early/late/pasadía-extendida pero sin huésped activo) */
+  /* Día de cortesía (bloqueado por early/late/pasadía pero sin huésped activo) */
   .reservation-block.courtesy { font-style: italic; opacity: 0.85; }
   .verde-block.courtesy { background: repeating-linear-gradient(45deg, transparent 0 4px, var(--verde-light) 4px 8px); border-left: 3px dashed var(--verde-dark); }
   .azul-block.courtesy  { background: repeating-linear-gradient(45deg, transparent 0 4px, var(--azul-light)  4px 8px); border-left: 3px dashed var(--azul-dark); }
@@ -2178,8 +2178,8 @@
         <label>Tipo de reserva</label>
         <select id="fTipo" onchange="handleTipoChange()">
           <option value="noche">Noche (2pm → 11am día siguiente)</option>
-          <option value="pasadia">Pasadía (12:30pm → 7pm)</option>
-          <option value="pasadia-largo">Pasadía extendida (9am → 5pm · bloquea noche anterior)</option>
+          <option value="pasatarde">Pasatarde (12:30pm → 7pm)</option>
+          <option value="pasadia">Pasadía (9am → 5pm · bloquea noche anterior)</option>
           <option value="early">Early check-in (9am → 11am día siguiente · bloquea noche anterior)</option>
           <option value="late">Late check-out (2pm → 4pm día siguiente · bloquea noche siguiente)</option>
         </select>
@@ -2651,9 +2651,9 @@ function reservaDisplayDates(r) {
   const tipo = r.tipo || 'noche';
   let displayCheckin = r.checkin;
   let displayCheckout = r.checkout;
-  if (tipo === 'pasadia') {
+  if (tipo === 'pasatarde') {
     displayCheckout = r.checkin;
-  } else if (tipo === 'pasadia-largo') {
+  } else if (tipo === 'pasadia') {
     displayCheckin = _addDaysISO(r.checkin, 1);
     displayCheckout = displayCheckin;
   } else if (tipo === 'early') {
@@ -2667,7 +2667,7 @@ function reservaDisplayDates(r) {
 // Noches reales según tipo (0 para pasadías, 1 para early/late, N para noche)
 function reservaNochesReales(r) {
   const tipo = r.tipo || 'noche';
-  if (tipo === 'pasadia' || tipo === 'pasadia-largo') return 0;
+  if (tipo === 'pasatarde' || tipo === 'pasadia') return 0;
   if (tipo === 'early' || tipo === 'late') return 1;
   if (!r.checkin || !r.checkout) return 0;
   return Math.round((new Date(r.checkout+'T12:00:00') - new Date(r.checkin+'T12:00:00')) / 86400000);
@@ -2676,8 +2676,8 @@ function reservaNochesReales(r) {
 // Label corto de duración para mostrar en tablas/listas
 function reservaDuracionLabel(r) {
   const tipo = r.tipo || 'noche';
+  if (tipo === 'pasatarde')       return 'Pasatarde';
   if (tipo === 'pasadia')         return 'Pasadía';
-  if (tipo === 'pasadia-largo')   return 'Pasadía 9-5';
   const n = reservaNochesReales(r);
   return n + (n === 1 ? ' noche' : ' noches');
 }
@@ -2780,7 +2780,7 @@ function _reservaHoyItemHtml(it) {
   const horaText = (() => {
     if (it.kind === 'salida')  return tipo === 'late'  ? 'sale 4pm' : 'sale 11am';
     if (it.kind === 'entrada') return tipo === 'early' ? 'entra 9am' : 'entra 2pm';
-    if (it.kind === 'pasadia') return tipo === 'pasadia-largo' ? '9am – 5pm' : '12:30pm – 7pm';
+    if (it.kind === 'pasadia') return tipo === 'pasadia' ? '9am – 5pm' : '12:30pm – 7pm';
     return '';
   })();
   const cmt = (r.comentarios || '').toString().trim();
@@ -2830,7 +2830,7 @@ function _waMessage(r, kind) {
     return 'Hola ' + firstName + ', todo listo para recibirles hoy a partir de las 2pm. Cualquier cosa estamos a la orden.' + direccion;
   }
   if (kind === 'pasadia') {
-    const hora = tipo === 'pasadia-largo' ? '9am' : '12:30pm';
+    const hora = tipo === 'pasadia' ? '9am' : '12:30pm';
     return 'Hola ' + firstName + ', todo listo para recibirles hoy a las ' + hora + ' para su pasadía. Quedamos atentos a su llegada.' + direccion;
   }
   return 'Hola ' + firstName + ', espero estén bien.';
@@ -2942,7 +2942,7 @@ function buildDispMonth(firstDay, cabinRes, today) {
     const isPast   = thisDate < today;
     const occ = occupied[dateStr];
 
-    const hasCourtesy = occ && ['early','late','pasadia-largo'].includes(occ.tipo);
+    const hasCourtesy = occ && ['early','late','pasadia'].includes(occ.tipo);
 
     if (occ && occ.checkin === dateStr && !hasCourtesy) {
       const totalNights = Math.round((new Date(occ.checkout + 'T12:00:00') - new Date(occ.checkin + 'T12:00:00')) / 86400000);
@@ -3025,23 +3025,23 @@ function showDispDetail(id) {
   const tipo = r.tipo || 'noche';
   let duracionLabel = '?';
   if (days > 0) {
-    if (tipo === 'pasadia')         duracionLabel = 'Pasadía 12:30pm – 7pm';
-    else if (tipo === 'pasadia-largo') duracionLabel = 'Pasadía 9am – 5pm';
+    if (tipo === 'pasatarde')       duracionLabel = 'Pasatarde 12:30pm – 7pm';
+    else if (tipo === 'pasadia')   duracionLabel = 'Pasadía 9am – 5pm';
     else if (tipo === 'early')      duracionLabel = '1 noche · entra 9am';
     else if (tipo === 'late')       duracionLabel = '1 noche · sale 4pm';
     else                            duracionLabel = days + (days === 1 ? ' noche' : ' noches');
   }
   // Fechas a desplegar (translación visual según tipo, sin tocar storage):
-  // - pasadia: entrada = salida = día del pasadía (= r.checkin)
-  // - pasadia-largo: entrada = salida = día real del pasadía (= r.checkin + 1)
+  // - pasatarde: entrada = salida = día del pasatarde (= r.checkin)
+  // - pasadia: entrada = salida = día real del pasadía (= r.checkin + 1)
   // - early: entrada = día real de llegada (= r.checkin + 1), salida sin tocar
   // - late: salida = día real de check-out (= r.checkout - 1), entrada sin tocar
   // - noche: ambos sin tocar
   let displayCheckin = r.checkin;
   let displayCheckout = r.checkout;
-  if (tipo === 'pasadia') {
+  if (tipo === 'pasatarde') {
     displayCheckout = r.checkin;
-  } else if (tipo === 'pasadia-largo') {
+  } else if (tipo === 'pasadia') {
     displayCheckin = _addDaysISO(r.checkin, 1);
     displayCheckout = displayCheckin;
   } else if (tipo === 'early') {
@@ -3135,14 +3135,14 @@ function showCourtesyDetail(id, dateStr) {
   let reason = 'Día bloqueado.';
   let windowText = '';
 
-  if (tipo === 'pasadia-largo') {
+  if (tipo === 'pasadia') {
     const pasadiaDay = _addDaysISO(r.checkin, 1);
-    reason = 'La pasadía extendida (9am–5pm) del ' + formatDate(pasadiaDay) + ' requiere que la cabaña esté lista a las 9am. Por eso esta noche queda bloqueada para preparación.';
-    windowText = 'La cabaña está físicamente libre, pero no se puede vender la noche (cliente entraría 9am del día siguiente). Una pasadía corta (12:30pm–7pm) técnicamente cabría, aunque obliga a una segunda limpieza nocturna antes del check-in del día siguiente — solo si la limpieza confirma viabilidad.';
+    reason = 'La pasadía (9am–5pm) del ' + formatDate(pasadiaDay) + ' requiere que la cabaña esté lista a las 9am. Por eso esta noche queda bloqueada para preparación.';
+    windowText = 'La cabaña está físicamente libre, pero no se puede vender la noche (cliente entraría 9am del día siguiente). Un pasatarde (12:30pm–7pm) técnicamente cabría, aunque obliga a una segunda limpieza nocturna antes del check-in del día siguiente — solo si la limpieza confirma viabilidad.';
   } else if (tipo === 'early') {
     const arrivalDay = _addDaysISO(r.checkin, 1);
     reason = 'El early check-in del ' + formatDate(arrivalDay) + ' (entra 9am) requiere que la cabaña esté lista a las 9am. Por eso esta noche queda bloqueada para preparación.';
-    windowText = 'La cabaña está físicamente libre, pero no se puede vender la noche sin romper la preparación temprana. Una pasadía corta (12:30pm–7pm) cabe técnicamente pero requiere doble limpieza.';
+    windowText = 'La cabaña está físicamente libre, pero no se puede vender la noche sin romper la preparación temprana. Un pasatarde (12:30pm–7pm) cabe técnicamente pero requiere doble limpieza.';
   } else if (tipo === 'late') {
     const stayCheckin = r.checkin;
     reason = 'El huésped del ' + formatDate(stayCheckin) + ' tiene late check-out hasta las 4pm de hoy. La cabaña queda ocupada toda la mañana y parte de la tarde.';
@@ -3211,7 +3211,7 @@ function renderCalendar() {
       const tc = isToday ? " today" : "";
       if(res) {
         const tipo = res.tipo || 'noche';
-        const hasCourtesy = ['early','late','pasadia-largo'].includes(tipo);
+        const hasCourtesy = ['early','late','pasadia'].includes(tipo);
         const alertStyle = res.alerta ? 'background:#f59e0b!important;color:#fff!important;' : '';
         const tipoPfx = '';
         const tipoTitle = tipo !== 'noche' ? ' ('+TIPO_LABEL[tipo]+')' : '';
@@ -3357,28 +3357,28 @@ function porCobrarDisplay(r) {
   return '$' + pendiente.toFixed(2);
 }
 
-const TIPO_LABEL  = { noche: 'Noche',   pasadia: 'Pasadía',  'pasadia-largo': 'Pasadía 9-5', early: 'Early',  late: 'Late' };
+const TIPO_LABEL  = { noche: 'Noche', pasatarde: 'Pasatarde', pasadia: 'Pasadía', early: 'Early', late: 'Late' };
 const TIPO_COLOR  = {
-  pasadia:         'background:#fff3cd;color:#856404;',
-  'pasadia-largo': 'background:#fed7aa;color:#9a3412;',
+  pasatarde:       'background:#fff3cd;color:#856404;',
+  pasadia:         'background:#fed7aa;color:#9a3412;',
   early:           'background:#e0e7ff;color:#3730a3;',
   late:            'background:#fce7f3;color:#9d174d;'
 };
 
-// Marca para reservas tipo pasadía / pasadía-largo (visual quick-id en calendario)
+// Marca para reservas tipo pasatarde / pasadía (visual quick-id en calendario)
 function pasadiaCommentMarkHtml(occ) {
   if (!occ) return '';
   const t = occ.tipo;
-  if (t !== 'pasadia' && t !== 'pasadia-largo') return '';
+  if (t !== 'pasatarde' && t !== 'pasadia') return '';
   return '<span title="' + (TIPO_LABEL[t] || t) + '" style="position:absolute;top:3px;left:3px;background:#f59e0b;color:#fff;width:14px;height:14px;border-radius:50%;font-size:10px;font-weight:700;line-height:1;display:inline-flex;align-items:center;justify-content:center;z-index:3;box-shadow:0 0 0 1.5px #fff;">P</span>';
 }
 
 // Devuelve 'courtesy' (día bloqueado por cortesía sin huésped activo) o 'main' (día con huésped)
-// Para early/pasadia-largo: el primer día es cortesía; para late: el último (checkout-1) es cortesía.
+// Para early/pasadia (9-5): el primer día es cortesía; para late: el último (checkout-1) es cortesía.
 function getDayKind(r, dateStr) {
   const tipo = r.tipo || 'noche';
-  if (tipo === 'noche' || tipo === 'pasadia') return 'main';
-  if (tipo === 'early' || tipo === 'pasadia-largo') {
+  if (tipo === 'noche' || tipo === 'pasatarde') return 'main';
+  if (tipo === 'early' || tipo === 'pasadia') {
     return dateStr === r.checkin ? 'courtesy' : 'main';
   }
   if (tipo === 'late') {
@@ -3945,8 +3945,8 @@ function applyModalCabinTint(cabin) {
 
 const TIPO_HINTS = {
   noche:           'Una noche estándar. Entrada 2pm, salida 11am día siguiente.',
-  pasadia:         'Pasadía 12:30pm – 7pm. Bloquea solo el día de entrada (la noche siguiente queda libre).',
-  'pasadia-largo': 'Pasadía extendida 9am – 5pm. Bloquea la noche anterior (cabaña debe estar lista 9am) y el día del pasadía. La noche del mismo día queda libre.',
+  pasatarde:       'Pasatarde 12:30pm – 7pm. Bloquea solo el día de entrada (la noche siguiente queda libre).',
+  pasadia:         'Pasadía 9am – 5pm. Bloquea la noche anterior (cabaña debe estar lista 9am) y el día del pasadía. La noche del mismo día queda libre.',
   early:           'Entrada 9am día de llegada. Bloquea automáticamente la noche anterior. Sale 11am día siguiente.',
   late:            'Salida 4pm. Bloquea automáticamente la noche siguiente al check-out estándar. Entrada 2pm día normal.'
 };
@@ -3975,8 +3975,8 @@ function _formFromStored(r) {
   const tipo = r.tipo || 'noche';
   const ci = r.checkin;
   const co = r.checkout;
-  if (tipo === 'pasadia')         return { entrada: ci, salida: ci }; // 1 día
-  if (tipo === 'pasadia-largo')   { const e = _addDaysISO(ci, 1); return { entrada: e, salida: e }; }
+  if (tipo === 'pasatarde')       return { entrada: ci, salida: ci }; // 1 día
+  if (tipo === 'pasadia')         { const e = _addDaysISO(ci, 1); return { entrada: e, salida: e }; }
   if (tipo === 'early')           return { entrada: _addDaysISO(ci, 1), salida: co };
   if (tipo === 'late')            return { entrada: ci, salida: _addDaysISO(co, -1) };
   return { entrada: ci, salida: co };
@@ -3984,18 +3984,18 @@ function _formFromStored(r) {
 
 // Convierte fechas del FORM (día real) al rango de bloqueo a guardar en hoja.
 function _storedFromForm(formEntrada, formSalida, tipo) {
-  if (tipo === 'pasadia')         return { checkin: formEntrada, checkout: _addDaysISO(formEntrada, 1) };
-  if (tipo === 'pasadia-largo')   return { checkin: _addDaysISO(formEntrada, -1), checkout: _addDaysISO(formEntrada, 1) };
+  if (tipo === 'pasatarde')       return { checkin: formEntrada, checkout: _addDaysISO(formEntrada, 1) };
+  if (tipo === 'pasadia')         return { checkin: _addDaysISO(formEntrada, -1), checkout: _addDaysISO(formEntrada, 1) };
   if (tipo === 'early')           return { checkin: _addDaysISO(formEntrada, -1), checkout: formSalida };
   if (tipo === 'late')            return { checkin: formEntrada, checkout: _addDaysISO(formSalida, 1) };
   return { checkin: formEntrada, checkout: formSalida };
 }
 
-// Bloquea o libera el campo Salida según el tipo (pasadías son single-day).
+// Bloquea o libera el campo Salida según el tipo (pasatarde y pasadía son single-day).
 function _updateSalidaLock(tipo) {
   const cout = document.getElementById('fCheckout');
   if (!cout) return;
-  const lock = (tipo === 'pasadia' || tipo === 'pasadia-largo');
+  const lock = (tipo === 'pasatarde' || tipo === 'pasadia');
   cout.disabled = lock;
   cout.style.opacity = lock ? '0.55' : '';
   cout.style.cursor  = lock ? 'not-allowed' : '';
@@ -4027,7 +4027,7 @@ function handleTipoChange() {
   // asumir que el día real era el ÚLTIMO del rango (patrón típico de pasadía vieja).
   let anchor = ciInp.value;
   if (prevTipo === 'noche' && nights >= 2 &&
-      (tipo === 'pasadia' || tipo === 'pasadia-largo')) {
+      (tipo === 'pasatarde' || tipo === 'pasadia')) {
     anchor = _addDaysISO(ciInp.value, nights - 1);
   }
 
@@ -4038,7 +4038,7 @@ function handleTipoChange() {
     if (prevTipo !== 'noche' || anchor !== ciInp.value || !coInp.value || coInp.value <= anchor) {
       coInp.value = _addDaysISO(anchor, 1);
     }
-  } else if (tipo === 'pasadia' || tipo === 'pasadia-largo') {
+  } else if (tipo === 'pasatarde' || tipo === 'pasadia') {
     ciInp.value = anchor;
     coInp.value = anchor; // single-day, salida = entrada
   } else if (tipo === 'early' || tipo === 'late') {
@@ -4046,8 +4046,8 @@ function handleTipoChange() {
     coInp.value = _addDaysISO(anchor, 1);
   }
 
-  // Default monto para pasadías
-  if (tipo === 'pasadia' || tipo === 'pasadia-largo') {
+  // Default monto para pasatarde y pasadía
+  if (tipo === 'pasatarde' || tipo === 'pasadia') {
     amountInp.value = '75.00';
   }
   _updateSalidaLock(tipo);
@@ -4059,9 +4059,9 @@ function autoCheckout() {
   const cout = document.getElementById('fCheckout');
   if (!cin) return;
   const tipo = (document.getElementById('fTipo') || {}).value || 'noche';
-  // Form en real-day: para pasadía/pasadía-largo salida = entrada (single-day);
+  // Form en real-day: para pasatarde/pasadía salida = entrada (single-day);
   // para early/late delta fijo de 1 día; para noche, autocompletar 1 noche si vacío/inválido.
-  if (tipo === 'pasadia' || tipo === 'pasadia-largo') {
+  if (tipo === 'pasatarde' || tipo === 'pasadia') {
     cout.value = cin;
   } else if (tipo === 'early' || tipo === 'late') {
     cout.value = _addDaysISO(cin, 1);
@@ -4529,8 +4529,8 @@ async function saveReservation() {
   const tipoForm = (document.getElementById('fTipo') || {}).value || 'noche';
   const formCheckin  = document.getElementById('fCheckin').value;
   let   formCheckout = document.getElementById('fCheckout').value;
-  // Para pasadía/pasadía-largo, salida debe igual a entrada
-  if (tipoForm === 'pasadia' || tipoForm === 'pasadia-largo') formCheckout = formCheckin;
+  // Para pasatarde/pasadía, salida debe igual a entrada
+  if (tipoForm === 'pasatarde' || tipoForm === 'pasadia') formCheckout = formCheckin;
   const _stored = _storedFromForm(formCheckin, formCheckout, tipoForm);
   const checkin  = _stored.checkin;
   const checkout = _stored.checkout;
@@ -4546,7 +4546,7 @@ async function saveReservation() {
     }
   }
 
-  // ── Guard de conversión legacy: al cambiar de noche a pasadía/early/late, ────
+  // ── Guard de conversión legacy: al cambiar de noche a pasatarde/pasadía/early/late, ────
   // detectar reserva duplicada en noche adyacente (mismo nombre = bloqueo legacy
   // que se debe eliminar al consolidar).
   const tipoActual = tipoForm;
@@ -4557,10 +4557,10 @@ async function saveReservation() {
     if (prevTipoSaved === 'noche' && prevRes) {
       // En modo real-day, las fechas del form representan el día real del huésped.
       // Para detectar duplicada legacy:
-      //  - pasadía/pasadía-largo/early: noche anterior = formCheckin - 1
+      //  - pasatarde/pasadía/early: noche anterior = formCheckin - 1
       //  - late: noche posterior = formCheckout
       let adjacentDate = null;
-      if (tipoActual === 'pasadia' || tipoActual === 'pasadia-largo' || tipoActual === 'early') {
+      if (tipoActual === 'pasatarde' || tipoActual === 'pasadia' || tipoActual === 'early') {
         adjacentDate = _addDaysISO(formCheckin, -1);
       } else if (tipoActual === 'late') {
         adjacentDate = formCheckout;
@@ -5285,8 +5285,8 @@ function renderContabilidad() {
   document.getElementById('statIngresos').textContent = `$${totalIn.toFixed(2)}`;
 
   // Breakdown por tipo entre las directas (para mostrar mix en el contador)
-  const tipoStats = { noche:0, pasadia:0, 'pasadia-largo':0, early:0, late:0 };
-  let tipoIngresos = { noche:0, pasadia:0, 'pasadia-largo':0, early:0, late:0 };
+  const tipoStats = { noche:0, pasatarde:0, pasadia:0, early:0, late:0 };
+  let tipoIngresos = { noche:0, pasatarde:0, pasadia:0, early:0, late:0 };
   if (origenFilter !== 'Airbnb') {
     filteredDirectas.forEach(r => {
       const t = r.tipo || 'noche';
@@ -5296,10 +5296,10 @@ function renderContabilidad() {
       }
     });
   }
-  const tipoLabels = { noche:'noche', pasadia:'pasadía', 'pasadia-largo':'pasadía 9-5', early:'early', late:'late' };
+  const tipoLabels = { noche:'noche', pasatarde:'pasatarde', pasadia:'pasadía', early:'early', late:'late' };
   const breakdownParts = Object.keys(tipoStats)
     .filter(k => tipoStats[k] > 0)
-    .map(k => tipoStats[k] + ' ' + tipoLabels[k] + (tipoStats[k]>1 && k.startsWith('pasadia') ? 's' : (tipoStats[k]>1 && k==='noche' ? 's' : '')));
+    .map(k => tipoStats[k] + ' ' + tipoLabels[k] + (tipoStats[k]>1 && (k === 'pasadia' || k === 'pasatarde' || k === 'noche') ? 's' : ''));
 
   const totalCount = (origenFilter !== 'Directa' ? filteredPagos.length : 0)
                    + (origenFilter !== 'Airbnb'  ? filteredDirectas.length : 0);
@@ -5376,8 +5376,8 @@ function renderContabilidad() {
       mixCard.style.display = '';
       const tipoMeta = {
         noche:           { label:'Noches',           color:'#6a9e62' },
-        pasadia:         { label:'Pasadía 12:30-7',  color:'#f59e0b' },
-        'pasadia-largo': { label:'Pasadía 9-5',      color:'#ea580c' },
+        pasatarde:       { label:'Pasatarde',  color:'#f59e0b' },
+        pasadia:         { label:'Pasadía',    color:'#ea580c' },
         early:           { label:'Early check-in',   color:'#6366f1' },
         late:            { label:'Late check-out',   color:'#ec4899' }
       };
@@ -5460,8 +5460,8 @@ function renderContabilidad() {
         const origenDot = `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--azul-dark);margin-right:3px;"></span>`;
         const tipoLbl = (() => {
           const t = r.tipo;
-          if (t === 'pasadia')         return { txt:'Pasadía',     bg:'#fff3cd', fg:'#856404' };
-          if (t === 'pasadia-largo')   return { txt:'Pasadía 9-5', bg:'#fed7aa', fg:'#9a3412' };
+          if (t === 'pasatarde')       return { txt:'Pasatarde', bg:'#fff3cd', fg:'#856404' };
+          if (t === 'pasadia')         return { txt:'Pasadía',   bg:'#fed7aa', fg:'#9a3412' };
           if (t === 'early')           return { txt:'Early',       bg:'#e0e7ff', fg:'#3730a3' };
           if (t === 'late')            return { txt:'Late',        bg:'#fce7f3', fg:'#9d174d' };
           return null;
@@ -6918,8 +6918,8 @@ function renderOcupacion() {
   // Stats por reserva en el período: separa días por categoría según tipo.
   // Retorna { totalDias, diasNoche, diasPasadia, diasCortesia, pasadiaCount }
   // - noche: todos los días son diasNoche.
-  // - pasadia: el día stored.checkin es 1 día pasadía.
-  // - pasadia-largo: stored.checkin = cortesía, stored.checkin+1 = pasadía.
+  // - pasatarde: el día stored.checkin es 1 día pasatarde.
+  // - pasadia: stored.checkin = cortesía, stored.checkin+1 = pasadía.
   // - early: stored.checkin = cortesía, stored.checkin+1 = noche real.
   // - late: stored.checkin = noche real, stored.checkin+1 = cortesía.
   function reservationStats(r, a, bExcl) {
@@ -6929,9 +6929,9 @@ function renderOcupacion() {
     const inPeriod = (d) => d >= a && d < bExcl;
     if (tipo === 'noche') {
       out.diasNoche = nightsInPeriod(r, a, bExcl);
-    } else if (tipo === 'pasadia') {
+    } else if (tipo === 'pasatarde') {
       if (inPeriod(r.checkin)) { out.diasPasadia = 1; out.pasadiaCount = 1; }
-    } else if (tipo === 'pasadia-largo') {
+    } else if (tipo === 'pasadia') {
       const cortesiaDay = r.checkin;
       const mainDay = (() => { const d = new Date(r.checkin + 'T12:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); })();
       if (inPeriod(cortesiaDay)) out.diasCortesia++;
@@ -7066,7 +7066,7 @@ function renderOcupacion() {
       periodRes.forEach(r => {
         const t = r.tipo || 'noche';
         const a = parseFloat(r.neto) || parseFloat(r.amount) || 0;
-        if (t === 'pasadia' || t === 'pasadia-largo') p += a; else n += a;
+        if (t === 'pasatarde' || t === 'pasadia') p += a; else n += a;
       });
       return { revNoche: n, revPasadia: p };
     })();
@@ -7108,12 +7108,12 @@ function renderOcupacion() {
       // Filtrar reservas pasadía cuyo "main day" cae en el período
       const pasadiaResEnPeriodo = periodRes.filter(r => {
         const t = r.tipo;
-        if (t !== 'pasadia' && t !== 'pasadia-largo') return false;
-        const mainDay = (t === 'pasadia') ? r.checkin : (() => { const d = new Date(r.checkin + 'T12:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); })();
+        if (t !== 'pasatarde' && t !== 'pasadia') return false;
+        const mainDay = (t === 'pasatarde') ? r.checkin : (() => { const d = new Date(r.checkin + 'T12:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); })();
         return mainDay >= fromStr && mainDay <= toStr;
       });
-      const pCorta  = pasadiaResEnPeriodo.filter(r => r.tipo === 'pasadia');
-      const pLarga  = pasadiaResEnPeriodo.filter(r => r.tipo === 'pasadia-largo');
+      const pCorta  = pasadiaResEnPeriodo.filter(r => r.tipo === 'pasatarde');
+      const pLarga  = pasadiaResEnPeriodo.filter(r => r.tipo === 'pasadia');
       const sumRev  = arr => arr.reduce((s,r) => s + (parseFloat(r.neto)||parseFloat(r.amount)||0), 0);
       const fmtM    = v => '$' + v.toLocaleString('es-PA',{minimumFractionDigits:0,maximumFractionDigits:0});
       const totalP  = pasadiaResEnPeriodo.length;
@@ -7134,12 +7134,12 @@ function renderOcupacion() {
             <div style="font-size:12px;color:var(--text-muted);">${fmtM(totalR)} ingresos</div>
           </div>
           <div style="padding:12px;background:var(--bg);border-radius:10px;border:1px solid var(--border);">
-            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Pasadía corta · 12:30–7pm</div>
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Pasatarde · 12:30–7pm</div>
             <div style="font-size:18px;font-weight:600;color:var(--text);">${pCorta.length}</div>
             <div style="font-size:12px;color:var(--text-muted);">${fmtM(sumRev(pCorta))}</div>
           </div>
           <div style="padding:12px;background:var(--bg);border-radius:10px;border:1px solid var(--border);">
-            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Pasadía extendida · 9–5</div>
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Pasadía · 9–5</div>
             <div style="font-size:18px;font-weight:600;color:var(--text);">${pLarga.length}</div>
             <div style="font-size:12px;color:var(--text-muted);">${fmtM(sumRev(pLarga))}</div>
           </div>

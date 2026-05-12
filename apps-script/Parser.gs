@@ -1635,6 +1635,7 @@ function migrarColumnasV3() {
 }
 
 // V4: agrega columna Tipo (noche | pasadia | pasadia-largo | early | late) en col 25.
+// V5 (rename): pasadia (12:30-7pm) -> pasatarde, pasadia-largo (9am-5pm) -> pasadia. Ver migrarTiposV5.
 // Default 'noche' SOLO en celdas vacías (preserva valores ya escritos por saveReservation).
 function migrarColumnasV4() {
   const sheet = getOrCreateSheet();
@@ -1667,6 +1668,39 @@ function migrarColumnasV4() {
     return;
   }
   Logger.log('✓ Migración V4 — header Tipo agregado, sin filas existentes');
+}
+
+// V5: renombrar tipos de reserva para coherencia semántica.
+//   pasadia (12:30-7pm)  -> pasatarde
+//   pasadia-largo (9-5)  -> pasadia
+// Idempotente: usa Script Property MIGRATION_V5_TIPO_RENAME='done'.
+function migrarTiposV5() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('MIGRATION_V5_TIPO_RENAME') === 'done') {
+    Logger.log('✓ V5 ya aplicada, skip');
+    return { skipped: true };
+  }
+  const sheet = getOrCreateSheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    props.setProperty('MIGRATION_V5_TIPO_RENAME', 'done');
+    Logger.log('✓ V5 — sin filas que migrar');
+    return { migrated: 0 };
+  }
+  const TIPO_COL = 25;
+  const range = sheet.getRange(2, TIPO_COL, lastRow - 1, 1);
+  const values = range.getValues();
+  let count = 0;
+  const out = values.map(row => {
+    const t = (row[0] || '').toString();
+    if (t === 'pasadia-largo') { count++; return ['pasadia']; }
+    if (t === 'pasadia')       { count++; return ['pasatarde']; }
+    return row;
+  });
+  range.setValues(out);
+  props.setProperty('MIGRATION_V5_TIPO_RENAME', 'done');
+  Logger.log('✓ V5 — ' + count + ' filas migradas (pasadia→pasatarde, pasadia-largo→pasadia)');
+  return { migrated: count };
 }
 
 function limpiarDuplicadosAirbnb() {
@@ -1722,7 +1756,7 @@ function nightCount(checkin, checkout) {
   return Math.round((b - a) / (1000 * 60 * 60 * 24));
 }
 
-// Devuelve metadata visual del email según tipo de reserva (noche/pasadia/pasadia-largo/early/late).
+// Devuelve metadata visual del email según tipo de reserva (noche/pasatarde/pasadia/early/late).
 // Las fechas/horas mostradas reflejan la realidad del huésped (no el rango bloqueado en hoja).
 function tipoEmailMeta(r) {
   const tipo = (r.tipo || 'noche').toString();
@@ -1739,13 +1773,13 @@ function tipoEmailMeta(r) {
   let checkoutHora    = 'antes de las 11:00 am';
   let estanciaLabel   = 'Noches';
   let estanciaValue;
-  if (tipo === 'pasadia') {
+  if (tipo === 'pasatarde') {
     displayCheckout = checkinStored;
     checkinHora     = 'a partir de las 12:30 pm';
     checkoutHora    = 'salida 7:00 pm';
     estanciaLabel   = 'Estancia';
-    estanciaValue   = 'Pasadía';
-  } else if (tipo === 'pasadia-largo') {
+    estanciaValue   = 'Pasatarde';
+  } else if (tipo === 'pasadia') {
     displayCheckin  = addDaysISO(checkinStored, 1);
     displayCheckout = displayCheckin;
     checkinHora     = 'a partir de las 9:00 am';
@@ -1773,7 +1807,7 @@ function tipoEmailMeta(r) {
     checkoutHora,
     estanciaLabel,
     estanciaValue,
-    isPasadia: tipo === 'pasadia' || tipo === 'pasadia-largo'
+    isPasadia: tipo === 'pasatarde' || tipo === 'pasadia'
   };
 }
 
@@ -1826,8 +1860,8 @@ function buildGuiaHTML(cabin, tipo) {
   tipo = tipo || 'noche';
   var checkoutTitleMap = {
     'noche':         'Check-out &middot; 11:00 am',
-    'pasadia':       'Salida &middot; 7:00 pm',
-    'pasadia-largo': 'Salida &middot; 5:00 pm',
+    'pasatarde':     'Salida &middot; 7:00 pm',
+    'pasadia':       'Salida &middot; 5:00 pm',
     'early':         'Check-out &middot; 11:00 am',
     'late':          'Check-out &middot; 4:00 pm'
   };
@@ -2131,10 +2165,10 @@ function generateReceiptPDF(r) {
 
   // Texto de estancia según tipo
   let estanciaText;
-  if (meta.tipo === 'pasadia-largo') {
+  if (meta.tipo === 'pasadia') {
     estanciaText = meta.checkinFmt + ' · Pasadía 9am – 5pm';
-  } else if (meta.tipo === 'pasadia') {
-    estanciaText = meta.checkinFmt + ' · Pasadía 12:30pm – 7pm';
+  } else if (meta.tipo === 'pasatarde') {
+    estanciaText = meta.checkinFmt + ' · Pasatarde 12:30pm – 7pm';
   } else if (meta.tipo === 'early') {
     estanciaText = meta.checkinFmt + ' → ' + meta.checkoutFmt + ' · 1 noche (entra 9am)';
   } else if (meta.tipo === 'late') {
