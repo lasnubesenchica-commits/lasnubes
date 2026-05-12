@@ -2232,7 +2232,11 @@ const PASADIA_LARGO_HORARIO = '9:00 am – 5:00 pm';
 // Portal solo tiene 1 cama matrimonial → traer colchon inflable.
 const RECARGO_PERSONA_GRANDE  = 20;  // Puente (lila) y Paseo (verde)
 const RECARGO_PERSONA_PORTAL  = 10;  // Portal (azul)
-const RECARGO_COMBO_GRUPO     = 80;  // 5-6 personas: Puente + Portal contiguas, por noche
+const RECARGO_COMBO_5         = 80;  // Hospedaje 5 personas: Puente + Portal contiguas, por noche
+const RECARGO_COMBO_6         = 100; // Hospedaje 6 personas
+
+// Pasadias: +$20 por persona desde la 3ra (aplica a pasadia y pasadia-largo)
+const RECARGO_PASADIA_PERSONA = 20;
 
 // Descripciones de camas por cabaña (para texto 3-4 personas en hospedaje)
 const CABIN_CAMAS = {
@@ -2248,8 +2252,15 @@ function _precioCabinTotal(cabinKey, dateStr, nights, personas) {
   return base + perPersona * (personas - 2) * nights;
 }
 
-function _precioComboTotal(dateStr, nights) {
-  return getTotalPrecio(dateStr, nights) + RECARGO_COMBO_GRUPO * nights;
+function _precioComboTotal(dateStr, nights, personas) {
+  const recargo = (personas >= 6) ? RECARGO_COMBO_6 : RECARGO_COMBO_5;
+  return getTotalPrecio(dateStr, nights) + recargo * nights;
+}
+
+function _precioPasadia(tipo, personas) {
+  const base = tipo === 'pasadia' ? PASADIA_RATE : PASADIA_LARGO_RATE;
+  if (personas <= 2) return base;
+  return base + RECARGO_PASADIA_PERSONA * (personas - 2);
 }
 
 function _addDaysISO(isoStr, n) {
@@ -2290,7 +2301,7 @@ function showDetail(dateStr) {
 
 function setAdminTipo(tipo) {
   _adminTipo = tipo;
-  if (tipo !== 'hospedaje') { _adminNights = 1; _adminPersonas = 2; }
+  if (tipo !== 'hospedaje') _adminNights = 1;
   _refreshTipoTabsUI();
   updateModalPriceAndCabins();
 }
@@ -2323,7 +2334,7 @@ function updateModalPriceAndCabins() {
   const dateStr  = _adminBaseDate;
   const tipo     = _adminTipo;
   const isHosp   = tipo === 'hospedaje';
-  const personas = isHosp ? _adminPersonas : 2;
+  const personas = _adminPersonas;
   const isCombo  = isHosp && personas >= 5;
   const nights   = isHosp ? _adminNights : 1;
   const dates    = isHosp ? getNightDates(dateStr, nights) : [dateStr];
@@ -2336,22 +2347,24 @@ function updateModalPriceAndCabins() {
   const nightsRow   = document.getElementById('ttNightsRow');
   const personasRow = document.getElementById('ttPersonasRow');
   if (nightsRow)   nightsRow.style.display   = (IS_ADMIN && isHosp) ? 'flex' : 'none';
-  if (personasRow) personasRow.style.display = (IS_ADMIN && isHosp) ? 'flex' : 'none';
-  if (IS_ADMIN && isHosp) {
-    document.getElementById('ttNightsLabel').textContent =
-      nights === 1 ? '1 noche' : nights + ' noches';
+  if (personasRow) personasRow.style.display = IS_ADMIN ? 'flex' : 'none';
+  if (IS_ADMIN) {
+    if (isHosp) {
+      document.getElementById('ttNightsLabel').textContent =
+        nights === 1 ? '1 noche' : nights + ' noches';
+    }
     document.getElementById('ttPersonasLabel').textContent =
       personas + ' personas';
   }
 
   const priceEl = document.getElementById('ttPrice');
   if (!isHosp) {
-    const flat    = tipo === 'pasadia' ? PASADIA_RATE : PASADIA_LARGO_RATE;
+    const total   = _precioPasadia(tipo, personas);
     const horario = tipo === 'pasadia' ? PASADIA_HORARIO : PASADIA_LARGO_HORARIO;
-    priceEl.textContent = '$' + flat + ' · ' + horario;
+    priceEl.textContent = '$' + total + ' · ' + horario + (personas > 2 ? ' · ' + personas + ' pers' : '');
   } else if (isCombo) {
-    const total = _precioComboTotal(dateStr, nights);
-    priceEl.textContent = '$' + total + ' · combo Puente + Portal · hasta 6 personas' + (nights > 1 ? ' · ' + nights + ' noches' : '');
+    const total = _precioComboTotal(dateStr, nights, personas);
+    priceEl.textContent = '$' + total + ' · combo Puente + Portal · ' + personas + ' personas' + (nights > 1 ? ' · ' + nights + ' noches' : '');
   } else if (personas >= 3) {
     const minP = _precioCabinTotal('azul', dateStr, nights, personas); // Portal
     const maxP = _precioCabinTotal('lila', dateStr, nights, personas); // Puente / Paseo
@@ -2372,7 +2385,7 @@ function updateModalPriceAndCabins() {
     const blockedPuente = datesToCheck.filter(ds => occMap['lila'].has(ds));
     const blockedPortal = datesToCheck.filter(ds => occMap['azul'].has(ds));
     const comboAvail    = blockedPuente.length === 0 && blockedPortal.length === 0;
-    const total         = _precioComboTotal(dateStr, nights);
+    const total         = _precioComboTotal(dateStr, nights, personas);
 
     if (comboAvail) {
       let copyBtn = '';
@@ -2614,12 +2627,15 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
 
   let texto;
   if (tipo === 'pasadia' || tipo === 'pasadia-largo') {
-    const monto   = tipo === 'pasadia' ? PASADIA_RATE : PASADIA_LARGO_RATE;
-    const horaIn  = tipo === 'pasadia' ? '12:30 pm'   : '9:00 am';
-    const horaOut = tipo === 'pasadia' ? '7:00 pm'    : '5:00 pm';
-    const label   = tipo === 'pasadia' ? 'pasadía'    : 'pasadía larga';
-    texto = 'Tengo disponible el ' + fechaLong + ' en concepto de ' + label + ' en $' + monto + '.00 para 2 personas.\n\n'
-      + '\u{1F3E1} Cabaña: ' + cabinNombre + '\n'
+    const monto    = _precioPasadia(tipo, personas);
+    const horaIn   = tipo === 'pasadia' ? '12:30 pm'   : '9:00 am';
+    const horaOut  = tipo === 'pasadia' ? '7:00 pm'    : '5:00 pm';
+    const label    = tipo === 'pasadia' ? 'pasadía'    : 'pasadía larga';
+    const persLbl  = personas + ' personas';
+    let cabBlock   = '\u{1F3E1} Cabaña: ' + cabinNombre + '\n';
+    if (personas >= 3) cabBlock += CABIN_CAMAS[cabinKey] + '\n';
+    texto = 'Tengo disponible el ' + fechaLong + ' en concepto de ' + label + ' en $' + monto + '.00 para ' + persLbl + '.\n\n'
+      + cabBlock
       + 'Entrada ' + checkinLabel + ': ' + horaIn + '\n'
       + 'Salida '  + checkinLabel + ': ' + horaOut + '\n'
       + '\n'
@@ -2628,11 +2644,11 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
     // Hospedaje: ajustar tarifa y descripcion de personas
     let total;
     if (isCombo) {
-      total = _precioComboTotal(dateStr, nights);
+      total = _precioComboTotal(dateStr, nights, personas);
     } else {
       total = _precioCabinTotal(cabinKey, dateStr, nights, personas);
     }
-    const personasLabel = (personas >= 5) ? 'hasta 6 personas' : (personas + ' personas');
+    const personasLabel = personas + ' personas';
     let introLine;
     if (nights === 1) {
       introLine = PROMO_ACTIVE
