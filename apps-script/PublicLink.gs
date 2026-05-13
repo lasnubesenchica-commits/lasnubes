@@ -46,8 +46,77 @@ function _verifyReservaToken(id, token) {
 }
 
 function getPublicReservaUrl(id) {
-  const t = _signReservaId(id);
-  return _publicLinkBaseUrl() + '?id=' + encodeURIComponent(String(id)) + '&t=' + t;
+  // Preferir short URL via ShareLinks. Si falla (ej. sin acceso a sheet), fallback HMAC.
+  try {
+    return getPublicReservaShortUrl(id);
+  } catch (e) {
+    Logger.log('getPublicReservaUrl fallback HMAC: ' + e.message);
+    const t = _signReservaId(id);
+    return _publicLinkBaseUrl() + '?id=' + encodeURIComponent(String(id)) + '&t=' + t;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Short codes (link mas corto via lookup en sheet ShareLinks)
+// ═══════════════════════════════════════════════════════════
+
+// Alfabeto sin caracteres ambiguos (no 0/O/I/l/1)
+const SHARE_CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz';
+const SHARE_CODE_LEN      = 6;
+
+function _shareLinksSheet() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  let s = ss.getSheetByName('ShareLinks');
+  if (!s) {
+    s = ss.insertSheet('ShareLinks');
+    s.getRange(1, 1, 1, 3).setValues([['Code', 'ReservaId', 'CreatedAt']]);
+    s.getRange(1, 1, 1, 3).setFontWeight('bold');
+    s.setFrozenRows(1);
+  }
+  return s;
+}
+
+function _genShareCode() {
+  let code = '';
+  const N = SHARE_CODE_ALPHABET.length;
+  for (let i = 0; i < SHARE_CODE_LEN; i++) code += SHARE_CODE_ALPHABET.charAt(Math.floor(Math.random() * N));
+  return code;
+}
+
+function getOrCreateShareCode(reservaId) {
+  const s = _shareLinksSheet();
+  const data = s.getDataRange().getValues();
+  const existingCodes = new Set();
+  const sid = reservaId.toString();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][1] && data[i][1].toString() === sid) {
+      return data[i][0].toString(); // ya existe
+    }
+    if (data[i][0]) existingCodes.add(data[i][0].toString());
+  }
+  // Generar uno unico
+  let code;
+  do { code = _genShareCode(); } while (existingCodes.has(code));
+  const now = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd HH:mm:ss');
+  s.appendRow([code, sid, now]);
+  return code;
+}
+
+function lookupReservaIdByShareCode(code) {
+  if (!code) return null;
+  const s = _shareLinksSheet();
+  const data = s.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] && data[i][0].toString() === code.toString()) {
+      return data[i][1] ? data[i][1].toString() : null;
+    }
+  }
+  return null;
+}
+
+function getPublicReservaShortUrl(reservaId) {
+  const code = getOrCreateShareCode(reservaId);
+  return _publicLinkBaseUrl() + '?c=' + encodeURIComponent(code);
 }
 
 // Hora de inicio/fin del evento de calendario segun tipo (Panama UTC-5).
@@ -252,21 +321,35 @@ function _readReservaById(id) {
   return null;
 }
 
-// Action handler: GET ?action=getReservaPublic&id=...&t=...
+// Action handler: GET ?action=getReservaPublic&c=<short> OR ?id=...&t=<hmac>
+// Soporta dos formatos:
+//   1) Short code (c=): se busca en sheet ShareLinks, link reciente.
+//   2) HMAC (id=&t=): formato anterior, sigue funcionando para emails ya enviados.
 function handleGetReservaPublic(e) {
-  const id    = e && e.parameter && e.parameter.id;
-  const token = e && e.parameter && e.parameter.t;
-  if (!id || !token) {
+  const params = (e && e.parameter) || {};
+  let reservaId = null;
+
+  if (params.c) {
+    reservaId = lookupReservaIdByShareCode(params.c);
+    if (!reservaId) {
+      return ContentService
+        .createTextOutput(JSON.stringify({ ok: false, error: 'NOT_FOUND' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  } else if (params.id && params.t) {
+    if (!_verifyReservaToken(params.id, params.t)) {
+      return ContentService
+        .createTextOutput(JSON.stringify({ ok: false, error: 'INVALID_TOKEN' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    reservaId = params.id;
+  } else {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'MISSING_PARAMS' }))
       .setMimeType(ContentService.MimeType.JSON);
   }
-  if (!_verifyReservaToken(id, token)) {
-    return ContentService
-      .createTextOutput(JSON.stringify({ ok: false, error: 'INVALID_TOKEN' }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-  const r = _readReservaById(id);
+
+  const r = _readReservaById(reservaId);
   if (!r) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'NOT_FOUND' }))

@@ -250,11 +250,17 @@
     <div class="card">
       <h2>🛒 Insumos cercanos</h2>
       <p class="muted-text">A 5 minutos: tienda de conveniencia. En Bejuco: <strong>MiniSuper Buenos Precios</strong>. A 20 min en Coronado: El Rey, Machetazo, Riba Smith y Super 99.</p>
+      <div class="btn-group" style="margin-top:14px;">
+        <a class="btn" href="https://lasnubes.cloud/#insumos" target="_blank" rel="noopener">🛒 Ver guía de insumos</a>
+      </div>
     </div>
 
     <div class="card">
       <h2>🏞️ Actividades y alrededores</h2>
       <p class="muted-text">Cascada dentro del proyecto (20 min), Los Cajones de Chame (10 min), Cerro Campana (20 min), Playa Gorgona y Coronado (15–20 min) y cascadas de Sorá (20 min).</p>
+      <div class="btn-group" style="margin-top:14px;">
+        <a class="btn" href="https://lasnubes.cloud/#actividades" target="_blank" rel="noopener">🌎 Ver guía de actividades</a>
+      </div>
     </div>
 
     <div class="card">
@@ -393,11 +399,19 @@ function render(r) {
 (async function() {
   try {
     const params = new URLSearchParams(location.search);
+    const c  = params.get('c');
     const id = params.get('id');
     const t  = params.get('t');
-    if (!id || !t) { showError(); return; }
 
-    const url = SHEETS_API_URL + '?action=getReservaPublic&id=' + encodeURIComponent(id) + '&t=' + encodeURIComponent(t);
+    let url;
+    if (c) {
+      url = SHEETS_API_URL + '?action=getReservaPublic&c=' + encodeURIComponent(c);
+    } else if (id && t) {
+      url = SHEETS_API_URL + '?action=getReservaPublic&id=' + encodeURIComponent(id) + '&t=' + encodeURIComponent(t);
+    } else {
+      showError(); return;
+    }
+
     const resp = await fetch(url);
     const data = await resp.json();
     if (!data.ok || !data.reserva) { showError(); return; }
