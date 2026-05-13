@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tu reserva — Las Nubes Enchica</title>
+<meta name="description" content="Detalles de tu estancia en Las Nubes Enchica">
+<meta property="og:title" content="Tu reserva — Las Nubes Enchica">
+<meta property="og:description" content="Detalles de tu estancia en las cabañas Las Nubes en Chicá, Panamá.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://lasnubes.cloud/og-cover.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #faf9f6;
+    --card: #ffffff;
+    --text: #1a1a1a;
+    --muted: #6e6e6e;
+    --border: #e8e6e0;
+    --accent: #6a9e62;
+    --verde: #6a9e62;
+    --azul:  #5a85b0;
+    --lila:  #8060b0;
+    --danger: #b85c4a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 300;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { font-family: 'Cormorant Garamond', serif; font-weight: 500; margin: 0 0 12px; letter-spacing: 0.01em; }
+  h1 { font-size: 28px; }
+  h2 { font-size: 20px; }
+  h3 { font-size: 16px; }
+  .wrap { max-width: 600px; margin: 0 auto; padding: 24px 16px 64px; }
+  header.brand { text-align: center; padding: 24px 0 32px; }
+  header.brand .logo { font-family: 'Cormorant Garamond', serif; font-size: 22px; letter-spacing: 0.08em; color: var(--text); }
+  header.brand .sub  { font-size: 11px; letter-spacing: 0.2em; color: var(--muted); margin-top: 6px; text-transform: uppercase; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .hero {
+    text-align: center;
+    padding: 32px 24px;
+  }
+  .hero .greeting { font-size: 13px; letter-spacing: 0.15em; color: var(--muted); text-transform: uppercase; margin-bottom: 12px; }
+  .hero h1 { margin: 0 0 8px; }
+  .hero .nombre { font-size: 16px; color: var(--muted); }
+  .badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    background: #e7f3e5;
+    color: #2c5e22;
+    margin-top: 12px;
+  }
+  .badge.cancel { background: #fde2dc; color: #8b2e1a; }
+  .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .row:last-child { border-bottom: none; }
+  .row .label { font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+  .row .value { font-size: 15px; text-align: right; font-weight: 400; }
+  .row .value .sub { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; font-weight: 300; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; margin-right: 6px; }
+  .keybox-card {
+    text-align: center;
+    background: linear-gradient(135deg, #fff8dc, #fff5cc);
+    border-color: #f0e0a0;
+  }
+  .keybox-code {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 56px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    margin: 12px 0;
+    color: #6a5d20;
+  }
+  .keybox-locked {
+    text-align: center;
+    background: #f5f4f0;
+    color: var(--muted);
+  }
+  .keybox-locked .lock { font-size: 32px; margin-bottom: 8px; }
+  .btn {
+    display: inline-block;
+    padding: 12px 22px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    margin: 6px 4px;
+    transition: background 0.15s;
+  }
+  .btn:hover { background: #f5f4f0; }
+  .btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+  .btn.primary:hover { background: #5a8d52; }
+  .btn-group { text-align: center; margin: 4px -4px; }
+  ul.list { padding-left: 0; list-style: none; margin: 12px 0; }
+  ul.list li { padding: 6px 0; padding-left: 22px; position: relative; font-size: 14px; }
+  ul.list li::before { content: '·'; position: absolute; left: 8px; color: var(--accent); font-weight: bold; }
+  .total { font-size: 22px; font-weight: 500; }
+  .muted-text { color: var(--muted); font-size: 13px; }
+  .error-box, .loader {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--muted);
+  }
+  .error-box h1 { color: var(--danger); }
+  footer {
+    text-align: center;
+    padding: 32px 0 0;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  footer a { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--border); }
+  .spinner {
+    width: 28px; height: 28px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="brand">
+    <div class="logo">LAS NUBES ENCHICA</div>
+    <div class="sub">Cabañas en Chicá · Panamá</div>
+  </header>
+
+  <div id="loading" class="loader">
+    <div class="spinner"></div>
+    <div>Cargando tu reserva…</div>
+  </div>
+
+  <div id="error" hidden class="error-box card">
+    <h1>Link no válido</h1>
+    <p>No se pudo cargar la reserva. El link puede estar mal copiado o haber expirado.</p>
+    <p class="muted-text">Si crees que es un error, escríbenos por WhatsApp.</p>
+    <div class="btn-group"><a id="errWa" class="btn" href="https://wa.me/50769812266">WhatsApp</a></div>
+  </div>
+
+  <div id="content" hidden>
+
+    <div class="card hero">
+      <div class="greeting" id="estadoLabel">Tu reserva</div>
+      <h1 id="heroTitle">¡Hola!</h1>
+      <div class="nombre" id="heroSub"></div>
+      <div id="estadoBadge"></div>
+    </div>
+
+    <div class="card">
+      <h2>Detalles</h2>
+      <div class="row">
+        <div class="label">Cabaña</div>
+        <div class="value"><span class="dot" id="cabinDot"></span><span id="cabinName"></span></div>
+      </div>
+      <div class="row" id="rowEstancia">
+        <div class="label">Estancia</div>
+        <div class="value" id="estanciaVal"></div>
+      </div>
+      <div class="row">
+        <div class="label">Entrada</div>
+        <div class="value">
+          <span id="checkinFmt"></span>
+          <span class="sub" id="checkinHora"></span>
+        </div>
+      </div>
+      <div class="row">
+        <div class="label">Salida</div>
+        <div class="value">
+          <span id="checkoutFmt"></span>
+          <span class="sub" id="checkoutHora"></span>
+        </div>
+      </div>
+      <div class="row" id="rowPersonas" hidden>
+        <div class="label">Personas</div>
+        <div class="value" id="personasVal"></div>
+      </div>
+      <div class="row" id="rowTotal" hidden>
+        <div class="label">Total</div>
+        <div class="value total" id="totalVal"></div>
+      </div>
+    </div>
+
+    <div id="keyboxCard"></div>
+
+    <div class="card">
+      <h2>Cómo llegar</h2>
+      <p id="indicacionesText" class="muted-text"></p>
+      <div class="btn-group">
+        <a id="mapsBtn" class="btn" target="_blank" rel="noopener">Google Maps</a>
+        <a id="wazeBtn" class="btn" target="_blank" rel="noopener">Waze</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Qué incluye</h2>
+      <ul class="list">
+        <li>Cocina equipada para preparar tus alimentos</li>
+        <li>Área de BBQ</li>
+        <li>Café, azúcar y especias básicas</li>
+        <li>Cooler grande (no contamos con nevera — traer hielo)</li>
+        <li>Iluminación solar + inversor para cargar dispositivos</li>
+        <li>Excelente señal de todas las operadoras</li>
+        <li>Jabón, papel higiénico y toallas</li>
+      </ul>
+      <p class="muted-text">Fumigación semanal. Se recomienda repelente si eres sensible a mosquitos.</p>
+    </div>
+
+    <div class="card">
+      <h2>¿Necesitas algo?</h2>
+      <p class="muted-text">Escríbenos por WhatsApp y te respondemos lo antes posible.</p>
+      <div class="btn-group">
+        <a id="waBtn" class="btn primary" target="_blank" rel="noopener">Abrir WhatsApp</a>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>
+    <a href="https://lasnubes.cloud">lasnubes.cloud</a>
+  </footer>
+
+</div>
+
+<script>
+const SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbwDHyfGSyHZvmgiOenw_mm84pMKIs1aMixkyLxAXrjw8uNBcjvPYdIX0HFv_LkDesr0/exec';
+
+const CABIN_COLORS = { verde: '#6a9e62', azul: '#5a85b0', lila: '#8060b0' };
+
+function $(id) { return document.getElementById(id); }
+function show(id) { $(id).hidden = false; }
+function hide(id) { $(id).hidden = true; }
+
+function showError() {
+  hide('loading');
+  show('error');
+}
+
+function fmtMoney(n) {
+  const v = parseFloat(n) || 0;
+  return '$' + v.toFixed(2);
+}
+
+function renderKeybox(r) {
+  const card = $('keyboxCard');
+  if (r.keyBoxCode) {
+    card.innerHTML = `
+      <div class="card keybox-card">
+        <h2>Acceso a la cabaña</h2>
+        <div class="muted-text">Código del Key Box</div>
+        <div class="keybox-code">${r.keyBoxCode}</div>
+        <p class="muted-text">Dentro encuentras la llave de la cabaña y un control negro para abrir el portón de la entrada del proyecto al salir.</p>
+      </div>`;
+  } else {
+    card.innerHTML = `
+      <div class="card keybox-locked">
+        <div class="lock">🔒</div>
+        <h3>Código de acceso</h3>
+        <p>Disponible a partir del día de tu entrada (${r.keyBoxFromFmt}).</p>
+      </div>`;
+  }
+}
+
+function render(r) {
+  // Hero
+  $('heroTitle').textContent = '¡Hola, ' + r.nombre + '!';
+  $('heroSub').textContent   = 'Tu reserva en ' + r.cabinName + ' está confirmada.';
+  if (r.estado === 'CANCELADA') {
+    $('estadoLabel').textContent = 'Reserva cancelada';
+    $('heroTitle').textContent = 'Hola ' + r.nombre;
+    $('heroSub').textContent = 'Esta reserva fue cancelada.';
+    $('estadoBadge').innerHTML = '<span class="badge cancel">Cancelada</span>';
+  } else {
+    $('estadoBadge').innerHTML = '<span class="badge">Confirmada</span>';
+  }
+
+  // Detalles
+  $('cabinDot').style.background = CABIN_COLORS[r.cabin] || '#888';
+  $('cabinName').textContent = r.cabinName;
+
+  // Estancia
+  let estanciaText = '';
+  if (r.tipo === 'pasatarde')    estanciaText = 'Pasatarde · 12:30 pm – 7:00 pm';
+  else if (r.tipo === 'pasadia') estanciaText = 'Pasadía · 9:00 am – 5:00 pm';
+  else if (r.tipo === 'early')   estanciaText = '1 noche · entrada anticipada 9 am';
+  else if (r.tipo === 'late')    estanciaText = '1 noche · salida tardía 4 pm';
+  else {
+    const n = parseInt(r.estanciaValue, 10) || 1;
+    estanciaText = n + (n === 1 ? ' noche' : ' noches');
+  }
+  $('estanciaVal').textContent = estanciaText;
+
+  $('checkinFmt').textContent  = r.checkinFmt;
+  $('checkinHora').textContent = r.checkinHora;
+  $('checkoutFmt').textContent = r.checkoutFmt;
+  $('checkoutHora').textContent= r.checkoutHora;
+
+  if (r.personas) {
+    $('personasVal').textContent = r.personas + ' personas';
+    show('rowPersonas');
+  }
+  if (r.total > 0) {
+    $('totalVal').textContent = fmtMoney(r.total);
+    show('rowTotal');
+  }
+
+  // Key box
+  renderKeybox(r);
+
+  // Mapas
+  $('mapsBtn').href = r.mapsUrl;
+  $('wazeBtn').href = r.wazeUrl;
+  if (r.indicaciones) {
+    // El backend devuelve HTML; lo dejamos como innerHTML pero solo de fuente confiable
+    $('indicacionesText').innerHTML = r.indicaciones;
+  } else {
+    $('indicacionesText').textContent = 'Te enviamos las indicaciones de acceso por email/WhatsApp.';
+  }
+
+  // WhatsApp
+  $('waBtn').href = r.whatsappContact;
+  $('errWa').href = r.whatsappContact;
+
+  hide('loading');
+  show('content');
+}
+
+(async function() {
+  try {
+    const params = new URLSearchParams(location.search);
+    const id = params.get('id');
+    const t  = params.get('t');
+    if (!id || !t) { showError(); return; }
+
+    const url = SHEETS_API_URL + '?action=getReservaPublic&id=' + encodeURIComponent(id) + '&t=' + encodeURIComponent(t);
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (!data.ok || !data.reserva) { showError(); return; }
+
+    render(data.reserva);
+  } catch (e) {
+    console.error(e);
+    showError();
+  }
+})();
+</script>
+</body>
+</html>
