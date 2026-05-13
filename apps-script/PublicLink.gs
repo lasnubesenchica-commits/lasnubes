@@ -50,12 +50,106 @@ function getPublicReservaUrl(id) {
   return _publicLinkBaseUrl() + '?id=' + encodeURIComponent(String(id)) + '&t=' + t;
 }
 
+// Hora de inicio/fin del evento de calendario segun tipo (Panama UTC-5).
+function _getEventTimes(r) {
+  const meta = tipoEmailMeta(r);
+  const tipo = meta.tipo;
+  let startH, startM, endH, endM;
+  if (tipo === 'pasatarde')      { startH = '12'; startM = '30'; endH = '19'; endM = '00'; }
+  else if (tipo === 'pasadia')   { startH = '09'; startM = '00'; endH = '17'; endM = '00'; }
+  else if (tipo === 'early')     { startH = '09'; startM = '00'; endH = '11'; endM = '00'; }
+  else if (tipo === 'late')      { startH = '14'; startM = '00'; endH = '16'; endM = '00'; }
+  else                           { startH = '14'; startM = '00'; endH = '11'; endM = '00'; }
+  return { startDate: meta.displayCheckin, endDate: meta.displayCheckout, startH, startM, endH, endM, tipo };
+}
+
+function _buildGcalUrl(r) {
+  const et       = _getEventTimes(r);
+  const meta     = tipoEmailMeta(r);
+  const cabin    = CABIN_NAMES_EMAIL[r.cabin] || r.cabin;
+  const title    = encodeURIComponent('Las Nubes — ' + cabin);
+  const details  = encodeURIComponent('Reserva en Las Nubes\nCabaña: ' + cabin + '\nPersonas: ' + (r.persons || '') + '\nCheck-in: ' + meta.checkinHora + ' | Check-out: ' + meta.checkoutHora + '\nWhatsApp: +507 6981-2266');
+  const loc      = encodeURIComponent('Buenos Aires, Chame, Panamá Oeste');
+  const start    = toCalDateTime(et.startDate, et.startH, et.startM);
+  const end      = toCalDateTime(et.endDate,   et.endH,   et.endM);
+  return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + title + '&dates=' + start + '/' + end + '&details=' + details + '&location=' + loc;
+}
+
+function _buildIcsFor(r) {
+  const et    = _getEventTimes(r);
+  const meta  = tipoEmailMeta(r);
+  const cabin = CABIN_NAMES_EMAIL[r.cabin] || r.cabin;
+  const start = toCalDateTime(et.startDate, et.startH, et.startM);
+  const end   = toCalDateTime(et.endDate,   et.endH,   et.endM);
+  const now   = Utilities.formatDate(new Date(), 'UTC', "yyyyMMdd'T'HHmmss'Z'");
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Las Nubes//Reserva//ES',
+    'BEGIN:VEVENT',
+    'DTSTART:' + start,
+    'DTEND:' + end,
+    'SUMMARY:Las Nubes — ' + cabin,
+    'DESCRIPTION:Cabaña: ' + cabin + '\\nPersonas: ' + (r.persons || '') + '\\nCheck-in: ' + meta.checkinHora + ' | Check-out: ' + meta.checkoutHora + '\\nContacto: +507 6981-2266',
+    'LOCATION:Buenos Aires\\, Chame\\, Panamá Oeste',
+    'DTSTAMP:' + now,
+    'UID:lasnubes-' + r.id + '@lasnubes',
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ].join('\r\n');
+}
+
+// Pasos de la guia de cabaña. Fuente unica usada por email y pagina publica.
+function getCabinGuideSteps(cabin, tipo) {
+  tipo = tipo || 'noche';
+  const checkoutTitleMap = {
+    'noche':     'Check-out · 11:00 am',
+    'pasatarde': 'Salida · 7:00 pm',
+    'pasadia':   'Salida · 5:00 pm',
+    'early':     'Check-out · 11:00 am',
+    'late':      'Check-out · 4:00 pm'
+  };
+  const checkoutTitle = checkoutTitleMap[tipo] || checkoutTitleMap.noche;
+  const checkoutBody  = 'Dejar la cocina limpia · Llevarse la basura · Cerrar la puerta y dejar la llave dentro del key box.';
+
+  const steps = {
+    verde: [
+      ['🔑', 'Acceso', 'Key Box código <strong>0507</strong>. Dentro está la llave para acceder a la cabaña y un control negro con botones verdes para abrir el portón de la entrada en el caso de que deseen salir del proyecto.'],
+      ['☀️', 'Iluminación', 'Energía solar — luces encienden solas al anochecer.<br><strong>Guirnaldas del baño</strong>: se encienden solas en la noche y se apagan con el botón de encendido/apagado detrás del panel solar encima de la mesa de madera en el baño.<br><strong>Control blanco</strong>: lámparas de cocina y recámara.'],
+      ['🔋', 'Carga de dispositivos', 'Inversor en la recámara para celulares y dispositivos.'],
+      ['🍳', 'Cocina', 'Guarda todos los alimentos — no dejar nada expuesto para evitar animalitos.'],
+      ['🎵', 'Convivencia', 'Música y conversaciones a volumen moderado.'],
+      ['✅', checkoutTitle, checkoutBody]
+    ],
+    azul: [
+      ['🔑', 'Acceso', 'Key Box código <strong>0507</strong>. Dentro está la llave para acceder a la cabaña y un control negro con botones verdes para abrir el portón de la entrada en el caso de que deseen salir del proyecto. Con la llave abres el candado y luego deslizas la puerta corrediza de metal.'],
+      ['☀️', 'Iluminación', 'Luces del comedor y jardines encienden automáticamente al anochecer.<br><strong>Control blanco</strong> encima de la mesa verde: luces de recámara y baño.'],
+      ['🔋', 'Carga de dispositivos', 'Powerbank en la recámara para celulares.'],
+      ['🍳', 'Cocina', 'Guarda todos los alimentos — no dejar nada expuesto para evitar animalitos.'],
+      ['🎵', 'Convivencia', 'Música y conversaciones a volumen moderado.'],
+      ['✅', checkoutTitle, checkoutBody]
+    ],
+    lila: [
+      ['🔑', 'Acceso', 'Key Box código <strong>0507</strong>. Dentro está la llave para acceder a la cabaña y un control negro con botones verdes para abrir el portón de la entrada en el caso de que deseen salir del proyecto.'],
+      ['☀️', 'Iluminación', 'Energía solar — guirnaldas del columpio encienden entre 6:30–7:00 pm automáticamente.<br><strong>Control blanco</strong> en la cómoda frente al espejo: luces de recámara, terraza y cocina.'],
+      ['🔋', 'Carga de dispositivos', 'Inversor en la recámara para celulares y dispositivos.'],
+      ['🍳', 'Cocina', 'Guarda todos los alimentos — no dejar nada expuesto para evitar animalitos.'],
+      ['🎵', 'Convivencia', 'Música y conversaciones a volumen moderado.'],
+      ['✅', checkoutTitle, checkoutBody]
+    ]
+  };
+
+  const list = steps[cabin] || steps.verde;
+  return list.map(s => ({ icon: s[0], title: s[1], body: s[2] }));
+}
+
 // Construye DTO publico a partir de un objeto reservation (formato dashboard).
 // Filtra campos sensibles y agrega data de cabin/ubicacion.
 function _buildPublicDTO(r) {
   const meta  = tipoEmailMeta(r);
   const tz    = 'America/Panama';
   const props = PropertiesService.getScriptProperties();
+  const waNum = (props.getProperty('CONTACT_WHATSAPP_NUMBER') || '50769812266').replace(/\D/g, '');
 
   // Ventana operativa del key box: 9am del display checkin -> 23:59 del dia siguiente al display checkout
   const nowMs = Date.now();
@@ -70,14 +164,31 @@ function _buildPublicDTO(r) {
   const primerNomb  = fullName.split(/\s+/)[0] || fullName;
 
   const total      = parseFloat(r.amount)  || 0;
+  const deposit    = parseFloat(r.deposit) || 0;
+  const saldo      = total - deposit;
+  const hasSaldo   = total > 0 && saldo > 0;
   const personas   = parseInt(r.persons, 10) || null;
   const estadoUp   = (r.estadoPago || '').toString().toUpperCase();
   const isCancel   = estadoUp === 'CANCELADA';
 
   const cabinNombre = CABIN_NAMES_EMAIL[r.cabin] || r.cabinName || r.cabin || '';
 
-  // Combo (5-6 personas): si tipo === 'noche' y personas >= 5, indicar combo
-  // Por simplicidad lo dejamos como una sola reserva por ahora.
+  // Calendario: Google Calendar link + ICS para Apple/iCal
+  let gcalUrl = '';
+  let icsBase64 = '';
+  try {
+    gcalUrl   = _buildGcalUrl(r);
+    icsBase64 = Utilities.base64Encode(_buildIcsFor(r));
+  } catch(e) { Logger.log('warn cal links: ' + e.message); }
+
+  // Pasos de la guia de la cabaña
+  let cabinGuide = [];
+  try { cabinGuide = getCabinGuideSteps(r.cabin, meta.tipo); } catch(e) { Logger.log('warn cabinGuide: ' + e.message); }
+
+  // Saldo pendiente con WhatsApp pre-armado
+  const pagarUrl = hasSaldo
+    ? ('https://wa.me/' + waNum + '?text=' + encodeURIComponent('Deseo cancelar el saldo restante de mi reserva del día ' + meta.checkinFmt + ' en la cabaña ' + cabinNombre + '. ¿Me comparte los métodos de pago?'))
+    : '';
 
   return {
     nombre:        primerNomb,
@@ -94,14 +205,20 @@ function _buildPublicDTO(r) {
     checkoutHora:  meta.checkoutHora,
     personas:      personas,
     total:         total,
+    abono:         deposit > 0 ? deposit : null,
+    saldo:         hasSaldo ? saldo : null,
+    pagarUrl:      pagarUrl,
     estado:        isCancel ? 'CANCELADA' : 'CONFIRMADA',
     keyBoxCode:    showKeyBox ? PUBLIC_KEY_BOX_CODE : null,
     keyBoxFromFmt: meta.checkinFmt,
+    gcalUrl:       gcalUrl,
+    icsBase64:     icsBase64,
+    cabinGuide:    cabinGuide,
     mapsUrl:       props.getProperty('CHECKIN_MAPS_URL')      || 'https://maps.google.com/?q=8.639400,-79.945900',
     wazeUrl:       props.getProperty('CHECKIN_WAZE_URL')      || 'https://waze.com/ul?ll=8.639400,-79.945900&navigate=yes',
     indicaciones:  props.getProperty('CHECKIN_INDICACIONES')  || '',
     accesoExtra:   props.getProperty('CHECKIN_ACCESO_EXTRA')  || '',
-    whatsappContact: 'https://wa.me/' + ((props.getProperty('CONTACT_WHATSAPP_NUMBER') || '50769812266').replace(/\D/g, ''))
+    whatsappContact: 'https://wa.me/' + waNum
   };
 }
 

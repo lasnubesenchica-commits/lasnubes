@@ -11,7 +11,7 @@
 <meta property="og:image" content="https://lasnubes.cloud/og-cover.jpg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #faf9f6;
@@ -19,11 +19,13 @@
     --text: #1a1a1a;
     --muted: #6e6e6e;
     --border: #e8e6e0;
+    --soft: #f5f4f0;
     --accent: #6a9e62;
     --verde: #6a9e62;
     --azul:  #5a85b0;
     --lila:  #8060b0;
     --danger: #b85c4a;
+    --warn:  #d4a44c;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -37,107 +39,94 @@
   }
   h1, h2, h3 { font-family: 'Cormorant Garamond', serif; font-weight: 500; margin: 0 0 12px; letter-spacing: 0.01em; }
   h1 { font-size: 28px; }
-  h2 { font-size: 20px; }
-  h3 { font-size: 16px; }
+  h2 { font-size: 20px; margin-bottom: 14px; }
+  h3 { font-size: 16px; font-family: 'Inter', sans-serif; font-weight: 600; }
+  p { margin: 0 0 10px; }
   .wrap { max-width: 600px; margin: 0 auto; padding: 24px 16px 64px; }
-  header.brand { text-align: center; padding: 24px 0 32px; }
+  header.brand { text-align: center; padding: 24px 0 28px; }
   header.brand .logo { font-family: 'Cormorant Garamond', serif; font-size: 22px; letter-spacing: 0.08em; color: var(--text); }
   header.brand .sub  { font-size: 11px; letter-spacing: 0.2em; color: var(--muted); margin-top: 6px; text-transform: uppercase; }
   .card {
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 14px;
-    padding: 24px;
-    margin-bottom: 16px;
+    padding: 22px 24px;
+    margin-bottom: 14px;
   }
-  .hero {
-    text-align: center;
-    padding: 32px 24px;
-  }
-  .hero .greeting { font-size: 13px; letter-spacing: 0.15em; color: var(--muted); text-transform: uppercase; margin-bottom: 12px; }
-  .hero h1 { margin: 0 0 8px; }
-  .hero .nombre { font-size: 16px; color: var(--muted); }
+  .card-tinted { background: var(--soft); }
+  .hero { text-align: center; padding: 32px 24px; }
+  .hero .greeting { font-size: 11px; letter-spacing: 0.2em; color: var(--muted); text-transform: uppercase; margin-bottom: 14px; }
+  .hero h1 { margin: 0 0 6px; font-size: 32px; }
+  .hero .nombre { font-size: 14px; color: var(--muted); margin-top: 4px; }
   .badge {
     display: inline-block;
     padding: 4px 10px;
     border-radius: 999px;
-    font-size: 11px;
+    font-size: 10px;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     background: #e7f3e5;
     color: #2c5e22;
-    margin-top: 12px;
+    margin-top: 14px;
+    font-weight: 500;
   }
   .badge.cancel { background: #fde2dc; color: #8b2e1a; }
-  .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; padding: 11px 0; border-bottom: 1px solid var(--border); }
   .row:last-child { border-bottom: none; }
-  .row .label { font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+  .row .label { font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); padding-top: 2px; }
   .row .value { font-size: 15px; text-align: right; font-weight: 400; }
   .row .value .sub { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; font-weight: 300; }
-  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; margin-right: 6px; }
-  .keybox-card {
-    text-align: center;
-    background: linear-gradient(135deg, #fff8dc, #fff5cc);
-    border-color: #f0e0a0;
-  }
-  .keybox-code {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 56px;
-    font-weight: 500;
-    letter-spacing: 0.12em;
-    margin: 12px 0;
-    color: #6a5d20;
-  }
-  .keybox-locked {
-    text-align: center;
-    background: #f5f4f0;
-    color: var(--muted);
-  }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; vertical-align: middle; margin-right: 8px; }
+
+  .keybox-card { text-align: center; background: linear-gradient(135deg, #fff8dc, #fff2c2); border-color: #f0e0a0; }
+  .keybox-code { font-family: 'Cormorant Garamond', serif; font-size: 56px; font-weight: 500; letter-spacing: 0.12em; margin: 12px 0; color: #6a5d20; }
+  .keybox-locked { text-align: center; background: var(--soft); color: var(--muted); }
   .keybox-locked .lock { font-size: 32px; margin-bottom: 8px; }
+
+  .saldo-card { background: #fff7e6; border-color: #f0d99a; }
+  .saldo-amount { font-size: 26px; font-weight: 500; color: #8a6000; font-family: 'Cormorant Garamond', serif; }
+
   .btn {
     display: inline-block;
-    padding: 12px 22px;
+    padding: 11px 20px;
     border-radius: 10px;
     border: 1px solid var(--border);
     background: var(--card);
     color: var(--text);
     text-decoration: none;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    margin: 6px 4px;
+    margin: 4px 3px;
     transition: background 0.15s;
   }
-  .btn:hover { background: #f5f4f0; }
+  .btn:hover { background: var(--soft); }
   .btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
   .btn.primary:hover { background: #5a8d52; }
-  .btn-group { text-align: center; margin: 4px -4px; }
-  ul.list { padding-left: 0; list-style: none; margin: 12px 0; }
-  ul.list li { padding: 6px 0; padding-left: 22px; position: relative; font-size: 14px; }
-  ul.list li::before { content: '·'; position: absolute; left: 8px; color: var(--accent); font-weight: bold; }
-  .total { font-size: 22px; font-weight: 500; }
+  .btn.wa { background: #25d366; color: white; border-color: #25d366; }
+  .btn.wa:hover { background: #1faa53; }
+  .btn-group { text-align: center; margin: 4px -3px; }
+
+  .guide-step { display: flex; gap: 14px; padding: 13px 0; border-bottom: 1px solid var(--border); }
+  .guide-step:last-child { border-bottom: none; }
+  .guide-icon { font-size: 20px; min-width: 28px; padding-top: 2px; }
+  .guide-content h3 { margin: 0 0 4px; font-size: 13px; font-weight: 600; }
+  .guide-content p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+  .tiendita-item { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .tiendita-item:last-child { border-bottom: none; }
+  .tiendita-item .name { font-weight: 500; }
+  .tiendita-item .name .sub { font-weight: 300; color: var(--muted); font-size: 12px; display: block; }
+  .tiendita-item .price { color: #2c5e22; font-weight: 600; }
+  .tiendita-pay { background: #e8f5e9; color: #2c5e22; padding: 11px 14px; border-radius: 8px; margin-top: 12px; font-size: 13px; }
+
+  .total { font-size: 22px; font-weight: 500; font-family: 'Cormorant Garamond', serif; }
   .muted-text { color: var(--muted); font-size: 13px; }
-  .error-box, .loader {
-    text-align: center;
-    padding: 48px 24px;
-    color: var(--muted);
-  }
+  .error-box, .loader { text-align: center; padding: 48px 24px; color: var(--muted); }
   .error-box h1 { color: var(--danger); }
-  footer {
-    text-align: center;
-    padding: 32px 0 0;
-    font-size: 12px;
-    color: var(--muted);
-  }
+  footer { text-align: center; padding: 36px 0 0; font-size: 12px; color: var(--muted); }
   footer a { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--border); }
-  .spinner {
-    width: 28px; height: 28px;
-    border: 2px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    margin: 0 auto 16px;
-  }
+  .spinner { width: 28px; height: 28px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
@@ -156,9 +145,9 @@
 
   <div id="error" hidden class="error-box card">
     <h1>Link no válido</h1>
-    <p>No se pudo cargar la reserva. El link puede estar mal copiado o haber expirado.</p>
+    <p>No se pudo cargar la reserva. El link puede estar mal copiado.</p>
     <p class="muted-text">Si crees que es un error, escríbenos por WhatsApp.</p>
-    <div class="btn-group"><a id="errWa" class="btn" href="https://wa.me/50769812266">WhatsApp</a></div>
+    <div class="btn-group"><a id="errWa" class="btn wa" href="https://wa.me/50769812266">WhatsApp</a></div>
   </div>
 
   <div id="content" hidden>
@@ -171,7 +160,7 @@
     </div>
 
     <div class="card">
-      <h2>Detalles</h2>
+      <h2>Detalles de tu estadía</h2>
       <div class="row">
         <div class="label">Cabaña</div>
         <div class="value"><span class="dot" id="cabinDot"></span><span id="cabinName"></span></div>
@@ -200,7 +189,21 @@
       </div>
       <div class="row" id="rowTotal" hidden>
         <div class="label">Total</div>
-        <div class="value total" id="totalVal"></div>
+        <div class="value">
+          <span class="total" id="totalVal"></span>
+          <span class="sub" id="abonoVal"></span>
+        </div>
+      </div>
+    </div>
+
+    <div id="saldoCard"></div>
+
+    <div class="card" id="calCard">
+      <h2>Agregar al calendario</h2>
+      <p class="muted-text">Que tu teléfono te lo recuerde:</p>
+      <div class="btn-group">
+        <a id="gcalBtn"  class="btn" target="_blank" rel="noopener">📅 Google Calendar</a>
+        <a id="icalBtn"  class="btn" download="reserva-las-nubes.ics">🍏 Apple / iCal</a>
       </div>
     </div>
 
@@ -210,30 +213,55 @@
       <h2>Cómo llegar</h2>
       <p id="indicacionesText" class="muted-text"></p>
       <div class="btn-group">
-        <a id="mapsBtn" class="btn" target="_blank" rel="noopener">Google Maps</a>
-        <a id="wazeBtn" class="btn" target="_blank" rel="noopener">Waze</a>
+        <a id="mapsBtn" class="btn" target="_blank" rel="noopener">📍 Google Maps</a>
+        <a id="wazeBtn" class="btn" target="_blank" rel="noopener">🚗 Waze</a>
+      </div>
+    </div>
+
+    <div class="card" id="guideCard">
+      <h2>🔑 Guía de tu cabaña</h2>
+      <p class="muted-text" style="margin-bottom:16px;">Todo lo que necesitas para entrar y disfrutar desde el primer momento.</p>
+      <div id="guideSteps"></div>
+    </div>
+
+    <div class="card">
+      <h2>🍳 Qué incluye</h2>
+      <p class="muted-text">Cocina completamente equipada para preparar tus alimentos. Área de BBQ. Incluye café, azúcar, especias básicas y un cooler grande. <strong>No contamos con nevera</strong> — trae hielo.</p>
+      <p class="muted-text"><strong>Energía solar:</strong> luces encienden solas al anochecer. Inversor para cargar celulares. Señal excelente de todas las operadoras.</p>
+      <p class="muted-text"><strong>Baño:</strong> jabón, papel higiénico y toallas limpias. Fumigamos semanalmente; trae repelente si eres sensible a mosquitos.</p>
+      <p class="muted-text"><strong>Privacidad total:</strong> todas las instalaciones son de uso exclusivo de quienes reservan.</p>
+    </div>
+
+    <div class="card card-tinted">
+      <h2>🏪 Tiendita Las Nubes</h2>
+      <p class="muted-text" style="margin-bottom:14px;">Insumos disponibles — te los llevamos a la cabaña.</p>
+      <div class="tiendita-item"><span class="name">🔥 Kit de Fogata<span class="sub">Leña · cerillo · palillos · malvaviscos</span></span><span class="price">$10</span></div>
+      <div class="tiendita-item"><span class="name">🧱 Bolsa de Carbón<span class="sub">Con cerillo especial</span></span><span class="price">$5</span></div>
+      <div class="tiendita-item"><span class="name">🦟 Repelente OFF Spray</span><span class="price">$8</span></div>
+      <div class="tiendita-item"><span class="name">🦟 Repelente Family Care<span class="sub">Toallitas</span></span><span class="price">$5</span></div>
+      <div class="tiendita-item"><span class="name">🪥 Kit Pasta y Cepillo</span><span class="price">$5</span></div>
+      <div class="tiendita-item"><span class="name">🌸 Toallas Sanitarias</span><span class="price">$5</span></div>
+      <div class="tiendita-pay">💚 Pago vía <strong>Yappy</strong> al mismo número y te lo llevamos a la cabaña.</div>
+      <div class="btn-group" style="margin-top:14px;">
+        <a id="tienditaWaBtn" class="btn wa" target="_blank" rel="noopener">💬 Pedir por WhatsApp</a>
       </div>
     </div>
 
     <div class="card">
-      <h2>Qué incluye</h2>
-      <ul class="list">
-        <li>Cocina equipada para preparar tus alimentos</li>
-        <li>Área de BBQ</li>
-        <li>Café, azúcar y especias básicas</li>
-        <li>Cooler grande (no contamos con nevera — traer hielo)</li>
-        <li>Iluminación solar + inversor para cargar dispositivos</li>
-        <li>Excelente señal de todas las operadoras</li>
-        <li>Jabón, papel higiénico y toallas</li>
-      </ul>
-      <p class="muted-text">Fumigación semanal. Se recomienda repelente si eres sensible a mosquitos.</p>
+      <h2>🛒 Insumos cercanos</h2>
+      <p class="muted-text">A 5 minutos: tienda de conveniencia. En Bejuco: <strong>MiniSuper Buenos Precios</strong>. A 20 min en Coronado: El Rey, Machetazo, Riba Smith y Super 99.</p>
+    </div>
+
+    <div class="card">
+      <h2>🏞️ Actividades y alrededores</h2>
+      <p class="muted-text">Cascada dentro del proyecto (20 min), Los Cajones de Chame (10 min), Cerro Campana (20 min), Playa Gorgona y Coronado (15–20 min) y cascadas de Sorá (20 min).</p>
     </div>
 
     <div class="card">
       <h2>¿Necesitas algo?</h2>
       <p class="muted-text">Escríbenos por WhatsApp y te respondemos lo antes posible.</p>
       <div class="btn-group">
-        <a id="waBtn" class="btn primary" target="_blank" rel="noopener">Abrir WhatsApp</a>
+        <a id="waBtn" class="btn wa" target="_blank" rel="noopener">💬 Abrir WhatsApp</a>
       </div>
     </div>
 
@@ -253,62 +281,73 @@ const CABIN_COLORS = { verde: '#6a9e62', azul: '#5a85b0', lila: '#8060b0' };
 function $(id) { return document.getElementById(id); }
 function show(id) { $(id).hidden = false; }
 function hide(id) { $(id).hidden = true; }
-
-function showError() {
-  hide('loading');
-  show('error');
-}
-
-function fmtMoney(n) {
-  const v = parseFloat(n) || 0;
-  return '$' + v.toFixed(2);
-}
+function showError() { hide('loading'); show('error'); }
+function fmtMoney(n) { return '$' + ((parseFloat(n) || 0)).toFixed(2); }
 
 function renderKeybox(r) {
   const card = $('keyboxCard');
   if (r.keyBoxCode) {
-    card.innerHTML = `
-      <div class="card keybox-card">
-        <h2>Acceso a la cabaña</h2>
-        <div class="muted-text">Código del Key Box</div>
-        <div class="keybox-code">${r.keyBoxCode}</div>
-        <p class="muted-text">Dentro encuentras la llave de la cabaña y un control negro para abrir el portón de la entrada del proyecto al salir.</p>
-      </div>`;
+    card.innerHTML = '<div class="card keybox-card">'
+      + '<h2>Acceso a la cabaña</h2>'
+      + '<div class="muted-text">Código del Key Box</div>'
+      + '<div class="keybox-code">' + r.keyBoxCode + '</div>'
+      + '<p class="muted-text">Dentro encuentras la llave de la cabaña y un control negro para abrir el portón del proyecto al salir.</p>'
+      + '</div>';
   } else {
-    card.innerHTML = `
-      <div class="card keybox-locked">
-        <div class="lock">🔒</div>
-        <h3>Código de acceso</h3>
-        <p>Disponible a partir del día de tu entrada (${r.keyBoxFromFmt}).</p>
-      </div>`;
+    card.innerHTML = '<div class="card keybox-locked">'
+      + '<div class="lock">🔒</div>'
+      + '<h3>Código de acceso</h3>'
+      + '<p>Disponible a partir del día de tu entrada (' + r.keyBoxFromFmt + ').</p>'
+      + '</div>';
   }
 }
 
+function renderSaldo(r) {
+  const card = $('saldoCard');
+  if (!r.saldo || r.saldo <= 0) { card.innerHTML = ''; return; }
+  card.innerHTML = '<div class="card saldo-card">'
+    + '<h2>⚠️ Saldo pendiente</h2>'
+    + '<div class="saldo-amount">' + fmtMoney(r.saldo) + '</div>'
+    + '<p class="muted-text">Te pedimos cancelar el saldo antes del día de tu reserva.</p>'
+    + '<div class="btn-group"><a class="btn wa" target="_blank" rel="noopener" href="' + r.pagarUrl + '">💬 Pagar saldo</a></div>'
+    + '</div>';
+}
+
+function renderGuide(r) {
+  if (!r.cabinGuide || !r.cabinGuide.length) { $('guideCard').style.display = 'none'; return; }
+  const html = r.cabinGuide.map(s =>
+    '<div class="guide-step">'
+    + '<div class="guide-icon">' + s.icon + '</div>'
+    + '<div class="guide-content"><h3>' + s.title + '</h3><p>' + s.body + '</p></div>'
+    + '</div>'
+  ).join('');
+  $('guideSteps').innerHTML = html;
+}
+
 function render(r) {
-  // Hero
   $('heroTitle').textContent = '¡Hola, ' + r.nombre + '!';
   $('heroSub').textContent   = 'Tu reserva en ' + r.cabinName + ' está confirmada.';
+
   if (r.estado === 'CANCELADA') {
     $('estadoLabel').textContent = 'Reserva cancelada';
-    $('heroTitle').textContent = 'Hola ' + r.nombre;
-    $('heroSub').textContent = 'Esta reserva fue cancelada.';
-    $('estadoBadge').innerHTML = '<span class="badge cancel">Cancelada</span>';
+    $('heroTitle').textContent   = 'Hola ' + r.nombre;
+    $('heroSub').textContent     = 'Esta reserva fue cancelada.';
+    $('estadoBadge').innerHTML   = '<span class="badge cancel">Cancelada</span>';
+    $('calCard').style.display   = 'none';
   } else {
     $('estadoBadge').innerHTML = '<span class="badge">Confirmada</span>';
   }
 
-  // Detalles
   $('cabinDot').style.background = CABIN_COLORS[r.cabin] || '#888';
   $('cabinName').textContent = r.cabinName;
 
-  // Estancia
   let estanciaText = '';
   if (r.tipo === 'pasatarde')    estanciaText = 'Pasatarde · 12:30 pm – 7:00 pm';
   else if (r.tipo === 'pasadia') estanciaText = 'Pasadía · 9:00 am – 5:00 pm';
   else if (r.tipo === 'early')   estanciaText = '1 noche · entrada anticipada 9 am';
   else if (r.tipo === 'late')    estanciaText = '1 noche · salida tardía 4 pm';
   else {
-    const n = parseInt(r.estanciaValue, 10) || 1;
+    const n = parseInt(r.tipoLabel, 10) || 1;
     estanciaText = n + (n === 1 ? ' noche' : ' noches');
   }
   $('estanciaVal').textContent = estanciaText;
@@ -324,25 +363,28 @@ function render(r) {
   }
   if (r.total > 0) {
     $('totalVal').textContent = fmtMoney(r.total);
+    if (r.abono) $('abonoVal').textContent = 'Abono: ' + fmtMoney(r.abono);
     show('rowTotal');
   }
 
-  // Key box
   renderKeybox(r);
+  renderSaldo(r);
+  renderGuide(r);
+
+  // Calendario
+  if (r.gcalUrl)   $('gcalBtn').href = r.gcalUrl;
+  if (r.icsBase64) $('icalBtn').href = 'data:text/calendar;base64,' + r.icsBase64;
 
   // Mapas
   $('mapsBtn').href = r.mapsUrl;
   $('wazeBtn').href = r.wazeUrl;
-  if (r.indicaciones) {
-    // El backend devuelve HTML; lo dejamos como innerHTML pero solo de fuente confiable
-    $('indicacionesText').innerHTML = r.indicaciones;
-  } else {
-    $('indicacionesText').textContent = 'Te enviamos las indicaciones de acceso por email/WhatsApp.';
-  }
+  if (r.indicaciones) $('indicacionesText').innerHTML = r.indicaciones;
+  else                $('indicacionesText').textContent = '';
 
   // WhatsApp
-  $('waBtn').href = r.whatsappContact;
-  $('errWa').href = r.whatsappContact;
+  $('waBtn').href         = r.whatsappContact;
+  $('errWa').href         = r.whatsappContact;
+  $('tienditaWaBtn').href = r.whatsappContact + '?text=' + encodeURIComponent('Hola! Quisiera pedir de la Tiendita Las Nubes 🌿');
 
   hide('loading');
   show('content');
@@ -359,7 +401,6 @@ function render(r) {
     const resp = await fetch(url);
     const data = await resp.json();
     if (!data.ok || !data.reserva) { showError(); return; }
-
     render(data.reserva);
   } catch (e) {
     console.error(e);

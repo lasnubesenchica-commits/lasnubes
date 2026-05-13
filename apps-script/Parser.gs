@@ -1861,44 +1861,8 @@ function icsContent(reservation) {
 }
 
 function buildGuiaHTML(cabin, tipo) {
-  tipo = tipo || 'noche';
-  var checkoutTitleMap = {
-    'noche':         'Check-out &middot; 11:00 am',
-    'pasatarde':     'Salida &middot; 7:00 pm',
-    'pasadia':       'Salida &middot; 5:00 pm',
-    'early':         'Check-out &middot; 11:00 am',
-    'late':          'Check-out &middot; 4:00 pm'
-  };
-  var checkoutTitle = checkoutTitleMap[tipo] || checkoutTitleMap.noche;
-  var checkoutBody  = 'Dejar la cocina limpia &middot; Llevarse la basura &middot; Cerrar la puerta y dejar la llave dentro del key box.';
-  var steps = {
-    verde: [
-      ['&#128273;', 'Acceso', 'Key Box c&#243;digo <strong>0507</strong>. Dentro est&#225; la llave para acceder a la caba&#241;a y un control negro con botones verdes para abrir el port&#243;n de la entrada en el caso de que deseen salir del proyecto.'],
-      ['&#9728;', 'Iluminaci&#243;n', 'Energ&#237;a solar &mdash; luces encienden solas al anochecer.<br><strong>Guirnaldas del ba&#241;o</strong>: se encienden solas en la noche y se apagan con el bot&#243;n de encendido/apagado detr&#225;s del panel solar encima de la mesa de madera en el ba&#241;o.<br><strong>Control blanco</strong>: l&#225;mparas de cocina y rec&#225;mara.'],
-      ['&#128267;', 'Carga de dispositivos', 'Inversor en la rec&#225;mara para celulares y dispositivos.'],
-      ['&#127869;', 'Cocina', 'Guarda todos los alimentos &mdash; no dejar nada expuesto para evitar animalitos.'],
-      ['&#9834;', 'Convivencia', 'M&#250;sica y conversaciones a volumen moderado.'],
-      ['&#10003;', checkoutTitle, checkoutBody]
-    ],
-    azul: [
-      ['&#128273;', 'Acceso', 'Key Box c&#243;digo <strong>0507</strong>. Dentro est&#225; la llave para acceder a la caba&#241;a y un control negro con botones verdes para abrir el port&#243;n de la entrada en el caso de que deseen salir del proyecto. Con la llave abres el candado y luego deslizas la puerta corrediza de metal.'],
-      ['&#9728;', 'Iluminaci&#243;n', 'Luces del comedor y jardines encienden autom&#225;ticamente al anochecer.<br><strong>Control blanco</strong> encima de la mesa verde: luces de rec&#225;mara y ba&#241;o.'],
-      ['&#128267;', 'Carga de dispositivos', 'Powerbank en la rec&#225;mara para celulares.'],
-      ['&#127869;', 'Cocina', 'Guarda todos los alimentos &mdash; no dejar nada expuesto para evitar animalitos.'],
-      ['&#9834;', 'Convivencia', 'M&#250;sica y conversaciones a volumen moderado.'],
-      ['&#10003;', checkoutTitle, checkoutBody]
-    ],
-    lila: [
-      ['&#128273;', 'Acceso', 'Key Box c&#243;digo <strong>0507</strong>. Dentro est&#225; la llave para acceder a la caba&#241;a y un control negro con botones verdes para abrir el port&#243;n de la entrada en el caso de que deseen salir del proyecto.'],
-      ['&#9728;', 'Iluminaci&#243;n', 'Energ&#237;a solar &mdash; guirnaldas del columpio encienden entre 6:30&ndash;7:00 pm autom&#225;ticamente.<br><strong>Control blanco</strong> en la c&#243;moda frente al espejo: luces de rec&#225;mara, terraza y cocina.'],
-      ['&#128267;', 'Carga de dispositivos', 'Inversor en la rec&#225;mara para celulares y dispositivos.'],
-      ['&#127869;', 'Cocina', 'Guarda todos los alimentos &mdash; no dejar nada expuesto para evitar animalitos.'],
-      ['&#9834;', 'Convivencia', 'M&#250;sica y conversaciones a volumen moderado.'],
-      ['&#10003;', checkoutTitle, checkoutBody]
-    ]
-  };
-
-  var list = steps[cabin] || steps['verde'];
+  // Fuente unica: getCabinGuideSteps() en PublicLink.gs
+  var list = getCabinGuideSteps(cabin, tipo);
   var rows = '';
   for (var i = 0; i < list.length; i++) {
     var s = list[i];
@@ -1907,23 +1871,20 @@ function buildGuiaHTML(cabin, tipo) {
     rows +=
       '<tr><td style="padding:12px 0;' + border + 'vertical-align:top;">' +
         '<table cellpadding="0" cellspacing="0" width="100%"><tr>' +
-          '<td style="width:28px;font-size:18px;vertical-align:top;padding-top:1px;">' + s[0] + '</td>' +
+          '<td style="width:28px;font-size:18px;vertical-align:top;padding-top:1px;">' + s.icon + '</td>' +
           '<td>' +
-            '<p style="margin:0 0 2px;font-size:13px;font-weight:700;color:#3a3530;">' + s[1] + '</p>' +
-            '<p style="margin:0;font-size:13px;color:#6b6560;line-height:1.6;">' + s[2] + '</p>' +
+            '<p style="margin:0 0 2px;font-size:13px;font-weight:700;color:#3a3530;">' + s.title + '</p>' +
+            '<p style="margin:0;font-size:13px;color:#6b6560;line-height:1.6;">' + s.body + '</p>' +
           '</td>' +
         '</tr></table>' +
       '</td></tr>';
   }
-
   return '' +
     '<h2 style="margin:0 0 6px;font-size:17px;font-weight:600;color:#3a3530;">&#128273; Guía de acceso a tu cabaña</h2>' +
     '<p style="margin:0 0 16px;font-size:13px;color:#8a8078;">Todo lo que necesitas para entrar y disfrutar desde el primer momento.</p>' +
-    '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f8f6;border:1px solid #e8e4de;border-radius:12px;padding:0 20px;margin-bottom:24px;">' +
-      '<tr><td>' +
-        '<table width="100%" cellpadding="0" cellspacing="0">' + rows + '</table>' +
-      '</td></tr>' +
-    '</table>';
+    '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f8f6;border:1px solid #e8e4de;border-radius:12px;margin-bottom:24px;"><tr><td style="padding:8px 20px;">' +
+    '<table width="100%" cellpadding="0" cellspacing="0">' + rows + '</table>' +
+    '</td></tr></table>';
 }
 
 function buildEmailHTML(r) {
