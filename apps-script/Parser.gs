@@ -961,6 +961,7 @@ function doGet(e) {
     // ── PUBLIC LINK ───────────────────────────────────────────
     if (action === 'getReservaPublic') return handleGetReservaPublic(e);
     if (action === 'getReservaLink')   return handleGetReservaLink(e);
+    if (action === 'debugShareLinks')  return handleDebugShareLinks(e);
 
     // ── GET RESERVATIONS (default) ────────────────────────────
     const sheet = getOrCreateSheet();
