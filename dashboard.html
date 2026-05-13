@@ -2045,6 +2045,7 @@
     <div class="modal-footer" style="flex-wrap:wrap;gap:8px;">
       <button class="btn btn-ghost" onclick="closeDetail()">Cerrar</button>
       <button class="btn btn-ghost" id="detailVoucherBtn" style="font-size:13px;display:none;" title="Abrir voucher en Drive">🧾 Ver voucher</button>
+      <button class="btn btn-ghost" id="detailLinkBtn" style="font-size:13px;" title="Copiar link publico para cliente">🔗 Link cliente</button>
       <button class="btn btn-ghost" id="detailResendBtn" style="font-size:13px;" title="Reenviar email al huésped">📧 Reenviar</button>
       <button class="btn btn-danger" id="detailDeleteBtn">Eliminar</button>
       <button class="btn btn-primary" id="detailEditBtn">Editar</button>
@@ -3112,6 +3113,24 @@ function showDispDetail(id) {
         resendBtn.textContent = data.ok ? '✓ Enviado' : '⚠ Error';
       } catch(e) { resendBtn.textContent = '⚠ Error'; }
       setTimeout(() => { resendBtn.disabled=false; resendBtn.textContent='📧 Reenviar'; }, 3000);
+    };
+  }
+  const linkBtn = document.getElementById('detailLinkBtn');
+  if (linkBtn) {
+    linkBtn.onclick = async () => {
+      linkBtn.disabled = true;
+      linkBtn.textContent = '⏳';
+      try {
+        const res  = await fetch(SHEETS_API_URL + '?action=getReservaLink&id=' + encodeURIComponent(r.id));
+        const data = await res.json();
+        if (data.ok && data.url) {
+          await navigator.clipboard.writeText(data.url);
+          linkBtn.textContent = '✓ Copiado';
+        } else {
+          linkBtn.textContent = '⚠ ' + (data.error || 'Error');
+        }
+      } catch(e) { linkBtn.textContent = '⚠ Error'; }
+      setTimeout(() => { linkBtn.disabled=false; linkBtn.textContent='🔗 Link cliente'; }, 3000);
     };
   }
   const alertaEl = document.getElementById('detailAlerta');

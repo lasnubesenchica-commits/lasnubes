@@ -958,6 +958,10 @@ function doGet(e) {
       return getIcalForCabin(cabin);
     }
 
+    // ── PUBLIC LINK ───────────────────────────────────────────
+    if (action === 'getReservaPublic') return handleGetReservaPublic(e);
+    if (action === 'getReservaLink')   return handleGetReservaLink(e);
+
     // ── GET RESERVATIONS (default) ────────────────────────────
     const sheet = getOrCreateSheet();
     const data  = sheet.getDataRange().getValues();
@@ -1937,6 +1941,8 @@ function buildEmailHTML(r) {
   const icsB64      = Utilities.base64Encode(ics);
   const icsUri      = 'data:text/calendar;base64,' + icsB64;
   const pagarUrl    = 'https://wa.me/50769812266?text=' + encodeURIComponent('Deseo cancelar el saldo restante de mi reserva del día ' + meta.checkinFmt + ' en la cabaña ' + cabin + '. ¿Me comparte los métodos de pago?');
+  let publicLink    = '';
+  try { if (r.id) publicLink = getPublicReservaUrl(r.id); } catch(e) { Logger.log('no publicLink: ' + e.message); }
 
   return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>' +
 '<body style="margin:0;padding:0;background:#f5f3f0;font-family:\'Helvetica Neue\',Helvetica,Arial,sans-serif;">' +
@@ -1948,7 +1954,8 @@ function buildEmailHTML(r) {
 '<p style="margin:10px 0 0;font-size:15px;color:rgba(255,255,255,0.9);">Buenos Aires, Chame · Panamá Oeste</p>' +
 '</td></tr>' +
 '<tr><td style="background:#ffffff;padding:36px 40px;">' +
-'<p style="margin:0 0 24px;font-size:16px;color:#3a3530;line-height:1.6;">Hola <strong>' + r.name + '</strong>, tu reserva ha sido confirmada. ¡Te esperamos en Las Nubes!</p>' +
+'<p style="margin:0 0 18px;font-size:16px;color:#3a3530;line-height:1.6;">Hola <strong>' + r.name + '</strong>, tu reserva ha sido confirmada. ¡Te esperamos en Las Nubes!</p>' +
+(publicLink ? '<p style="margin:0 0 24px;font-size:13px;color:#6b6560;">&#128279; <a href="' + publicLink + '" target="_blank" style="color:' + color + ';text-decoration:none;font-weight:500;border-bottom:1px solid ' + color + ';">Ver detalles online</a> &mdash; este link tambi&eacute;n se puede compartir por WhatsApp.</p>' : '') +
 '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f8f6;border-radius:12px;border:1px solid #e8e4de;margin-bottom:24px;">' +
 '<tr>' +
 '<td style="padding:20px 24px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Cabaña</p><p style="margin:0;font-size:17px;font-weight:600;color:' + color + ';">' + cabin + '</p></td>' +
@@ -2347,6 +2354,8 @@ function buildUpdateEmailHTML(reservation, cabin, color, checkinFmt, checkoutFmt
   checkoutFmt    = meta.checkoutFmt;
   hasSaldo       = amount > 0 && parseFloat(saldo) > 0;
   const pagarUrl = 'https://wa.me/50769812266?text=' + encodeURIComponent('Deseo cancelar el saldo restante de mi reserva del día ' + meta.checkinFmt + ' en la cabaña ' + cabin + '. ¿Me comparte los métodos de pago?');
+  let publicLink = '';
+  try { if (reservation.id) publicLink = getPublicReservaUrl(reservation.id); } catch(e) { Logger.log('no publicLink: ' + e.message); }
 
   return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"></head>' +
 '<body style="margin:0;padding:0;background:#f5f3f0;font-family:\'Helvetica Neue\',Helvetica,Arial,sans-serif;">' +
@@ -2358,7 +2367,8 @@ function buildUpdateEmailHTML(reservation, cabin, color, checkinFmt, checkoutFmt
 '<p style="margin:10px 0 0;font-size:15px;color:rgba(255,255,255,0.9);">Buenos Aires, Chame · Panamá Oeste</p>' +
 '</td></tr>' +
 '<tr><td style="background:#ffffff;padding:36px 40px;">' +
-'<p style="margin:0 0 24px;font-size:16px;color:#3a3530;line-height:1.6;">Hola <strong>' + reservation.name + '</strong>, los datos de tu reserva han sido actualizados.</p>' +
+'<p style="margin:0 0 18px;font-size:16px;color:#3a3530;line-height:1.6;">Hola <strong>' + reservation.name + '</strong>, los datos de tu reserva han sido actualizados.</p>' +
+(publicLink ? '<p style="margin:0 0 24px;font-size:13px;color:#6b6560;">&#128279; <a href="' + publicLink + '" target="_blank" style="color:' + color + ';text-decoration:none;font-weight:500;border-bottom:1px solid ' + color + ';">Ver detalles actualizados online</a> &mdash; el link te muestra siempre la informaci&oacute;n vigente.</p>' : '') +
 '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f8f6;border-radius:12px;border:1px solid #e8e4de;margin-bottom:24px;">' +
 '<tr><td style="padding:20px 24px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Cabaña</p><p style="margin:0;font-size:17px;font-weight:600;color:' + color + ';">' + cabin + '</p></td>' +
 '<td style="padding:20px 24px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Personas</p><p style="margin:0;font-size:17px;font-weight:600;color:#3a3530;">' + reservation.persons + '</p></td></tr>' +
