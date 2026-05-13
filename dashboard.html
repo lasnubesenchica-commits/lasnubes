@@ -2245,7 +2245,7 @@
         <label for="fNotificarActualizacion" style="font-size:13px;color:var(--text-muted);cursor:pointer;user-select:none;">Notificar al huésped</label>
       </div>
       <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveReservation()">Guardar reserva</button>
+      <button class="btn btn-primary" id="saveReservationBtn" onclick="saveReservation()">Guardar reserva</button>
     </div>
   </div>
 </div>
@@ -4714,13 +4714,16 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
   }
 
   save();
-  closeModal();
   renderCalendar();
   renderList();
   renderDisponibilidad();
-  showToast(editId ? 'Guardando cambios...' : 'Guardando reserva...');
 
-  // Sync to Google Sheets instantly
+  const saveBtn = document.getElementById('saveReservationBtn');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Guardando…'; }
+
+  // Sync to Google Sheets — esperamos para no cerrar el modal antes de
+  // saber si los datos llegaron.
+  let syncOk = !USE_SHEETS;
   if (USE_SHEETS) {
     try {
       const action = editId ? 'updateReservation' : 'saveReservation';
@@ -4729,14 +4732,19 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
         body: JSON.stringify({ action, reservation, fechaAnterior })
       });
       const data = await res.json();
-      if (data.ok) {
-        showToast(editId ? 'Reserva actualizada ✓' : 'Reserva guardada en Sheets ✓');
-      } else {
-        showToast('Guardado local ✓ (Sheets no disponible)');
-      }
+      syncOk = !!(data && data.ok);
     } catch(e) {
-      showToast('Guardado local ✓ (sin conexión a Sheets)');
+      syncOk = false;
     }
+  }
+
+  if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Guardar reserva'; }
+  closeModal();
+
+  if (USE_SHEETS) {
+    showToast(syncOk
+      ? (editId ? 'Reserva actualizada ✓' : 'Reserva guardada en Sheets ✓')
+      : 'Guardado local ✓ (Sheets no disponible)');
   } else {
     showToast(editId ? 'Reserva actualizada ✓' : 'Reserva guardada ✓');
   }
