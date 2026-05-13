@@ -3124,7 +3124,8 @@ function showDispDetail(id) {
         const res  = await fetch(SHEETS_API_URL + '?action=getReservaLink&id=' + encodeURIComponent(r.id));
         const data = await res.json();
         if (data.ok && data.url) {
-          await navigator.clipboard.writeText(data.url);
+          const text = _buildClienteShareText(r, data.url);
+          await navigator.clipboard.writeText(text);
           linkBtn.textContent = '✓ Copiado';
         } else {
           linkBtn.textContent = '⚠ ' + (data.error || 'Error');
@@ -6689,6 +6690,52 @@ function formatDate(d) {
   if(!d) return '';
   const [y,m,day] = d.split('-');
   return `${day}/${m}/${y}`;
+}
+
+// Texto para copiar al portapapeles al hacer "Link cliente" — listo para pegar en WhatsApp.
+function _buildClienteShareText(r, url) {
+  const dd = reservaDisplayDates(r);
+  const tipo = r.tipo || 'noche';
+  const cabin = r.cabinName || r.cabin || '';
+  const DIAS  = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const fmt = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso + 'T12:00:00');
+    return DIAS[d.getDay()] + ' ' + d.getDate() + ' ' + MESES[d.getMonth()];
+  };
+
+  let fechasLine;
+  if (tipo === 'pasatarde') {
+    fechasLine = '📅 ' + fmt(dd.displayCheckin) + ' · Pasatarde 12:30pm – 7pm';
+  } else if (tipo === 'pasadia') {
+    fechasLine = '📅 ' + fmt(dd.displayCheckin) + ' · Pasadía 9am – 5pm';
+  } else if (tipo === 'early') {
+    fechasLine = '📅 ' + fmt(dd.displayCheckin) + ' → ' + fmt(dd.displayCheckout) + ' · 1 noche (entra 9am)';
+  } else if (tipo === 'late') {
+    fechasLine = '📅 ' + fmt(dd.displayCheckin) + ' → ' + fmt(dd.displayCheckout) + ' · 1 noche (sale 4pm)';
+  } else {
+    const a = new Date(dd.displayCheckin  + 'T12:00:00');
+    const b = new Date(dd.displayCheckout + 'T12:00:00');
+    const n = Math.round((b - a) / 86400000);
+    fechasLine = '📅 ' + fmt(dd.displayCheckin) + ' → ' + fmt(dd.displayCheckout) + ' · ' + n + (n === 1 ? ' noche' : ' noches');
+  }
+
+  const isPasadia = (tipo === 'pasatarde' || tipo === 'pasadia');
+  let checkinH = '2:00 pm', checkoutH = '11:00 am';
+  if (tipo === 'early') { checkinH = '9:00 am'; }
+  if (tipo === 'late')  { checkoutH = '4:00 pm'; }
+
+  let text = '¡Reserva confirmada! 🌿\n\n';
+  text += '👤 ' + (r.name || '') + '\n';
+  text += '🏡 ' + cabin + '\n';
+  text += fechasLine + '\n';
+  if (r.persons) text += '👥 ' + r.persons + (r.persons == 1 ? ' persona' : ' personas') + '\n';
+  if (!isPasadia) {
+    text += '\nCheck-in: ' + checkinH + '\nCheck-out: ' + checkoutH + '\n';
+  }
+  text += '\nVer detalles e instrucciones:\n' + url;
+  return text;
 }
 
 function save() {
