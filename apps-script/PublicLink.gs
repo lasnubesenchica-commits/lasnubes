@@ -384,6 +384,58 @@ function handleGetReservaLink(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+// Test directo desde el editor — corre handleGetReservaPublic con un code conocido
+// para ver el stack trace en los logs.
+function _testGetReservaPublic() {
+  try {
+    const fakeE = { parameter: { c: 'T3vZSG' } };
+    const result = handleGetReservaPublic(fakeE);
+    Logger.log('RESULT: ' + result.getContent());
+  } catch (err) {
+    Logger.log('THREW: ' + err.message);
+    Logger.log('STACK: ' + (err.stack || 'no stack'));
+  }
+}
+
+// Mismo flujo paso por paso para aislar el bug
+function _testStepByStep() {
+  try {
+    Logger.log('1. lookupReservaIdByShareCode("T3vZSG")');
+    const id = lookupReservaIdByShareCode('T3vZSG');
+    Logger.log('   -> ' + id + ' (type ' + typeof id + ')');
+
+    Logger.log('2. _readReservaById(' + id + ')');
+    const r = _readReservaById(id);
+    Logger.log('   -> ' + JSON.stringify(r));
+    if (!r) { Logger.log('STOP: reserva no encontrada'); return; }
+
+    Logger.log('3. tipoEmailMeta(r)');
+    const meta = tipoEmailMeta(r);
+    Logger.log('   -> ' + JSON.stringify(meta));
+
+    Logger.log('4. _buildGcalUrl(r)');
+    const gcal = _buildGcalUrl(r);
+    Logger.log('   -> ' + gcal);
+
+    Logger.log('5. _buildIcsFor(r)');
+    const ics = _buildIcsFor(r);
+    Logger.log('   -> ' + ics.slice(0, 200) + '...');
+
+    Logger.log('6. getCabinGuideSteps(r.cabin, meta.tipo)');
+    const steps = getCabinGuideSteps(r.cabin, meta.tipo);
+    Logger.log('   -> ' + steps.length + ' steps');
+
+    Logger.log('7. _buildPublicDTO(r)');
+    const dto = _buildPublicDTO(r);
+    Logger.log('   -> ' + JSON.stringify(dto).slice(0, 500) + '...');
+
+    Logger.log('✓ TODO OK');
+  } catch (err) {
+    Logger.log('THREW at step: ' + err.message);
+    Logger.log('STACK: ' + (err.stack || 'no stack'));
+  }
+}
+
 // Diagnostico temporal: lista los share codes guardados
 function handleDebugShareLinks(e) {
   try {
