@@ -3117,6 +3117,13 @@ function showDispDetail(id) {
   }
   const linkBtn = document.getElementById('detailLinkBtn');
   if (linkBtn) {
+    const phoneDigitsInit = (r.telefono || '').toString().replace(/\D/g, '');
+    const hasPhoneInit    = phoneDigitsInit.length >= 7;
+    const defaultLabel    = hasPhoneInit ? '💬 Enviar a WhatsApp' : '🔗 Link cliente';
+    linkBtn.textContent = defaultLabel;
+    linkBtn.title       = hasPhoneInit
+      ? 'Abrir WhatsApp del cliente con texto pre-cargado'
+      : 'Copiar link publico para cliente';
     linkBtn.onclick = async () => {
       linkBtn.disabled = true;
       linkBtn.textContent = '⏳';
@@ -3125,10 +3132,8 @@ function showDispDetail(id) {
         const data = await res.json();
         if (data.ok && data.url) {
           const text = _buildClienteShareText(r, data.url);
-          const phoneDigits = (r.telefono || '').toString().replace(/\D/g, '');
-          const hasPhone = phoneDigits.length >= 7;
-          if (hasPhone) {
-            const fullPhone = phoneDigits.length === 8 ? '507' + phoneDigits : phoneDigits;
+          if (hasPhoneInit) {
+            const fullPhone = phoneDigitsInit.length === 8 ? '507' + phoneDigitsInit : phoneDigitsInit;
             window.open('https://wa.me/' + fullPhone + '?text=' + encodeURIComponent(text), '_blank');
             linkBtn.textContent = '✓ WhatsApp abierto';
           } else {
@@ -3139,7 +3144,7 @@ function showDispDetail(id) {
           linkBtn.textContent = '⚠ ' + (data.error || 'Error');
         }
       } catch(e) { linkBtn.textContent = '⚠ Error'; }
-      setTimeout(() => { linkBtn.disabled=false; linkBtn.textContent='🔗 Link cliente'; }, 3000);
+      setTimeout(() => { linkBtn.disabled=false; linkBtn.textContent = defaultLabel; }, 3000);
     };
   }
   const alertaEl = document.getElementById('detailAlerta');
