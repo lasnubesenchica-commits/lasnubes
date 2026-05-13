@@ -246,7 +246,18 @@ function _buildPublicDTO(r) {
 
   // Pasos de la guia de la cabaña
   let cabinGuide = [];
-  try { cabinGuide = getCabinGuideSteps(r.cabin, meta.tipo); } catch(e) { Logger.log('warn cabinGuide: ' + e.message); }
+  try {
+    cabinGuide = getCabinGuideSteps(r.cabin, meta.tipo);
+    // Ocultar el codigo del key box dentro de la guia tambien cuando no estamos en ventana operativa
+    if (!showKeyBox) {
+      const mask = 'El código del Key Box aparece más arriba el día de tu entrada.';
+      cabinGuide = cabinGuide.map(s => ({
+        icon:  s.icon,
+        title: s.title,
+        body:  s.body.replace(/Key Box código <strong>\d+<\/strong>\./, mask)
+      }));
+    }
+  } catch(e) { Logger.log('warn cabinGuide: ' + e.message); }
 
   // Saldo pendiente con WhatsApp pre-armado
   const pagarUrl = hasSaldo

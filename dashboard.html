@@ -3125,8 +3125,16 @@ function showDispDetail(id) {
         const data = await res.json();
         if (data.ok && data.url) {
           const text = _buildClienteShareText(r, data.url);
-          await navigator.clipboard.writeText(text);
-          linkBtn.textContent = '✓ Copiado';
+          const phoneDigits = (r.telefono || '').toString().replace(/\D/g, '');
+          const hasPhone = phoneDigits.length >= 7;
+          if (hasPhone) {
+            const fullPhone = phoneDigits.length === 8 ? '507' + phoneDigits : phoneDigits;
+            window.open('https://wa.me/' + fullPhone + '?text=' + encodeURIComponent(text), '_blank');
+            linkBtn.textContent = '✓ WhatsApp abierto';
+          } else {
+            await navigator.clipboard.writeText(text);
+            linkBtn.textContent = '✓ Copiado';
+          }
         } else {
           linkBtn.textContent = '⚠ ' + (data.error || 'Error');
         }
