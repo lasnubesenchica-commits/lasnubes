@@ -384,6 +384,25 @@ function handleGetReservaLink(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+// Diagnostico temporal: lista los share codes guardados
+function handleDebugShareLinks(e) {
+  try {
+    const s = _shareLinksSheet();
+    const data = s.getDataRange().getValues();
+    const entries = [];
+    for (let i = 1; i < data.length; i++) {
+      entries.push({ code: data[i][0], reservaId: data[i][1], createdAt: data[i][2] });
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: true, count: entries.length, entries: entries }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch(err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: false, error: err.message, stack: err.stack }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
 // Genera el secret si no existe — correr una sola vez desde el editor.
 function inicializarPublicLinkSecret() {
   const props = PropertiesService.getScriptProperties();
