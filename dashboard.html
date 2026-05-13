@@ -6696,7 +6696,12 @@ function formatDate(d) {
 function _buildClienteShareText(r, url) {
   const dd = reservaDisplayDates(r);
   const tipo = r.tipo || 'noche';
-  const cabin = r.cabinName || r.cabin || '';
+  const CABIN_FULL_NAMES = {
+    verde: 'Paseo por Las Nubes',
+    azul:  'Portal hacia Las Nubes',
+    lila:  'Puente entre Las Nubes'
+  };
+  const cabin = CABIN_FULL_NAMES[r.cabin] || r.cabinName || r.cabin || '';
   const DIAS  = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
   const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
   const fmt = (iso) => {
