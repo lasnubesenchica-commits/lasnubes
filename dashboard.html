@@ -2244,7 +2244,8 @@
         <input type="checkbox" id="fNotificarActualizacion" style="width:16px;height:16px;cursor:pointer;">
         <label for="fNotificarActualizacion" style="font-size:13px;color:var(--text-muted);cursor:pointer;user-select:none;">Notificar al huésped</label>
       </div>
-      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-ghost" id="cancelReservationBtn" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-ghost" id="modalWhatsAppBtn" style="display:none;font-size:13px;">💬 Enviar a WhatsApp</button>
       <button class="btn btn-primary" id="saveReservationBtn" onclick="saveReservation()">Guardar reserva</button>
     </div>
   </div>
@@ -4115,8 +4116,18 @@ function toggleHistorico() {
   document.getElementById('fCheckout').min = on ? '' : today;
 }
 
+function _resetReservaModalFooter() {
+  const saveBtn = document.getElementById('saveReservationBtn');
+  if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Guardar reserva'; }
+  const cancelBtn = document.getElementById('cancelReservationBtn');
+  if (cancelBtn) cancelBtn.textContent = 'Cancelar';
+  const waBtn = document.getElementById('modalWhatsAppBtn');
+  if (waBtn) { waBtn.style.display = 'none'; waBtn.disabled = false; waBtn.textContent = '💬 Enviar a WhatsApp'; }
+}
+
 function openModal(cabin, date) {
   editId = null;
+  _resetReservaModalFooter();
   // Reset histórico toggle
   const tog = document.getElementById('historicoToggle');
   if (tog) { tog.checked = false; toggleHistorico(); }
@@ -4172,6 +4183,7 @@ function editReservation(id) {
   const r = reservations.find(x => x.id === id);
   if(!r) return;
   editId = id;
+  _resetReservaModalFooter();
   document.getElementById('modalTitle').textContent = 'Editar reserva';
   document.getElementById('notificarWrap').style.display = 'flex';
   document.getElementById('fName').value = r.name;
@@ -4738,15 +4750,49 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
     }
   }
 
-  if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Guardar reserva'; }
-  closeModal();
-
+  // Toast con el resultado (modal sigue abierto para acciones post-save)
   if (USE_SHEETS) {
     showToast(syncOk
-      ? (editId ? 'Reserva actualizada ✓' : 'Reserva guardada en Sheets ✓')
+      ? (editId ? 'Reserva actualizada ✓' : 'Reserva guardada ✓')
       : 'Guardado local ✓ (Sheets no disponible)');
   } else {
     showToast(editId ? 'Reserva actualizada ✓' : 'Reserva guardada ✓');
+  }
+
+  // Cambiar el footer del modal a estado post-save
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = '✓ Guardada';
+  }
+  const cancelBtn = document.getElementById('cancelReservationBtn');
+  if (cancelBtn) cancelBtn.textContent = 'Cerrar';
+
+  // Mostrar boton de WhatsApp si la reserva tiene telefono
+  const waBtn = document.getElementById('modalWhatsAppBtn');
+  if (waBtn) {
+    const phoneDigits = (telefono || '').toString().replace(/\D/g, '');
+    if (phoneDigits.length >= 7 && syncOk) {
+      const fullPhone = phoneDigits.length === 8 ? '507' + phoneDigits : phoneDigits;
+      waBtn.style.display = '';
+      waBtn.onclick = async () => {
+        waBtn.disabled = true;
+        waBtn.textContent = '⏳';
+        try {
+          const res  = await fetch(SHEETS_API_URL + '?action=getReservaLink&id=' + encodeURIComponent(id));
+          const data = await res.json();
+          if (data.ok && data.url) {
+            const text = _buildClienteShareText(reservation, data.url);
+            window.open('https://wa.me/' + fullPhone + '?text=' + encodeURIComponent(text), '_blank');
+            waBtn.textContent = '✓ WhatsApp abierto';
+          } else {
+            waBtn.textContent = '⚠ Error';
+          }
+        } catch(e) { waBtn.textContent = '⚠ Error'; }
+        setTimeout(() => { waBtn.disabled=false; waBtn.textContent='💬 Enviar a WhatsApp'; }, 3000);
+      };
+    } else {
+      waBtn.style.display = 'none';
+    }
   }
 
   // ── Cleanup: eliminar la reserva duplicada legacy (si fue confirmado por el guard)
