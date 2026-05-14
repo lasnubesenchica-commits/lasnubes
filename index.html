@@ -130,6 +130,13 @@
     margin-left: 8px;
     font-size: 12px;
   }
+  .promo-banner-note {
+    font-size: 11px;
+    color: #4a6b40;
+    margin-top: 4px;
+    letter-spacing: 0.02em;
+  }
+  .promo-banner-note strong { color: #2c5e22; font-weight: 600; }
   @media (max-width: 520px) {
     .promo-banner { margin: 16px 12px 0; padding: 14px 16px; }
     .promo-banner-title { font-size: 17px; }
@@ -1248,6 +1255,7 @@
       Domingo a jueves desde <strong>$<span id="promoBannerPrice"></span></strong> por noche
       <span class="promo-banner-strike">antes $<span id="promoBannerOrig"></span></span>
     </div>
+    <div class="promo-banner-note">Aplica solo para reservas <strong>directas</strong> vía WhatsApp</div>
   </div>
 </div>
 
@@ -2282,15 +2290,15 @@
       <button id="reservaPickerWA" onclick="_reservaPickerGoWA()" style="display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:12px;border:1px solid var(--border);background:#25d366;color:white;font-size:14px;font-weight:500;cursor:pointer;touch-action:manipulation;">
         <span style="font-size:22px;">💬</span>
         <div style="text-align:left;flex:1;">
-          <div style="font-weight:600;">WhatsApp directo</div>
-          <div style="font-size:12px;opacity:0.9;font-weight:300;">Te ayudamos a coordinar</div>
+          <div style="font-weight:600;">DIRECTO vía WhatsApp</div>
+          <div style="font-size:12px;opacity:0.9;font-weight:300;">Aceptamos Yappy o ACH</div>
         </div>
       </button>
       <button id="reservaPickerAirbnb" onclick="_reservaPickerGoAirbnb()" style="display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;font-weight:500;cursor:pointer;touch-action:manipulation;">
         <span style="font-size:22px;">🏠</span>
         <div style="text-align:left;flex:1;">
-          <div style="font-weight:600;color:#ff5a5f;">Reservar en Airbnb</div>
-          <div style="font-size:12px;color:var(--muted);font-weight:300;">Con fechas precargadas</div>
+          <div style="font-weight:600;color:#ff5a5f;">AIRBNB App</div>
+          <div style="font-size:12px;color:var(--muted);font-weight:300;">Con Tarjeta de Crédito</div>
         </div>
       </button>
     </div>
