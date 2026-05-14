@@ -409,8 +409,19 @@ function handleGetReservaLink(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
   const url = getPublicReservaUrl(id);
+  // Si el huesped es elegible (Directa, no cancelado, tipo dormido, con email),
+  // get-or-create su codigo de referido para incluirlo en el mensaje del admin.
+  let referralCode = null;
+  try {
+    const tipoRaw   = (r.tipo || 'noche').toString();
+    const isDormido = !(tipoRaw === 'pasatarde' || tipoRaw === 'pasadia');
+    const eligible  = !!r.email && (r.origin || '') === 'Directa'
+                      && (r.estadoPago || '').toString().toUpperCase() !== 'CANCELADA'
+                      && isDormido;
+    if (eligible) referralCode = getOrCreateReferralCode(r.email, r.telefono, r.name);
+  } catch(err) { Logger.log('warn referralCode in getReservaLink: ' + err.message); }
   return ContentService
-    .createTextOutput(JSON.stringify({ ok: true, url: url, id: id }))
+    .createTextOutput(JSON.stringify({ ok: true, url: url, id: id, referralCode: referralCode, referralAmount: 20 }))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
