@@ -2041,6 +2041,7 @@
     <div id="detailCumpleBadge" style="display:none;background:#f0f8ed;border-left:3px solid #6a9e62;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;color:#2c5e22;">
       🎂 <strong>Cumpleaños en esta estadía</strong> — <span id="detailCumpleText"></span>. Aplicar descuento <strong>20% Dom–Jue / 10% Vie–Sáb</strong> sobre la noche del cumpleaños.
     </div>
+    <div id="detailLoyaltyBadge" style="display:none;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;"></div>
     <div id="detailAlerta" style="display:none;background:#fff3cd;color:#856404;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:16px;">
       ⚠ <strong>Verificar itinerario</strong> — Airbnb notificó un cambio. Revisa fechas y monto en la app de Airbnb.
     </div>
@@ -3153,6 +3154,8 @@ function showDispDetail(id) {
   }
   const alertaEl = document.getElementById('detailAlerta');
   if (alertaEl) alertaEl.style.display = r.alerta ? 'block' : 'none';
+  // Badge de cliente fiel: cuenta estadias previas completadas del mismo huesped
+  _renderLoyaltyBadge(r);
   // Badge de cumpleaños: si DOB cae entre checkin y checkout (display dates)
   const cumpleBadge = document.getElementById('detailCumpleBadge');
   if (cumpleBadge) {
@@ -6793,6 +6796,57 @@ function formatDate(d) {
   if(!d) return '';
   const [y,m,day] = d.split('-');
   return `${day}/${m}/${y}`;
+}
+
+// Cuenta estadias previas completadas del mismo huesped (por email o telefono).
+// Filtros: origin=Directa, no canceladas, tipo dormido (noche/early/late), checkout < hoy.
+function _countPrevCompletedStays(r) {
+  if (!r) return 0;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const myEmail = (r.email    || '').toString().toLowerCase().trim();
+  const myPhone = (r.telefono || '').toString().replace(/\D/g, '');
+  if (!myEmail && !myPhone) return 0;
+  let count = 0;
+  for (const x of reservations) {
+    if (!x || x.id === r.id) continue;
+    if ((x.origin || '') !== 'Directa') continue;
+    if ((x.estadoPago || '').toString().toUpperCase() === 'CANCELADA') continue;
+    const t = (x.tipo || 'noche').toString();
+    if (t === 'pasatarde' || t === 'pasadia') continue;
+    if (!x.checkout) continue;
+    const co = new Date(x.checkout.toString().slice(0, 10) + 'T12:00:00');
+    if (isNaN(co) || co >= today) continue;
+    const xe = (x.email    || '').toString().toLowerCase().trim();
+    const xp = (x.telefono || '').toString().replace(/\D/g, '');
+    if ((myEmail && xe === myEmail) || (myPhone && xp === myPhone)) {
+      count++;
+    }
+  }
+  return count;
+}
+
+function _ordinalVisita(n) {
+  if (n === 1) return '1ra visita';
+  if (n === 2) return '2da visita';
+  if (n === 3) return '3ra visita';
+  return n + 'ta visita';
+}
+
+function _renderLoyaltyBadge(r) {
+  const el = document.getElementById('detailLoyaltyBadge');
+  if (!el) return;
+  const prev = _countPrevCompletedStays(r);
+  if (prev >= 2) {
+    const num = prev + 1;
+    el.style.cssText = 'display:block;background:#fffbeb;border-left:3px solid #d4a44c;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;color:#7a5a1f;';
+    el.innerHTML = '🌟 <strong>Cliente fiel</strong> · ' + _ordinalVisita(num) + ' — noche cortesía <strong>Dom–Jue</strong> disponible (válida 1 vez sobre esta o futura estadía).';
+  } else if (prev === 1) {
+    el.style.cssText = 'display:block;background:#f5f4f0;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;color:var(--text-muted);';
+    el.innerHTML = '🔄 <strong>2da visita</strong> — cliente que repite. Con la próxima estadía completa, activa cortesía Dom–Jue.';
+  } else {
+    el.style.display = 'none';
+    el.innerHTML = '';
+  }
 }
 
 // Texto para copiar al portapapeles al hacer "Link cliente" — listo para pegar en WhatsApp.
