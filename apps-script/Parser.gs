@@ -971,6 +971,7 @@ function doGet(e) {
     if (action === 'getReservaPublic') return handleGetReservaPublic(e);
     if (action === 'getReservaLink')   return handleGetReservaLink(e);
     if (action === 'getLoyaltyCredits') return handleGetLoyaltyCredits(e);
+    if (action === 'getReferrals')      return handleGetReferrals(e);
 
     // ── GET RESERVATIONS (default) ────────────────────────────
     const sheet = getOrCreateSheet();
@@ -1501,6 +1502,10 @@ function doPost(e) {
     // ── LOYALTY (admin) ───────────────────────────────────────
     if (action === 'markLoyaltyUsed')   return handleMarkLoyaltyUsed(payload);
     if (action === 'unmarkLoyaltyUsed') return handleUnmarkLoyaltyUsed(payload);
+
+    // ── REFERIDOS (admin) ─────────────────────────────────────
+    if (action === 'registerReferralUse')   return handleRegisterReferralUse(payload);
+    if (action === 'markReferrerCreditUsed') return handleMarkReferrerCreditUsed(payload);
 
     // ── SEND EMAILS ───────────────────────────────────────────
     if (action === 'sendCancellationEmail') return sendCancellationEmail(payload.reservation);

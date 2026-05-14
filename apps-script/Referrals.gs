@@ -1,0 +1,378 @@
+// ═══════════════════════════════════════════════════════════
+//  Programa de Referidos — codigos personales + redenciones
+// ═══════════════════════════════════════════════════════════
+//
+//  Cada huésped con estadia completada (Directa, no cancelada) recibe
+//  un código personal LN-XXXXXX vía email. Lo comparte. Cuando un amigo
+//  reserva mencionando el código, ambos reciben $20 off.
+//
+//  Sheets:
+//   - Referrals:     Email | Telefono | Nombre | Code | CreatedAt | EmailSentAt
+//   - ReferralUses:  Code | ReferrerEmail | UsedByEmail | UsedByReservaId
+//                    | UsedAt | ReferrerCreditUsed | ReferrerCreditReservaId
+//
+//  Trigger diario enviarCodigosReferido(): para cada huesped elegible
+//  sin codigo o sin email enviado, crea el codigo (si falta) y envia
+//  el email con instrucciones de uso.
+//
+//  Reward: $20 al referrer (al confirmarse la estadia del referido),
+//  $20 al referido (descuento aplicado al primer booking).
+//
+//  Activacion: ejecutar instalarTriggerReferidos() una vez.
+//  Preview:    enviarReferralPrueba()
+// ═══════════════════════════════════════════════════════════
+
+const REFERRAL_CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';  // sin 0/O/I/l/1
+const REFERRAL_CODE_LEN      = 6;
+const REFERRAL_REWARD_AMOUNT = 20;
+
+function _getOrCreateReferralsSheet() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  let s = ss.getSheetByName('Referrals');
+  if (!s) {
+    s = ss.insertSheet('Referrals');
+    s.getRange(1, 1, 1, 6).setValues([[
+      'Email', 'Telefono', 'Nombre', 'Code', 'CreatedAt', 'EmailSentAt'
+    ]]);
+    s.getRange(1, 1, 1, 6).setFontWeight('bold');
+    s.setFrozenRows(1);
+  }
+  return s;
+}
+
+function _getOrCreateReferralUsesSheet() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  let s = ss.getSheetByName('ReferralUses');
+  if (!s) {
+    s = ss.insertSheet('ReferralUses');
+    s.getRange(1, 1, 1, 7).setValues([[
+      'Code', 'ReferrerEmail', 'UsedByEmail', 'UsedByReservaId',
+      'UsedAt', 'ReferrerCreditUsed', 'ReferrerCreditReservaId'
+    ]]);
+    s.getRange(1, 1, 1, 7).setFontWeight('bold');
+    s.setFrozenRows(1);
+  }
+  return s;
+}
+
+function _genReferralCode() {
+  let code = '';
+  const N = REFERRAL_CODE_ALPHABET.length;
+  for (let i = 0; i < REFERRAL_CODE_LEN; i++) {
+    code += REFERRAL_CODE_ALPHABET.charAt(Math.floor(Math.random() * N));
+  }
+  return 'LN-' + code;
+}
+
+// Reusa el código si el huésped ya tiene uno; sino genera uno nuevo y único.
+function getOrCreateReferralCode(email, telefono, nombre) {
+  const e = (email    || '').toString().toLowerCase().trim();
+  if (!e) return null;
+  const s = _getOrCreateReferralsSheet();
+  const data = s.getDataRange().getValues();
+  const existingCodes = new Set();
+  for (let i = 1; i < data.length; i++) {
+    const re = (data[i][0] || '').toString().toLowerCase().trim();
+    if (re === e) return data[i][3].toString();
+    if (data[i][3]) existingCodes.add(data[i][3].toString());
+  }
+  let code;
+  do { code = _genReferralCode(); } while (existingCodes.has(code));
+  const now = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd HH:mm:ss');
+  s.appendRow([e, telefono || '', nombre || '', code, now, '']);
+  return code;
+}
+
+function _findReferralRow(email) {
+  const e = (email || '').toString().toLowerCase().trim();
+  if (!e) return null;
+  const s = _getOrCreateReferralsSheet();
+  const data = s.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if ((data[i][0] || '').toString().toLowerCase().trim() === e) {
+      return {
+        rowIndex:    i + 1,
+        email:       data[i][0],
+        telefono:    data[i][1],
+        nombre:      data[i][2],
+        code:        data[i][3],
+        createdAt:   data[i][4] instanceof Date ? Utilities.formatDate(data[i][4], 'America/Panama', 'yyyy-MM-dd') : data[i][4],
+        emailSentAt: data[i][5] instanceof Date ? Utilities.formatDate(data[i][5], 'America/Panama', 'yyyy-MM-dd') : data[i][5]
+      };
+    }
+  }
+  return null;
+}
+
+function _findReferralByCode(code) {
+  if (!code) return null;
+  const c = code.toString().trim().toUpperCase();
+  const s = _getOrCreateReferralsSheet();
+  const data = s.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if ((data[i][3] || '').toString().trim().toUpperCase() === c) {
+      return {
+        rowIndex:    i + 1,
+        email:       data[i][0],
+        telefono:    data[i][1],
+        nombre:      data[i][2],
+        code:        data[i][3],
+        createdAt:   data[i][4] instanceof Date ? Utilities.formatDate(data[i][4], 'America/Panama', 'yyyy-MM-dd') : data[i][4],
+        emailSentAt: data[i][5] instanceof Date ? Utilities.formatDate(data[i][5], 'America/Panama', 'yyyy-MM-dd') : data[i][5]
+      };
+    }
+  }
+  return null;
+}
+
+function _findReferralUsesForReferrer(email) {
+  const e = (email || '').toString().toLowerCase().trim();
+  if (!e) return [];
+  const s = _getOrCreateReferralUsesSheet();
+  const data = s.getDataRange().getValues();
+  const out = [];
+  for (let i = 1; i < data.length; i++) {
+    if ((data[i][1] || '').toString().toLowerCase().trim() === e) {
+      out.push({
+        rowIndex:                i + 1,
+        code:                    data[i][0],
+        referrerEmail:           data[i][1],
+        usedByEmail:             data[i][2],
+        usedByReservaId:         data[i][3],
+        usedAt:                  data[i][4] instanceof Date ? Utilities.formatDate(data[i][4], 'America/Panama', 'yyyy-MM-dd') : data[i][4],
+        referrerCreditUsed:      data[i][5] === true || data[i][5] === 'TRUE' || data[i][5] === 'true',
+        referrerCreditReservaId: data[i][6]
+      });
+    }
+  }
+  return out;
+}
+
+function _findReferralUseByReservaId(reservaId) {
+  if (!reservaId) return null;
+  const s = _getOrCreateReferralUsesSheet();
+  const data = s.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][3] && data[i][3].toString() === reservaId.toString()) {
+      return {
+        rowIndex:                i + 1,
+        code:                    data[i][0],
+        referrerEmail:           data[i][1],
+        usedByEmail:             data[i][2],
+        usedByReservaId:         data[i][3],
+        usedAt:                  data[i][4] instanceof Date ? Utilities.formatDate(data[i][4], 'America/Panama', 'yyyy-MM-dd') : data[i][4],
+        referrerCreditUsed:      data[i][5] === true || data[i][5] === 'TRUE' || data[i][5] === 'true',
+        referrerCreditReservaId: data[i][6]
+      };
+    }
+  }
+  return null;
+}
+
+// Trigger diario @ 10am Panama
+function enviarCodigosReferido() {
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+
+  // Candidatos: huesped unico (por email) con al menos 1 estadia completada
+  // Directa no cancelada de tipo dormido.
+  const today = new Date();
+  const todayMs = new Date(Utilities.formatDate(today, 'America/Panama', 'yyyy-MM-dd') + 'T00:00:00-05:00').getTime();
+  const candidatos = new Map(); // email -> { nombre, telefono }
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    if (!r[0]) continue;
+    if ((r[9]  || '') !== 'Directa') continue;
+    if ((r[20] || '').toString().toUpperCase() === 'CANCELADA') continue;
+    const tipo = (r[24] || 'noche').toString();
+    if (tipo === 'pasatarde' || tipo === 'pasadia') continue;
+    const email = (r[21] || '').toString().toLowerCase().trim();
+    if (!email) continue;
+    if (!r[5]) continue;
+    const coStr = r[5] instanceof Date
+      ? Utilities.formatDate(r[5], 'America/Panama', 'yyyy-MM-dd')
+      : r[5].toString().slice(0, 10);
+    const coMs = new Date(coStr + 'T12:00:00-05:00').getTime();
+    if (isNaN(coMs) || coMs >= todayMs) continue;  // no completada todavia
+    if (!candidatos.has(email)) {
+      candidatos.set(email, { nombre: r[1], telefono: r[23] || '' });
+    }
+  }
+
+  const refs = _getOrCreateReferralsSheet();
+  let sent = 0, skipped = 0, errors = 0;
+  candidatos.forEach((info, email) => {
+    try {
+      // Asegura código (si ya existe lo reusa, sino crea fila)
+      const code = getOrCreateReferralCode(email, info.telefono, info.nombre);
+      const row  = _findReferralRow(email);
+      if (!row) { errors++; return; }
+      if (row.emailSentAt) { skipped++; return; }  // ya enviado antes
+      _sendReferralCodeEmail({ email, nombre: info.nombre, code });
+      refs.getRange(row.rowIndex, 6).setValue(Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd HH:mm:ss'));
+      sent++;
+    } catch(e) {
+      errors++;
+      Logger.log('⚠ Error referido ' + email + ': ' + e.message);
+    }
+  });
+  Logger.log('🤝 Referidos: ' + sent + ' enviados · ' + skipped + ' ya enviados · ' + errors + ' errores');
+  return { sent, skipped, errors };
+}
+
+function _sendReferralCodeEmail(opts) {
+  const props = PropertiesService.getScriptProperties();
+  const waNum = (props.getProperty('CONTACT_WHATSAPP_NUMBER') || '50769812266').replace(/\D/g, '');
+  const firstName = (opts.nombre || '').split(/\s+/)[0] || opts.nombre;
+  const subject = 'Gracias por venir — tu código de referido Las Nubes';
+  const html = buildReferralCodeEmailHTML({
+    firstName,
+    code:     opts.code,
+    amount:   REFERRAL_REWARD_AMOUNT,
+    waNumber: waNum
+  });
+  GmailApp.sendEmail(opts.email, subject, '', { htmlBody: html, name: 'Las Nubes', replyTo: REPLY_TO_EMAIL });
+}
+
+function buildReferralCodeEmailHTML(opts) {
+  return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>' +
+'<body style="margin:0;padding:0;background:#f5f3f0;font-family:\'Helvetica Neue\',Helvetica,Arial,sans-serif;">' +
+'<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f3f0;padding:32px 16px;"><tr><td align="center">' +
+'<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">' +
+'<tr><td style="background:#5a85b0;border-radius:16px 16px 0 0;padding:36px 40px;text-align:center;">' +
+'<p style="margin:0 0 6px;font-size:12px;color:rgba(255,255,255,0.8);letter-spacing:2px;text-transform:uppercase;">&#129309; Programa Amigos</p>' +
+'<h1 style="margin:0;font-size:32px;font-weight:300;color:#ffffff;font-family:Georgia,serif;">Las <em>Nubes</em></h1>' +
+'<p style="margin:10px 0 0;font-size:15px;color:rgba(255,255,255,0.9);">Buenos Aires, Chame · Panamá Oeste</p>' +
+'</td></tr>' +
+'<tr><td style="background:#ffffff;padding:36px 40px;">' +
+'<p style="margin:0 0 16px;font-size:16px;color:#3a3530;line-height:1.6;">Hola <strong>' + (opts.firstName || 'amigo') + '</strong>,</p>' +
+'<p style="margin:0 0 16px;font-size:15px;color:#3a3530;line-height:1.7;">Gracias por venir a Las Nubes. Si conoces a alguien a quien le gustaría una escapada como la tuya, te dejamos un regalo:</p>' +
+'<table width="100%" cellpadding="0" cellspacing="0" style="background:#eef4f8;border:1px solid #a8c5d8;border-radius:14px;margin:24px 0;">' +
+'<tr><td style="padding:24px 28px;text-align:center;">' +
+'<p style="margin:0 0 8px;font-size:13px;color:#385d7a;letter-spacing:0.05em;text-transform:uppercase;font-weight:600;">Tu código personal</p>' +
+'<p style="margin:0 0 10px;font-size:32px;font-weight:500;color:#385d7a;font-family:Georgia,serif;letter-spacing:0.05em;">' + opts.code + '</p>' +
+'<p style="margin:0;font-size:13px;color:#385d7a;line-height:1.6;">Compartilo. Cuando tu amigo reserve directo con nosotros mencionando este código, <strong>ambos reciben $' + opts.amount + ' off</strong> en su próxima estadía.</p>' +
+'</td></tr></table>' +
+'<p style="margin:0 0 14px;font-size:14px;color:#6b6560;line-height:1.7;">Cómo funciona:</p>' +
+'<ul style="margin:0 0 20px;padding-left:20px;color:#6b6560;font-size:14px;line-height:1.7;">' +
+'<li>Compartí el código con tu amigo.</li>' +
+'<li>Tu amigo reserva directo via WhatsApp mencionando <strong>' + opts.code + '</strong>.</li>' +
+'<li>Tu amigo recibe $' + opts.amount + ' off en su primera estadía.</li>' +
+'<li>Vos recibís $' + opts.amount + ' de crédito al confirmarse su estadía. Lo aplicás cuando vuelvas.</li>' +
+'<li>Sin tope de referidos. Acumulás crédito por cada amigo.</li>' +
+'</ul>' +
+'<p style="margin:0 0 20px;font-size:13px;color:#8a8078;line-height:1.6;">El descuento aplica solo a reservas directas (no Airbnb) y no combinable con otras promociones. Sujeto a disponibilidad.</p>' +
+'<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;"><tr><td align="center">' +
+'<a href="https://wa.me/' + opts.waNumber + '?text=' + encodeURIComponent('Hola! Quiero compartir mi código de referido ' + opts.code) + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:15px;font-weight:600;padding:14px 28px;border-radius:10px;text-decoration:none;">&#128172; Compartir mi código</a>' +
+'</td></tr></table>' +
+'</td></tr>' +
+'<tr><td style="background:#3a3530;border-radius:0 0 16px 16px;padding:24px 40px;text-align:center;">' +
+'<p style="margin:0 0 8px;font-size:18px;font-weight:300;color:#ffffff;font-family:Georgia,serif;">Las <em>Nubes</em></p>' +
+'<p style="margin:0 0 12px;font-size:11px;color:rgba(255,255,255,0.6);letter-spacing:1px;text-transform:uppercase;">Cabañas en Chicá · Panamá Oeste</p>' +
+'<a href="https://wa.me/50769812266" style="color:rgba(255,255,255,0.8);font-size:13px;text-decoration:none;">&#128172; WhatsApp: +507 6981-2266</a>' +
+'</td></tr></table></td></tr></table></body></html>';
+}
+
+// Endpoint GET: lista todos los referidos + sus uses (admin)
+function handleGetReferrals(e) {
+  try {
+    const refs = _getOrCreateReferralsSheet();
+    const refsData = refs.getDataRange().getValues();
+    const referrals = [];
+    for (let i = 1; i < refsData.length; i++) {
+      if (!refsData[i][0]) continue;
+      referrals.push({
+        email:       refsData[i][0],
+        telefono:    refsData[i][1],
+        nombre:      refsData[i][2],
+        code:        refsData[i][3],
+        createdAt:   refsData[i][4] instanceof Date ? Utilities.formatDate(refsData[i][4], 'America/Panama', 'yyyy-MM-dd') : refsData[i][4],
+        emailSentAt: refsData[i][5] instanceof Date ? Utilities.formatDate(refsData[i][5], 'America/Panama', 'yyyy-MM-dd') : refsData[i][5]
+      });
+    }
+    const uses = _getOrCreateReferralUsesSheet();
+    const usesData = uses.getDataRange().getValues();
+    const referralUses = [];
+    for (let i = 1; i < usesData.length; i++) {
+      if (!usesData[i][0]) continue;
+      referralUses.push({
+        code:                    usesData[i][0],
+        referrerEmail:           usesData[i][1],
+        usedByEmail:             usesData[i][2],
+        usedByReservaId:         usesData[i][3],
+        usedAt:                  usesData[i][4] instanceof Date ? Utilities.formatDate(usesData[i][4], 'America/Panama', 'yyyy-MM-dd') : usesData[i][4],
+        referrerCreditUsed:      usesData[i][5] === true || usesData[i][5] === 'TRUE' || usesData[i][5] === 'true',
+        referrerCreditReservaId: usesData[i][6]
+      });
+    }
+    return ContentService.createTextOutput(JSON.stringify({ ok: true, referrals, referralUses })).setMimeType(ContentService.MimeType.JSON);
+  } catch(err) {
+    return ContentService.createTextOutput(JSON.stringify({ ok: false, error: err.message })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// Endpoint POST: registra que una reserva uso un codigo de referido.
+// payload: { code, usedByEmail, usedByReservaId }
+function handleRegisterReferralUse(payload) {
+  try {
+    const code  = (payload.code || '').toString().trim().toUpperCase();
+    const email = (payload.usedByEmail || '').toString().toLowerCase().trim();
+    const rid   = payload.usedByReservaId;
+    if (!code || !email || !rid) return _jsonOut({ ok: false, error: 'MISSING_PARAMS' });
+    const ref = _findReferralByCode(code);
+    if (!ref) return _jsonOut({ ok: false, error: 'CODE_NOT_FOUND' });
+    if (ref.email && ref.email.toString().toLowerCase() === email) {
+      return _jsonOut({ ok: false, error: 'SELF_REFERRAL' });
+    }
+    // Validar que esa reserva no haya sido registrada ya con otro codigo
+    const existing = _findReferralUseByReservaId(rid);
+    if (existing) return _jsonOut({ ok: false, error: 'ALREADY_REGISTERED', existing });
+    const s = _getOrCreateReferralUsesSheet();
+    const now = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd');
+    s.appendRow([code, ref.email, email, rid, now, false, '']);
+    return _jsonOut({ ok: true, referrerEmail: ref.email, referrerNombre: ref.nombre, amount: REFERRAL_REWARD_AMOUNT });
+  } catch(err) {
+    return _jsonOut({ ok: false, error: err.message });
+  }
+}
+
+// Endpoint POST: marca un credito del referrer como usado en una reserva.
+// payload: { referrerEmail, usedByReservaId (el referido original), referrerCreditReservaId }
+function handleMarkReferrerCreditUsed(payload) {
+  try {
+    const refEmail = (payload.referrerEmail || '').toString().toLowerCase().trim();
+    const useRid   = payload.usedByReservaId;  // reserva del referido (identifica la fila)
+    const credRid  = payload.referrerCreditReservaId; // donde se aplica el credito ahora
+    if (!refEmail || !useRid || !credRid) return _jsonOut({ ok: false, error: 'MISSING_PARAMS' });
+    const use = _findReferralUseByReservaId(useRid);
+    if (!use) return _jsonOut({ ok: false, error: 'USE_NOT_FOUND' });
+    if (use.referrerCreditUsed) return _jsonOut({ ok: false, error: 'ALREADY_USED' });
+    const s = _getOrCreateReferralUsesSheet();
+    const now = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd');
+    s.getRange(use.rowIndex, 6).setValue(true);
+    s.getRange(use.rowIndex, 7).setValue(credRid);
+    return _jsonOut({ ok: true, usedAt: now });
+  } catch(err) {
+    return _jsonOut({ ok: false, error: err.message });
+  }
+}
+
+function instalarTriggerReferidos() {
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'enviarCodigosReferido') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('enviarCodigosReferido')
+    .timeBased()
+    .atHour(10)
+    .everyDays(1)
+    .inTimezone('America/Panama')
+    .create();
+  Logger.log('✓ Trigger creado: enviarCodigosReferido diario @ 10am Panama');
+}
+
+function enviarReferralPrueba() {
+  const myEmail = Session.getActiveUser().getEmail();
+  if (!myEmail) { Logger.log('⚠ Email no disponible.'); return; }
+  _sendReferralCodeEmail({ email: myEmail, nombre: 'Maria de Prueba', code: 'LN-' + 'PRUEBA' });
+  Logger.log('✓ Referral de prueba enviado a ' + myEmail);
+}
