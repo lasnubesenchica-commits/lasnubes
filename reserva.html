@@ -292,7 +292,7 @@ function fmtMoney(n) { return '$' + ((parseFloat(n) || 0)).toFixed(2); }
 
 function renderKeybox(r) {
   const card = $('keyboxCard');
-  // 1) Código visible — ID subido y dentro de ventana operativa
+  // 1) Código visible — ID ya subido (en esta reserva o en alguna previa)
   if (r.keyBoxCode) {
     card.innerHTML = '<div class="card keybox-card">'
       + '<h2>Acceso a la cabaña</h2>'
@@ -302,33 +302,24 @@ function renderKeybox(r) {
       + '</div>';
     return;
   }
-  // 2) En ventana operativa pero falta el ID — mostrar uploader
-  if (r.keyBoxInWindow && !r.idUploaded) {
-    card.innerHTML = '<div class="card keybox-card">'
-      + '<h2>Acceso a la cabaña</h2>'
-      + '<p class="muted-text" style="margin-bottom:14px;">Subí tu cédula o pasaporte para desbloquear el código del Key Box.</p>'
-      + '<input type="file" id="idFileInput" accept="image/*" capture="environment" style="display:none;">'
-      + '<button id="idUploadBtn" class="btn primary" style="font-size:14px;">📷 Subir documento</button>'
-      + '<div id="idUploadStatus" class="muted-text" style="margin-top:10px;min-height:18px;"></div>'
-      + '<div style="margin-top:16px;text-align:left;">'
-      +   '<button id="idWhyToggle" class="link-btn" style="background:none;border:none;color:var(--accent);font-size:12px;cursor:pointer;text-decoration:underline;padding:0;">¿Por qué pedimos esto?</button>'
-      +   '<div id="idWhyPanel" hidden style="background:var(--soft);border-radius:10px;padding:12px 14px;margin-top:10px;font-size:12px;color:var(--muted);line-height:1.6;">'
-      +     '• Validamos identidad del huésped principal (uso interno).<br>'
-      +     '• <strong>Borramos la foto 60 días después de tu salida.</strong> Solo guardamos tu fecha de nacimiento.<br>'
-      +     '• 🎂 Si tu cumpleaños cae en esta o futuras estadías, activamos el descuento automáticamente (30% Dom-Jue / 20% Vie-Sáb sobre la noche del cumpleaños).<br>'
-      +     '• Solo se pide la primera vez. Si volvés, no se vuelve a pedir.'
-      +   '</div>'
-      + '</div>'
-      + '</div>';
-    _wireIdUploader(r);
-    return;
-  }
-  // 3) Antes de la ventana operativa — mensaje normal
-  card.innerHTML = '<div class="card keybox-locked">'
-    + '<div class="lock">🔒</div>'
-    + '<h3>Código de acceso</h3>'
-    + '<p>Disponible a partir del día de tu entrada (' + r.keyBoxFromFmt + ').</p>'
+  // 2) Falta el ID — mostrar uploader (sin gate de tiempo)
+  card.innerHTML = '<div class="card keybox-card">'
+    + '<h2>Acceso a la cabaña</h2>'
+    + '<p class="muted-text" style="margin-bottom:14px;">Subí tu cédula o pasaporte para desbloquear el código del Key Box.</p>'
+    + '<input type="file" id="idFileInput" accept="image/*" capture="environment" style="display:none;">'
+    + '<button id="idUploadBtn" class="btn primary" style="font-size:14px;">📷 Subir documento</button>'
+    + '<div id="idUploadStatus" class="muted-text" style="margin-top:10px;min-height:18px;"></div>'
+    + '<div style="margin-top:16px;text-align:left;">'
+    +   '<button id="idWhyToggle" class="link-btn" style="background:none;border:none;color:var(--accent);font-size:12px;cursor:pointer;text-decoration:underline;padding:0;">¿Por qué pedimos esto?</button>'
+    +   '<div id="idWhyPanel" hidden style="background:var(--soft);border-radius:10px;padding:12px 14px;margin-top:10px;font-size:12px;color:var(--muted);line-height:1.6;">'
+    +     '• Validamos identidad del huésped principal (uso interno).<br>'
+    +     '• <strong>Borramos la foto 60 días después de tu salida.</strong> Solo guardamos tu fecha de nacimiento.<br>'
+    +     '• 🎂 Si tu cumpleaños cae en esta o futuras estadías, activamos el descuento automáticamente (30% Dom-Jue / 20% Vie-Sáb sobre la noche del cumpleaños).<br>'
+    +     '• Solo se pide la primera vez. Si volvés, no se vuelve a pedir.'
+    +   '</div>'
+    + '</div>'
     + '</div>';
+  _wireIdUploader(r);
 }
 
 function _wireIdUploader(r) {
