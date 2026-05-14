@@ -2836,9 +2836,11 @@ function closeReservaPicker() {
 
 function _reservaPickerGoWA() {
   if (!_pickerState) return;
-  const { dateStr, cabinKey } = _pickerState;
+  const { dateStr, cabinKey, nights, personas } = _pickerState;
   closeReservaPicker();
-  openWA(dateStr, cabinKey);
+  // Picker solo abre para hospedaje single cabin
+  const msg = _buildClientReservaMessage({ dateStr, cabinKey, nights, personas, tipo: 'noche', isCombo: false });
+  window.open('https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg), '_blank');
 }
 
 function _reservaPickerGoAirbnb() {
@@ -2860,18 +2862,92 @@ function _reservaPickerGoAirbnb() {
 }
 
 function openWAcombo(dateStr) {
-  const d     = new Date(dateStr + 'T12:00:00');
-  const label = d.toLocaleDateString('es-PA', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
-  const msg   = encodeURIComponent('Hola! Me interesa reservar las cabañas *Puente entre Las Nubes* y *Portal hacia Las Nubes* para grupo, el *' + label + '*. ¿Estan disponibles?');
-  window.open('https://wa.me/' + WHATSAPP_NUMBER + '?text=' + msg, '_blank');
+  // Combo: solo aplica para hospedaje 5-6 personas
+  const msg = _buildClientReservaMessage({
+    dateStr,
+    cabinKey: null,
+    nights: _adminNights || 1,
+    personas: _adminPersonas || 5,
+    tipo: 'noche',
+    isCombo: true
+  });
+  window.open('https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg), '_blank');
 }
 
 function openWA(dateStr, cabinKey) {
-  const cabin = CABINS.find(c => c.key === cabinKey);
-  const d     = new Date(dateStr + 'T12:00:00');
-  const label = d.toLocaleDateString('es-PA', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
-  const msg   = encodeURIComponent(`Hola! Me interesa reservar la cabaña *${cabin.name}* para el *${label}*. ¿Está disponible?`);
-  window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${msg}`, '_blank');
+  // Llamado para pasatarde/pasadia (en hospedaje single-cabin va por el picker).
+  // Toma tipo y personas del estado global del modal.
+  const tipo  = _adminTipo  || 'noche';
+  const pers  = _adminPersonas || 2;
+  const nochs = (tipo === 'pasatarde' || tipo === 'pasadia') ? 1 : (_adminNights || 1);
+  const msg = _buildClientReservaMessage({
+    dateStr,
+    cabinKey,
+    nights: nochs,
+    personas: pers,
+    tipo: tipo,
+    isCombo: false
+  });
+  window.open('https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg), '_blank');
+}
+
+// Builder del mensaje que envía el cliente. Incluye todo lo necesario
+// para que el admin solo tenga que responder con las formas de pago.
+function _buildClientReservaMessage(opts) {
+  const { dateStr, cabinKey, nights, personas, tipo, isCombo } = opts;
+  const CABIN_NAMES = {
+    verde: 'Paseo por Las Nubes',
+    azul:  'Portal hacia Las Nubes',
+    lila:  'Puente entre Las Nubes'
+  };
+  const d = new Date(dateStr + 'T12:00:00');
+  const dCheckout = new Date(d);
+  dCheckout.setDate(dCheckout.getDate() + (nights || 1));
+  const isPasadia = (tipo === 'pasatarde' || tipo === 'pasadia');
+
+  // Linea de fecha
+  let fechaLine;
+  if (tipo === 'pasatarde') {
+    fechaLine = '📅 ' + formatDayLong(d) + ' · Pasatarde 12:30 pm – 7:00 pm';
+  } else if (tipo === 'pasadia') {
+    fechaLine = '📅 ' + formatDayLong(d) + ' · Pasadía 9:00 am – 5:00 pm';
+  } else if (nights === 1) {
+    fechaLine = '📅 ' + formatDayLong(d) + ' · 1 noche';
+  } else {
+    fechaLine = '📅 ' + formatDayLong(d) + ' al ' + formatDayLong(dCheckout) + ' · ' + nights + ' noches';
+  }
+
+  // Linea de cabaña
+  let cabinLine;
+  if (isCombo) {
+    cabinLine = '🏡 Combo: Puente entre Las Nubes + Portal hacia Las Nubes (cabañas contiguas)';
+  } else {
+    cabinLine = '🏡 ' + (CABIN_NAMES[cabinKey] || cabinKey || '');
+  }
+
+  // Total
+  let total;
+  if (isCombo) {
+    total = _precioComboTotal(dateStr, nights || 1, personas);
+  } else if (isPasadia) {
+    total = _precioPasadia(tipo, personas);
+  } else {
+    total = _precioCabinTotal(cabinKey, dateStr, nights || 1, personas);
+  }
+  const promoNote = (!isPasadia && PROMO_ACTIVE) ? ' (tarifa promocional)' : '';
+
+  let msg = 'Hola! Deseo reservar:\n\n';
+  msg += fechaLine + '\n';
+  msg += cabinLine + '\n';
+  msg += '👥 ' + personas + (personas === 1 ? ' persona' : ' personas') + '\n';
+  msg += '💰 $' + total + '.00' + promoNote + '\n';
+  if (!isPasadia) {
+    msg += '\n';
+    msg += 'Check-in '  + formatDayShort(d)         + ': 2:00 pm\n';
+    msg += 'Check-out ' + formatDayShort(dCheckout) + ': 11:00 am\n';
+  }
+  msg += '\nQuedo atento a las formas de pago. ¡Gracias!';
+  return msg;
 }
 
 function closeTooltip() {
