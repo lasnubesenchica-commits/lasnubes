@@ -214,16 +214,9 @@ function _buildPublicDTO(r) {
   const props = PropertiesService.getScriptProperties();
   const waNum = (props.getProperty('CONTACT_WHATSAPP_NUMBER') || '50769812266').replace(/\D/g, '');
 
-  // Ventana operativa del key box: 9am del display checkin -> 23:59 del dia siguiente al display checkout
-  const nowMs = Date.now();
-  const ciMs  = new Date(meta.displayCheckin  + 'T09:00:00-05:00').getTime();
-  const coDay = new Date(meta.displayCheckout + 'T12:00:00-05:00');
-  coDay.setDate(coDay.getDate() + 1);
-  const coCutoffMs = coDay.getTime();
-  const inWindow   = nowMs >= ciMs && nowMs <= coCutoffMs;
-
-  // Para mostrar el codigo: estar en ventana operativa Y haber subido ID (en esta reserva
-  // o en cualquier reserva previa del mismo huesped por email/telefono).
+  // Para mostrar el codigo: haber subido ID (en esta reserva o en cualquier
+  // reserva previa del mismo huesped por email/telefono). No hay gate de tiempo:
+  // si la identidad esta verificada, el codigo aparece.
   let idUploaded = !!r.idHuespedURL;
   if (!idUploaded) {
     try {
@@ -231,7 +224,7 @@ function _buildPublicDTO(r) {
       if (prev && prev.url) idUploaded = true;
     } catch(e) { Logger.log('warn _findExistingHuespedId: ' + e.message); }
   }
-  const showKeyBox = inWindow && idUploaded;
+  const showKeyBox = idUploaded;
 
   // Primer nombre solo (privacidad si el link se reenvia)
   const fullName    = (r.name || '').toString().trim();
@@ -296,7 +289,6 @@ function _buildPublicDTO(r) {
     estado:        isCancel ? 'CANCELADA' : 'CONFIRMADA',
     keyBoxCode:    showKeyBox ? PUBLIC_KEY_BOX_CODE : null,
     keyBoxFromFmt: meta.checkinFmt,
-    keyBoxInWindow: inWindow,
     idUploaded:    idUploaded,
     gcalUrl:       gcalUrl,
     icsBase64:     icsBase64,
