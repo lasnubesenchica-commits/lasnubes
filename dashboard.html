@@ -2042,6 +2042,7 @@
       🎂 <strong>Cumpleaños en esta estadía</strong> — <span id="detailCumpleText"></span>. Aplicar descuento <strong>20% Dom–Jue / 10% Vie–Sáb</strong> sobre la noche del cumpleaños.
     </div>
     <div id="detailLoyaltyBadge" style="display:none;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;"></div>
+    <div id="detailReferralBadge" style="display:none;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;"></div>
     <div id="detailAlerta" style="display:none;background:#fff3cd;color:#856404;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:16px;">
       ⚠ <strong>Verificar itinerario</strong> — Airbnb notificó un cambio. Revisa fechas y monto en la app de Airbnb.
     </div>
@@ -2388,6 +2389,8 @@ let editId = null;
 let pendingDeleteId = null;
 let sheetsReservations = []; // Reservas sincronizadas desde Airbnb/Gmail
 let loyaltyCredits     = []; // Creditos de Cliente Fiel (cargados desde Sheets)
+let referrals          = []; // Referidos: { email, code, ... }
+let referralUses       = []; // Uses de codigos: { code, referrerEmail, usedByReservaId, ... }
 let pagos = [];              // Cobros de Airbnb (una entrada por email de pago)
 
 // ─── SHEETS SYNC ─────────────────────────────────────────────
@@ -2415,6 +2418,15 @@ async function syncFromSheets() {
       const dataLoyalty = await resLoyalty.json();
       if (dataLoyalty && dataLoyalty.ok) loyaltyCredits = dataLoyalty.credits || [];
     } catch(lyErr) { console.warn('getLoyaltyCredits failed:', lyErr); }
+    // Referidos
+    try {
+      const resRef = await fetch(`${SHEETS_API_URL}?action=getReferrals`);
+      const dataRef = await resRef.json();
+      if (dataRef && dataRef.ok) {
+        referrals    = dataRef.referrals    || [];
+        referralUses = dataRef.referralUses || [];
+      }
+    } catch(rfErr) { console.warn('getReferrals failed:', rfErr); }
 
     if (data && data.reservations) {
       sheetsReservations = data.reservations.map(r => {
@@ -3163,6 +3175,8 @@ function showDispDetail(id) {
   if (alertaEl) alertaEl.style.display = r.alerta ? 'block' : 'none';
   // Badge de cliente fiel: cuenta estadias previas completadas del mismo huesped
   _renderLoyaltyBadge(r);
+  // Badge de referidos: muestra codigo + cuantos referidos, y si reserva usó algún código
+  _renderReferralBadge(r);
   // Badge de cumpleaños: si DOB cae entre checkin y checkout (display dates)
   const cumpleBadge = document.getElementById('detailCumpleBadge');
   if (cumpleBadge) {
@@ -6903,6 +6917,137 @@ async function _markLoyaltyUsedHere(email, telefono, reservaId) {
       // Re-render
       const r = reservations.find(x => x.id === reservaId);
       if (r) _renderLoyaltyBadge(r);
+    } else {
+      showToast('⚠ ' + (data.error || 'Error'));
+    }
+  } catch(e) { showToast('⚠ Error de red'); }
+}
+
+function _findReferralByEmail(email) {
+  const e = (email || '').toString().toLowerCase().trim();
+  if (!e) return null;
+  return referrals.find(r => (r.email || '').toString().toLowerCase().trim() === e) || null;
+}
+
+function _referralUsesByReferrer(email) {
+  const e = (email || '').toString().toLowerCase().trim();
+  if (!e) return [];
+  return referralUses.filter(u => (u.referrerEmail || '').toString().toLowerCase().trim() === e);
+}
+
+function _referralUseForReservaId(id) {
+  if (!id) return null;
+  return referralUses.find(u => u.usedByReservaId && u.usedByReservaId.toString() === id.toString()) || null;
+}
+
+function _renderReferralBadge(r) {
+  const el = document.getElementById('detailReferralBadge');
+  if (!el) return;
+  el.style.display = 'none';
+  el.innerHTML = '';
+
+  const blocks = [];
+
+  // 1) Reserva actual: fue referida por alguien?
+  const useForThis = _referralUseForReservaId(r.id);
+  if (useForThis) {
+    const referrer = _findReferralByEmail(useForThis.referrerEmail);
+    const refName  = referrer ? (referrer.nombre || referrer.email) : useForThis.referrerEmail;
+    blocks.push('🎁 <strong>Reserva referida</strong> por <strong>' + refName + '</strong> (código <code>' + useForThis.code + '</code>). Aplicar $' + 20 + ' off al referido en esta reserva.');
+  } else if (r.email) {
+    // Permitir registrar un código que haya usado este cliente
+    blocks.push('<span style="color:var(--text-muted);">¿Esta reserva usó un código de referido?</span> '
+      + '<button onclick="_promptRegisterReferral(' + JSON.stringify(r.email||'').replace(/"/g,'&quot;') + ',' + JSON.stringify(r.id).replace(/"/g,'&quot;') + ')" '
+      + 'style="margin-left:8px;background:none;border:1px solid var(--border);border-radius:6px;padding:2px 10px;font-size:12px;cursor:pointer;color:var(--text-muted);">Registrar código</button>');
+  }
+
+  // 2) El huésped tiene código + cuantos referidos exitosos
+  if (r.email) {
+    const myRef = _findReferralByEmail(r.email);
+    if (myRef) {
+      const uses = _referralUsesByReferrer(r.email);
+      const totalUses     = uses.length;
+      const creditsAvail  = uses.filter(u => !u.referrerCreditUsed).length;
+      const creditsUsed   = uses.filter(u =>  u.referrerCreditUsed).length;
+      const dollars = creditsAvail * 20;
+      let line = '🤝 <strong>Código personal</strong>: <code>' + myRef.code + '</code> · '
+        + totalUses + ' referido' + (totalUses === 1 ? '' : 's') + ' exitoso' + (totalUses === 1 ? '' : 's');
+      if (creditsAvail > 0) {
+        line += ' · <strong>$' + dollars + ' disponible' + (creditsAvail === 1 ? '' : 's') + '</strong> para aplicar';
+      }
+      if (creditsUsed > 0) {
+        line += ' · ' + creditsUsed + ' usado' + (creditsUsed === 1 ? '' : 's');
+      }
+      if (creditsAvail > 0) {
+        line += ' <button onclick="_promptApplyReferrerCredit(' + JSON.stringify(r.email||'').replace(/"/g,'&quot;') + ',' + JSON.stringify(r.id).replace(/"/g,'&quot;') + ')" '
+          + 'style="margin-left:8px;background:#5a85b0;border:none;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;color:#fff;font-weight:500;">Aplicar crédito acá</button>';
+      }
+      blocks.push(line);
+    }
+  }
+
+  if (blocks.length === 0) return;
+  el.style.cssText = 'display:block;background:#eef4f8;border-left:3px solid #5a85b0;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;color:#385d7a;';
+  el.innerHTML = blocks.join('<br><br>');
+}
+
+async function _promptRegisterReferral(usedByEmail, reservaId) {
+  const code = prompt('Ingresá el código de referido que mencionó el cliente (formato LN-XXXXXX):');
+  if (!code) return;
+  try {
+    const res = await fetch(SHEETS_API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'registerReferralUse', code: code.trim(), usedByEmail, usedByReservaId: reservaId })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      referralUses.push({
+        code: code.trim().toUpperCase(),
+        referrerEmail: data.referrerEmail,
+        usedByEmail,
+        usedByReservaId: reservaId,
+        usedAt: new Date().toISOString().slice(0, 10),
+        referrerCreditUsed: false,
+        referrerCreditReservaId: ''
+      });
+      showToast('✓ Código registrado · referrer: ' + (data.referrerNombre || data.referrerEmail));
+      const r = reservations.find(x => x.id === reservaId);
+      if (r) _renderReferralBadge(r);
+    } else {
+      const m = {
+        CODE_NOT_FOUND:     'Código no encontrado',
+        SELF_REFERRAL:      'Auto-referencia detectada (mismo email)',
+        ALREADY_REGISTERED: 'Esa reserva ya tenía un código registrado',
+        MISSING_PARAMS:     'Faltan datos'
+      };
+      showToast('⚠ ' + (m[data.error] || data.error || 'Error'));
+    }
+  } catch(e) { showToast('⚠ Error de red'); }
+}
+
+async function _promptApplyReferrerCredit(referrerEmail, applyInReservaId) {
+  // Encontrar el primer credito disponible
+  const uses = _referralUsesByReferrer(referrerEmail).filter(u => !u.referrerCreditUsed);
+  if (uses.length === 0) { showToast('⚠ Sin créditos disponibles'); return; }
+  const use = uses[0];
+  if (!confirm('¿Aplicar crédito $20 (del referido de ' + (use.usedByEmail || '—') + ') a esta reserva?')) return;
+  try {
+    const res = await fetch(SHEETS_API_URL, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'markReferrerCreditUsed',
+        referrerEmail,
+        usedByReservaId:           use.usedByReservaId,
+        referrerCreditReservaId:   applyInReservaId
+      })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      use.referrerCreditUsed      = true;
+      use.referrerCreditReservaId = applyInReservaId;
+      showToast('✓ Crédito $20 aplicado');
+      const r = reservations.find(x => x.id === applyInReservaId);
+      if (r) _renderReferralBadge(r);
     } else {
       showToast('⚠ ' + (data.error || 'Error'));
     }
