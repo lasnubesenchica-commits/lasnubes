@@ -220,7 +220,18 @@ function _buildPublicDTO(r) {
   const coDay = new Date(meta.displayCheckout + 'T12:00:00-05:00');
   coDay.setDate(coDay.getDate() + 1);
   const coCutoffMs = coDay.getTime();
-  const showKeyBox = nowMs >= ciMs && nowMs <= coCutoffMs;
+  const inWindow   = nowMs >= ciMs && nowMs <= coCutoffMs;
+
+  // Para mostrar el codigo: estar en ventana operativa Y haber subido ID (en esta reserva
+  // o en cualquier reserva previa del mismo huesped por email/telefono).
+  let idUploaded = !!r.idHuespedURL;
+  if (!idUploaded) {
+    try {
+      const prev = _findExistingHuespedId(r.email, r.telefono);
+      if (prev && prev.url) idUploaded = true;
+    } catch(e) { Logger.log('warn _findExistingHuespedId: ' + e.message); }
+  }
+  const showKeyBox = inWindow && idUploaded;
 
   // Primer nombre solo (privacidad si el link se reenvia)
   const fullName    = (r.name || '').toString().trim();
@@ -285,6 +296,8 @@ function _buildPublicDTO(r) {
     estado:        isCancel ? 'CANCELADA' : 'CONFIRMADA',
     keyBoxCode:    showKeyBox ? PUBLIC_KEY_BOX_CODE : null,
     keyBoxFromFmt: meta.checkinFmt,
+    keyBoxInWindow: inWindow,
+    idUploaded:    idUploaded,
     gcalUrl:       gcalUrl,
     icsBase64:     icsBase64,
     cabinGuide:    cabinGuide,
@@ -318,8 +331,12 @@ function _readReservaById(id) {
         origin:      r[9],
         confirmCode: r[10],
         estadoPago:  r[20] || '',
+        email:       r[21] || '',
         comentarios: r[22] || '',
-        tipo:        r[24] || 'noche'
+        telefono:    r[23] || '',
+        tipo:        r[24] || 'noche',
+        idHuespedURL: r[26] || '',
+        fechaNacimiento: r[27] || ''
       };
     }
   }

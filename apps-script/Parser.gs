@@ -288,19 +288,20 @@ function getOrCreateSheet() {
 
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
-    sheet.getRange(1, 1, 1, 26).setValues([[
+    sheet.getRange(1, 1, 1, 28).setValues([[
       'ID', 'Nombre', 'Cabaña', 'CabañaCodigo',
       'Entrada', 'Salida', 'Personas',
       'Monto', 'Abono', 'Origen', 'CodConfirmacion',
       'ServiceFee', 'Neto', 'Alerta', 'Pagador', 'FechaReserva',
       'FechaPago', 'MontoPagado', 'CodTransferencia', 'MontoVoucher', 'EstadoPago',
-      'Email', 'Comentarios', 'Telefono', 'Tipo', 'VoucherURL'
+      'Email', 'Comentarios', 'Telefono', 'Tipo', 'VoucherURL',
+      'IdHuespedURL', 'FechaNacimiento'
     ]]);
-    sheet.getRange(1, 1, 1, 26).setFontWeight('bold');
+    sheet.getRange(1, 1, 1, 28).setFontWeight('bold');
     sheet.setFrozenRows(1);
   } else {
-    // Auto-asegurar columnas Tipo (25) y VoucherURL (26)
-    if (sheet.getLastColumn() < 26) {
+    // Auto-asegurar columnas Tipo (25), VoucherURL (26), IdHuespedURL (27), FechaNacimiento (28)
+    if (sheet.getLastColumn() < 28) {
       const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
       if (!headers.includes('Tipo')) {
         sheet.getRange(1, 25).setValue('Tipo');
@@ -309,6 +310,14 @@ function getOrCreateSheet() {
       if (!headers.includes('VoucherURL')) {
         sheet.getRange(1, 26).setValue('VoucherURL');
         sheet.getRange(1, 26).setFontWeight('bold');
+      }
+      if (!headers.includes('IdHuespedURL')) {
+        sheet.getRange(1, 27).setValue('IdHuespedURL');
+        sheet.getRange(1, 27).setFontWeight('bold');
+      }
+      if (!headers.includes('FechaNacimiento')) {
+        sheet.getRange(1, 28).setValue('FechaNacimiento');
+        sheet.getRange(1, 28).setFontWeight('bold');
       }
     }
   }
@@ -1479,6 +1488,11 @@ function doPost(e) {
     // ── SAVE VOUCHER TO DRIVE ─────────────────────────────────
     if (action === 'saveVoucherToDrive') {
       return saveVoucherToDrive(payload.reservation, payload.imageBase64, payload.mimeType, payload.fileName);
+    }
+
+    // ── UPLOAD HUESPED ID (publico, gating del key box) ───────
+    if (action === 'uploadHuespedId') {
+      return handleUploadHuespedId(payload);
     }
 
     // ── SEND EMAILS ───────────────────────────────────────────
