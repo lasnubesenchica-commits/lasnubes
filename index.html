@@ -2798,10 +2798,12 @@ function updateModalPriceAndCabins() {
 }
 
 // ── RESERVA PICKER (WhatsApp / Airbnb) ─────────────────────
-const CABIN_AIRBNB_SLUG = {
-  verde: 'paseoporlasnubes',
-  azul:  'portalhacialasnubes',
-  lila:  'puenteentrelasnubes'
+// ID numerico del listing en Airbnb. El vanity slug (/h/<slug>) en la app
+// movil pierde los query params; con el ID directo los respeta.
+const CABIN_AIRBNB_ID = {
+  verde: '896416001534582644',   // Paseo por Las Nubes
+  azul:  '1247241001959186429',  // Portal hacia Las Nubes
+  lila:  '1492038697418942772'   // Puente entre Las Nubes
 };
 
 let _pickerState = null; // { dateStr, cabinKey, nights, personas }
@@ -2813,9 +2815,9 @@ function openReservaPicker(dateStr, cabinKey, nights, personas) {
   const label = d.toLocaleDateString('es-PA', { weekday:'long', day:'numeric', month:'long' });
   const sub = (cabin ? cabin.name + ' · ' : '') + label + (nights > 1 ? ' · ' + nights + ' noches' : '');
   document.getElementById('reservaPickerSub').textContent = sub;
-  // Airbnb solo si el slug existe
+  // Airbnb solo si el ID existe
   const airbnbBtn = document.getElementById('reservaPickerAirbnb');
-  if (airbnbBtn) airbnbBtn.style.display = CABIN_AIRBNB_SLUG[cabinKey] ? 'flex' : 'none';
+  if (airbnbBtn) airbnbBtn.style.display = CABIN_AIRBNB_ID[cabinKey] ? 'flex' : 'none';
   document.getElementById('reservaPickerOverlay').classList.add('open');
 }
 
@@ -2834,13 +2836,14 @@ function _reservaPickerGoWA() {
 function _reservaPickerGoAirbnb() {
   if (!_pickerState) return;
   const { dateStr, cabinKey, nights, personas } = _pickerState;
-  const slug = CABIN_AIRBNB_SLUG[cabinKey];
-  if (!slug) return;
+  const id = CABIN_AIRBNB_ID[cabinKey];
+  if (!id) return;
   // Calcular checkout = checkin + nights
   const co = new Date(dateStr + 'T12:00:00');
   co.setDate(co.getDate() + nights);
   const coStr = co.toISOString().slice(0, 10);
-  const url = 'https://www.airbnb.com/h/' + slug
+  // Usar /rooms/<id> en lugar de /h/<slug>: la app movil respeta los params.
+  const url = 'https://www.airbnb.com/rooms/' + id
     + '?check_in='  + encodeURIComponent(dateStr)
     + '&check_out=' + encodeURIComponent(coStr)
     + '&adults='    + encodeURIComponent(personas);
