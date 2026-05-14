@@ -248,6 +248,20 @@ function _buildPublicDTO(r) {
     icsBase64 = Utilities.base64Encode(_buildIcsFor(r));
   } catch(e) { Logger.log('warn cal links: ' + e.message); }
 
+  // Codigo de referido del huesped (auto-crear si elegible y aún no existe).
+  // Eligible: tiene email + reserva Directa + tipo dormido + no cancelada.
+  let referralCode = null;
+  try {
+    const tipoRaw   = (r.tipo || 'noche').toString();
+    const isDormido = !(tipoRaw === 'pasatarde' || tipoRaw === 'pasadia');
+    const eligible  = !!r.email && (r.origin || '') === 'Directa'
+                      && (r.estadoPago || '').toString().toUpperCase() !== 'CANCELADA'
+                      && isDormido;
+    if (eligible) {
+      referralCode = getOrCreateReferralCode(r.email, r.telefono, r.name);
+    }
+  } catch(e) { Logger.log('warn referral: ' + e.message); }
+
   // Pasos de la guia de la cabaña
   let cabinGuide = [];
   try {
@@ -297,7 +311,9 @@ function _buildPublicDTO(r) {
     wazeUrl:       props.getProperty('CHECKIN_WAZE_URL')      || 'https://waze.com/ul?ll=8.639400,-79.945900&navigate=yes',
     indicaciones:  props.getProperty('CHECKIN_INDICACIONES')  || '',
     accesoExtra:   props.getProperty('CHECKIN_ACCESO_EXTRA')  || '',
-    whatsappContact: 'https://wa.me/' + waNum
+    whatsappContact: 'https://wa.me/' + waNum,
+    referralCode:    referralCode,
+    referralAmount:  20
   };
 }
 
