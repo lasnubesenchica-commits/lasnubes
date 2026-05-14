@@ -24,8 +24,8 @@
 function _cumpleanosConfig() {
   const props = PropertiesService.getScriptProperties();
   return {
-    descDomJue: parseInt(props.getProperty('CUMPLE_DESCUENTO_DOM_JUE'), 10) || 10,
-    descVieSab: parseInt(props.getProperty('CUMPLE_DESCUENTO_VIE_SAB'), 10) || 20,
+    descDomJue: parseInt(props.getProperty('CUMPLE_DESCUENTO_DOM_JUE'), 10) || 20,
+    descVieSab: parseInt(props.getProperty('CUMPLE_DESCUENTO_VIE_SAB'), 10) || 10,
     diasAntes:  parseInt(props.getProperty('CUMPLE_DIAS_ANTES'), 10)        || 30
   };
 }
