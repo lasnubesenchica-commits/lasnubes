@@ -86,6 +86,20 @@
   .saldo-card { background: #fff7e6; border-color: #f0d99a; }
   .saldo-amount { font-size: 26px; font-weight: 500; color: #8a6000; font-family: 'Cormorant Garamond', serif; }
 
+  .ref-card { background: linear-gradient(135deg, #eef4f8, #dee9f1); border-color: #a8c5d8; text-align: center; }
+  .ref-code {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 38px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    color: #2a5478;
+    margin: 10px 0 6px;
+    user-select: all;
+  }
+  .ref-pitch { font-size: 14px; color: #385d7a; margin: 0 0 14px; line-height: 1.5; }
+  .ref-rules { font-size: 12px; color: #5a85b0; margin-top: 12px; }
+  .ref-rules a { color: #2a5478; }
+
   .btn {
     display: inline-block;
     padding: 11px 20px;
@@ -231,6 +245,8 @@
       <p class="muted-text"><strong>Baño:</strong> jabón, papel higiénico y toallas limpias. Fumigamos semanalmente; trae repelente si eres sensible a mosquitos.</p>
       <p class="muted-text"><strong>Privacidad total:</strong> todas las instalaciones son de uso exclusivo de quienes reservan.</p>
     </div>
+
+    <div id="referralCard"></div>
 
     <div class="card card-tinted">
       <h2>🏪 Tiendita Las Nubes</h2>
@@ -388,6 +404,40 @@ function _fileToBase64(file) {
   });
 }
 
+function renderReferral(r) {
+  const card = $('referralCard');
+  if (!card) return;
+  if (!r.referralCode) { card.innerHTML = ''; return; }
+  const amount = r.referralAmount || 20;
+  const cabin  = r.cabinName || 'Las Nubes';
+  const text = '¡Estoy en *Las Nubes Enchica*! 🌿\n\n'
+    + 'Si te animás a venir, usá mi código *' + r.referralCode + '* al reservar y reciben *$' + amount + ' off* cada uno.\n\n'
+    + 'Mira: https://lasnubes.cloud';
+  const waUrl = 'https://wa.me/?text=' + encodeURIComponent(text);
+  const reglasUrl = 'https://lasnubes.cloud/programa.html';
+  card.innerHTML =
+      '<div class="card ref-card">'
+    +   '<h2>🤝 Tu código de referido</h2>'
+    +   '<p class="ref-pitch">Compartí con tus amigos. Si reservan mencionando tu código, ambos reciben <strong>$' + amount + ' off</strong>.</p>'
+    +   '<div class="ref-code">' + r.referralCode + '</div>'
+    +   '<div class="btn-group" style="margin-top:14px;">'
+    +     '<a class="btn wa" href="' + waUrl + '" target="_blank" rel="noopener">💬 Compartir por WhatsApp</a>'
+    +     '<button class="btn" id="refCopyBtn" type="button">📋 Copiar mensaje</button>'
+    +   '</div>'
+    +   '<div class="ref-rules">Aplica solo Dom-Jue · reservas directas · vence 6 meses tras la primera estadía del referido. <a href="' + reglasUrl + '" target="_blank">Ver reglas</a>.</div>'
+    + '</div>';
+  const btn = document.getElementById('refCopyBtn');
+  if (btn) {
+    btn.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        btn.textContent = '✓ Copiado';
+        setTimeout(() => { btn.textContent = '📋 Copiar mensaje'; }, 2200);
+      } catch(e) { btn.textContent = '⚠ Error'; }
+    };
+  }
+}
+
 function renderSaldo(r) {
   const card = $('saldoCard');
   if (!r.saldo || r.saldo <= 0) { card.innerHTML = ''; return; }
@@ -456,6 +506,7 @@ function render(r) {
   renderKeybox(r);
   renderSaldo(r);
   renderGuide(r);
+  renderReferral(r);
 
   // Calendario
   if (r.gcalUrl)   $('gcalBtn').href = r.gcalUrl;

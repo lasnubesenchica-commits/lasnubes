@@ -175,8 +175,9 @@ function enviarCodigosReferido() {
   const sheet = getOrCreateSheet();
   const data  = sheet.getDataRange().getValues();
 
-  // Candidatos: huesped unico (por email) con al menos 1 estadia completada
-  // Directa no cancelada de tipo dormido.
+  // Candidatos: huesped Directa con estadia que YA EMPEZO (checkin <= hoy),
+  // no cancelada, tipo dormido, con email. Aprovechamos el momento de
+  // llegada para que comparta el codigo cuando esta mas activo.
   const today = new Date();
   const todayMs = new Date(Utilities.formatDate(today, 'America/Panama', 'yyyy-MM-dd') + 'T00:00:00-05:00').getTime();
   const candidatos = new Map(); // email -> { nombre, telefono }
@@ -189,12 +190,12 @@ function enviarCodigosReferido() {
     if (tipo === 'pasatarde' || tipo === 'pasadia') continue;
     const email = (r[21] || '').toString().toLowerCase().trim();
     if (!email) continue;
-    if (!r[5]) continue;
-    const coStr = r[5] instanceof Date
-      ? Utilities.formatDate(r[5], 'America/Panama', 'yyyy-MM-dd')
-      : r[5].toString().slice(0, 10);
-    const coMs = new Date(coStr + 'T12:00:00-05:00').getTime();
-    if (isNaN(coMs) || coMs >= todayMs) continue;  // no completada todavia
+    if (!r[4]) continue;  // sin checkin no podemos decidir
+    const ciStr = r[4] instanceof Date
+      ? Utilities.formatDate(r[4], 'America/Panama', 'yyyy-MM-dd')
+      : r[4].toString().slice(0, 10);
+    const ciMs = new Date(ciStr + 'T00:00:00-05:00').getTime();
+    if (isNaN(ciMs) || ciMs > todayMs) continue;  // todavia no llega
     if (!candidatos.has(email)) {
       candidatos.set(email, { nombre: r[1], telefono: r[23] || '' });
     }
