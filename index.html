@@ -2946,6 +2946,25 @@ function _buildClientReservaMessage(opts) {
     msg += 'Check-in '  + formatDayShort(d)         + ': 2:00 pm\n';
     msg += 'Check-out ' + formatDayShort(dCheckout) + ': 11:00 am\n';
   }
+  msg += '\n'
+    + '\u{1F373} *Cocina & Alimentación*\n'
+    + '• Cocina completamente equipada para preparar sus alimentos\n'
+    + '• Área de BBQ disponible\n'
+    + '• Incluye café, azúcar y especias básicas\n'
+    + '• Cooler grande disponible (no contamos con nevera — traer hielo y alimentos)\n'
+    + '• \u{1F37D}️ Menú sencillo de comida disponible bajo reserva previa\n'
+    + '\n'
+    + '☀️ *Energía & Conectividad*\n'
+    + '• Iluminación 100% solar mediante paneles fotovoltaicos\n'
+    + '• Inversor disponible para cargar celulares y dispositivos\n'
+    + '• Excelente señal de todas las operadoras\n'
+    + '\n'
+    + '\u{1F6BF} *Baño & Comodidades*\n'
+    + '• Jabón de baño, papel higiénico y toallas limpias incluidos\n'
+    + '• Fumigación semanal — se recomienda traer repelente si eres sensible a mosquitos\n'
+    + '\n'
+    + '\u{1F512} *Privacidad*\n'
+    + '• Todas las instalaciones son de uso exclusivo para quienes reservan\n';
   msg += '\nQuedo atento a las formas de pago. ¡Gracias!';
   return msg;
 }
