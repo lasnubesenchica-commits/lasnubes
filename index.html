@@ -2273,6 +2273,31 @@
   </div>
 </div>
 
+<!-- RESERVA PICKER MODAL: ¿WhatsApp o Airbnb? -->
+<div class="tooltip-overlay" id="reservaPickerOverlay" onclick="if(event.target===this)closeReservaPicker()">
+  <div class="tooltip-box" style="max-width:340px;">
+    <div style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:400;color:var(--text);margin-bottom:6px;text-align:center;">¿Cómo prefieres reservar?</div>
+    <p id="reservaPickerSub" style="font-size:13px;color:var(--muted);text-align:center;margin:0 0 18px;"></p>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <button id="reservaPickerWA" onclick="_reservaPickerGoWA()" style="display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:12px;border:1px solid var(--border);background:#25d366;color:white;font-size:14px;font-weight:500;cursor:pointer;touch-action:manipulation;">
+        <span style="font-size:22px;">💬</span>
+        <div style="text-align:left;flex:1;">
+          <div style="font-weight:600;">WhatsApp directo</div>
+          <div style="font-size:12px;opacity:0.9;font-weight:300;">Te ayudamos a coordinar</div>
+        </div>
+      </button>
+      <button id="reservaPickerAirbnb" onclick="_reservaPickerGoAirbnb()" style="display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;font-weight:500;cursor:pointer;touch-action:manipulation;">
+        <span style="font-size:22px;">🏠</span>
+        <div style="text-align:left;flex:1;">
+          <div style="font-weight:600;color:#ff5a5f;">Reservar en Airbnb</div>
+          <div style="font-size:12px;color:var(--muted);font-weight:300;">Con fechas precargadas</div>
+        </div>
+      </button>
+    </div>
+    <button class="tooltip-close" onclick="closeReservaPicker()" style="margin-top:14px;">Cerrar</button>
+  </div>
+</div>
+
 <!-- RATES CONFIG MODAL (admin only) -->
 <div class="tooltip-overlay" id="ratesOverlay" onclick="if(event.target===this)closeRates()">
   <div class="tooltip-box" style="max-width:340px;">
@@ -2746,14 +2771,18 @@ function updateModalPriceAndCabins() {
             ? '<button onclick="event.stopPropagation();copyPromo(\'' + dateStr + '\',\'' + c.key + '\',' + nights + ',\'' + tipo + '\',' + personas + ')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:3px 8px;font-size:12px;cursor:pointer;color:var(--muted);margin-right:6px;touch-action:manipulation;" title="Copiar texto promocional">📋</button>'
             : '<button disabled style="background:none;border:1px solid var(--border);border-radius:8px;padding:3px 8px;font-size:12px;margin-right:6px;cursor:default;opacity:0.3;">📋</button>';
         }
+        // Hospedaje single-cabin → picker WA/Airbnb. Pasadias → WA directo (Airbnb no aplica).
+        const reservarCall = isHosp
+          ? 'openReservaPicker(\'' + dateStr + '\',\'' + c.key + '\',' + nights + ',' + personas + ')'
+          : 'openWA(\'' + dateStr + '\',\'' + c.key + '\')';
         return '<div class="tooltip-cabin avail">'
-          + '<div class="tc-left" onclick="openWA(\'' + dateStr + '\',\'' + c.key + '\')" style="cursor:pointer;flex:1;">'
+          + '<div class="tc-left" onclick="' + reservarCall + '" style="cursor:pointer;flex:1;">'
           + '<div class="tc-dot" style="background:var(--' + c.key + ');"></div>'
           + '<span>' + c.name + priceTag + '</span>'
           + '</div>'
           + '<div style="display:flex;align-items:center;">'
           + copyBtn
-          + '<span class="tc-badge avail" onclick="openWA(\'' + dateStr + '\',\'' + c.key + '\')" style="cursor:pointer;">Reservar</span>'
+          + '<span class="tc-badge avail" onclick="' + reservarCall + '" style="cursor:pointer;">Reservar</span>'
           + '</div>'
           + '</div>';
       } else {
@@ -2766,6 +2795,57 @@ function updateModalPriceAndCabins() {
   }
 
   document.getElementById('ttCabins').innerHTML = cabinsHtml;
+}
+
+// ── RESERVA PICKER (WhatsApp / Airbnb) ─────────────────────
+const CABIN_AIRBNB_SLUG = {
+  verde: 'paseoporlasnubes',
+  azul:  'portalhacialasnubes',
+  lila:  'puenteentrelasnubes'
+};
+
+let _pickerState = null; // { dateStr, cabinKey, nights, personas }
+
+function openReservaPicker(dateStr, cabinKey, nights, personas) {
+  _pickerState = { dateStr, cabinKey, nights: nights || 1, personas: personas || 2 };
+  const cabin = CABINS.find(c => c.key === cabinKey);
+  const d = new Date(dateStr + 'T12:00:00');
+  const label = d.toLocaleDateString('es-PA', { weekday:'long', day:'numeric', month:'long' });
+  const sub = (cabin ? cabin.name + ' · ' : '') + label + (nights > 1 ? ' · ' + nights + ' noches' : '');
+  document.getElementById('reservaPickerSub').textContent = sub;
+  // Airbnb solo si el slug existe
+  const airbnbBtn = document.getElementById('reservaPickerAirbnb');
+  if (airbnbBtn) airbnbBtn.style.display = CABIN_AIRBNB_SLUG[cabinKey] ? 'flex' : 'none';
+  document.getElementById('reservaPickerOverlay').classList.add('open');
+}
+
+function closeReservaPicker() {
+  document.getElementById('reservaPickerOverlay').classList.remove('open');
+  _pickerState = null;
+}
+
+function _reservaPickerGoWA() {
+  if (!_pickerState) return;
+  const { dateStr, cabinKey } = _pickerState;
+  closeReservaPicker();
+  openWA(dateStr, cabinKey);
+}
+
+function _reservaPickerGoAirbnb() {
+  if (!_pickerState) return;
+  const { dateStr, cabinKey, nights, personas } = _pickerState;
+  const slug = CABIN_AIRBNB_SLUG[cabinKey];
+  if (!slug) return;
+  // Calcular checkout = checkin + nights
+  const co = new Date(dateStr + 'T12:00:00');
+  co.setDate(co.getDate() + nights);
+  const coStr = co.toISOString().slice(0, 10);
+  const url = 'https://www.airbnb.com/h/' + slug
+    + '?check_in='  + encodeURIComponent(dateStr)
+    + '&check_out=' + encodeURIComponent(coStr)
+    + '&adults='    + encodeURIComponent(personas);
+  closeReservaPicker();
+  window.open(url, '_blank');
 }
 
 function openWAcombo(dateStr) {
