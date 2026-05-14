@@ -201,9 +201,61 @@
     text-decoration: none;
     border-bottom: 1px solid var(--border);
   }
+
+  /* ── NAV (mismo estilo que index.html) ── */
+  nav.top-nav {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    background: rgba(250, 249, 246, 0.9);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .top-nav-brand {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 22px;
+    color: var(--text);
+    text-decoration: none;
+    letter-spacing: 0.02em;
+  }
+  .top-nav-brand em { color: var(--accent); font-style: italic; }
+  .top-nav-links { display: flex; gap: 4px; align-items: center; }
+  .top-nav-link {
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-size: 13px;
+    color: var(--muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.15s;
+  }
+  .top-nav-link:hover { background: var(--soft); color: var(--text); }
+  .top-nav-link.active { background: #e8f2e6; color: var(--accent); }
+  @media (max-width: 760px) {
+    .top-nav-links { display: none; }
+  }
 </style>
 </head>
 <body>
+
+<nav class="top-nav">
+  <a href="index.html" class="top-nav-brand">Las <em>Nubes</em></a>
+  <div class="top-nav-links">
+    <a class="top-nav-link" href="index.html#disponibilidad">📅 Disponibilidad</a>
+    <a class="top-nav-link" href="index.html#cabanas">🏡 Cabañas</a>
+    <a class="top-nav-link" href="index.html#actividades">🏕️ Actividades</a>
+    <a class="top-nav-link" href="index.html#gastronomia">🍽️ Gastronomía</a>
+    <a class="top-nav-link" href="index.html#insumos">🛒 Insumos</a>
+    <a class="top-nav-link active" href="programa.html">✨ Programa</a>
+  </div>
+</nav>
 
 <div class="hero">
   <div class="eyebrow">Programa Amigos</div>
