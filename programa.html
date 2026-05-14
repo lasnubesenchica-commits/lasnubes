@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Programa Amigos de Las Nubes</title>
+<meta name="description" content="Tres formas de ahorrar en Las Nubes: cumpleaños, cliente fiel y referidos.">
+<meta property="og:title" content="Programa Amigos de Las Nubes">
+<meta property="og:description" content="Cumpleaños, cliente fiel y referidos — tres beneficios para nuestros huéspedes.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://lasnubes.cloud/og-cover.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #faf9f6;
+    --card: #ffffff;
+    --text: #1a1a1a;
+    --muted: #6e6e6e;
+    --border: #e8e6e0;
+    --soft: #f5f4f0;
+    --accent: #6a9e62;
+    --verde: #6a9e62;
+    --azul:  #5a85b0;
+    --ambar: #d4a44c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 300;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { font-family: 'Cormorant Garamond', serif; font-weight: 500; margin: 0; letter-spacing: 0.01em; }
+
+  .hero {
+    background-image: linear-gradient(rgba(20,28,22,0.6), rgba(20,28,22,0.7)), url('las-nubes.jpg');
+    background-size: cover;
+    background-position: center;
+    color: #fff;
+    text-align: center;
+    padding: 80px 24px 70px;
+  }
+  .hero .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.85);
+    margin-bottom: 16px;
+  }
+  .hero h1 {
+    font-size: clamp(36px, 8vw, 56px);
+    font-weight: 300;
+    line-height: 1.1;
+    margin-bottom: 16px;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.25);
+  }
+  .hero h1 em { font-style: italic; color: #b3e0a8; }
+  .hero p {
+    font-size: 16px;
+    color: rgba(255,255,255,0.9);
+    max-width: 540px;
+    margin: 0 auto;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.25);
+  }
+
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 48px 16px 64px;
+  }
+  .intro {
+    text-align: center;
+    margin-bottom: 40px;
+    color: var(--muted);
+    font-size: 15px;
+  }
+
+  .promo-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 32px 28px;
+    margin-bottom: 22px;
+    position: relative;
+    overflow: hidden;
+  }
+  .promo-card.cumple { border-top: 5px solid var(--verde); }
+  .promo-card.fiel   { border-top: 5px solid var(--ambar); }
+  .promo-card.ref    { border-top: 5px solid var(--azul); }
+
+  .promo-icon {
+    font-size: 34px;
+    line-height: 1;
+    margin-bottom: 14px;
+  }
+  .promo-tag {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 14px;
+  }
+  .promo-card.cumple .promo-tag { background: #eaf6e7; color: #2c5e22; }
+  .promo-card.fiel   .promo-tag { background: #fff5d6; color: #7a5a1f; }
+  .promo-card.ref    .promo-tag { background: #e6f0f7; color: #385d7a; }
+
+  .promo-card h2 {
+    font-size: 28px;
+    margin-bottom: 14px;
+    color: var(--text);
+  }
+  .promo-card .lead {
+    font-size: 16px;
+    color: var(--text);
+    line-height: 1.7;
+    margin-bottom: 22px;
+  }
+  .promo-card ul.rules {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 22px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .promo-card ul.rules li {
+    padding: 6px 0 6px 24px;
+    position: relative;
+    line-height: 1.55;
+  }
+  .promo-card ul.rules li::before {
+    content: '·';
+    position: absolute;
+    left: 8px;
+    color: var(--accent);
+    font-weight: bold;
+  }
+  .promo-card .highlight {
+    background: var(--soft);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 18px;
+    font-size: 14px;
+    color: var(--text);
+  }
+  .promo-card .highlight strong { color: var(--text); }
+
+  .btn-wa {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #25d366;
+    color: white;
+    text-decoration: none;
+    padding: 12px 22px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 14px;
+    transition: opacity 0.15s;
+  }
+  .btn-wa:hover { opacity: 0.9; }
+
+  .reglas-generales {
+    margin-top: 36px;
+    padding: 22px 24px;
+    background: var(--soft);
+    border-radius: 14px;
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  .reglas-generales h3 {
+    font-size: 16px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 10px;
+  }
+  .reglas-generales ul { padding-left: 18px; margin: 0; }
+  .reglas-generales li { padding: 3px 0; }
+
+  footer {
+    text-align: center;
+    padding: 36px 0 16px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  footer a { color: var(--muted); border-bottom: 1px solid var(--border); text-decoration: none; }
+  .top-link {
+    display: inline-block;
+    margin-top: 22px;
+    font-size: 13px;
+    color: var(--muted);
+    text-decoration: none;
+    border-bottom: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="eyebrow">Programa Amigos</div>
+  <h1>Las <em>Nubes</em></h1>
+  <p>Tres beneficios para nuestros huéspedes — cumpleaños, cliente fiel y referidos.</p>
+</div>
+
+<div class="wrap">
+
+  <p class="intro">Tres maneras de ahorrar cuando volvés a Las Nubes. Sin letra chica complicada — solo formas de agradecerte por elegirnos.</p>
+
+  <!-- CUMPLEANOS -->
+  <div class="promo-card cumple">
+    <div class="promo-icon">🎂</div>
+    <span class="promo-tag">Cumpleaños</span>
+    <h2>Tu noche, tu cumpleaños</h2>
+    <p class="lead">Si reservás directo la noche de tu cumpleaños, te invitamos parte del descanso.</p>
+    <div class="highlight">
+      <strong>20% off Dom–Jue</strong> &nbsp;·&nbsp; <strong>10% off Vie–Sáb</strong><br>
+      Aplica solo a la noche de tu cumpleaños.
+    </div>
+    <ul class="rules">
+      <li>Requiere verificación con cédula al check-in.</li>
+      <li>Solo para reservas directas (no aplica a Airbnb).</li>
+      <li>1 vez por año por persona.</li>
+      <li>El resto de noches a tarifa normal.</li>
+    </ul>
+    <a class="btn-wa" href="https://wa.me/50769812266?text=Hola!%20Quiero%20reservar%20la%20noche%20de%20mi%20cumplea%C3%B1os%20con%20descuento" target="_blank" rel="noopener">💬 Reservar mi cumpleaños</a>
+  </div>
+
+  <!-- CLIENTE FIEL -->
+  <div class="promo-card fiel">
+    <div class="promo-icon">🌟</div>
+    <span class="promo-tag">Cliente fiel</span>
+    <h2>2 estadías y la 3ra noche es por la casa</h2>
+    <p class="lead">Después de tu segunda estadía con nosotros, te regalamos una noche de cortesía cuando vuelvas.</p>
+    <div class="highlight">
+      <strong>1 noche cortesía Dom–Jue</strong> en la cabaña que elijas (según disponibilidad).
+    </div>
+    <ul class="rules">
+      <li>Se activa automáticamente al completar tu 2da estadía directa.</li>
+      <li>Te avisamos por email cuando esté disponible.</li>
+      <li>Vence a los 12 meses de la activación.</li>
+      <li>1 sola noche por cliente. No combinable con otras promos.</li>
+      <li>Solo cuenta estadías de noche (no pasadías).</li>
+    </ul>
+    <a class="btn-wa" href="https://wa.me/50769812266?text=Hola!%20Quiero%20usar%20mi%20noche%20cortes%C3%ADa%20de%20cliente%20fiel" target="_blank" rel="noopener">💬 Usar mi noche cortesía</a>
+  </div>
+
+  <!-- REFERIDOS -->
+  <div class="promo-card ref">
+    <div class="promo-icon">🤝</div>
+    <span class="promo-tag">Referidos</span>
+    <h2>Compartí — ambos ganan</h2>
+    <p class="lead">Cada huésped recibe un código personal después de su estadía. Cuando un amigo reserva mencionándolo, ambos reciben descuento.</p>
+    <div class="highlight">
+      <strong>$20 off para tu amigo</strong> en su primera estadía<br>
+      <strong>$20 de crédito para vos</strong> al confirmarse su estadía
+    </div>
+    <ul class="rules">
+      <li>Te enviamos tu código por email después de tu estadía.</li>
+      <li>Tu amigo lo menciona al reservar directo via WhatsApp.</li>
+      <li>Vos acumulás créditos por cada amigo referido (sin tope).</li>
+      <li>Solo para reservas directas. No combinable con otras promos.</li>
+      <li>El amigo debe ser cliente nuevo (no haber reservado antes).</li>
+    </ul>
+    <a class="btn-wa" href="https://wa.me/50769812266?text=Hola!%20Quiero%20m%C3%A1s%20info%20sobre%20el%20programa%20de%20referidos" target="_blank" rel="noopener">💬 Más info / compartir código</a>
+  </div>
+
+  <div class="reglas-generales">
+    <h3>Reglas generales</h3>
+    <ul>
+      <li>Todas las promos aplican solo a <strong>reservas directas</strong> via WhatsApp (no a través de Airbnb).</li>
+      <li>No son combinables entre sí ni con la tarifa promocional.</li>
+      <li>Sujetas a disponibilidad — recomendamos reservar con anticipación.</li>
+      <li>No aplican a pasadías (excepto donde se indique).</li>
+      <li>Nos reservamos el derecho de modificar el programa con aviso previo.</li>
+    </ul>
+  </div>
+
+  <div style="text-align:center;">
+    <a class="top-link" href="https://lasnubes.cloud">← Volver al calendario</a>
+  </div>
+
+</div>
+
+<footer>
+  <a href="https://lasnubes.cloud">lasnubes.cloud</a>
+</footer>
+
+</body>
+</html>
