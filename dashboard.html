@@ -1220,6 +1220,7 @@
       <button onclick="showSection('reservas')">Reservas</button>
       <button onclick="showSection('ocupacion')">Ocupación</button>
       <button onclick="showSection('contabilidad')">Contabilidad</button>
+      <button onclick="showSection('programa')">Programa</button>
     </nav>
     <!-- Mobile dropdown -->
     <div class="nav-mobile">
@@ -1229,6 +1230,7 @@
         <button onclick="showSection('reservas');closeNavMenu()">Reservas</button>
         <button onclick="showSection('ocupacion');closeNavMenu()">Ocupación</button>
         <button onclick="showSection('contabilidad');closeNavMenu()">Contabilidad</button>
+        <button onclick="showSection('programa');closeNavMenu()">Programa</button>
       </div>
     </div>
   </div>
@@ -1985,6 +1987,19 @@
     </div>
   </section>
 
+
+  <!-- ===== PROGRAMA AMIGOS ===== -->
+  <section id="programa" class="section">
+    <div style="max-width:980px;margin:0 auto;padding:8px 0 24px;">
+      <h2 style="font-family:'Cormorant Garamond',serif;font-weight:500;font-size:28px;margin:0 0 6px;">📊 Programa Amigos · Métricas</h2>
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 22px;">KPIs en vivo de cumpleaños, cliente fiel y referidos.</p>
+
+      <div id="programaMetricsContent">
+        <div style="text-align:center;color:var(--text-muted);padding:40px 0;">Cargando…</div>
+      </div>
+    </div>
+  </section>
+
 </main>
 
 <!-- RESERVATION DETAIL POPUP -->
@@ -2635,8 +2650,8 @@ document.addEventListener('click', function(e) {
 function showSection(id) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  const sections = ['reservas','contabilidad','disponibilidad','ocupacion'];
-  const labels   = { reservas:'Reservas', contabilidad:'Contabilidad', disponibilidad:'Disponibilidad', ocupacion:'Ocupación' };
+  const sections = ['reservas','contabilidad','disponibilidad','ocupacion','programa'];
+  const labels   = { reservas:'Reservas', contabilidad:'Contabilidad', disponibilidad:'Disponibilidad', ocupacion:'Ocupación', programa:'Programa Amigos' };
   document.querySelectorAll('nav button').forEach(b => {
     const sec = b.getAttribute('onclick')?.match(/showSection\('(\w+)'/)?.[1];
     b.classList.toggle('active', sec === id);
@@ -2646,6 +2661,7 @@ function showSection(id) {
   if(id === 'contabilidad')   renderContabilidad();
   if(id === 'disponibilidad') renderDisponibilidad();
   if(id === 'ocupacion')      { populateOcuMonth(); renderOcupacion(); }
+  if(id === 'programa')       renderProgramaMetrics();
 }
 
 // ─── DISPONIBILIDAD ──────────────────────────────────────
@@ -7052,6 +7068,129 @@ async function _promptApplyReferrerCredit(referrerEmail, applyInReservaId) {
       showToast('⚠ ' + (data.error || 'Error'));
     }
   } catch(e) { showToast('⚠ Error de red'); }
+}
+
+// ── PROGRAMA AMIGOS · METRICS ─────────────────────────────────────
+function renderProgramaMetrics() {
+  const el = document.getElementById('programaMetricsContent');
+  if (!el) return;
+
+  // Asunciones editables (localStorage)
+  const avgRev   = parseFloat(localStorage.getItem('ln_prog_avgRev')   || '180'); // Avg revenue/estadía referido
+  const cannib   = parseFloat(localStorage.getItem('ln_prog_cannib')   || '30');  // % canibalización
+  const cv       = parseFloat(localStorage.getItem('ln_prog_cv')       || '25');  // costo variable/estadía
+
+  // ── REFERIDOS ─────
+  const refsEmitidos    = referrals.length;
+  const refsConEmail    = referrals.filter(r => r.emailSentAt).length;
+  const redenciones     = referralUses.length;
+  const tasaRedencion   = refsEmitidos > 0 ? (redenciones / refsEmitidos * 100) : 0;
+  const credsOtorgados  = referralUses.length;
+  const credsUsados     = referralUses.filter(u => u.referrerCreditUsed).length;
+  const credsDisponibles = credsOtorgados - credsUsados;
+
+  // ── COSTOS Y REVENUE ESTIMADO ─────
+  const descRefereesEntregado = redenciones * 20;       // costo concreto realizado
+  const credUsadoCosto        = credsUsados * 20;       // costo concreto realizado
+  const credDispObligacion    = credsDisponibles * 20;  // obligación futura
+  const costoRealizado        = descRefereesEntregado + credUsadoCosto;
+
+  const factorIncremental = Math.max(0, (1 - cannib / 100));
+  const revGrossPorRedencion = (avgRev - 20 - cv) * factorIncremental;
+  const revIncremental = redenciones * revGrossPorRedencion;
+  const gananciaNeta = revIncremental - costoRealizado;
+  const roi = costoRealizado > 0 ? (gananciaNeta / costoRealizado * 100) : 0;
+
+  // ── LOYALTY ─────
+  const loyaltyEmitidos = loyaltyCredits.length;
+  const loyaltyUsados   = loyaltyCredits.filter(c => c.usedAt).length;
+  const loyaltyDisp     = loyaltyEmitidos - loyaltyUsados;
+  // Loyalty: cada credito = 1 noche cortesia ($90 Dom-Jue tarifa estándar)
+  const loyaltyCostoUsado = loyaltyUsados * 90;
+  const loyaltyObligFutura = loyaltyDisp * 90;
+
+  el.innerHTML = `
+    <!-- REFERIDOS -->
+    <div class="contab-panel" style="margin-bottom:18px;">
+      <div class="contab-panel-header">
+        <div class="contab-panel-title">🤝 Referidos</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;padding:14px 0 4px;">
+        ${_kpiCell('Códigos emitidos', refsEmitidos)}
+        ${_kpiCell('Emails enviados', refsConEmail)}
+        ${_kpiCell('Redenciones', redenciones, '#5a85b0')}
+        ${_kpiCell('Tasa redención', tasaRedencion.toFixed(1) + '%', tasaRedencion >= 10 ? '#2c5e22' : '#7a5a1f')}
+      </div>
+      <hr style="border:none;border-top:1px solid var(--border);margin:14px 0;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;">
+        ${_kpiCell('Créditos otorgados', credsOtorgados)}
+        ${_kpiCell('Créditos usados', credsUsados)}
+        ${_kpiCell('Créditos disponibles', credsDisponibles + ' ($' + credDispObligacion + ')', '#7a5a1f')}
+      </div>
+    </div>
+
+    <!-- LOYALTY -->
+    <div class="contab-panel" style="margin-bottom:18px;">
+      <div class="contab-panel-header">
+        <div class="contab-panel-title">🌟 Cliente Fiel</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;padding:14px 0 4px;">
+        ${_kpiCell('Créditos emitidos', loyaltyEmitidos)}
+        ${_kpiCell('Usados', loyaltyUsados)}
+        ${_kpiCell('Disponibles', loyaltyDisp, '#7a5a1f')}
+        ${_kpiCell('Obligación futura', '$' + loyaltyObligFutura, '#7a5a1f')}
+      </div>
+    </div>
+
+    <!-- IMPACTO ECONÓMICO -->
+    <div class="contab-panel" style="margin-bottom:18px;">
+      <div class="contab-panel-header">
+        <div class="contab-panel-title">💰 Impacto económico (Referidos)</div>
+      </div>
+      <div style="padding:14px 0;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;">
+          ${_kpiCell('Descuento entregado', '$' + descRefereesEntregado, '#7a5a1f')}
+          ${_kpiCell('Crédito referrer usado', '$' + credUsadoCosto, '#7a5a1f')}
+          ${_kpiCell('Costo total realizado', '$' + costoRealizado, '#7a5a1f')}
+          ${_kpiCell('Revenue incremental est.', '$' + Math.round(revIncremental), '#2c5e22')}
+          ${_kpiCell('Ganancia neta est.', '$' + Math.round(gananciaNeta), gananciaNeta >= 0 ? '#2c5e22' : '#b85c4a')}
+          ${_kpiCell('ROI estimado', (costoRealizado > 0 ? roi.toFixed(0) + '%' : '—'), '#2c5e22')}
+        </div>
+        <div style="margin-top:18px;padding:12px 14px;background:var(--soft);border-radius:8px;font-size:12px;color:var(--text-muted);">
+          <strong style="color:var(--text);">Asunciones editables</strong> — afectan revenue incremental y ROI:
+          <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;align-items:center;">
+            <label style="display:flex;align-items:center;gap:6px;">Avg revenue/estadía: $
+              <input type="number" id="progAvgRev" value="${avgRev}" step="10" min="0" style="width:70px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;">
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;">Canibalización:
+              <input type="number" id="progCannib" value="${cannib}" step="5" min="0" max="100" style="width:55px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;">%
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;">Costo variable: $
+              <input type="number" id="progCV" value="${cv}" step="5" min="0" style="width:55px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;">
+            </label>
+            <button onclick="_saveProgramaAssumptions()" style="padding:5px 12px;background:var(--text);color:var(--bg);border:none;border-radius:6px;font-size:12px;cursor:pointer;">Recalcular</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function _kpiCell(label, value, color) {
+  return '<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px;">'
+    + '<div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">' + label + '</div>'
+    + '<div style="font-family:\'Cormorant Garamond\',serif;font-size:24px;font-weight:500;color:' + (color || 'var(--text)') + ';">' + value + '</div>'
+    + '</div>';
+}
+
+function _saveProgramaAssumptions() {
+  const a = parseFloat(document.getElementById('progAvgRev').value)  || 180;
+  const c = parseFloat(document.getElementById('progCannib').value)  || 30;
+  const v = parseFloat(document.getElementById('progCV').value)      || 25;
+  localStorage.setItem('ln_prog_avgRev', a);
+  localStorage.setItem('ln_prog_cannib', c);
+  localStorage.setItem('ln_prog_cv', v);
+  renderProgramaMetrics();
 }
 
 async function _unmarkLoyalty(email, telefono) {

@@ -25,6 +25,7 @@
 const REFERRAL_CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';  // sin 0/O/I/l/1
 const REFERRAL_CODE_LEN      = 6;
 const REFERRAL_REWARD_AMOUNT = 20;
+const REFERRAL_CREDIT_EXPIRY_DAYS = 180; // 6 meses desde la redención del referido
 
 function _getOrCreateReferralsSheet() {
   const ss = SpreadsheetApp.openById(SHEET_ID);
@@ -261,7 +262,14 @@ function buildReferralCodeEmailHTML(opts) {
 '<li>Vos recibís $' + opts.amount + ' de crédito al confirmarse su estadía. Lo aplicás cuando vuelvas.</li>' +
 '<li>Sin tope de referidos. Acumulás crédito por cada amigo.</li>' +
 '</ul>' +
-'<p style="margin:0 0 20px;font-size:13px;color:#8a8078;line-height:1.6;">El descuento aplica solo a reservas directas (no Airbnb) y no combinable con otras promociones. Sujeto a disponibilidad.</p>' +
+'<p style="margin:0 0 8px;font-size:13px;color:#8a8078;line-height:1.6;font-weight:600;">Restricciones:</p>' +
+'<ul style="margin:0 0 20px;padding-left:20px;color:#8a8078;font-size:13px;line-height:1.7;">' +
+'<li>Aplica solo a noches <strong>Domingo a Jueves</strong>.</li>' +
+'<li>Solo para reservas directas (no Airbnb).</li>' +
+'<li>No combinable con tarifa promocional ni otras promociones.</li>' +
+'<li>El crédito vence a los <strong>6 meses</strong> de la estadía del referido.</li>' +
+'<li>Sujeto a disponibilidad.</li>' +
+'</ul>' +
 '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;"><tr><td align="center">' +
 '<a href="https://wa.me/' + opts.waNumber + '?text=' + encodeURIComponent('Hola! Quiero compartir mi código de referido ' + opts.code) + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:15px;font-weight:600;padding:14px 28px;border-radius:10px;text-decoration:none;">&#128172; Compartir mi código</a>' +
 '</td></tr></table>' +
@@ -347,6 +355,12 @@ function handleMarkReferrerCreditUsed(payload) {
     const use = _findReferralUseByReservaId(useRid);
     if (!use) return _jsonOut({ ok: false, error: 'USE_NOT_FOUND' });
     if (use.referrerCreditUsed) return _jsonOut({ ok: false, error: 'ALREADY_USED' });
+    // Validar vencimiento (UsedAt + 180 dias)
+    if (use.usedAt) {
+      const usedMs = new Date(use.usedAt + 'T12:00:00-05:00').getTime();
+      const expiresMs = usedMs + REFERRAL_CREDIT_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+      if (Date.now() > expiresMs) return _jsonOut({ ok: false, error: 'EXPIRED', expiredOn: Utilities.formatDate(new Date(expiresMs), 'America/Panama', 'yyyy-MM-dd') });
+    }
     const s = _getOrCreateReferralUsesSheet();
     const now = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd');
     s.getRange(use.rowIndex, 6).setValue(true);
