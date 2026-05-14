@@ -35,39 +35,46 @@
 
   /* ── HERO ── */
   .hero {
-    background: var(--surface);
+    position: relative;
+    background-image: linear-gradient(rgba(20,28,22,0.55), rgba(20,28,22,0.65)), url('las-nubes.jpg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
     border-bottom: 1px solid var(--border);
-    padding: 40px 24px 32px;
+    padding: 64px 24px 56px;
     text-align: center;
+    color: #fff;
   }
 
   .hero-eyebrow {
     font-size: 11px;
     letter-spacing: 0.15em;
     text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 10px;
+    color: rgba(255,255,255,0.85);
+    margin-bottom: 14px;
   }
 
   .hero-title {
     font-family: 'Cormorant Garamond', serif;
-    font-size: clamp(36px, 8vw, 56px);
+    font-size: clamp(40px, 9vw, 64px);
     font-weight: 300;
     line-height: 1.1;
-    color: var(--text);
-    margin-bottom: 10px;
+    color: #fff;
+    margin-bottom: 12px;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.25);
   }
 
-  .hero-title span { font-style: italic; color: var(--verde); }
+  .hero-title span { font-style: italic; color: #b3e0a8; }
 
   .hero-sub {
     font-size: 14px;
-    color: var(--muted);
-    margin-bottom: 28px;
+    color: rgba(255,255,255,0.9);
+    margin-bottom: 0;
     max-width: 420px;
     margin-left: auto;
     margin-right: auto;
     line-height: 1.6;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.25);
   }
 
   .hero-contact {
@@ -643,12 +650,12 @@
     align-items: center;
     gap: 6px;
     font-size: 12px;
-    color: var(--muted);
+    color: rgba(255,255,255,0.85);
     text-decoration: none;
     margin-bottom: 14px;
     transition: color 0.15s;
   }
-  .hero-location:hover { color: var(--verde); }
+  .hero-location:hover { color: #b3e0a8; }
 
   /* ── LOAD MORE ── */
   .load-more-wrap { text-align: center; padding: 8px 0 20px; }
