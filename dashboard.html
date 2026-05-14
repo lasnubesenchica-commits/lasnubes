@@ -2387,6 +2387,7 @@ let egresos = JSON.parse(localStorage.getItem('ln_egresos') || '[]');
 let editId = null;
 let pendingDeleteId = null;
 let sheetsReservations = []; // Reservas sincronizadas desde Airbnb/Gmail
+let loyaltyCredits     = []; // Creditos de Cliente Fiel (cargados desde Sheets)
 let pagos = [];              // Cobros de Airbnb (una entrada por email de pago)
 
 // ─── SHEETS SYNC ─────────────────────────────────────────────
@@ -2408,6 +2409,12 @@ async function syncFromSheets() {
       const resEgresos = await fetch(`${SHEETS_API_URL}?action=getEgresos`);
       dataEgresos = await resEgresos.json();
     } catch(egErr) { console.warn('getEgresos failed:', egErr); }
+    // Loyalty credits (no critico — si falla, dashboard sigue funcionando)
+    try {
+      const resLoyalty = await fetch(`${SHEETS_API_URL}?action=getLoyaltyCredits`);
+      const dataLoyalty = await resLoyalty.json();
+      if (dataLoyalty && dataLoyalty.ok) loyaltyCredits = dataLoyalty.credits || [];
+    } catch(lyErr) { console.warn('getLoyaltyCredits failed:', lyErr); }
 
     if (data && data.reservations) {
       sheetsReservations = data.reservations.map(r => {
@@ -6832,14 +6839,45 @@ function _ordinalVisita(n) {
   return n + 'ta visita';
 }
 
+function _findLoyaltyCreditFor(email, telefono) {
+  const e = (email || '').toString().toLowerCase().trim();
+  const p = (telefono || '').toString().replace(/\D/g, '');
+  if (!e && !p) return null;
+  for (const c of loyaltyCredits) {
+    const ce = (c.email    || '').toString().toLowerCase().trim();
+    const cp = (c.telefono || '').toString().replace(/\D/g, '');
+    if ((e && ce === e) || (p && cp === p)) return c;
+  }
+  return null;
+}
+
 function _renderLoyaltyBadge(r) {
   const el = document.getElementById('detailLoyaltyBadge');
   if (!el) return;
-  const prev = _countPrevCompletedStays(r);
-  if (prev >= 2) {
-    const num = prev + 1;
+  const credit = _findLoyaltyCreditFor(r.email, r.telefono);
+  const prev   = _countPrevCompletedStays(r);
+
+  if (credit) {
+    if (credit.usedAt) {
+      // Cortesia ya usada
+      const usedIn = credit.usedInReservaId || '—';
+      el.style.cssText = 'display:block;background:#f5f4f0;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;color:var(--text-muted);';
+      el.innerHTML = '✓ <strong>Cortesía Cliente Fiel ya aplicada</strong> · reserva <code>' + usedIn + '</code>'
+        + (credit.usedAt ? ' · ' + credit.usedAt : '')
+        + ' <button onclick="_unmarkLoyalty(' + JSON.stringify(r.email||'').replace(/"/g,'&quot;') + ',' + JSON.stringify(r.telefono||'').replace(/"/g,'&quot;') + ')" '
+        + 'style="margin-left:8px;background:none;border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;color:var(--text-muted);">Deshacer</button>';
+    } else {
+      // Cortesia disponible
+      const vence = credit.expiresAt ? ' (vence ' + credit.expiresAt + ')' : '';
+      const btn = '<button onclick="_markLoyaltyUsedHere(' + JSON.stringify(r.email||'').replace(/"/g,'&quot;') + ',' + JSON.stringify(r.telefono||'').replace(/"/g,'&quot;') + ',' + JSON.stringify(r.id).replace(/"/g,'&quot;') + ')" '
+        + 'style="margin-left:8px;background:#d4a44c;border:none;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;color:#fff;font-weight:500;">Marcar usada en esta reserva</button>';
+      el.style.cssText = 'display:block;background:#fffbeb;border-left:3px solid #d4a44c;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;color:#7a5a1f;';
+      el.innerHTML = '🌟 <strong>Cliente fiel</strong> — noche cortesía <strong>Dom–Jue</strong> disponible' + vence + '. ' + btn;
+    }
+  } else if (prev >= 2) {
+    // Es elegible pero el trigger aun no emitio el credito
     el.style.cssText = 'display:block;background:#fffbeb;border-left:3px solid #d4a44c;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;color:#7a5a1f;';
-    el.innerHTML = '🌟 <strong>Cliente fiel</strong> · ' + _ordinalVisita(num) + ' — noche cortesía <strong>Dom–Jue</strong> disponible (válida 1 vez sobre esta o futura estadía).';
+    el.innerHTML = '🌟 <strong>Cliente fiel</strong> · ' + _ordinalVisita(prev + 1) + ' — cortesía Dom–Jue pendiente de emisión (trigger corre diario a las 10am).';
   } else if (prev === 1) {
     el.style.cssText = 'display:block;background:#f5f4f0;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;color:var(--text-muted);';
     el.innerHTML = '🔄 <strong>2da visita</strong> — cliente que repite. Con la próxima estadía completa, activa cortesía Dom–Jue.';
@@ -6847,6 +6885,49 @@ function _renderLoyaltyBadge(r) {
     el.style.display = 'none';
     el.innerHTML = '';
   }
+}
+
+async function _markLoyaltyUsedHere(email, telefono, reservaId) {
+  if (!confirm('¿Marcar la cortesía Cliente Fiel como aplicada en esta reserva?')) return;
+  try {
+    const res = await fetch(SHEETS_API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'markLoyaltyUsed', email, telefono, reservaId })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      // Refrescar credits localmente
+      const c = _findLoyaltyCreditFor(email, telefono);
+      if (c) { c.usedAt = data.usedAt; c.usedInReservaId = data.usedInReservaId; }
+      showToast('✓ Cortesía marcada como usada');
+      // Re-render
+      const r = reservations.find(x => x.id === reservaId);
+      if (r) _renderLoyaltyBadge(r);
+    } else {
+      showToast('⚠ ' + (data.error || 'Error'));
+    }
+  } catch(e) { showToast('⚠ Error de red'); }
+}
+
+async function _unmarkLoyalty(email, telefono) {
+  if (!confirm('¿Deshacer la marca de cortesía usada? El cliente vuelve a tener el crédito disponible.')) return;
+  try {
+    const res = await fetch(SHEETS_API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'unmarkLoyaltyUsed', email, telefono })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const c = _findLoyaltyCreditFor(email, telefono);
+      if (c) { c.usedAt = ''; c.usedInReservaId = ''; }
+      showToast('✓ Cortesía liberada');
+      // Re-render usando la reserva actualmente abierta — buscar via DOM
+      const detailBtn = document.querySelector('#detailLoyaltyBadge');
+      if (detailBtn) detailBtn.innerHTML = '✓ Refrescá para ver el cambio';
+    } else {
+      showToast('⚠ ' + (data.error || 'Error'));
+    }
+  } catch(e) { showToast('⚠ Error de red'); }
 }
 
 // Texto para copiar al portapapeles al hacer "Link cliente" — listo para pegar en WhatsApp.

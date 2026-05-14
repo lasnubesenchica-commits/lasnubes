@@ -970,6 +970,7 @@ function doGet(e) {
     // ── PUBLIC LINK ───────────────────────────────────────────
     if (action === 'getReservaPublic') return handleGetReservaPublic(e);
     if (action === 'getReservaLink')   return handleGetReservaLink(e);
+    if (action === 'getLoyaltyCredits') return handleGetLoyaltyCredits(e);
 
     // ── GET RESERVATIONS (default) ────────────────────────────
     const sheet = getOrCreateSheet();
@@ -1496,6 +1497,10 @@ function doPost(e) {
     if (action === 'uploadHuespedId') {
       return handleUploadHuespedId(payload);
     }
+
+    // ── LOYALTY (admin) ───────────────────────────────────────
+    if (action === 'markLoyaltyUsed')   return handleMarkLoyaltyUsed(payload);
+    if (action === 'unmarkLoyaltyUsed') return handleUnmarkLoyaltyUsed(payload);
 
     // ── SEND EMAILS ───────────────────────────────────────────
     if (action === 'sendCancellationEmail') return sendCancellationEmail(payload.reservation);
