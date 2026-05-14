@@ -24,7 +24,7 @@
 function _cumpleanosConfig() {
   const props = PropertiesService.getScriptProperties();
   return {
-    descDomJue: parseInt(props.getProperty('CUMPLE_DESCUENTO_DOM_JUE'), 10) || 30,
+    descDomJue: parseInt(props.getProperty('CUMPLE_DESCUENTO_DOM_JUE'), 10) || 10,
     descVieSab: parseInt(props.getProperty('CUMPLE_DESCUENTO_VIE_SAB'), 10) || 20,
     diasAntes:  parseInt(props.getProperty('CUMPLE_DIAS_ANTES'), 10)        || 30
   };
@@ -146,7 +146,7 @@ function _sendCumpleEmail(huesped, cfg) {
   const meses   = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   const fechaCumple = md.dd + ' de ' + (meses[md.mm - 1] || '');
   const firstName = (huesped.nombre || '').split(/\s+/)[0] || huesped.nombre;
-  const subject = '🎂 Tu cumpleaños se acerca — un regalo de Las Nubes';
+  const subject = 'Tu cumpleaños se acerca — un regalo de Las Nubes';
   const waText  = encodeURIComponent('Hola! Vi el correo de cumpleaños — quisiera reservar la noche de mi cumpleaños (' + fechaCumple + ') con el descuento.');
   const waLink  = 'https://wa.me/' + waNum + '?text=' + waText;
   const html = buildCumpleEmailHTML({
@@ -167,7 +167,7 @@ function buildCumpleEmailHTML(opts) {
 '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f3f0;padding:32px 16px;"><tr><td align="center">' +
 '<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">' +
 '<tr><td style="background:#6a9e62;border-radius:16px 16px 0 0;padding:36px 40px;text-align:center;">' +
-'<p style="margin:0 0 6px;font-size:12px;color:rgba(255,255,255,0.75);letter-spacing:2px;text-transform:uppercase;">🎂 Regalo de cumpleaños</p>' +
+'<p style="margin:0 0 6px;font-size:12px;color:rgba(255,255,255,0.75);letter-spacing:2px;text-transform:uppercase;">&#127874; Regalo de cumpleaños</p>' +
 '<h1 style="margin:0;font-size:32px;font-weight:300;color:#ffffff;font-family:Georgia,serif;">Las <em>Nubes</em></h1>' +
 '<p style="margin:10px 0 0;font-size:15px;color:rgba(255,255,255,0.9);">Buenos Aires, Chame · Panamá Oeste</p>' +
 '</td></tr>' +
@@ -188,14 +188,14 @@ function buildCumpleEmailHTML(opts) {
 '<li>Solo para reservas directas (no aplica si reservás vía Airbnb).</li>' +
 '</ul>' +
 '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;"><tr><td align="center">' +
-'<a href="' + opts.waLink + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:15px;font-weight:600;padding:14px 28px;border-radius:10px;text-decoration:none;">💬 Reservar mi cumpleaños</a>' +
+'<a href="' + opts.waLink + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:15px;font-weight:600;padding:14px 28px;border-radius:10px;text-decoration:none;">&#128172; Reservar mi cumpleaños</a>' +
 '</td></tr></table>' +
 '<p style="margin:0;font-size:13px;color:#8a8078;line-height:1.6;text-align:center;">O abrí el calendario en <a href="https://lasnubes.cloud" style="color:#6a9e62;">lasnubes.cloud</a> para ver disponibilidad.</p>' +
 '</td></tr>' +
 '<tr><td style="background:#3a3530;border-radius:0 0 16px 16px;padding:24px 40px;text-align:center;">' +
 '<p style="margin:0 0 8px;font-size:18px;font-weight:300;color:#ffffff;font-family:Georgia,serif;">Las <em>Nubes</em></p>' +
 '<p style="margin:0 0 12px;font-size:11px;color:rgba(255,255,255,0.6);letter-spacing:1px;text-transform:uppercase;">Cabañas en Chicá · Panamá Oeste</p>' +
-'<a href="https://wa.me/50769812266" style="color:rgba(255,255,255,0.8);font-size:13px;text-decoration:none;">💬 WhatsApp: +507 6981-2266</a>' +
+'<a href="https://wa.me/50769812266" style="color:rgba(255,255,255,0.8);font-size:13px;text-decoration:none;">&#128172; WhatsApp: +507 6981-2266</a>' +
 '</td></tr></table></td></tr></table></body></html>';
 }
 
