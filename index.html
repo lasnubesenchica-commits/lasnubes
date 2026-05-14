@@ -96,6 +96,46 @@
     padding: 20px 24px 0;
   }
 
+  /* ── PROMO BANNER ── */
+  .promo-banner {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    max-width: 700px;
+    margin: 20px auto 0;
+    padding: 16px 22px;
+    background: linear-gradient(135deg, #eaf6e7, #d9eedb);
+    border: 1px solid #a8d6a5;
+    border-radius: 14px;
+    box-shadow: 0 2px 10px rgba(106, 158, 98, 0.12);
+  }
+  .promo-banner-icon { font-size: 26px; line-height: 1; }
+  .promo-banner-body { flex: 1; }
+  .promo-banner-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 19px;
+    font-weight: 500;
+    color: #2c5e22;
+    letter-spacing: 0.01em;
+    line-height: 1.2;
+  }
+  .promo-banner-text {
+    font-size: 13px;
+    color: #4a6b40;
+    margin-top: 2px;
+  }
+  .promo-banner-strike {
+    text-decoration: line-through;
+    color: #8a9580;
+    margin-left: 8px;
+    font-size: 12px;
+  }
+  @media (max-width: 520px) {
+    .promo-banner { margin: 16px 12px 0; padding: 14px 16px; }
+    .promo-banner-title { font-size: 17px; }
+    .promo-banner-text { font-size: 12px; }
+  }
+
   .legend-item {
     display: flex;
     align-items: center;
@@ -1196,6 +1236,18 @@
   </button>
   <div class="legend-item" style="margin-left:8px;">
     <div class="legend-dot" style="background:var(--border);"></div> Ocupado
+  </div>
+</div>
+
+<!-- PROMO BANNER (visible solo si PROMO_ACTIVE) -->
+<div id="promoBanner" class="promo-banner" style="display:none;">
+  <div class="promo-banner-icon">✨</div>
+  <div class="promo-banner-body">
+    <div class="promo-banner-title">Tarifa promocional activa</div>
+    <div class="promo-banner-text">
+      Domingo a jueves desde <strong>$<span id="promoBannerPrice"></span></strong> por noche
+      <span class="promo-banner-strike">antes $<span id="promoBannerOrig"></span></span>
+    </div>
   </div>
 </div>
 
@@ -2367,7 +2419,22 @@ function loadMore() {
   if (btn) btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
+function _updatePromoBanner() {
+  const banner = document.getElementById('promoBanner');
+  if (!banner) return;
+  if (PROMO_ACTIVE && RATE_PROMO > 0 && RATE_PROMO < RATE_WEEKDAY) {
+    const pe = document.getElementById('promoBannerPrice');
+    const oe = document.getElementById('promoBannerOrig');
+    if (pe) pe.textContent = RATE_PROMO;
+    if (oe) oe.textContent = RATE_WEEKDAY;
+    banner.style.display = 'flex';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
 function render() {
+  _updatePromoBanner();
   const today = new Date(); today.setHours(0,0,0,0);
   const occMap = {};
   CABINS.forEach(c => { occMap[c.key] = buildOccupied(c.key); });
