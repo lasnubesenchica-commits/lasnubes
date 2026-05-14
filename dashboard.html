@@ -2038,6 +2038,9 @@
       <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Comentarios</div>
       <div id="detailComentarios" style="white-space:pre-wrap;color:var(--text);"></div>
     </div>
+    <div id="detailCumpleBadge" style="display:none;background:#f0f8ed;border-left:3px solid #6a9e62;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;color:#2c5e22;">
+      🎂 <strong>Cumpleaños en esta estadía</strong> — <span id="detailCumpleText"></span>. Aplicar descuento <strong>30% Dom–Jue / 20% Vie–Sáb</strong> sobre la noche del cumpleaños.
+    </div>
     <div id="detailAlerta" style="display:none;background:#fff3cd;color:#856404;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:16px;">
       ⚠ <strong>Verificar itinerario</strong> — Airbnb notificó un cambio. Revisa fechas y monto en la app de Airbnb.
     </div>
@@ -3150,6 +3153,39 @@ function showDispDetail(id) {
   }
   const alertaEl = document.getElementById('detailAlerta');
   if (alertaEl) alertaEl.style.display = r.alerta ? 'block' : 'none';
+  // Badge de cumpleaños: si DOB cae entre checkin y checkout (display dates)
+  const cumpleBadge = document.getElementById('detailCumpleBadge');
+  if (cumpleBadge) {
+    cumpleBadge.style.display = 'none';
+    if (r.fechaNacimiento && r.checkin && r.checkout) {
+      try {
+        const m = r.fechaNacimiento.toString().match(/^(\d{4})-(\d{2})-(\d{2})$/) ||
+                  r.fechaNacimiento.toString().match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-]/);
+        let mm, dd;
+        if (m) {
+          if (m[0].length === 10 && m[0].indexOf('-') === 4) { mm = parseInt(m[2], 10); dd = parseInt(m[3], 10); }
+          else { dd = parseInt(m[1], 10); mm = parseInt(m[2], 10); }
+        }
+        if (mm && dd) {
+          const dd2 = reservaDisplayDates(r);
+          const ci = new Date(dd2.displayCheckin + 'T00:00:00');
+          const co = new Date(dd2.displayCheckout + 'T23:59:59');
+          // Buscar si el cumple cae en el rango (mismo año del checkin)
+          const tryYear = ci.getFullYear();
+          for (const y of [tryYear, tryYear + 1]) {
+            const cumple = new Date(y, mm - 1, dd, 12, 0, 0);
+            if (cumple >= ci && cumple <= co) {
+              const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+              const txt = dd + ' de ' + meses[mm - 1];
+              document.getElementById('detailCumpleText').textContent = txt;
+              cumpleBadge.style.display = 'block';
+              break;
+            }
+          }
+        }
+      } catch(e) { console.warn('cumple badge', e); }
+    }
+  }
   document.getElementById('detailOverlay').classList.add('open');
 }
 function closeDetail() {

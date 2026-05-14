@@ -1004,7 +1004,9 @@ function doGet(e) {
         comentarios:      r[22] || '',
         telefono:         r[23] || '',
         tipo:             r[24] || 'noche',
-        voucherURL:       r[25] || ''
+        voucherURL:       r[25] || '',
+        idHuespedURL:     r[26] || '',
+        fechaNacimiento:  r[27] instanceof Date ? Utilities.formatDate(r[27], 'America/Panama', 'yyyy-MM-dd') : (r[27] || '')
       }));
 
     return ContentService
