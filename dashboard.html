@@ -3171,7 +3171,7 @@ function showDispDetail(id) {
         const res  = await fetch(SHEETS_API_URL + '?action=getReservaLink&id=' + encodeURIComponent(r.id));
         const data = await res.json();
         if (data.ok && data.url) {
-          const text = _buildClienteShareText(r, data.url);
+          const text = _buildClienteShareText(r, data.url, data.referralCode, data.referralAmount);
           if (hasPhoneInit) {
             const fullPhone = phoneDigitsInit.length === 8 ? '507' + phoneDigitsInit : phoneDigitsInit;
             window.open('https://wa.me/' + fullPhone + '?text=' + encodeURIComponent(text), '_blank');
@@ -7215,7 +7215,7 @@ async function _unmarkLoyalty(email, telefono) {
 }
 
 // Texto para copiar al portapapeles al hacer "Link cliente" — listo para pegar en WhatsApp.
-function _buildClienteShareText(r, url) {
+function _buildClienteShareText(r, url, referralCode, referralAmount) {
   const dd = reservaDisplayDates(r);
   const tipo = r.tipo || 'noche';
   const CABIN_FULL_NAMES = {
@@ -7262,6 +7262,11 @@ function _buildClienteShareText(r, url) {
     text += '\nCheck-in: ' + checkinH + '\nCheck-out: ' + checkoutH + '\n';
   }
   text += '\nVer detalles e instrucciones:\n' + url;
+  if (referralCode) {
+    const amt = referralAmount || 20;
+    text += '\n\n🤝 Tu código de referido: *' + referralCode + '*';
+    text += '\nCompártelo: si un amigo reserva con tu código, ambos reciben $' + amt + ' off (Dom–Jue, reservas directas).';
+  }
   return text;
 }
 
