@@ -292,6 +292,7 @@ function fmtMoney(n) { return '$' + ((parseFloat(n) || 0)).toFixed(2); }
 
 function renderKeybox(r) {
   const card = $('keyboxCard');
+  // 1) Código visible — ID subido y dentro de ventana operativa
   if (r.keyBoxCode) {
     card.innerHTML = '<div class="card keybox-card">'
       + '<h2>Acceso a la cabaña</h2>'
@@ -299,13 +300,101 @@ function renderKeybox(r) {
       + '<div class="keybox-code">' + r.keyBoxCode + '</div>'
       + '<p class="muted-text">Dentro encuentras la llave de la cabaña y un control negro para abrir el portón del proyecto al salir.</p>'
       + '</div>';
-  } else {
-    card.innerHTML = '<div class="card keybox-locked">'
-      + '<div class="lock">🔒</div>'
-      + '<h3>Código de acceso</h3>'
-      + '<p>Disponible a partir del día de tu entrada (' + r.keyBoxFromFmt + ').</p>'
-      + '</div>';
+    return;
   }
+  // 2) En ventana operativa pero falta el ID — mostrar uploader
+  if (r.keyBoxInWindow && !r.idUploaded) {
+    card.innerHTML = '<div class="card keybox-card">'
+      + '<h2>Acceso a la cabaña</h2>'
+      + '<p class="muted-text" style="margin-bottom:14px;">Subí tu cédula o pasaporte para desbloquear el código del Key Box.</p>'
+      + '<input type="file" id="idFileInput" accept="image/*" capture="environment" style="display:none;">'
+      + '<button id="idUploadBtn" class="btn primary" style="font-size:14px;">📷 Subir documento</button>'
+      + '<div id="idUploadStatus" class="muted-text" style="margin-top:10px;min-height:18px;"></div>'
+      + '<div style="margin-top:16px;text-align:left;">'
+      +   '<button id="idWhyToggle" class="link-btn" style="background:none;border:none;color:var(--accent);font-size:12px;cursor:pointer;text-decoration:underline;padding:0;">¿Por qué pedimos esto?</button>'
+      +   '<div id="idWhyPanel" hidden style="background:var(--soft);border-radius:10px;padding:12px 14px;margin-top:10px;font-size:12px;color:var(--muted);line-height:1.6;">'
+      +     '• Validamos identidad del huésped principal (uso interno).<br>'
+      +     '• <strong>Borramos la foto 60 días después de tu salida.</strong> Solo guardamos tu fecha de nacimiento.<br>'
+      +     '• 🎂 Si tu cumpleaños cae en esta o futuras estadías, activamos el descuento automáticamente (30% Dom-Jue / 20% Vie-Sáb sobre la noche del cumpleaños).<br>'
+      +     '• Solo se pide la primera vez. Si volvés, no se vuelve a pedir.'
+      +   '</div>'
+      + '</div>'
+      + '</div>';
+    _wireIdUploader(r);
+    return;
+  }
+  // 3) Antes de la ventana operativa — mensaje normal
+  card.innerHTML = '<div class="card keybox-locked">'
+    + '<div class="lock">🔒</div>'
+    + '<h3>Código de acceso</h3>'
+    + '<p>Disponible a partir del día de tu entrada (' + r.keyBoxFromFmt + ').</p>'
+    + '</div>';
+}
+
+function _wireIdUploader(r) {
+  const fileInput = document.getElementById('idFileInput');
+  const btn       = document.getElementById('idUploadBtn');
+  const statusEl  = document.getElementById('idUploadStatus');
+  const whyBtn    = document.getElementById('idWhyToggle');
+  const whyPanel  = document.getElementById('idWhyPanel');
+  if (whyBtn && whyPanel) {
+    whyBtn.onclick = () => { whyPanel.hidden = !whyPanel.hidden; };
+  }
+  if (!fileInput || !btn) return;
+  btn.onclick = () => fileInput.click();
+  fileInput.onchange = async () => {
+    const f = fileInput.files && fileInput.files[0];
+    if (!f) return;
+    statusEl.textContent = '⏳ Leyendo documento…';
+    btn.disabled = true;
+    try {
+      const base64 = await _fileToBase64(f);
+      const params = new URLSearchParams(location.search);
+      const body = {
+        action: 'uploadHuespedId',
+        c:  params.get('c') || undefined,
+        id: params.get('id') || undefined,
+        t:  params.get('t') || undefined,
+        imageBase64: base64,
+        mimeType: f.type || 'image/jpeg'
+      };
+      const resp = await fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify(body) });
+      const data = await resp.json();
+      if (data.ok) {
+        statusEl.textContent = '✓ Documento verificado — desbloqueando código…';
+        // Re-fetch full DTO para que keyBoxCode aparezca
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        const m = {
+          OCR_FAILED:    'No pudimos leer el documento. Probá con una foto más clara.',
+          DOB_NOT_FOUND: 'No encontramos la fecha de nacimiento. Probá con una foto más clara.',
+          JSON_PARSE:    'Error procesando la imagen. Probá de nuevo.',
+          NOT_FOUND:     'No se encontró la reserva.',
+          INVALID_TOKEN: 'Link no válido.',
+          MISSING_IMAGE: 'Falta la imagen.'
+        };
+        statusEl.textContent = '⚠ ' + (m[data.error] || data.error || 'Error');
+        btn.disabled = false;
+        fileInput.value = '';
+      }
+    } catch(e) {
+      statusEl.textContent = '⚠ Error de red. Probá de nuevo.';
+      btn.disabled = false;
+    }
+  };
+}
+
+function _fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload  = () => {
+      const s = r.result || '';
+      const i = s.indexOf(',');
+      resolve(i >= 0 ? s.slice(i + 1) : s);
+    };
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
 }
 
 function renderSaldo(r) {
