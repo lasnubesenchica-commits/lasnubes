@@ -1143,6 +1143,7 @@
     <button class="top-nav-link" onclick="showSection('cabanas')">🏡 Cabañas</button>
     <!-- <button class="top-nav-link" onclick="showSection('guia')">📍 Guía de acceso</button> -->
     <button class="top-nav-link" onclick="showSection('actividades')">🏕️ Actividades</button>
+    <button class="top-nav-link" onclick="showSection('gastronomia')">🍽️ Gastronomía</button>
     <button class="top-nav-link" onclick="showSection('insumos')">🛒 Insumos</button>
     <button class="top-nav-link" id="btnRates" onclick="openRates()" style="display:none;" title="Configurar tarifas">⚙️ Tarifas</button>
   </div>
@@ -1157,6 +1158,7 @@
   <button class="mobile-nav-item" onclick="showSection('cabanas');closeMobileNav()">🏡 Cabañas</button>
   <!-- <button class="mobile-nav-item" onclick="showSection('guia');closeMobileNav()">📍 Guía de acceso</button> -->
   <button class="mobile-nav-item" onclick="showSection('actividades');closeMobileNav()">🏕️ Actividades</button>
+  <button class="mobile-nav-item" onclick="showSection('gastronomia');closeMobileNav()">🍽️ Gastronomía</button>
   <button class="mobile-nav-item" onclick="showSection('insumos');closeMobileNav()">🛒 Insumos</button>
   <button class="mobile-nav-item" id="btnRatesMobile" onclick="openRates();closeMobileNav()" style="display:none;">⚙️ Tarifas</button>
 </div>
@@ -1757,6 +1759,158 @@
   </div><!-- /act-grid -->
 </div>
 </div><!-- /section-actividades -->
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- GASTRONOMIA                                                -->
+<!-- ════════════════════════════════════════════════════════ -->
+<div class="page-section" id="section-gastronomia">
+<div class="cabins-section">
+  <div class="cabins-section-title">Gastronomía cercana</div>
+  <p class="cabins-section-sub">Una selección de restaurantes y cafés en los alrededores — desde pizzas en Sorá hasta sushi en Coronado.</p>
+
+  <div class="act-grid">
+
+    <!-- 1. BUENAS PIZZAS DE SORA -->
+    <div class="act-card">
+      <div class="act-img-placeholder">🍕</div>
+      <div class="act-body">
+        <div class="act-badge cerca">📍 Sorá · ~20 min</div>
+        <div class="act-title">Buenas Pizzas de Sorá</div>
+        <div class="act-dist">🚗 ~20 min desde Las Nubes</div>
+        <div class="act-desc">Pizzería artesanal en el pueblo de Sorá. Masa fina y horno de leña. Ambiente relajado de montaña, perfecto para cerrar el día.</div>
+        <div class="act-tags">
+          <span class="act-tag">🍕 Pizza artesanal</span>
+          <span class="act-tag">🔥 Horno de leña</span>
+          <span class="act-tag">👨‍👩‍👧 Familiar</span>
+        </div>
+        <div class="act-tips">
+          <strong>💡 Tips</strong>
+          Recomendamos llamar antes para confirmar horario. En fines de semana se llena temprano.
+        </div>
+        <div class="act-btns">
+          <a class="act-btn gmaps" href="https://www.google.com/maps/search/?api=1&query=Buenas+Pizzas+de+Sora+Panama" target="_blank" rel="noopener">🗺 Google Maps</a>
+          <a class="act-btn waze" href="https://waze.com/ul?q=Buenas%20Pizzas%20de%20Sora" target="_blank" rel="noopener">🚗 Waze</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. ALTOS DEL MARIA -->
+    <div class="act-card">
+      <div class="act-img-placeholder">🏔️</div>
+      <div class="act-body">
+        <div class="act-badge cerca">📍 Altos del María · ~30 min</div>
+        <div class="act-title">Altos del María</div>
+        <div class="act-dist">🚗 ~30 min subiendo a la montaña</div>
+        <div class="act-desc">Comunidad de montaña con varias opciones gastronómicas — cafés, restaurantes y miradores. Una buena excusa para un paseo en altura con buena comida.</div>
+        <div class="act-tags">
+          <span class="act-tag">☕ Cafés</span>
+          <span class="act-tag">🍽️ Restaurantes</span>
+          <span class="act-tag">🏔️ Vistas</span>
+          <span class="act-tag">🌿 Clima fresco</span>
+        </div>
+        <div class="act-tips">
+          <strong>💡 Tips</strong>
+          La entrada al desarrollo requiere identificación. Vale la pena reservar mesa los fines de semana.
+        </div>
+        <div class="act-btns">
+          <a class="act-btn gmaps" href="https://www.google.com/maps/search/?api=1&query=Altos+del+Maria+Panama" target="_blank" rel="noopener">🗺 Google Maps</a>
+          <a class="act-btn waze" href="https://waze.com/ul?q=Altos%20del%20Maria" target="_blank" rel="noopener">🚗 Waze</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. NACION SUSHI -->
+    <div class="act-card">
+      <div class="act-img-placeholder">🍣</div>
+      <div class="act-body">
+        <div class="act-badge cerca">📍 Coronado · ~25 min</div>
+        <div class="act-title">Nación Sushi</div>
+        <div class="act-dist">🚗 ~25 min en Coronado</div>
+        <div class="act-desc">Sushi fresco con buena variedad de rolls y opciones especiales. Local cómodo, ideal para una cena tranquila después del día.</div>
+        <div class="act-tags">
+          <span class="act-tag">🍣 Sushi</span>
+          <span class="act-tag">🥢 Japonés</span>
+          <span class="act-tag">🍱 Para llevar</span>
+        </div>
+        <div class="act-tips">
+          <strong>💡 Tips</strong>
+          Tienen opción de delivery a la zona. Pregunta por los specials del día.
+        </div>
+        <div class="act-btns">
+          <a class="act-btn gmaps" href="https://www.google.com/maps/search/?api=1&query=Nacion+Sushi+Coronado+Panama" target="_blank" rel="noopener">🗺 Google Maps</a>
+          <a class="act-btn waze" href="https://waze.com/ul?q=Nacion%20Sushi%20Coronado" target="_blank" rel="noopener">🚗 Waze</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. SLABON -->
+    <div class="act-card">
+      <div class="act-img-placeholder">🍺</div>
+      <div class="act-body">
+        <div class="act-badge cerca">📍 Coronado · ~25 min</div>
+        <div class="act-title">Slabón</div>
+        <div class="act-dist">🚗 ~25 min en Coronado</div>
+        <div class="act-desc">Restaurante y bar con ambiente animado en Coronado. Buena opción para una cena con grupo o un trago al final del día.</div>
+        <div class="act-tags">
+          <span class="act-tag">🍔 Comida casual</span>
+          <span class="act-tag">🍺 Bar</span>
+          <span class="act-tag">🎶 Ambiente</span>
+        </div>
+        <div class="act-tips">
+          <strong>💡 Tips</strong>
+          Llega temprano los viernes y sábados si vas con grupo grande. Revisa redes para eventos en vivo.
+        </div>
+        <div class="act-btns">
+          <a class="act-btn gmaps" href="https://www.google.com/maps/search/?api=1&query=Slabon+Coronado+Panama" target="_blank" rel="noopener">🗺 Google Maps</a>
+          <a class="act-btn waze" href="https://waze.com/ul?q=Slabon%20Coronado" target="_blank" rel="noopener">🚗 Waze</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. BEJUCO RAPIDO -->
+    <div class="act-card">
+      <div class="act-img-placeholder">🥖</div>
+      <div class="act-body">
+        <div class="act-badge cerca">📍 Bejuco · ~10 min</div>
+        <div class="act-title">Bejuco — opciones rápidas</div>
+        <div class="act-dist">🚗 ~10 min desde Las Nubes</div>
+        <div class="act-desc">A la salida hacia la interamericana hay panaderías, fondas y comida rápida. Útil para un desayuno o almuerzo ligero sin viajar lejos.</div>
+        <div class="act-tags">
+          <span class="act-tag">🥐 Panadería</span>
+          <span class="act-tag">🍽️ Fondas</span>
+          <span class="act-tag">⚡ Rápido</span>
+        </div>
+        <div class="act-btns">
+          <a class="act-btn gmaps" href="https://www.google.com/maps/search/?api=1&query=Bejuco+Panama+restaurantes" target="_blank" rel="noopener">🗺 Google Maps</a>
+          <a class="act-btn waze" href="https://waze.com/ul?q=Bejuco%20Panama" target="_blank" rel="noopener">🚗 Waze</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. CORONADO ZONA -->
+    <div class="act-card">
+      <div class="act-img-placeholder">🛍️</div>
+      <div class="act-body">
+        <div class="act-badge cerca">📍 Coronado · ~25 min</div>
+        <div class="act-title">Coronado — zona gastronómica</div>
+        <div class="act-dist">🚗 ~25 min desde Las Nubes</div>
+        <div class="act-desc">Concentra muchas opciones: cadenas, restaurantes locales, cafés de especialidad y bares. Plaza Coronado y alrededores tienen para todos los gustos.</div>
+        <div class="act-tags">
+          <span class="act-tag">☕ Cafés</span>
+          <span class="act-tag">🍽️ Variedad</span>
+          <span class="act-tag">🛒 Conveniencia</span>
+        </div>
+        <div class="act-btns">
+          <a class="act-btn gmaps" href="https://www.google.com/maps/search/?api=1&query=restaurantes+Coronado+Panama" target="_blank" rel="noopener">🗺 Google Maps</a>
+          <a class="act-btn waze" href="https://waze.com/ul?q=Coronado%20Panama" target="_blank" rel="noopener">🚗 Waze</a>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /act-grid -->
+</div>
+</div><!-- /section-gastronomia -->
+
 
 <!-- SECTION: INSUMOS Y ALIMENTOS -->
 <div class="page-section" id="section-insumos">
@@ -2886,7 +3040,7 @@ loadData();
 // ── Deep-link: abre sección según #hash en la URL ───────────────────────
 (function() {
   var hash = window.location.hash.replace('#', '');
-  var valid = ['disponibilidad','reservas','cabanas','guia','actividades','insumos'];
+  var valid = ['disponibilidad','reservas','cabanas','guia','actividades','gastronomia','insumos'];
   if (hash && valid.indexOf(hash) !== -1) {
     showSection(hash);
   }
