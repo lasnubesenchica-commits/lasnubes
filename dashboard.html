@@ -2868,33 +2868,67 @@ function _waPhone(t) {
   return null;
 }
 
-function _waMessage(r, kind) {
+function _waMessage(r, kind, opts) {
+  opts = opts || {};
   const tipo = r.tipo || 'noche';
   const firstName = (r.name || '').trim().split(/\s+/)[0] || '';
-  const direccion = '\n\nLas Nubes\nhttps://maps.google.com/?q=8.639400,-79.945900';
+  const direccion = '\n\n📍 Las Nubes\nhttps://maps.google.com/?q=8.639400,-79.945900';
+  const CABIN_NAMES = {
+    verde: 'Paseo por Las Nubes',
+    azul:  'Portal hacia Las Nubes',
+    lila:  'Puente entre Las Nubes'
+  };
+  const cabinName = CABIN_NAMES[r.cabin] || 'Las Nubes';
+
   if (kind === 'salida') {
-    // Genérico para noche y late check-out
     return 'Buenos días ' + firstName + ', ¿cómo terminaron de pasar su estadía? Quedo atento para abrirles el portón a la hora de su salida.';
   }
-  if (kind === 'entrada') {
-    // Genérico para noche y early check-in
-    return 'Hola ' + firstName + ', todo listo para recibirles hoy a partir de las 2pm. Cualquier cosa estamos a la orden.' + direccion;
+
+  if (kind === 'entrada' || kind === 'pasadia') {
+    let m = '¡Hola ' + firstName + '! Bienvenidos a *' + cabinName + '*.\n\n';
+    if (kind === 'entrada') {
+      m += 'Estamos listos para recibirles a partir de las ' + (tipo === 'early' ? '9 am' : '2 pm') + '. Cuando lleguen al portón verde, avísenme por aquí para abrirles.\n\n';
+    } else {
+      const hora = tipo === 'pasadia' ? '9 am – 5 pm' : '12:30 pm – 7 pm';
+      m += 'Su pasadía es de ' + hora + '. Cuando lleguen al portón verde, avísenme por aquí para abrirles.\n\n';
+    }
+    m += '📲 *Proceso de check-in*\n';
+    m += 'Sube tu cédula desde este link para obtener el código del Key Box y ver la guía completa de la cabaña:\n';
+    m += (opts.url || 'https://lasnubes.cloud') + '\n';
+    if (opts.referralCode) {
+      m += '\n🤝 *Refiere y gana*\n';
+      m += 'Comparte tu código *' + opts.referralCode + '*: cuando un amigo reserve con él, ambos reciben *$20 off* en su estadía (Dom–Jue).\n';
+    }
+    m += '\nCualquier cosa, quedo atento. ¡Disfruten!';
+    m += direccion;
+    return m;
   }
-  if (kind === 'pasadia') {
-    const hora = tipo === 'pasadia' ? '9am' : '12:30pm';
-    return 'Hola ' + firstName + ', todo listo para recibirles hoy a las ' + hora + ' para su pasadía. Quedamos atentos a su llegada.' + direccion;
-  }
+
   return 'Hola ' + firstName + ', espero estén bien.';
 }
 
-function openWhatsApp(id, kind) {
+async function openWhatsApp(id, kind) {
   const r = reservations.find(x => x.id === id);
   if (!r) return;
   const phone = _waPhone(r.telefono);
   if (!phone) { if (typeof showToast === 'function') showToast('Esta reserva no tiene teléfono'); return; }
-  const msg = _waMessage(r, kind);
-  const url = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(msg);
-  window.open(url, '_blank');
+
+  // Para entrada/pasadia: enriquecer con link de check-in + codigo de referido
+  let url = '', referralCode = '';
+  if (kind === 'entrada' || kind === 'pasadia') {
+    try {
+      const res = await fetch(SHEETS_API_URL + '?action=getReservaLink&id=' + encodeURIComponent(id));
+      const data = await res.json();
+      if (data.ok) {
+        url = data.url || '';
+        referralCode = data.referralCode || '';
+      }
+    } catch(e) { console.warn('getReservaLink failed', e); }
+  }
+
+  const msg   = _waMessage(r, kind, { url, referralCode });
+  const waUrl = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(msg);
+  window.open(waUrl, '_blank');
 }
 
 function renderDisponibilidad() {
