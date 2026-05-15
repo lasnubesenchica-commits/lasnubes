@@ -2214,6 +2214,15 @@
       <textarea id="fComentarios" rows="2" placeholder="Ej: servicio de menú, necesidades especiales, notas internas…" style="resize:vertical;min-height:56px;font-family:inherit;font-size:14px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;width:100%;box-sizing:border-box;"></textarea>
     </div>
 
+    <div class="form-group">
+      <button type="button" id="fRefCodeToggle" onclick="_toggleRefCode()" style="background:none;border:none;color:var(--text-muted);font-size:13px;cursor:pointer;padding:4px 0;text-decoration:underline;">+ Agregar código de referido</button>
+      <div id="fRefCodeWrap" style="display:none;margin-top:8px;">
+        <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;">Código de referido</label>
+        <input type="text" id="fRefCode" placeholder="LN-XXXXXX" oninput="_previewRefCode()" style="text-transform:uppercase;font-family:monospace;letter-spacing:0.05em;padding:10px 12px;border:1px solid var(--border);border-radius:10px;width:100%;box-sizing:border-box;font-size:14px;">
+        <div id="fRefCodePreview" style="font-size:12px;color:var(--text-muted);margin-top:6px;min-height:18px;"></div>
+      </div>
+    </div>
+
     <!-- Fila 5: Fecha de reserva + Origen -->
     <div class="form-row">
       <div class="form-group">
@@ -4199,6 +4208,45 @@ function _resetReservaModalFooter() {
   if (cancelBtn) cancelBtn.textContent = 'Cancelar';
   const waBtn = document.getElementById('modalWhatsAppBtn');
   if (waBtn) { waBtn.style.display = 'none'; waBtn.disabled = false; waBtn.textContent = '💬 Enviar a WhatsApp'; }
+  // Reset campo de codigo de referido
+  const rcInput = document.getElementById('fRefCode');
+  const rcWrap  = document.getElementById('fRefCodeWrap');
+  const rcPrev  = document.getElementById('fRefCodePreview');
+  if (rcInput) rcInput.value = '';
+  if (rcWrap)  rcWrap.style.display = 'none';
+  if (rcPrev)  rcPrev.innerHTML = '';
+}
+
+function _toggleRefCode() {
+  const w = document.getElementById('fRefCodeWrap');
+  if (!w) return;
+  if (w.style.display === 'none' || !w.style.display) {
+    w.style.display = 'block';
+    const i = document.getElementById('fRefCode');
+    if (i) i.focus();
+  } else {
+    w.style.display = 'none';
+  }
+}
+
+function _previewRefCode() {
+  const input = document.getElementById('fRefCode');
+  const prev  = document.getElementById('fRefCodePreview');
+  if (!input || !prev) return;
+  const code = input.value.trim().toUpperCase();
+  if (!code) { prev.innerHTML = ''; prev.style.color = 'var(--text-muted)'; return; }
+  // Buscar en cache local de referrals
+  const ref = referrals.find(r => (r.code || '').toString().toUpperCase() === code);
+  if (!ref) {
+    prev.innerHTML = '⚠ Código no encontrado en el sistema';
+    prev.style.color = '#b85c4a';
+    return;
+  }
+  // Contar referidos previos del referrer
+  const uses  = referralUses.filter(u => (u.referrerEmail || '').toLowerCase() === (ref.email || '').toLowerCase());
+  const count = uses.length + 1;  // este sera el #(count)
+  prev.innerHTML = '✓ Código de <strong>' + (ref.nombre || ref.email) + '</strong> · sería su ' + count + 'ª referencia';
+  prev.style.color = '#2c5e22';
 }
 
 function openModal(cabin, date) {
@@ -4823,6 +4871,41 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
       syncOk = !!(data && data.ok);
     } catch(e) {
       syncOk = false;
+    }
+  }
+
+  // Si la reserva tiene codigo de referido y se sincronizo, registrar el use
+  const refCodeInput = document.getElementById('fRefCode');
+  const refCode = refCodeInput ? refCodeInput.value.trim().toUpperCase() : '';
+  if (refCode && syncOk && email) {
+    try {
+      const rres = await fetch(SHEETS_API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'registerReferralUse', code: refCode, usedByEmail: email, usedByReservaId: id })
+      });
+      const rdata = await rres.json();
+      if (rdata.ok) {
+        // Actualizar cache local
+        referralUses.push({
+          code: refCode,
+          referrerEmail: rdata.referrerEmail,
+          usedByEmail: email,
+          usedByReservaId: id,
+          usedAt: new Date().toISOString().slice(0, 10),
+          referrerCreditUsed: false,
+          referrerCreditReservaId: ''
+        });
+        showToast('✓ Código ' + refCode + ' registrado · referrer: ' + (rdata.referrerNombre || rdata.referrerEmail));
+      } else {
+        const m = {
+          CODE_NOT_FOUND:     'Código no encontrado',
+          SELF_REFERRAL:      'Auto-referencia detectada',
+          ALREADY_REGISTERED: 'Esa reserva ya tenía un código registrado'
+        };
+        showToast('⚠ Reserva guardada, pero el código no: ' + (m[rdata.error] || rdata.error || 'Error'));
+      }
+    } catch(e) {
+      showToast('⚠ Reserva guardada, pero falló registrar el código');
     }
   }
 
