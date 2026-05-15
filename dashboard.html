@@ -4258,7 +4258,7 @@ function _previewRefCode() {
 
 function _applyReferralDiscount() {
   if (_refDiscountApplied) return;
-  const montoEl  = document.getElementById('fMonto');
+  const montoEl  = document.getElementById('fAmount');
   const originEl = document.getElementById('fOrigin');
   if (!montoEl) return;
   const current = parseFloat(montoEl.value) || 0;
@@ -4266,6 +4266,8 @@ function _applyReferralDiscount() {
   montoEl.value = (current - 20).toFixed(2);
   if (originEl) originEl.value = 'Referido';
   _refDiscountApplied = true;
+  // Recalcular saldo si la funcion existe
+  if (typeof calcSaldo === 'function') calcSaldo();
   _previewRefCode(); // re-render para mostrar "✓ Descuento aplicado"
   showToast('✓ −$20 aplicado al monto · Origen: Referido');
 }
