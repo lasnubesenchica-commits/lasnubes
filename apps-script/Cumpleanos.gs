@@ -102,7 +102,7 @@ function enviarRecordatoriosCumpleanos() {
     const nombre     = (r[1]  || '').toString();
     const fechaNac   = r[27]; // col 28 (1-indexed)
 
-    if (origin !== 'Directa') continue;
+    if (!['Directa','Referido'].includes(origin)) continue;
     if (estado === 'CANCELADA') continue;
     if (!email) continue;
     if (!fechaNac) continue;

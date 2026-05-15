@@ -1942,6 +1942,7 @@ function buildEmailHTML(r) {
 '</td></tr>' +
 '<tr><td style="background:#ffffff;padding:36px 40px;">' +
 '<p style="margin:0 0 18px;font-size:16px;color:#3a3530;line-height:1.6;">Hola <strong>' + r.name + '</strong>, tu reserva ha sido confirmada. ¡Te esperamos en Las Nubes!</p>' +
+(r.origin === 'Referido' ? '<p style="margin:0 0 18px;font-size:13px;color:#385d7a;background:#eef4f8;border-left:3px solid #5a85b0;padding:10px 14px;border-radius:6px;">&#129309; Tarifa pactada con descuento del <strong>Programa Amigos</strong>.</p>' : '') +
 (publicLink ? '<p style="margin:0 0 24px;font-size:13px;color:#6b6560;">&#128279; <a href="' + publicLink + '" target="_blank" style="color:' + color + ';text-decoration:none;font-weight:500;border-bottom:1px solid ' + color + ';">Ver detalles online</a> &mdash; este link tambi&eacute;n se puede compartir por WhatsApp.</p>' : '') +
 '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f8f6;border-radius:12px;border:1px solid #e8e4de;margin-bottom:24px;">' +
 '<tr>' +

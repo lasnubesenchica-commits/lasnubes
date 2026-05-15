@@ -254,7 +254,7 @@ function _buildPublicDTO(r) {
   try {
     const tipoRaw   = (r.tipo || 'noche').toString();
     const isDormido = !(tipoRaw === 'pasatarde' || tipoRaw === 'pasadia');
-    const eligible  = !!r.email && (r.origin || '') === 'Directa'
+    const eligible  = !!r.email && ['Directa','Referido'].includes(r.origin || '')
                       && (r.estadoPago || '').toString().toUpperCase() !== 'CANCELADA'
                       && isDormido;
     if (eligible) {
@@ -415,7 +415,7 @@ function handleGetReservaLink(e) {
   try {
     const tipoRaw   = (r.tipo || 'noche').toString();
     const isDormido = !(tipoRaw === 'pasatarde' || tipoRaw === 'pasadia');
-    const eligible  = !!r.email && (r.origin || '') === 'Directa'
+    const eligible  = !!r.email && ['Directa','Referido'].includes(r.origin || '')
                       && (r.estadoPago || '').toString().toUpperCase() !== 'CANCELADA'
                       && isDormido;
     if (eligible) referralCode = getOrCreateReferralCode(r.email, r.telefono, r.name);

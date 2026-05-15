@@ -184,7 +184,7 @@ function enviarCodigosReferido() {
   for (let i = 1; i < data.length; i++) {
     const r = data[i];
     if (!r[0]) continue;
-    if ((r[9]  || '') !== 'Directa') continue;
+    if (!['Directa','Referido'].includes(r[9] || '')) continue;
     if ((r[20] || '').toString().toUpperCase() === 'CANCELADA') continue;
     const tipo = (r[24] || 'noche').toString();
     if (tipo === 'pasatarde' || tipo === 'pasadia') continue;

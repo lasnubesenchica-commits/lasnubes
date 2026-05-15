@@ -2233,6 +2233,7 @@
         <label>Origen</label>
         <select id="fOrigin" onchange="handleOriginChange()">
           <option value="Directa">Directa</option>
+          <option value="Referido">Referido</option>
           <option value="Airbnb">Airbnb</option>
           <option value="Cortesia">Cortesía</option>
           <option value="Colaboracion">Colaboración</option>
@@ -4215,6 +4216,7 @@ function _resetReservaModalFooter() {
   if (rcInput) rcInput.value = '';
   if (rcWrap)  rcWrap.style.display = 'none';
   if (rcPrev)  rcPrev.innerHTML = '';
+  _refDiscountApplied = false;
 }
 
 function _toggleRefCode() {
@@ -4228,6 +4230,8 @@ function _toggleRefCode() {
     w.style.display = 'none';
   }
 }
+
+let _refDiscountApplied = false; // evita doble-aplicar el descuento por sesion del modal
 
 function _previewRefCode() {
   const input = document.getElementById('fRefCode');
@@ -4245,8 +4249,25 @@ function _previewRefCode() {
   // Contar referidos previos del referrer
   const uses  = referralUses.filter(u => (u.referrerEmail || '').toLowerCase() === (ref.email || '').toLowerCase());
   const count = uses.length + 1;  // este sera el #(count)
-  prev.innerHTML = '✓ Código de <strong>' + (ref.nombre || ref.email) + '</strong> · sería su ' + count + 'ª referencia';
+  const btn = _refDiscountApplied
+    ? '<span style="margin-left:8px;color:var(--text-muted);font-size:11px;">✓ Descuento aplicado</span>'
+    : '<button type="button" onclick="_applyReferralDiscount()" style="margin-left:8px;background:#5a85b0;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;">Aplicar −$20</button>';
+  prev.innerHTML = '✓ Código de <strong>' + (ref.nombre || ref.email) + '</strong> · sería su ' + count + 'ª referencia' + btn;
   prev.style.color = '#2c5e22';
+}
+
+function _applyReferralDiscount() {
+  if (_refDiscountApplied) return;
+  const montoEl  = document.getElementById('fMonto');
+  const originEl = document.getElementById('fOrigin');
+  if (!montoEl) return;
+  const current = parseFloat(montoEl.value) || 0;
+  if (current <= 0) { showToast('⚠ Ingresá primero el monto base'); return; }
+  montoEl.value = (current - 20).toFixed(2);
+  if (originEl) originEl.value = 'Referido';
+  _refDiscountApplied = true;
+  _previewRefCode(); // re-render para mostrar "✓ Descuento aplicado"
+  showToast('✓ −$20 aplicado al monto · Origen: Referido');
 }
 
 function openModal(cabin, date) {
@@ -4337,7 +4358,7 @@ function editReservation(id) {
   _updateSalidaLock(r.tipo || 'noche');
   calcSaldo();
   clearVoucher();
-  document.getElementById('voucherSection').style.display = (r.origin === 'Directa') ? 'block' : 'none';
+  document.getElementById('voucherSection').style.display = ['Directa','Referido'].includes(r.origin) ? 'block' : 'none';
   document.getElementById('reservaModal').classList.add('open');
   applyModalCabinTint(r.cabin);
   calcPrice();
@@ -4673,7 +4694,7 @@ function togglePromoTarifa() {
 
 function handleOriginChange() {
   const origin = document.getElementById('fOrigin').value;
-  const isDirecta  = (origin === 'Directa');
+  const isDirecta  = (origin === 'Directa' || origin === 'Referido');
   const isAbierta  = (origin === 'Abierta');
   document.getElementById('voucherSection').style.display = isDirecta ? 'block' : 'none';
   if (!isDirecta) clearVoucher();
@@ -4785,15 +4806,15 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
   const fechaReserva = (fFechaReservaEl && fFechaReservaEl.value) || new Date().toISOString().slice(0,10);
 
   // Código de transferencia del voucher (va en columna aparte, no en confirmCode)
-  const codNuevo = (pendingVoucher && origin === 'Directa')
+  const codNuevo = (pendingVoucher && (origin === 'Directa' || origin === 'Referido'))
     ? pendingVoucher.codTransferencia : null;
-  const montoVoucherNum = (pendingVoucher && origin === 'Directa')
+  const montoVoucherNum = (pendingVoucher && (origin === 'Directa' || origin === 'Referido'))
     ? _voucherMontoNumber(pendingVoucher.monto) : 0;
 
   // Acumulacion: en edicion con voucher nuevo, agregar al total/lista existente
   let montoVoucher = montoVoucherNum > 0 ? '$' + montoVoucherNum.toFixed(2) : null;
   let codTransferencia = codNuevo;
-  if (editId && pendingVoucher && origin === 'Directa') {
+  if (editId && pendingVoucher && (origin === 'Directa' || origin === 'Referido')) {
     const prev = reservations.find(r => r.id === editId);
     if (montoVoucherNum > 0) {
       const anterior = prev ? (parseFloat((prev.montoVoucher || '').toString().replace(/[^0-9.]/g,'')) || 0) : 0;
@@ -4986,7 +5007,7 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
     try {
       const updatePayload = { action: 'sendUpdateEmail', reservation };
       // Si hay voucher nuevo en la edicion, adjuntarlo para generar recibo PDF
-      if (pendingVoucher && pendingVoucher.base64 && origin === 'Directa') {
+      if (pendingVoucher && pendingVoucher.base64 && (origin === 'Directa' || origin === 'Referido')) {
         updatePayload.voucherBase64   = pendingVoucher.base64;
         updatePayload.voucherMimeType = pendingVoucher.mimeType || 'image/jpeg';
       }
@@ -5006,7 +5027,7 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
   if (!editId && email) {
     try {
       const emailPayload = { action: 'sendConfirmationEmail', reservation };
-      if (pendingVoucher && pendingVoucher.base64 && origin === 'Directa') {
+      if (pendingVoucher && pendingVoucher.base64 && (origin === 'Directa' || origin === 'Referido')) {
         emailPayload.voucherBase64   = pendingVoucher.base64;
         emailPayload.voucherMimeType = pendingVoucher.mimeType || 'image/jpeg';
       }
@@ -6929,7 +6950,7 @@ function _countPrevCompletedStays(r) {
   let count = 0;
   for (const x of reservations) {
     if (!x || x.id === r.id) continue;
-    if ((x.origin || '') !== 'Directa') continue;
+    if (!['Directa','Referido'].includes(x.origin || '')) continue;
     if ((x.estadoPago || '').toString().toUpperCase() === 'CANCELADA') continue;
     const t = (x.tipo || 'noche').toString();
     if (t === 'pasatarde' || t === 'pasadia') continue;
@@ -7343,6 +7364,9 @@ function _buildClienteShareText(r, url, referralCode, referralAmount) {
   if (r.persons) text += '👥 ' + r.persons + (r.persons == 1 ? ' persona' : ' personas') + '\n';
   if (!isPasadia) {
     text += '\nCheck-in: ' + checkinH + '\nCheck-out: ' + checkoutH + '\n';
+  }
+  if (r.origin === 'Referido') {
+    text += '\n🤝 Tarifa pactada con descuento del Programa Amigos.\n';
   }
   text += '\nVer detalles e instrucciones:\n' + url;
   if (referralCode) {
