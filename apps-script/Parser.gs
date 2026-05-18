@@ -1062,11 +1062,15 @@ function doPost(e) {
     // ── SAVE RESERVATION ─────────────────────────────────────
     if (action === 'saveReservation') {
       const r     = payload.reservation;
+      Logger.log('▶ saveReservation entry · id=' + (r && r.id) + ' name=' + (r && r.name) + ' confirmCode=' + (r && r.confirmCode));
       const sheet = getOrCreateSheet();
+      Logger.log('  sheet name=' + sheet.getName() + ' lastRow=' + sheet.getLastRow() + ' lastCol=' + sheet.getLastColumn());
 
       const existing = getProcessedIds(sheet);
       const key = r.confirmCode || r.id;
+      Logger.log('  dedup key=' + key + ' existing.size=' + existing.size + ' has?=' + existing.has(String(key)));
       if (key && existing.has(key.toString())) {
+        Logger.log('  → DUPLICATE skip');
         return ContentService
           .createTextOutput(JSON.stringify({ ok: true, status: 'duplicate' }))
           .setMimeType(ContentService.MimeType.JSON);
@@ -1085,7 +1089,7 @@ function doPost(e) {
       const persons_   = parseInt(r.persons)      || 1;
       const today_     = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd');
 
-      sheet.appendRow([
+      const rowToAppend = [
         r.id,
         r.name,
         CABIN_NAMES[r.cabin] || r.cabin,
@@ -1111,7 +1115,15 @@ function doPost(e) {
         r.comentarios  || '',
         r.telefono     || '',
         r.tipo         || 'noche'
-      ]);
+      ];
+      Logger.log('  appendRow length=' + rowToAppend.length + ' id=' + rowToAppend[0] + ' name=' + rowToAppend[1]);
+      try {
+        sheet.appendRow(rowToAppend);
+        Logger.log('  ✓ appendRow OK · newLastRow=' + sheet.getLastRow());
+      } catch(appendErr) {
+        Logger.log('  ✗ appendRow THREW: ' + appendErr.message + ' stack: ' + appendErr.stack);
+        throw appendErr;
+      }
 
       if (payload.fechaAnterior) {
         const fa   = payload.fechaAnterior;
