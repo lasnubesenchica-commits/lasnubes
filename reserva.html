@@ -96,7 +96,12 @@
     margin: 10px 0 6px;
     user-select: all;
   }
-  .ref-pitch { font-size: 14px; color: #385d7a; margin: 0 0 14px; line-height: 1.5; }
+  .ref-pitch { font-size: 14px; color: #385d7a; margin: 0 0 8px; line-height: 1.5; }
+  .ref-benefits { font-size: 14px; color: #385d7a; margin: 12px 0 6px; line-height: 1.6; text-align: left; max-width: 320px; margin-left: auto; margin-right: auto; }
+  .ref-benefits li { margin: 4px 0; }
+  .ref-social { margin-top: 18px; padding-top: 14px; border-top: 1px solid #c2d6e3; font-size: 13px; color: #385d7a; }
+  .ref-social .ref-social-title { margin-bottom: 8px; }
+  .ref-social a { color: #2a5478; text-decoration: none; font-weight: 500; margin: 0 8px; }
   .ref-rules { font-size: 12px; color: #5a85b0; margin-top: 12px; }
   .ref-rules a { color: #2a5478; }
 
@@ -421,11 +426,20 @@ function renderReferral(r) {
   card.innerHTML =
       '<div class="card ref-card">'
     +   '<h2>🤝 Tu código de referido</h2>'
-    +   '<p class="ref-pitch">Compartí con tus amigos. Si reservan mencionando tu código, ambos reciben <strong>$' + amount + ' off</strong>.</p>'
+    +   '<p class="ref-pitch">Si durante tu estadía disfrutas la experiencia y deseas compartirla, este es tu código personal:</p>'
     +   '<div class="ref-code">' + r.referralCode + '</div>'
+    +   '<ul class="ref-benefits">'
+    +     '<li>Si un amigo reserva con tu código recibe <strong>$' + amount + ' off</strong>.</li>'
+    +     '<li>Y tú <strong>$' + amount + '</strong> para tu próxima visita.</li>'
+    +   '</ul>'
     +   '<div class="btn-group" style="margin-top:14px;">'
     +     '<a class="btn wa" href="' + waUrl + '" target="_blank" rel="noopener">💬 Compartir por WhatsApp</a>'
     +     '<button class="btn" id="refCopyBtn" type="button">📋 Copiar mensaje</button>'
+    +   '</div>'
+    +   '<div class="ref-social">'
+    +     '<div class="ref-social-title">📸 No olvides etiquetarnos en nuestras redes:</div>'
+    +     '<a href="https://lasnubes.cloud/ig" target="_blank" rel="noopener">Instagram</a>'
+    +     '<a href="https://lasnubes.cloud/tt" target="_blank" rel="noopener">TikTok</a>'
     +   '</div>'
     +   '<div class="ref-rules">Aplica solo Dom-Jue · reservas directas · vence 6 meses tras la primera estadía del referido. <a href="' + reglasUrl + '" target="_blank">Ver reglas</a>.</div>'
     + '</div>';
