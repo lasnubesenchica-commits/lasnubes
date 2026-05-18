@@ -4914,33 +4914,68 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
   const saveBtn = document.getElementById('saveReservationBtn');
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Guardando…'; }
 
-  // Sync to Google Sheets — esperamos para no cerrar el modal antes de
-  // saber si los datos llegaron.
+  // Sync to Google Sheets con AUTO-VERIFY + RETRY:
+  // 1. POST saveReservation/updateReservation.
+  // 2. Si responde ok pero NO es edicion, verificamos con debugFindReserva
+  //    que la fila exista realmente.
+  // 3. Si no aparece, reintentamos el POST una vez.
+  // 4. Si sigue sin aparecer, error visible al usuario.
   let syncOk = !USE_SHEETS;
   let syncError = null;
   let syncStatus = null;
+  let syncAttempts = 0;
+  async function _doSavePOST() {
+    syncAttempts++;
+    const action = editId ? 'updateReservation' : 'saveReservation';
+    console.log('[save] attempt', syncAttempts, '·', action, '·', id);
+    const res = await fetch(SHEETS_API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action, reservation, fechaAnterior })
+    });
+    let data;
+    try { data = await res.json(); }
+    catch(parseErr) {
+      const rawText = await res.text().catch(() => '');
+      console.error('[save] respuesta no-JSON. HTTP', res.status, rawText.slice(0, 300));
+      return { ok: false, error: 'Respuesta inválida HTTP ' + res.status };
+    }
+    console.log('[save] response:', data);
+    return data || { ok: false, error: 'empty response' };
+  }
+  async function _verifyInSheet() {
+    try {
+      const res = await fetch(SHEETS_API_URL + '?action=debugFindReserva&id=' + encodeURIComponent(id));
+      const data = await res.json();
+      return !!(data && data.ok && data.exactMatchCol0);
+    } catch(e) {
+      console.warn('[save] verify failed:', e);
+      return false; // si verify mismo falla, mejor confiar en el POST
+    }
+  }
   if (USE_SHEETS) {
     try {
-      const action = editId ? 'updateReservation' : 'saveReservation';
-      const res  = await fetch(SHEETS_API_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action, reservation, fechaAnterior })
-      });
-      let data;
-      try { data = await res.json(); }
-      catch(parseErr) {
-        const rawText = await res.text().catch(() => '');
-        console.error('[save] respuesta no-JSON. HTTP', res.status, rawText.slice(0, 300));
-        syncError = 'Respuesta inválida HTTP ' + res.status;
-        data = null;
-      }
-      syncOk = !!(data && data.ok);
-      if (data) syncStatus = data.status || null;
-      if (data && !data.ok) {
-        syncError = data.error || 'ok=false';
-        console.error('[save] backend respondió ok:false →', data);
-      } else if (data && data.status === 'duplicate') {
-        console.warn('[save] backend reportó duplicate — no se escribió row nueva. ID:', id);
+      let data = await _doSavePOST();
+      syncOk = !!data.ok;
+      syncStatus = data.status || null;
+      if (!syncOk) syncError = data.error || 'ok=false';
+      // Verify (solo para nuevas — para edits no aplica)
+      if (syncOk && !editId && syncStatus !== 'duplicate') {
+        const verified = await _verifyInSheet();
+        if (!verified) {
+          console.warn('[save] backend dijo ok pero la fila NO aparece. Reintentando…');
+          // Reintento una vez
+          data = await _doSavePOST();
+          syncOk = !!data.ok;
+          syncStatus = data.status || null;
+          if (syncOk && syncStatus !== 'duplicate') {
+            const verified2 = await _verifyInSheet();
+            if (!verified2) {
+              syncOk = false;
+              syncError = 'Sheets reportó OK pero la fila no quedó tras 2 intentos';
+              console.error('[save] FALLA confirmada: fila no aparece despues de retry. id=' + id, 'reservation=', reservation);
+            }
+          }
+        }
       }
     } catch(e) {
       syncOk = false;
