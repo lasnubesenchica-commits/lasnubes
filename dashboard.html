@@ -7468,9 +7468,15 @@ function _buildClienteShareText(r, url, referralCode, referralAmount) {
   text += '\nVer detalles e instrucciones:\n' + url;
   if (referralCode) {
     const amt = referralAmount || 20;
-    text += '\n\n🤝 Tu código de referido: *' + referralCode + '*';
-    text += '\nCompártelo: si un amigo reserva con tu código, ambos reciben $' + amt + ' off (Dom–Jue, reservas directas).';
+    text += '\n\n🤝 *Programa Amigos de Las Nubes*';
+    text += '\nSi durante tu estadía disfrutas la experiencia y deseas compartirla, este es tu código personal: *' + referralCode + '*';
+    text += '\n\n• Si un amigo reserva con tu código recibe *$' + amt + ' off*.';
+    text += '\n• Y tú *$' + amt + '* para tu próxima visita.';
+    text += '\n(Aplica Dom–Jue, reservas directas)';
   }
+  text += '\n\n📸 No olvides etiquetarnos en nuestras redes:';
+  text += '\nInstagram: https://lasnubes.cloud/ig';
+  text += '\nTikTok: https://lasnubes.cloud/tt';
   return text;
 }
 
