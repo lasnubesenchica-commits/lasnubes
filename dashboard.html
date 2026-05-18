@@ -2426,32 +2426,30 @@ async function syncFromSheets() {
   if (indicator) { indicator.textContent = '⟳ Sincronizando...'; indicator.style.color = 'var(--text-muted)'; }
 
   try {
-    const [res, resPagos] = await Promise.all([
-      fetch(`${SHEETS_API_URL}?action=getReservations`),
-      fetch(`${SHEETS_API_URL}?action=getPagos`)
-    ]);
-    const data      = await res.json();
-    const dataPagos = await resPagos.json();
-    let dataEgresos = null;
-    try {
-      const resEgresos = await fetch(`${SHEETS_API_URL}?action=getEgresos`);
-      dataEgresos = await resEgresos.json();
-    } catch(egErr) { console.warn('getEgresos failed:', egErr); }
-    // Loyalty credits (no critico — si falla, dashboard sigue funcionando)
-    try {
-      const resLoyalty = await fetch(`${SHEETS_API_URL}?action=getLoyaltyCredits`);
-      const dataLoyalty = await resLoyalty.json();
-      if (dataLoyalty && dataLoyalty.ok) loyaltyCredits = dataLoyalty.credits || [];
-    } catch(lyErr) { console.warn('getLoyaltyCredits failed:', lyErr); }
-    // Referidos
-    try {
-      const resRef = await fetch(`${SHEETS_API_URL}?action=getReferrals`);
-      const dataRef = await resRef.json();
-      if (dataRef && dataRef.ok) {
-        referrals    = dataRef.referrals    || [];
-        referralUses = dataRef.referralUses || [];
+    // ALL fetches en paralelo (5 calls) — Apps Script tiene ~1-3s de latencia
+    // por call independiente del payload, asi que paralelizar es el quick win.
+    // Cada uno con .catch propio para que si uno falla no rompa el resto.
+    const _safeFetchJson = async (url) => {
+      try {
+        const r = await fetch(url);
+        return await r.json();
+      } catch(e) {
+        console.warn('fetch failed:', url, e);
+        return null;
       }
-    } catch(rfErr) { console.warn('getReferrals failed:', rfErr); }
+    };
+    const [data, dataPagos, dataEgresos, dataLoyalty, dataRef] = await Promise.all([
+      _safeFetchJson(`${SHEETS_API_URL}?action=getReservations`),
+      _safeFetchJson(`${SHEETS_API_URL}?action=getPagos`),
+      _safeFetchJson(`${SHEETS_API_URL}?action=getEgresos`),
+      _safeFetchJson(`${SHEETS_API_URL}?action=getLoyaltyCredits`),
+      _safeFetchJson(`${SHEETS_API_URL}?action=getReferrals`)
+    ]);
+    if (dataLoyalty && dataLoyalty.ok) loyaltyCredits = dataLoyalty.credits || [];
+    if (dataRef && dataRef.ok) {
+      referrals    = dataRef.referrals    || [];
+      referralUses = dataRef.referralUses || [];
+    }
 
     if (data && data.reservations) {
       sheetsReservations = data.reservations.map(r => {
