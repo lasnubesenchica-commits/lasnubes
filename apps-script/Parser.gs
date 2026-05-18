@@ -972,6 +972,7 @@ function doGet(e) {
     if (action === 'getReservaLink')   return handleGetReservaLink(e);
     if (action === 'getLoyaltyCredits') return handleGetLoyaltyCredits(e);
     if (action === 'getReferrals')      return handleGetReferrals(e);
+    if (action === 'debugFindReserva')  return handleDebugFindReserva(e);
 
     // ── GET RESERVATIONS (default) ────────────────────────────
     const sheet = getOrCreateSheet();
