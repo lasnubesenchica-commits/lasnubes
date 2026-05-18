@@ -394,6 +394,42 @@ function handleGetReservaPublic(e) {
 // Action handler: GET ?action=getReservaLink&id=...
 // No auth — la URL del API ya es semi-publica y el link solo expone datos
 // del viaje (no contacto, no financiero). Aceptable para el modelo actual.
+// Diagnostico temporal: busca una reserva por id y reporta que encontro.
+// GET ?action=debugFindReserva&id=XXX
+function handleDebugFindReserva(e) {
+  try {
+    const id = e && e.parameter && e.parameter.id;
+    if (!id) return _jsonOut({ ok: false, error: 'MISSING_ID' });
+    const sheet = getOrCreateSheet();
+    const data  = sheet.getDataRange().getValues();
+    const idStr = id.toString();
+    const out   = { ok: true, idQueried: idStr, totalRows: data.length - 1, exactMatchCol0: null, exactMatchCol10: null, partialMatches: [] };
+    for (let i = 1; i < data.length; i++) {
+      const r = data[i];
+      const c0 = r[0];
+      const c10 = r[10];
+      const c0Str  = c0  != null ? c0.toString()  : '';
+      const c10Str = c10 != null ? c10.toString() : '';
+      if (c0Str === idStr) {
+        out.exactMatchCol0 = { row: i + 1, value: c0Str, type: typeof c0, name: r[1], cabin: r[3], checkin: r[4] instanceof Date ? Utilities.formatDate(r[4],'America/Panama','yyyy-MM-dd') : (r[4]||'').toString() };
+      }
+      if (c10Str === idStr && !out.exactMatchCol10) {
+        out.exactMatchCol10 = { row: i + 1, valueCol0: c0Str, typeCol0: typeof c0, valueCol10: c10Str, name: r[1] };
+      }
+      // partial matches (id contained in either col)
+      if (c0Str && (c0Str.indexOf(idStr) >= 0 || idStr.indexOf(c0Str) >= 0) && c0Str !== idStr) {
+        out.partialMatches.push({ row: i + 1, source: 'col0', value: c0Str, type: typeof c0, name: r[1] });
+      }
+      if (c10Str && (c10Str.indexOf(idStr) >= 0 || idStr.indexOf(c10Str) >= 0) && c10Str !== idStr && c0Str !== idStr) {
+        out.partialMatches.push({ row: i + 1, source: 'col10', value: c10Str, type: typeof c10, name: r[1] });
+      }
+    }
+    return _jsonOut(out);
+  } catch(err) {
+    return _jsonOut({ ok: false, error: err.message, stack: err.stack });
+  }
+}
+
 function handleGetReservaLink(e) {
   const id = e && e.parameter && e.parameter.id;
   if (!id) {
