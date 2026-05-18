@@ -1026,7 +1026,56 @@ function doGet(e) {
 // ═══════════════════════════════════════════════════════════
 //  doPost — endpoint principal
 // ═══════════════════════════════════════════════════════════
-function doPost(e) {
+function _testSaveReserva() {
+  const testId = 'TEST_' + Date.now();
+  const fakePayload = {
+    postData: {
+      contents: JSON.stringify({
+        action: 'saveReservation',
+        reservation: {
+          id: testId,
+          name: 'TEST DESDE EDITOR',
+          email: 'test@example.com',
+          telefono: '6000-0000',
+          pagador: 'TEST',
+          cabin: 'verde',
+          checkin: '2026-12-01',
+          checkout: '2026-12-02',
+          persons: 2,
+          origin: 'Directa',
+          deposit: 0,
+          amount: 90,
+          confirmCode: testId,
+          serviceFee: 0,
+          neto: 90,
+          fechaReserva: '2026-05-18',
+          codTransferencia: '',
+          montoVoucher: '',
+          estadoPago: 'PENDIENTE',
+          comentarios: 'test desde editor',
+          tipo: 'noche'
+        }
+      })
+    }
+  };
+  Logger.log('=== _testSaveReserva START · testId=' + testId + ' ===');
+  const out = doPost(fakePayload);
+  Logger.log('=== Response: ' + out.getContent() + ' ===');
+
+  // Verificar inmediatamente si quedo en la hoja
+  const sheet = getOrCreateSheet();
+  const data = sheet.getDataRange().getValues();
+  let found = false;
+  for (let i = data.length - 1; i >= 1; i--) {
+    if (data[i][0] && data[i][0].toString() === testId) {
+      found = true;
+      Logger.log('  ✓ Row encontrado en fila ' + (i + 1) + ': ' + JSON.stringify(data[i].slice(0, 5)));
+      break;
+    }
+  }
+  if (!found) Logger.log('  ✗ Row NO se encontro en la hoja despues del save');
+  Logger.log('=== _testSaveReserva END ===');
+}
   try {
     const payload = JSON.parse(e.postData.contents);
     const action  = payload.action;
