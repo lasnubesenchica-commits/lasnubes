@@ -978,6 +978,26 @@ function doGet(e) {
     const sheet = getOrCreateSheet();
     const data  = sheet.getDataRange().getValues();
     const rows  = data.slice(1);
+    const scopePublic = e && e.parameter && e.parameter.scope === 'public';
+
+    // Modo publico: solo campos necesarios para mostrar disponibilidad en el
+    // calendario. Evita exponer datos sensibles (email, telefono, montos, etc.)
+    // y reduce el payload ~80%.
+    if (scopePublic) {
+      const reservations = rows
+        .filter(r => r[0])
+        .map(r => ({
+          cabin:      r[3],
+          checkin:    r[4] instanceof Date ? Utilities.formatDate(r[4], 'America/Panama', 'yyyy-MM-dd') : r[4],
+          checkout:   r[5] instanceof Date ? Utilities.formatDate(r[5], 'America/Panama', 'yyyy-MM-dd') : r[5],
+          origin:     r[9],
+          estadoPago: r[20] || '',
+          tipo:       r[24] || 'noche'
+        }));
+      return ContentService
+        .createTextOutput(JSON.stringify({ ok: true, reservations }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
 
     const reservations = rows
       .filter(r => r[0])

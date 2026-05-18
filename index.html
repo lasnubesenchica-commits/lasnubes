@@ -2445,7 +2445,7 @@ function getPrecio(dateStr) {
 async function loadData() {
   try {
     const [resRes, tarifasRes] = await Promise.all([
-      fetch(`${SHEETS_API_URL}?action=getReservations`),
+      fetch(`${SHEETS_API_URL}?action=getReservations&scope=public`),
       fetch(`${SHEETS_API_URL}?action=getTarifas&_=${Date.now()}`)
     ]);
 
