@@ -1076,6 +1076,8 @@ function _testSaveReserva() {
   if (!found) Logger.log('  ✗ Row NO se encontro en la hoja despues del save');
   Logger.log('=== _testSaveReserva END ===');
 }
+
+function doPost(e) {
   try {
     const payload = JSON.parse(e.postData.contents);
     const action  = payload.action;
