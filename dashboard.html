@@ -4917,6 +4917,8 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
   // Sync to Google Sheets — esperamos para no cerrar el modal antes de
   // saber si los datos llegaron.
   let syncOk = !USE_SHEETS;
+  let syncError = null;
+  let syncStatus = null;
   if (USE_SHEETS) {
     try {
       const action = editId ? 'updateReservation' : 'saveReservation';
@@ -4924,10 +4926,26 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
         method: 'POST',
         body: JSON.stringify({ action, reservation, fechaAnterior })
       });
-      const data = await res.json();
+      let data;
+      try { data = await res.json(); }
+      catch(parseErr) {
+        const rawText = await res.text().catch(() => '');
+        console.error('[save] respuesta no-JSON. HTTP', res.status, rawText.slice(0, 300));
+        syncError = 'Respuesta inválida HTTP ' + res.status;
+        data = null;
+      }
       syncOk = !!(data && data.ok);
+      if (data) syncStatus = data.status || null;
+      if (data && !data.ok) {
+        syncError = data.error || 'ok=false';
+        console.error('[save] backend respondió ok:false →', data);
+      } else if (data && data.status === 'duplicate') {
+        console.warn('[save] backend reportó duplicate — no se escribió row nueva. ID:', id);
+      }
     } catch(e) {
       syncOk = false;
+      syncError = e.message;
+      console.error('[save] error de red:', e);
     }
   }
 
@@ -4968,17 +4986,27 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
 
   // Toast con el resultado (modal sigue abierto para acciones post-save)
   if (USE_SHEETS) {
-    showToast(syncOk
-      ? (editId ? 'Reserva actualizada ✓' : 'Reserva guardada ✓')
-      : 'Guardado local ✓ (Sheets no disponible)');
+    if (syncOk && syncStatus === 'duplicate') {
+      showToast('⚠ Reserva ya existía en Sheets (duplicate). No se escribió fila nueva.');
+    } else if (syncOk) {
+      showToast(editId ? 'Reserva actualizada ✓' : 'Reserva guardada ✓');
+    } else {
+      const errMsg = syncError ? ' — ' + syncError : '';
+      showToast('⚠ Sheets NO guardó la reserva' + errMsg + ' (ver consola)');
+    }
   } else {
     showToast(editId ? 'Reserva actualizada ✓' : 'Reserva guardada ✓');
   }
 
   // Cambiar el footer del modal a estado post-save
   if (saveBtn) {
-    saveBtn.disabled = true;
-    saveBtn.textContent = '✓ Guardada';
+    if (syncOk) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = '✓ Guardada';
+    } else {
+      saveBtn.disabled = false;
+      saveBtn.textContent = '⚠ Reintentar guardar';
+    }
   }
   const cancelBtn = document.getElementById('cancelReservationBtn');
   if (cancelBtn) cancelBtn.textContent = 'Cerrar';
