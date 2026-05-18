@@ -5060,7 +5060,7 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
           const res  = await fetch(SHEETS_API_URL + '?action=getReservaLink&id=' + encodeURIComponent(id));
           const data = await res.json();
           if (data.ok && data.url) {
-            const text = _buildClienteShareText(reservation, data.url);
+            const text = _buildClienteShareText(reservation, data.url, data.referralCode, data.referralAmount);
             window.open('https://wa.me/' + fullPhone + '?text=' + encodeURIComponent(text), '_blank');
             waBtn.textContent = '✓ WhatsApp abierto';
           } else {
