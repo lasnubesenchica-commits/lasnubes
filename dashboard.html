@@ -3077,10 +3077,25 @@ function buildDispMonth(firstDay, cabinRes, today) {
 
     let clickAttr = '';
     if (occ) {
+      let extraStyle = '';
+      if (occ.kind !== 'courtesy') {
+        const start = new Date(occ.checkin  + 'T12:00:00');
+        const end   = new Date(occ.checkout + 'T12:00:00');
+        const totalNights = Math.round((end - start) / 86400000);
+        const nightIndex  = Math.round((thisDate - start) / 86400000);
+        const dow = thisDate.getDay();
+        const cutLeft  = nightIndex > 0 && dow === 0;
+        const cutRight = nightIndex < totalNights - 1 && dow === 6;
+        if (cutLeft || cutRight) {
+          const radL = cutLeft  ? '0' : '10px';
+          const radR = cutRight ? '0' : '10px';
+          extraStyle = 'border-radius:' + radL + ' ' + radR + ' ' + radR + ' ' + radL + ';';
+        }
+      }
       if (occ.kind === 'courtesy') {
-        clickAttr = 'onclick="showCourtesyDetail(\'' + occ.id + '\',\'' + dateStr + '\')" style="cursor:pointer;"';
+        clickAttr = 'onclick="showCourtesyDetail(\'' + occ.id + '\',\'' + dateStr + '\')" style="cursor:pointer;' + extraStyle + '"';
       } else {
-        clickAttr = 'onclick="showDispDetail(\'' + occ.id + '\')" style="cursor:pointer;"';
+        clickAttr = 'onclick="showDispDetail(\'' + occ.id + '\')" style="cursor:pointer;' + extraStyle + '"';
       }
     } else if (!isPast) {
       clickAttr = 'onclick="openModal(\'' + dispCabin + '\',\'' + dateStr + '\')"';
