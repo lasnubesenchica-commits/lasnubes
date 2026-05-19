@@ -3027,9 +3027,14 @@ function buildDispMonth(firstDay, cabinRes, today) {
 
     const hasCourtesy = occ && ['early','late','pasadia'].includes(occ.tipo);
 
-    if (occ && occ.checkin === dateStr && !hasCourtesy) {
-      const totalNights = Math.round((new Date(occ.checkout + 'T12:00:00') - new Date(occ.checkin + 'T12:00:00')) / 86400000);
-      const span = Math.min(totalNights, daysInMonth - day + 1);
+    if (occ && !hasCourtesy && (occ.checkin === dateStr || thisDate.getDay() === 0)) {
+      const start = new Date(occ.checkin  + 'T12:00:00');
+      const end   = new Date(occ.checkout + 'T12:00:00');
+      const totalNights = Math.round((end - start) / 86400000);
+      const nightIndex  = Math.round((thisDate - start) / 86400000);
+      const remaining   = totalNights - nightIndex;
+      const daysToWeekEnd = 7 - thisDate.getDay();
+      const span = Math.min(remaining, daysToWeekEnd, daysInMonth - day + 1);
       const isDirect = occ.origin && occ.origin !== 'Airbnb';
       const cabinCls = dispCabin + (isDirect ? ' direct' : '');
       const alertaCls = occ.alerta ? ' alerta-mod' : '';
@@ -3039,7 +3044,11 @@ function buildDispMonth(firstDay, cabinRes, today) {
         let cls = 'disp-day occupied ' + cabinCls + alertaCls;
         if (isPast) cls += ' past';
         if (isToday) cls += ' today-marker';
-        const style = 'cursor:pointer;grid-column:span ' + span + ';aspect-ratio:unset;border-radius:10px;justify-content:flex-start;padding-left:10px;flex-direction:row;gap:6px;' + bgOverride;
+        const isContinuation = nightIndex > 0;
+        const willContinue   = (nightIndex + span) < totalNights;
+        const radL = isContinuation ? '0' : '10px';
+        const radR = willContinue   ? '0' : '10px';
+        const style = 'cursor:pointer;grid-column:span ' + span + ';aspect-ratio:unset;border-radius:' + radL + ' ' + radR + ' ' + radR + ' ' + radL + ';justify-content:flex-start;padding-left:10px;flex-direction:row;gap:6px;' + bgOverride;
         grid += '<div class="' + cls + '" onclick="showDispDetail(\'' + occ.id + '\')" style="' + style + '">'
           + '<span class="day-num" style="font-size:12px;min-width:16px;">' + day + '</span>'
           + '<span class="day-initials">' + occ.initials + '</span>'
