@@ -51,7 +51,8 @@ Helpers equivalentes en backend (`Parser.gs`):
 ## Notas operativas
 
 - **Origen `'Cortesia'`** (sin tilde) — toda referencia debe ser sin tilde. La forma con tilde es solo el label visible en UI.
-- **`SIN_PAGO_ORIGINS`**: constante global en dashboard.html con `['Cortesia','Colaboracion','Personal','Abierta']`.
+- **`SIN_PAGO_ORIGINS`**: constante global en dashboard.html con `['Cortesia','Colaboracion','Personal','Mantenimiento','Abierta']`.
+- **Origen `'Mantenimiento'`**: bloqueo interno por trabajo de mantenimiento. En el calendario sale 🔧 en vez de iniciales y la celda usa fondo gris (`.disp-day.occupied.maintenance`).
 - **Recibo PDF**: generado por `generateReceiptPDF(r)` en backend. Numeración correlativa `LN-NNNN` en Script Properties (`RECEIPT_COUNTER`). Adjuntado al email de confirmación si la reserva tiene voucher. `sendUpdateEmail` también lo adjunta cuando la edición incluye un voucher nuevo.
 - **Vouchers en Drive**: subidos por `saveVoucherToDrive` a la carpeta `Las Nubes - Pagos`. URL persistido en columna 26.
 - **Recordatorio de check-in** (email automático 1 día antes): trigger `enviarRecordatoriosCheckin` corre diario a las 10am Panamá. Escanea Reservas y manda email a quienes tienen `displayCheckin === mañana` (excluyendo CANCELADA, origen Abierta, sin email). Para activarlo, correr una vez desde el editor: `instalarTriggerRecordatorios()`. Para preview: `enviarRecordatorioPrueba()` (envía al email del usuario que corre el script). Configuración (indicaciones, maps URL) en Script Properties: `CHECKIN_MAPS_URL`, `CHECKIN_WAZE_URL`, `CHECKIN_INDICACIONES`, `CHECKIN_ACCESO_EXTRA`.
