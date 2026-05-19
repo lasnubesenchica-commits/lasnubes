@@ -82,6 +82,10 @@
   .disp-day.occupied.azul.direct  { background:#8fb3d4; color:#1e3f5c; }
   .disp-day.occupied.lila.direct  { background:#b09fd4; color:#3a1f6e; }
 
+  /* Mantenimiento — gris neutro, icono en vez de iniciales */
+  .disp-day.occupied.maintenance { background:#9ca3af; color:#fff; }
+  .disp-day.occupied.maintenance .day-initials { font-size:14px; }
+
   /* Día de cortesía en disponibilidad — rayas diagonales para indicar bloqueo sin huésped activo */
   .disp-day.courtesy.verde { background: repeating-linear-gradient(45deg, var(--bg) 0 5px, #a8c9a0 5px 10px); color:var(--verde-dark); border:1px dashed var(--verde-dark); }
   .disp-day.courtesy.azul  { background: repeating-linear-gradient(45deg, var(--bg) 0 5px, #8fb3d4 5px 10px); color:var(--azul-dark);  border:1px dashed var(--azul-dark); }
@@ -2238,6 +2242,7 @@
           <option value="Cortesia">Cortesía</option>
           <option value="Colaboracion">Colaboración</option>
           <option value="Personal">Personal</option>
+          <option value="Mantenimiento">Mantenimiento</option>
           <option value="Abierta">Abierta (sin fecha)</option>
           <option value="Otro">Otro</option>
         </select>
@@ -2615,7 +2620,7 @@ const CABINS = {
 
 // Origenes que no generan cobro (cortesía, colaboraciones, uso interno, abiertas).
 // 'Abierta' incluye reservas sin fechas confirmadas (no aplican para cobro).
-const SIN_PAGO_ORIGINS = ['Cortesia', 'Colaboracion', 'Personal', 'Abierta'];
+const SIN_PAGO_ORIGINS = ['Cortesia', 'Colaboracion', 'Personal', 'Mantenimiento', 'Abierta'];
 
 const RATES = { weekday: 90, weekend: 110 }; // Vie/Sáb = 110
 
@@ -3005,11 +3010,14 @@ function buildDispMonth(firstDay, cabinRes, today) {
     if (!r.checkin || !r.checkout) return;
     const start = new Date(r.checkin  + 'T12:00:00');
     const end   = new Date(r.checkout + 'T12:00:00');
-    const initials = ((r.name || '').toString().trim() || '?').split(/\s+/).map(w => w[0]).join('').slice(0,3).toUpperCase();
+    const isMaintenance = r.origin === 'Mantenimiento';
+    const initials = isMaintenance
+      ? '🔧'
+      : ((r.name || '').toString().trim() || '?').split(/\s+/).map(w => w[0]).join('').slice(0,3).toUpperCase();
     for (let cur = new Date(start); cur < end; cur.setDate(cur.getDate() + 1)) {
       const key = cur.toISOString().slice(0,10);
       const kind = getDayKind(r, key);
-      occupied[key] = { initials, id: r.id, origin: r.origin || 'Airbnb', checkin: r.checkin, checkout: r.checkout, alerta: (r.origin === 'Airbnb' && r.alerta) ? r.alerta : '', tipo: r.tipo || 'noche', kind };
+      occupied[key] = { initials, id: r.id, origin: r.origin || 'Airbnb', isMaintenance, checkin: r.checkin, checkout: r.checkout, alerta: (r.origin === 'Airbnb' && r.alerta) ? r.alerta : '', tipo: r.tipo || 'noche', kind };
     }
   });
 
@@ -3036,7 +3044,7 @@ function buildDispMonth(firstDay, cabinRes, today) {
       const daysToWeekEnd = 7 - thisDate.getDay();
       const span = Math.min(remaining, daysToWeekEnd, daysInMonth - day + 1);
       const isDirect = occ.origin && occ.origin !== 'Airbnb';
-      const cabinCls = dispCabin + (isDirect ? ' direct' : '');
+      const cabinCls = occ.isMaintenance ? 'maintenance' : (dispCabin + (isDirect ? ' direct' : ''));
       const alertaCls = occ.alerta ? ' alerta-mod' : '';
       const bgOverride = occ.alerta ? 'background:#f59e0b!important;' : '';
 
@@ -3065,6 +3073,8 @@ function buildDispMonth(firstDay, cabinRes, today) {
       const isCourtesy = occ.kind === 'courtesy';
       if (isCourtesy) {
         cls += ' courtesy ' + dispCabin;
+      } else if (occ.isMaintenance) {
+        cls += ' occupied maintenance';
       } else {
         cls += ' occupied ' + dispCabin + (isDirect ? ' direct' : '');
       }
@@ -3388,9 +3398,13 @@ function renderCalendar() {
       if(res) {
         const tipo = res.tipo || 'noche';
         const hasCourtesy = ['early','late','pasadia'].includes(tipo);
-        const alertStyle = res.alerta ? 'background:#f59e0b!important;color:#fff!important;' : '';
+        const isMaintenance = res.origin === 'Mantenimiento';
+        const alertStyle = res.alerta
+          ? 'background:#f59e0b!important;color:#fff!important;'
+          : (isMaintenance ? 'background:#9ca3af!important;color:#fff!important;' : '');
         const tipoPfx = '';
         const tipoTitle = tipo !== 'noche' ? ' ('+TIPO_LABEL[tipo]+')' : '';
+        const label = isMaintenance ? '🔧' : res.name.split(" ")[0];
 
         if (res.checkin === dateStr && !hasCourtesy) {
           // Reserva sin día de cortesía: spanear como antes
@@ -3398,11 +3412,11 @@ function renderCalendar() {
           const spanM = Math.min(span, daysInMonth-d+1);
           if(spanM > 1) {
             html += "<td class=\"day-cell"+tc+"\" colspan=\""+spanM+"\" style=\"padding:2px 0;\" onclick=\"handleDayClick('"+cabin+"','"+dateStr+"')\">";
-            html += "<div class=\"reservation-block "+cabin+"-block\" title=\""+res.name+tipoTitle+"\" style=\"border-radius:6px;margin:2px 2px;text-align:left;padding-left:8px;"+alertStyle+"\">"+tipoPfx+res.name.split(" ")[0]+"</div></td>";
+            html += "<div class=\"reservation-block "+cabin+"-block\" title=\""+res.name+tipoTitle+"\" style=\"border-radius:6px;margin:2px 2px;text-align:left;padding-left:8px;"+alertStyle+"\">"+tipoPfx+label+"</div></td>";
             d += spanM;
           } else {
             html += "<td class=\"day-cell"+tc+"\" onclick=\"handleDayClick('"+cabin+"','"+dateStr+"')\">";
-            html += "<div class=\"reservation-block "+cabin+"-block\" title=\""+res.name+tipoTitle+"\" style=\""+alertStyle+"\">"+tipoPfx+res.name.split(" ")[0]+"</div></td>";
+            html += "<div class=\"reservation-block "+cabin+"-block\" title=\""+res.name+tipoTitle+"\" style=\""+alertStyle+"\">"+tipoPfx+label+"</div></td>";
             d++;
           }
         } else {
@@ -3412,7 +3426,7 @@ function renderCalendar() {
           const courtesyTitle = kind === 'courtesy' ? ' — bloqueo cortesía' : '';
           const text = kind === 'courtesy'
             ? '·'
-            : (res.checkin === dateStr || hasCourtesy ? tipoPfx + res.name.split(" ")[0] : '·');
+            : (res.checkin === dateStr || hasCourtesy ? tipoPfx + label : '·');
           html += "<td class=\"day-cell"+tc+"\" onclick=\"handleDayClick('"+cabin+"','"+dateStr+"')\">";
           html += "<div class=\"reservation-block "+cabin+"-block"+courtesyCls+"\" title=\""+res.name+tipoTitle+courtesyTitle+"\" style=\""+alertStyle+"\">"+text+"</div></td>";
           d++;
@@ -3503,7 +3517,7 @@ function estadoPagoBadge(r) {
   const estado = r.origin === 'Airbnb'
     ? (r.fechaPago ? 'PAGA' : 'PENDIENTE')
     : (r.estadoPago || '');
-  const sinPago = ['Cortesia', 'Colaboracion', 'Personal'];
+  const sinPago = ['Cortesia', 'Colaboracion', 'Personal', 'Mantenimiento'];
   if (!estado || sinPago.includes(r.origin)) return '';
   const labels = { PAGA: '✓ Paga', ABONADO: '⬤ Abonado', PENDIENTE: '○ Pendiente' };
   return `<span class="pago-badge pago-${estado}">${labels[estado] || estado}</span>`;
@@ -4500,7 +4514,7 @@ function validarVoucher({ montoVoucher, amount, deposit, origin, editId, reserva
   if (origin === 'Airbnb') return { estadoPago: 'PAGA', alerta: null };
 
   // Sin validación para cortesía/colaboración/personal
-  const sinPago = ['Cortesia', 'Colaboracion', 'Personal'];
+  const sinPago = ['Cortesia', 'Colaboracion', 'Personal', 'Mantenimiento'];
   if (sinPago.includes(origin)) return { estadoPago: '', alerta: null };
 
   // Sin voucher — estado PENDIENTE si hay monto
@@ -4756,7 +4770,7 @@ function handleOriginChange() {
   const isAbierta  = (origin === 'Abierta');
   document.getElementById('voucherSection').style.display = isDirecta ? 'block' : 'none';
   if (!isDirecta) clearVoucher();
-  const cero = ['Cortesia', 'Colaboracion', 'Personal'];
+  const cero = ['Cortesia', 'Colaboracion', 'Personal', 'Mantenimiento'];
   if (cero.includes(origin)) {
     document.getElementById('fAmount').value = '0.00';
     document.getElementById('fDeposit').value = '0.00';

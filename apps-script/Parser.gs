@@ -2265,7 +2265,7 @@ function generateReceiptPDF(r) {
   let metodo         = 'Otro';
   if (r.origin === 'Airbnb') metodo = 'Airbnb';
   else if (ref)              metodo = 'Yappy / Pago digital';
-  else if (r.origin === 'Cortesia' || r.origin === 'Colaboracion' || r.origin === 'Personal') metodo = 'Sin cobro';
+  else if (r.origin === 'Cortesia' || r.origin === 'Colaboracion' || r.origin === 'Personal' || r.origin === 'Mantenimiento') metodo = 'Sin cobro';
 
   // Crear Doc temporal
   const doc  = DocumentApp.create('Recibo ' + numStr + ' (temp)');
