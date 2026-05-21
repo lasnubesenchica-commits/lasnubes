@@ -169,6 +169,30 @@
     <div class="btn-group"><a id="errWa" class="btn wa" href="https://wa.me/50769812266">WhatsApp</a></div>
   </div>
 
+  <div id="contentAbierta" hidden>
+    <div class="card hero">
+      <div class="greeting">Reserva Abierta</div>
+      <h1 id="abiertaTitle">¡Hola!</h1>
+      <div class="nombre">Tu reserva quedó registrada</div>
+      <div><span class="badge" style="background:#e6efe6;color:#2c5e22;">Abierta</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Tu reserva en concepto Abierta</h2>
+      <p style="font-size:14px;color:var(--text);line-height:1.6;margin:0 0 14px;">Registramos tu intención de reserva sin una fecha confirmada todavía. Cuando tengas listas tus fechas, escríbenos por WhatsApp y la hacemos efectiva — coordinamos disponibilidad, cabaña y detalles.</p>
+      <div class="btn-group" style="margin-top:14px;">
+        <a id="abiertaWaBtn" class="btn wa" href="https://wa.me/50769812266" target="_blank" rel="noopener">💬 Escribir por WhatsApp</a>
+      </div>
+      <p class="muted-text" style="margin-top:18px;text-align:center;">+507 6981-2266</p>
+    </div>
+
+    <div class="card">
+      <h2>Mientras tanto</h2>
+      <p style="font-size:13px;color:var(--muted);line-height:1.6;margin:0 0 14px;">Te invitamos a explorar las cabañas, gastronomía y actividades en nuestro sitio:</p>
+      <div class="btn-group"><a class="btn" href="https://lasnubes.cloud" target="_blank" rel="noopener">Visitar lasnubes.cloud</a></div>
+    </div>
+  </div>
+
   <div id="content" hidden>
 
     <div class="card hero">
@@ -478,6 +502,13 @@ function renderGuide(r) {
 }
 
 function render(r) {
+  if (r.estado === 'ABIERTA') {
+    $('abiertaTitle').textContent = '¡Hola, ' + (r.nombre || '') + '!';
+    $('abiertaWaBtn').href = r.whatsappContact || 'https://wa.me/50769812266';
+    hide('loading');
+    show('contentAbierta');
+    return;
+  }
   $('heroTitle').textContent = '¡Hola, ' + r.nombre + '!';
   $('heroSub').textContent   = 'Tu reserva en ' + r.cabinName + ' está confirmada.';
 

@@ -209,6 +209,20 @@ function getCabinGuideSteps(cabin, tipo) {
 // Construye DTO publico a partir de un objeto reservation (formato dashboard).
 // Filtra campos sensibles y agrega data de cabin/ubicacion.
 function _buildPublicDTO(r) {
+  // Reservas Abiertas: sin fechas/cabaña confirmadas. DTO minimo con WA contacto.
+  if (r.origin === 'Abierta') {
+    const propsA = PropertiesService.getScriptProperties();
+    const waNumA = (propsA.getProperty('CONTACT_WHATSAPP_NUMBER') || '50769812266').replace(/\D/g, '');
+    const fullNameA   = (r.name || '').toString().trim();
+    const primerNombA = fullNameA.split(/\s+/)[0] || fullNameA;
+    const waTextA = 'Hola! Quisiera hacer efectiva mi reserva Abierta a nombre de ' + fullNameA + '.';
+    return {
+      nombre:          primerNombA,
+      estado:          'ABIERTA',
+      whatsappContact: 'https://wa.me/' + waNumA + '?text=' + encodeURIComponent(waTextA)
+    };
+  }
+
   const meta  = tipoEmailMeta(r);
   const tz    = 'America/Panama';
   const props = PropertiesService.getScriptProperties();

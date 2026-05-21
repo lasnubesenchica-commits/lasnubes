@@ -7460,6 +7460,9 @@ function _buildClienteShareText(r, url, referralCode, referralAmount) {
     const firstName = ((r.name || '').toString().trim().split(/\s+/)[0]) || '';
     let text = '¡Hola' + (firstName ? ' ' + firstName : '') + '! 🌿\n\n';
     text += 'Tu reserva en *Las Nubes* quedó registrada en concepto *Abierta* (sin fecha confirmada todavía).\n\n';
+    if (url) {
+      text += 'Aquí puedes ver los detalles de tu reserva:\n' + url + '\n\n';
+    }
     text += 'Cuando tengas las fechas listas, escríbenos por WhatsApp para hacerla efectiva y coordinar los detalles:\n';
     text += 'https://wa.me/50769812266\n\n';
     text += '¡Te esperamos pronto!';

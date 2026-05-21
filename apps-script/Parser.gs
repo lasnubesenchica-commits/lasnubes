@@ -2000,6 +2000,8 @@ function buildGuiaHTML(cabin, tipo) {
 function buildEmailHTMLAbierta(r) {
   const name = (r.name || '').toString();
   const waUrl = 'https://wa.me/50769812266?text=' + encodeURIComponent('Hola! Quisiera hacer efectiva mi reserva Abierta a nombre de ' + name + '.');
+  let publicLink = '';
+  try { if (r.id) publicLink = getPublicReservaUrl(r.id); } catch(e) { Logger.log('no publicLink abierta: ' + e.message); }
   return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>' +
 '<body style="margin:0;padding:0;background:#f5f3f0;font-family:\'Helvetica Neue\',Helvetica,Arial,sans-serif;">' +
 '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f3f0;padding:32px 16px;"><tr><td align="center">' +
@@ -2011,6 +2013,7 @@ function buildEmailHTMLAbierta(r) {
 '</td></tr>' +
 '<tr><td style="background:#ffffff;padding:36px 40px;">' +
 '<p style="margin:0 0 18px;font-size:16px;color:#3a3530;line-height:1.6;">Hola <strong>' + name + '</strong>, tu reserva quedó registrada en concepto <strong>Abierta</strong>, sin fecha confirmada todavía.</p>' +
+(publicLink ? '<p style="margin:0 0 18px;font-size:13px;color:#6b6560;">&#128279; <a href="' + publicLink + '" target="_blank" style="color:#6a9e62;text-decoration:none;font-weight:500;border-bottom:1px solid #6a9e62;">Ver detalles de tu reserva</a></p>' : '') +
 '<p style="margin:0 0 24px;font-size:14px;color:#6b6560;line-height:1.7;">Cuando tengas las fechas listas, escríbenos por WhatsApp y la hacemos efectiva. Coordinamos disponibilidad, cabaña y detalles del check-in.</p>' +
 '<table cellpadding="0" cellspacing="0" style="margin-bottom:28px;"><tr><td>' +
 '<a href="' + waUrl + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:14px;font-weight:600;padding:12px 24px;border-radius:8px;text-decoration:none;">&#128172; Escribir por WhatsApp</a>' +
