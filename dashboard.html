@@ -4903,7 +4903,11 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
     if (!confirm(msg)) return;
   }
 
-  const id = editId || Date.now().toString();
+  // Reusar id de un intento fallido previo para que el dedup del backend
+  // detecte el retry como duplicate (evita filas dobles si la POST anterior
+  // si llego al sheet pero la respuesta HTTP fallo).
+  const id = editId || window._lastFailedSaveId || Date.now().toString();
+  window._lastFailedSaveId = id;
   const fFechaReservaEl = document.getElementById('fFechaReserva');
   const fechaReserva = (fFechaReservaEl && fFechaReservaEl.value) || new Date().toISOString().slice(0,10);
 
@@ -5024,8 +5028,20 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
       syncOk = !!data.ok;
       syncStatus = data.status || null;
       if (!syncOk) syncError = data.error || 'ok=false';
+      // Si el POST aparentemente fallo (HTTP 404, parse error, etc.) pero
+      // la fila SI quedo en el sheet, tratar como exito. Esto pasa cuando
+      // Apps Script proceso bien pero la respuesta HTTP no llego.
+      if (!syncOk && !editId) {
+        const verifiedAfterFail = await _verifyInSheet();
+        if (verifiedAfterFail) {
+          console.warn('[save] POST fallo (' + syncError + ') pero la fila SI esta en Sheets. Tratando como exito.');
+          syncOk = true;
+          syncStatus = 'saved-via-verify';
+          syncError = null;
+        }
+      }
       // Verify (solo para nuevas — para edits no aplica)
-      if (syncOk && !editId && syncStatus !== 'duplicate') {
+      if (syncOk && !editId && syncStatus !== 'duplicate' && syncStatus !== 'saved-via-verify') {
         const verified = await _verifyInSheet();
         if (!verified) {
           console.warn('[save] backend dijo ok pero la fila NO aparece. Reintentando…');
@@ -5043,6 +5059,8 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
           }
         }
       }
+      // Limpiar id "fallido" si finalmente quedo OK
+      if (syncOk) window._lastFailedSaveId = null;
     } catch(e) {
       syncOk = false;
       syncError = e.message;
