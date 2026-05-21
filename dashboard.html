@@ -7455,6 +7455,17 @@ async function _unmarkLoyalty(email, telefono) {
 
 // Texto para copiar al portapapeles al hacer "Link cliente" — listo para pegar en WhatsApp.
 function _buildClienteShareText(r, url, referralCode, referralAmount) {
+  // Reservas Abiertas: sin fechas confirmadas, texto especifico
+  if (r.origin === 'Abierta') {
+    const firstName = ((r.name || '').toString().trim().split(/\s+/)[0]) || '';
+    let text = '¡Hola' + (firstName ? ' ' + firstName : '') + '! 🌿\n\n';
+    text += 'Tu reserva en *Las Nubes* quedó registrada en concepto *Abierta* (sin fecha confirmada todavía).\n\n';
+    text += 'Cuando tengas las fechas listas, escríbenos por WhatsApp para hacerla efectiva y coordinar los detalles:\n';
+    text += 'https://wa.me/50769812266\n\n';
+    text += '¡Te esperamos pronto!';
+    return text;
+  }
+
   const dd = reservaDisplayDates(r);
   const tipo = r.tipo || 'noche';
   const CABIN_FULL_NAMES = {

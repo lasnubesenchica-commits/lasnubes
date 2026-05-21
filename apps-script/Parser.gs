@@ -1997,7 +1997,38 @@ function buildGuiaHTML(cabin, tipo) {
     '</td></tr></table>';
 }
 
+function buildEmailHTMLAbierta(r) {
+  const name = (r.name || '').toString();
+  const waUrl = 'https://wa.me/50769812266?text=' + encodeURIComponent('Hola! Quisiera hacer efectiva mi reserva Abierta a nombre de ' + name + '.');
+  return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>' +
+'<body style="margin:0;padding:0;background:#f5f3f0;font-family:\'Helvetica Neue\',Helvetica,Arial,sans-serif;">' +
+'<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f3f0;padding:32px 16px;"><tr><td align="center">' +
+'<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">' +
+'<tr><td style="background:#6a9e62;border-radius:16px 16px 0 0;padding:36px 40px;text-align:center;">' +
+'<p style="margin:0 0 6px;font-size:12px;color:rgba(255,255,255,0.75);letter-spacing:2px;text-transform:uppercase;">Reserva Abierta</p>' +
+'<h1 style="margin:0;font-size:32px;font-weight:300;color:#ffffff;font-family:Georgia,serif;">Las <em>Nubes</em></h1>' +
+'<p style="margin:10px 0 0;font-size:15px;color:rgba(255,255,255,0.9);">Buenos Aires, Chame · Panamá Oeste</p>' +
+'</td></tr>' +
+'<tr><td style="background:#ffffff;padding:36px 40px;">' +
+'<p style="margin:0 0 18px;font-size:16px;color:#3a3530;line-height:1.6;">Hola <strong>' + name + '</strong>, tu reserva quedó registrada en concepto <strong>Abierta</strong>, sin fecha confirmada todavía.</p>' +
+'<p style="margin:0 0 24px;font-size:14px;color:#6b6560;line-height:1.7;">Cuando tengas las fechas listas, escríbenos por WhatsApp y la hacemos efectiva. Coordinamos disponibilidad, cabaña y detalles del check-in.</p>' +
+'<table cellpadding="0" cellspacing="0" style="margin-bottom:28px;"><tr><td>' +
+'<a href="' + waUrl + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:14px;font-weight:600;padding:12px 24px;border-radius:8px;text-decoration:none;">&#128172; Escribir por WhatsApp</a>' +
+'</td></tr></table>' +
+'<p style="margin:0 0 8px;font-size:13px;color:#6b6560;line-height:1.6;">O al número: <strong>+507 6981-2266</strong></p>' +
+'<hr style="border:none;border-top:1px solid #e8e4de;margin:28px 0;">' +
+'<p style="margin:0 0 6px;font-size:13px;color:#6b6560;line-height:1.6;">Mientras tanto, te invitamos a conocer las cabañas y la experiencia en nuestro sitio:</p>' +
+'<a href="https://lasnubes.cloud" target="_blank" style="color:#6a9e62;font-size:13px;font-weight:500;text-decoration:none;border-bottom:1px solid #6a9e62;">lasnubes.cloud</a>' +
+'</td></tr>' +
+'<tr><td style="background:#3a3530;border-radius:0 0 16px 16px;padding:24px 40px;text-align:center;">' +
+'<p style="margin:0 0 8px;font-size:18px;font-weight:300;color:#ffffff;font-family:Georgia,serif;">Las <em>Nubes</em></p>' +
+'<p style="margin:0 0 12px;font-size:12px;color:rgba(255,255,255,0.6);">Buenos Aires, Chame · En las faldas de Chicá · Panamá Oeste</p>' +
+'<a href="https://wa.me/50769812266" style="color:rgba(255,255,255,0.8);font-size:13px;text-decoration:none;">&#128172; WhatsApp: +507 6981-2266</a>' +
+'</td></tr></table></td></tr></table></body></html>';
+}
+
 function buildEmailHTML(r) {
+  if (r.origin === 'Abierta') return buildEmailHTMLAbierta(r);
   const cabin       = CABIN_NAMES_EMAIL[r.cabin] || r.cabin;
   const color       = CABIN_COLORS_EMAIL[r.cabin] || '#6a9e62';
   const meta        = tipoEmailMeta(r);
@@ -2087,7 +2118,10 @@ function sendConfirmationEmail(reservation, voucherBase64, voucherMimeType) {
     const email = reservation.email;
     if (!email) return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'No hay email de huésped' })).setMimeType(ContentService.MimeType.JSON);
     const cabin   = CABIN_NAMES_EMAIL[reservation.cabin] || reservation.cabin;
-    const subject = '✅ Confirmación de reserva — ' + cabin + ' · Las Nubes';
+    const isAbierta = reservation.origin === 'Abierta';
+    const subject = isAbierta
+      ? '📌 Reserva Abierta — Las Nubes'
+      : '✅ Confirmación de reserva — ' + cabin + ' · Las Nubes';
 
     // Adjuntar recibo PDF si la reserva tiene voucher (codTransferencia o montoVoucher)
     const attachments = [];
@@ -2095,7 +2129,7 @@ function sendConfirmationEmail(reservation, voucherBase64, voucherMimeType) {
     const hasVoucher = !!(reservation.codTransferencia || montoVoucherNum > 0);
     Logger.log('🧾 sendConfirmationEmail · hasVoucher=' + hasVoucher + ' codT=' + (reservation.codTransferencia || 'null') + ' montoVoucher=' + (reservation.montoVoucher || 'null') + ' voucherBytes=' + (voucherBase64 ? voucherBase64.length : 0));
     const debug = { hasVoucher, codT: reservation.codTransferencia || null, montoVoucher: reservation.montoVoucher || null };
-    if (hasVoucher) {
+    if (hasVoucher && !isAbierta) {
       try {
         const receipt = generateReceiptPDF(reservation);
         attachments.push(receipt.blob);
