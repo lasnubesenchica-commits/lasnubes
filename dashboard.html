@@ -2434,22 +2434,27 @@ async function syncFromSheets() {
     // ALL fetches en paralelo (5 calls) — Apps Script tiene ~1-3s de latencia
     // por call independiente del payload, asi que paralelizar es el quick win.
     // Cada uno con .catch propio para que si uno falla no rompa el resto.
-    const _safeFetchJson = async (url) => {
+    const _safeFetchJson = async (url, label) => {
+      const t0 = performance.now();
       try {
         const r = await fetch(url);
-        return await r.json();
+        const j = await r.json();
+        console.log('[fetch] ' + label + ': ' + (performance.now() - t0).toFixed(0) + 'ms');
+        return j;
       } catch(e) {
-        console.warn('fetch failed:', url, e);
+        console.warn('[fetch] ' + label + ' FAILED after ' + (performance.now() - t0).toFixed(0) + 'ms', e);
         return null;
       }
     };
+    const tAll = performance.now();
     const [data, dataPagos, dataEgresos, dataLoyalty, dataRef] = await Promise.all([
-      _safeFetchJson(`${SHEETS_API_URL}?action=getReservations`),
-      _safeFetchJson(`${SHEETS_API_URL}?action=getPagos`),
-      _safeFetchJson(`${SHEETS_API_URL}?action=getEgresos`),
-      _safeFetchJson(`${SHEETS_API_URL}?action=getLoyaltyCredits`),
-      _safeFetchJson(`${SHEETS_API_URL}?action=getReferrals`)
+      _safeFetchJson(`${SHEETS_API_URL}?action=getReservations`, 'getReservations'),
+      _safeFetchJson(`${SHEETS_API_URL}?action=getPagos`,        'getPagos'),
+      _safeFetchJson(`${SHEETS_API_URL}?action=getEgresos`,      'getEgresos'),
+      _safeFetchJson(`${SHEETS_API_URL}?action=getLoyaltyCredits`, 'getLoyaltyCredits'),
+      _safeFetchJson(`${SHEETS_API_URL}?action=getReferrals`,    'getReferrals')
     ]);
+    console.log('[fetch] Promise.all total: ' + (performance.now() - tAll).toFixed(0) + 'ms');
     if (dataLoyalty && dataLoyalty.ok) loyaltyCredits = dataLoyalty.credits || [];
     if (dataRef && dataRef.ok) {
       referrals    = dataRef.referrals    || [];
