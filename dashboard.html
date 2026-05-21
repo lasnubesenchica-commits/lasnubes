@@ -2935,6 +2935,7 @@ async function openWhatsApp(id, kind) {
 }
 
 function renderDisponibilidad() {
+  console.time('renderDisponibilidad');
   renderReservasHoy();
   updateDispLegend();
   const container = document.getElementById('dispCalendars');
@@ -2973,6 +2974,7 @@ function renderDisponibilidad() {
     </button>
   </div>`;
   container.innerHTML = html;
+  console.timeEnd('renderDisponibilidad');
 }
 
 function loadMoreDispMonths() {
@@ -3373,7 +3375,30 @@ function changeMonth(d) {
   renderCalendar();
 }
 
+// Indice cabin -> dateStr -> reservation, para getReservationForDay O(1).
+// Se reconstruye al inicio de renderCalendar (que es donde se consulta).
+let reservationsByDay = {};
+
+function rebuildReservationIndex() {
+  reservationsByDay = { verde: {}, azul: {}, lila: {} };
+  for (const r of reservations) {
+    if (!r.cabin || !r.checkin || !r.checkout) continue;
+    if (r.origin === 'Abierta') continue;
+    if (!reservationsByDay[r.cabin]) reservationsByDay[r.cabin] = {};
+    const start = new Date(r.checkin  + 'T12:00:00');
+    const end   = new Date(r.checkout + 'T12:00:00');
+    for (let cur = new Date(start); cur < end; cur.setDate(cur.getDate() + 1)) {
+      const key = cur.getFullYear() + '-' + String(cur.getMonth()+1).padStart(2,'0') + '-' + String(cur.getDate()).padStart(2,'0');
+      reservationsByDay[r.cabin][key] = r;
+    }
+  }
+}
+
 function renderCalendar() {
+  console.time('renderCalendar');
+  console.time('  └─ rebuildReservationIndex');
+  rebuildReservationIndex();
+  console.timeEnd('  └─ rebuildReservationIndex');
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
   document.getElementById("monthLabel").textContent = MONTHS[month] + " " + year;
@@ -3440,15 +3465,13 @@ function renderCalendar() {
   });
   html += "</tbody>";
   document.getElementById("calendarTable").innerHTML = html;
+  console.timeEnd('renderCalendar');
 }
 
 
 function getReservationForDay(cabin, dateStr) {
-  return reservations.find(r => {
-    if(r.cabin !== cabin) return false;
-    if(r.origin === 'Abierta') return false;
-    return dateStr >= r.checkin && dateStr < r.checkout;
-  });
+  // Lookup O(1) via indice precalculado por rebuildReservationIndex().
+  return (reservationsByDay[cabin] || {})[dateStr];
 }
 
 function handleDayClick(cabin, date) {
@@ -4018,6 +4041,7 @@ function descargarCxCExcel() {
 }
 
 function renderList() {
+  console.time('renderList');
   renderAbiertas();
   populateCxCMonth();
 
@@ -4093,6 +4117,7 @@ function renderList() {
     </tr>`;
     tbodyCi.innerHTML = dataCi.map(r => checkinRowHtml(r)).join('') + totalRowCi;
   }
+  console.timeEnd('renderList');
 }
 
 // ─── MODAL ───────────────────────────────────────────────────
