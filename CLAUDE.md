@@ -18,7 +18,7 @@
 
 ## Stack relevante
 
-- Hoja `Reservas`: 26 columnas. La #25 es `Tipo` (noche/pasadia/pasadia-largo/early/late, agregada en `migrarColumnasV4`). La #26 es `VoucherURL` (link al voucher en Drive, persistido por `saveVoucherToDrive`). `getOrCreateSheet` auto-asegura ambas columnas en cada llamada.
+- Hoja `Reservas`: 29 columnas. La #25 es `Tipo` (noche/pasadia/pasadia-largo/early/late, agregada en `migrarColumnasV4`). La #26 es `VoucherURL` (link al voucher en Drive, persistido por `saveVoucherToDrive`). La #27 es `IdHuespedURL`. La #28 es `FechaNacimiento`. La #29 es `CheckoutExtendido` (boolean, cortesía 12:30pm). `getOrCreateSheet` auto-asegura todas las columnas en cada llamada.
 - Modelo IA: `claude-opus-4-6` para OCR de vouchers/facturas (en `parseVoucherWithClaude` y `parseFacturaEgresoConClaude`). `parseVoucherWithClaude` tiene retry con fallback a Sonnet 4.6.
 - API key Anthropic: en Script Properties (`CLAUDE_API_KEY`), nunca en código cliente.
 

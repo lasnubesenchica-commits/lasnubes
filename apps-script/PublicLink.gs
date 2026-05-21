@@ -163,7 +163,7 @@ function _buildIcsFor(r) {
 }
 
 // Pasos de la guia de cabaña. Fuente unica usada por email y pagina publica.
-function getCabinGuideSteps(cabin, tipo) {
+function getCabinGuideSteps(cabin, tipo, checkoutExtendido) {
   tipo = tipo || 'noche';
   const checkoutTitleMap = {
     'noche':     'Check-out · 11:00 am',
@@ -172,6 +172,11 @@ function getCabinGuideSteps(cabin, tipo) {
     'early':     'Check-out · 11:00 am',
     'late':      'Check-out · 4:00 pm'
   };
+  // Cortesia: extender el check-out a 12:30pm cuando aplica (noche, early)
+  if (checkoutExtendido && (tipo === 'noche' || tipo === 'early')) {
+    checkoutTitleMap.noche = 'Check-out · 12:30 pm (cortesía)';
+    checkoutTitleMap.early = 'Check-out · 12:30 pm (cortesía)';
+  }
   const checkoutTitle = checkoutTitleMap[tipo] || checkoutTitleMap.noche;
   const checkoutBody  = 'Dejar la cocina limpia · Llevarse la basura · Cerrar la puerta y dejar la llave dentro del key box.';
 
@@ -279,7 +284,7 @@ function _buildPublicDTO(r) {
   // Pasos de la guia de la cabaña
   let cabinGuide = [];
   try {
-    cabinGuide = getCabinGuideSteps(r.cabin, meta.tipo);
+    cabinGuide = getCabinGuideSteps(r.cabin, meta.tipo, !!r.checkoutExtendido);
     // Ocultar el codigo del key box dentro de la guia tambien cuando no estamos en ventana operativa
     if (!showKeyBox) {
       const mask = 'El código del Key Box aparece más arriba el día de tu entrada.';
@@ -358,7 +363,8 @@ function _readReservaById(id) {
         telefono:    r[23] || '',
         tipo:        r[24] || 'noche',
         idHuespedURL: r[26] || '',
-        fechaNacimiento: r[27] || ''
+        fechaNacimiento: r[27] || '',
+        checkoutExtendido: r[28] === true || r[28] === 'TRUE' || r[28] === 'true' || r[28] === 1
       };
     }
   }
