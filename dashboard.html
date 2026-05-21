@@ -2197,6 +2197,16 @@
       </div>
     </div>
 
+    <!-- Fila 4a: Check-out extendido (cortesia, sin costo) -->
+    <div class="form-row" id="checkoutExtendidoRow">
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:500;cursor:pointer;">
+          <input type="checkbox" id="fCheckoutExtendido" style="width:18px;height:18px;cursor:pointer;">
+          <span>Check-out extendido hasta 12:30 pm <span style="color:var(--text-muted);font-weight:400;font-size:12px;">(cortesía · sin costo)</span></span>
+        </label>
+      </div>
+    </div>
+
     <!-- Fila 4b: Tipo de reserva -->
     <div class="form-row" id="tipoRow">
       <div class="form-group" style="grid-column: 1 / -1;">
@@ -2837,7 +2847,11 @@ function _reservaHoyItemHtml(it) {
   const cabinLight = 'var(--' + r.cabin + '-light)';
   const tipoLbl    = TIPO_LABEL[tipo] || tipo;
   const horaText = (() => {
-    if (it.kind === 'salida')  return tipo === 'late'  ? 'sale 4pm' : 'sale 11am';
+    if (it.kind === 'salida') {
+      if (tipo === 'late') return 'sale 4pm';
+      if (r.checkoutExtendido && (tipo === 'noche' || tipo === 'early')) return 'sale 12:30pm 🤝';
+      return 'sale 11am';
+    }
     if (it.kind === 'entrada') return tipo === 'early' ? 'entra 9am' : 'entra 2pm';
     if (it.kind === 'pasadia') return tipo === 'pasadia' ? '9am – 5pm' : '12:30pm – 7pm';
     return '';
@@ -3154,6 +3168,9 @@ function showDispDetail(id) {
     else if (tipo === 'early')      duracionLabel = '1 noche · entra 9am';
     else if (tipo === 'late')       duracionLabel = '1 noche · sale 4pm';
     else                            duracionLabel = days + (days === 1 ? ' noche' : ' noches');
+    if (r.checkoutExtendido && (tipo === 'noche' || tipo === 'early')) {
+      duracionLabel += ' · 🤝 sale 12:30pm';
+    }
   }
   // Fechas a desplegar (translación visual según tipo, sin tocar storage):
   // - pasatarde: entrada = salida = día del pasatarde (= r.checkin)
@@ -4220,6 +4237,12 @@ function _updateSalidaLock(tipo) {
   cout.style.opacity = lock ? '0.55' : '';
   cout.style.cursor  = lock ? 'not-allowed' : '';
   cout.style.background = lock ? 'var(--bg)' : '';
+  // Check-out extendido solo aplica para tipos con salida 11am (noche, early)
+  const ceRow = document.getElementById('checkoutExtendidoRow');
+  const ceInp = document.getElementById('fCheckoutExtendido');
+  const ceAplica = (tipo === 'noche' || tipo === 'early');
+  if (ceRow) ceRow.style.display = ceAplica ? '' : 'none';
+  if (ceInp && !ceAplica) ceInp.checked = false;
 }
 
 function handleTipoChange() {
@@ -4402,6 +4425,8 @@ function openModal(cabin, date) {
   document.getElementById('fSaldoLabel').textContent = 'Saldo pendiente';
   document.getElementById('fDeposit').value = '';
   document.getElementById('fComentarios').value = '';
+  const _ceNewEl = document.getElementById('fCheckoutExtendido');
+  if (_ceNewEl) _ceNewEl.checked = false;
   document.getElementById('fNotificarActualizacion').checked = false;
   document.getElementById('notificarWrap').style.display = 'none';
   document.getElementById('fPromoTarifa').checked = false;
@@ -4449,6 +4474,8 @@ function editReservation(id) {
   document.getElementById('fAmount').value = r.amount;
   document.getElementById('fComentarios').value = r.comentarios || '';
   document.getElementById('fPromoTarifa').checked = false;
+  const _ceEl = document.getElementById('fCheckoutExtendido');
+  if (_ceEl) _ceEl.checked = !!r.checkoutExtendido;
   const _tipoEl = document.getElementById('fTipo');
   if (_tipoEl) {
     const _t = r.tipo || 'noche';
@@ -4959,9 +4986,10 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
   const comentarios = document.getElementById('fComentarios').value.trim();
   const notificar   = document.getElementById('fNotificarActualizacion').checked;
   const tipo = (document.getElementById('fTipo') || {}).value || 'noche';
+  const checkoutExtendido = !!(document.getElementById('fCheckoutExtendido') || {}).checked;
   const reservation = { id, name, email, telefono, pagador, cabin, checkin, checkout, persons, origin, deposit, amount,
                         confirmCode: id, serviceFee: 0, neto: amount,
-                        fechaReserva, codTransferencia, montoVoucher, estadoPago, comentarios, tipo };
+                        fechaReserva, codTransferencia, montoVoucher, estadoPago, comentarios, tipo, checkoutExtendido };
 
   // Detect date change before overwriting
   let fechaAnterior = null;
@@ -7553,6 +7581,9 @@ function _buildClienteShareText(r, url, referralCode, referralAmount) {
   let checkinH = '2:00 pm', checkoutH = '11:00 am';
   if (tipo === 'early') { checkinH = '9:00 am'; }
   if (tipo === 'late')  { checkoutH = '4:00 pm'; }
+  if (r.checkoutExtendido && (tipo === 'noche' || tipo === 'early')) {
+    checkoutH = '12:30 pm (cortesía)';
+  }
 
   let text = '¡Reserva confirmada! 🌿\n\n';
   text += '👤 ' + (r.name || '') + '\n';
