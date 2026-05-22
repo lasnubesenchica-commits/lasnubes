@@ -1177,7 +1177,7 @@ function doPost(e) {
 
       const rowToAppend = [
         r.id,
-        r.name,
+        _safeCell(r.name),
         CABIN_NAMES[r.cabin] || r.cabin,
         r.cabin,
         r.checkin,
@@ -1190,16 +1190,16 @@ function doPost(e) {
         serviceFee_,
         neto_,
         '',
-        r.pagador || r.name,
+        _safeCell(r.pagador || r.name),
         r.fechaReserva || today_,
         '',
         0,
-        r.codTransferencia || '',
+        _safeCell(r.codTransferencia || ''),
         r.montoVoucher || '',
         r.estadoPago   || '',
-        r.email        || '',
-        r.comentarios  || '',
-        r.telefono     || '',
+        _safeCell(r.email || ''),
+        _safeCell(r.comentarios || ''),
+        _safeCell(r.telefono || ''),
         r.tipo         || 'noche'
       ];
       Logger.log('  appendRow length=' + rowToAppend.length + ' id=' + rowToAppend[0] + ' name=' + rowToAppend[1]);
@@ -1268,7 +1268,7 @@ function doPost(e) {
           const row = i + 1;
           sheet.getRange(row, 1, 1, 25).setValues([[
             r.id,
-            r.name,
+            _safeCell(r.name),
             CABIN_NAMES[r.cabin] || r.cabin,
             r.cabin,
             r.checkin,
@@ -1281,11 +1281,11 @@ function doPost(e) {
             serviceFee_,
             neto_,
             data[i][13] || '',
-            r.pagador   || r.name,
+            _safeCell(r.pagador || r.name),
             r.fechaReserva || today_,
             data[i][16] || '',
             data[i][17] || 0,
-            r.codTransferencia || data[i][18] || '',
+            _safeCell(r.codTransferencia || data[i][18] || ''),
             r.montoVoucher || data[i][19] || '',
             (function() {
               const existingEstado = data[i][20] ? data[i][20].toString().trim() : '';
@@ -1294,9 +1294,9 @@ function doPost(e) {
               if (existingEstado === 'PAGA' && newEstado === 'PENDIENTE') return 'PAGA';
               return newEstado || existingEstado || '';
             })(),
-            r.email        || data[i][21] || '',
-            r.comentarios  || data[i][22] || '',
-            r.telefono     || data[i][23] || '',
+            _safeCell(r.email || data[i][21] || ''),
+            _safeCell(r.comentarios || data[i][22] || ''),
+            _safeCell(r.telefono || data[i][23] || ''),
             r.tipo         || data[i][24] || 'noche'
           ]]);
           // Col 29 (CheckoutExtendido) — actualizar el flag de cortesia
@@ -1650,6 +1650,18 @@ function doPost(e) {
 // ─── DEBUG LOG ───────────────────────────────────────────────
 // Persiste eventos importantes a una hoja 'DebugLog' para diagnosticar
 // problemas que no se ven en los logs de Apps Script (ej. fallos en iOS).
+// Escapa valores que empiezan con caracteres que Sheets interpreta como
+// formula (=, +, -, @). Sin esto, appendRow con telefono "+507 ..." hace
+// que Sheets intente evaluar "=+507 ..." como expresion → error o timeout
+// → respuesta HTTP 404 desde el frontend de Google Apps Engine.
+function _safeCell(v) {
+  if (v === null || v === undefined || v === '') return v;
+  const s = String(v);
+  const c = s.charAt(0);
+  if (c === '=' || c === '+' || c === '-' || c === '@') return "'" + s;
+  return s;
+}
+
 function logDebugEntry(stage, info) {
   try {
     const ss = SpreadsheetApp.openById(SHEET_ID);
