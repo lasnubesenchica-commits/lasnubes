@@ -4841,7 +4841,10 @@ function handleOriginChange() {
 async function saveReservation() {
   const name     = document.getElementById('fName').value.trim();
   const email    = document.getElementById('fEmail').value.trim();
-  const telefono = document.getElementById('fTelefono').value.trim();
+  // Sanitizar telefono: strip leading "+" (Sheets lo interpreta como inicio
+  // de formula y rompe el appendRow → resultado HTTP 404 desde GAE)
+  const telefonoRaw = document.getElementById('fTelefono').value.trim();
+  const telefono = telefonoRaw.replace(/^[+=\-@]+\s*/, '');
   const pagador  = document.getElementById('fPagador').value.trim() || name;
   const cabin    = document.getElementById('fCabin').value;
   // FORM en real-day. Tomar valores y traducir al rango de bloqueo según tipo.
