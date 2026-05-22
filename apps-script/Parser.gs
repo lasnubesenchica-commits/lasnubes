@@ -977,6 +977,7 @@ function doGet(e) {
     if (action === 'getLoyaltyCredits') return handleGetLoyaltyCredits(e);
     if (action === 'getReferrals')      return handleGetReferrals(e);
     if (action === 'debugFindReserva')  return handleDebugFindReserva(e);
+    if (action === 'getDebugLog')       return handleGetDebugLog(e);
 
     // ── GET RESERVATIONS (default) ────────────────────────────
     const sheet = getOrCreateSheet();
@@ -1103,8 +1104,16 @@ function _testSaveReserva() {
 }
 
 function doPost(e) {
+  const _ts0 = Date.now();
+  let _action = '?', _id = '?', _payload = null;
   try {
-    const payload = JSON.parse(e.postData.contents);
+    const contentLen  = e && e.postData ? (e.postData.contents || '').length : 0;
+    const contentType = e && e.postData ? (e.postData.type || '?') : 'no-postData';
+    _payload = JSON.parse(e.postData.contents);
+    const payload = _payload;
+    _action = payload.action;
+    _id     = payload.reservation ? payload.reservation.id : (payload.id || '');
+    logDebugEntry('doPost-IN', { action: _action, id: _id, contentLen, contentType });
     const action  = payload.action;
 
     // ── SAVE TARIFAS ─────────────────────────────────────────
@@ -1147,6 +1156,7 @@ function doPost(e) {
       Logger.log('  dedup key=' + key + ' existing.size=' + existing.size + ' has?=' + existing.has(String(key)));
       if (key && existing.has(key.toString())) {
         Logger.log('  → DUPLICATE skip');
+        logDebugEntry('saveReservation-DUPE', { id: r.id, key: key });
         return ContentService
           .createTextOutput(JSON.stringify({ ok: true, status: 'duplicate' }))
           .setMimeType(ContentService.MimeType.JSON);
@@ -1196,12 +1206,14 @@ function doPost(e) {
       try {
         sheet.appendRow(rowToAppend);
         Logger.log('  ✓ appendRow OK · newLastRow=' + sheet.getLastRow());
+        logDebugEntry('saveReservation-OK', { id: r.id, row: sheet.getLastRow(), name: r.name, cabin: r.cabin, checkin: r.checkin });
         // Col 29 (CheckoutExtendido) — persistir el flag de cortesia si aplica
         if (r.checkoutExtendido) {
           sheet.getRange(sheet.getLastRow(), 29).setValue(true);
         }
       } catch(appendErr) {
         Logger.log('  ✗ appendRow THREW: ' + appendErr.message + ' stack: ' + appendErr.stack);
+        logDebugEntry('saveReservation-FAIL', { id: r.id, error: appendErr.message, stack: appendErr.stack ? String(appendErr.stack).slice(0, 400) : '' });
         throw appendErr;
       }
 
@@ -1628,10 +1640,51 @@ function doPost(e) {
       .setMimeType(ContentService.MimeType.JSON);
 
   } catch(err) {
+    logDebugEntry('doPost-CRASH', { action: _action, id: _id, error: err.message, stack: err.stack ? String(err.stack).slice(0, 400) : '' });
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: err.message }))
       .setMimeType(ContentService.MimeType.JSON);
   }
+}
+
+// ─── DEBUG LOG ───────────────────────────────────────────────
+// Persiste eventos importantes a una hoja 'DebugLog' para diagnosticar
+// problemas que no se ven en los logs de Apps Script (ej. fallos en iOS).
+function logDebugEntry(stage, info) {
+  try {
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    let sheet = ss.getSheetByName('DebugLog');
+    if (!sheet) {
+      sheet = ss.insertSheet('DebugLog');
+      sheet.getRange(1, 1, 1, 3).setValues([['Timestamp', 'Stage', 'Info']]);
+      sheet.setFrozenRows(1);
+    }
+    const ts = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd HH:mm:ss');
+    const infoStr = (typeof info === 'object') ? JSON.stringify(info).slice(0, 800) : String(info);
+    sheet.appendRow([ts, stage, infoStr]);
+    // Cap at last 300 entries (header + 300)
+    const last = sheet.getLastRow();
+    if (last > 301) sheet.deleteRows(2, last - 301);
+  } catch(_e) { /* swallow */ }
+}
+
+function handleGetDebugLog(e) {
+  const limit = parseInt((e && e.parameter && e.parameter.limit) || '40', 10);
+  const ss    = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName('DebugLog');
+  if (!sheet || sheet.getLastRow() < 2) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: true, entries: [] }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  const last     = sheet.getLastRow();
+  const startRow = Math.max(2, last - limit + 1);
+  const numRows  = last - startRow + 1;
+  const data     = sheet.getRange(startRow, 1, numRows, 3).getValues();
+  const entries  = data.map(r => ({ ts: r[0], stage: r[1], info: r[2] })).reverse();
+  return ContentService
+    .createTextOutput(JSON.stringify({ ok: true, entries: entries }))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 // ═══════════════════════════════════════════════════════════

@@ -5025,21 +5025,50 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
   async function _doSavePOST() {
     syncAttempts++;
     const action = editId ? 'updateReservation' : 'saveReservation';
-    console.log('[save] attempt', syncAttempts, '·', action, '·', id);
-    const res = await fetch(SHEETS_API_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action, reservation, fechaAnterior })
-    });
+    const t0 = performance.now();
+    console.log('[save] attempt', syncAttempts, '·', action, '·', id, '·', navigator.userAgent);
+    let res, networkErr = null;
+    try {
+      res = await fetch(SHEETS_API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action, reservation, fechaAnterior })
+      });
+    } catch(netErr) {
+      networkErr = netErr;
+      console.error('[save] network error:', netErr.message, '·', (performance.now()-t0).toFixed(0)+'ms');
+      window._lastSaveFailure = { attempt: syncAttempts, id, action, ua: navigator.userAgent, ms: (performance.now()-t0).toFixed(0), networkErr: netErr.message };
+      return { ok: false, error: 'Network: ' + netErr.message };
+    }
+    const ms = (performance.now() - t0).toFixed(0);
     let data;
-    try { data = await res.json(); }
+    try { data = await res.clone().json(); }
     catch(parseErr) {
       const rawText = await res.text().catch(() => '');
-      console.error('[save] respuesta no-JSON. HTTP', res.status, rawText.slice(0, 300));
-      return { ok: false, error: 'Respuesta inválida HTTP ' + res.status };
+      const failure = {
+        attempt: syncAttempts, id, action,
+        status: res.status, statusText: res.statusText, url: res.url,
+        contentType: res.headers.get('content-type'),
+        bodyExcerpt: rawText.slice(0, 500),
+        bodyLen: rawText.length,
+        ms,
+        ua: navigator.userAgent
+      };
+      console.error('[save] FAIL parse · detalle:', failure);
+      window._lastSaveFailure = failure;
+      return { ok: false, error: 'Respuesta inválida HTTP ' + res.status + ' (window._lastSaveFailure tiene detalle)' };
     }
-    console.log('[save] response:', data);
+    console.log('[save] response (' + ms + 'ms):', data);
     return data || { ok: false, error: 'empty response' };
   }
+  // Helper para diagnosticar desde DevTools: window.fetchDebugLog().then(console.table)
+  window.fetchDebugLog = async function(limit) {
+    const url = SHEETS_API_URL + '?action=getDebugLog&limit=' + (limit || 40);
+    const r = await fetch(url);
+    const d = await r.json();
+    console.log('[debugLog] last failure (local):', window._lastSaveFailure || '(none)');
+    console.table(d.entries || []);
+    return d;
+  };
   async function _verifyInSheet() {
     try {
       const res = await fetch(SHEETS_API_URL + '?action=debugFindReserva&id=' + encodeURIComponent(id));
