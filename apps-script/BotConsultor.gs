@@ -227,6 +227,31 @@ function botHandleMessage(from, text, contactName, kind) {
     return _botAdminReject(from, text.replace('reject_', ''));
   }
 
+  // Menu list/button reply → handler especifico
+  if ((kind === 'list_reply' || kind === 'button_reply') && /^menu_/.test(text)) {
+    if (text === 'menu_disponibilidad') {
+      sendWhatsAppText(from,
+        '¡Genial! 🌿\n\nDecime las *fechas* y cuántas *personas* serían. Por ejemplo:\n\n' +
+        '• "del 5 al 8 de junio, 2 personas"\n' +
+        '• "viernes a domingo, 4 personas"\n' +
+        '• "este fin de semana, 3 personas"'
+      );
+      _saveConv(from, 'AWAITING_DATES', conv.context, contactName);
+      return;
+    }
+    if (text === 'menu_como_llegar')  { _botMenuComoLlegar(from);  _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
+    if (text === 'menu_actividades')  { _botMenuActividades(from); _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
+    if (text === 'menu_gastronomia')  { _botMenuGastronomia(from); _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
+    if (text === 'menu_insumos')      { _botMenuInsumos(from);     _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
+    if (text === 'menu_faq')          { _botMenuFAQ(from);         _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
+    if (text === 'menu_humano') {
+      sendWhatsAppText(from, '👋 Te derivo con una persona del equipo. En breve te respondemos.');
+      _saveConv(from, 'HUMAN_HANDOFF', conv.context, contactName);
+      try { sendWhatsAppText('50769812266', '🔔 Handoff via menu: ' + (contactName || from) + ' (' + from + ')'); } catch(_) {}
+      return;
+    }
+  }
+
   // Boton "Cancelar" en OFFERING_PAYMENT — libera el estado
   if ((kind === 'button_reply' && text === 'cancel_booking') ||
       (conv.step === 'OFFERING_PAYMENT' && /^(cancela|cancelar|atras|atrás)\b/i.test((text || '').trim()))) {
@@ -293,29 +318,24 @@ function botHandleMessage(from, text, contactName, kind) {
 
   const t = (text || '').toLowerCase().trim();
 
-  // Opcion 2: como llegar
-  if (t === '2' || t.includes('como llegar') || t.includes('cómo llegar') || t.includes('ubicacion') || t.includes('ubicación') || t.includes('direccion') || t.includes('dirección')) {
-    const msg =
-      '📍 *Las Nubes — Cómo llegar*\n\n' +
-      'Buenos Aires, Chame · Panamá Oeste (faldas del cerro Chicá).\n\n' +
-      'Por interamericana → entrar por Pío Pío de Bejuco hacia carretera Bejuco–Sorá. En Buenos Aires, dobla a la derecha hacia Chicá. La cabaña queda a 100m.\n\n' +
-      'Más fácil: *Waze* → "Aires de Chicá". Te lleva directo al portón verde.\n\n' +
-      'Google Maps:\nhttps://maps.google.com/?q=8.639400,-79.945900';
-    sendWhatsAppText(from, msg);
-    _saveConv(from, 'SHOWED_INFO', conv.context, contactName);
-    return;
+  // Opciones por keywords (compatibilidad: clientes que escriben en vez de tocar)
+  if (t === '2' || t.includes('como llegar') || t.includes('cómo llegar') || t.includes('ubicacion') || t.includes('ubicación') || t.includes('direccion') || t.includes('dirección') || t.includes('llegar')) {
+    return botHandleMessage(from, 'menu_como_llegar', contactName, 'list_reply');
   }
-
-  // Opcion 1: disponibilidad — pedir fechas
-  if (t === '1' || t.includes('disponibilidad') || t.includes('disponible') || t.includes('precios') || t.includes('cuanto cuesta') || t.includes('cuánto cuesta')) {
-    sendWhatsAppText(from,
-      '¡Genial! 🌿\n\nDecime las *fechas* y cuántas *personas* serían. Por ejemplo:\n\n' +
-      '• "del 5 al 8 de junio, 2 personas"\n' +
-      '• "viernes a domingo, 4 personas"\n' +
-      '• "este fin de semana, 3 personas"'
-    );
-    _saveConv(from, 'AWAITING_DATES', conv.context, contactName);
-    return;
+  if (t.includes('actividad') || t.includes('cascada') || t.includes('playa') || t.includes('que hacer') || t.includes('qué hacer')) {
+    return botHandleMessage(from, 'menu_actividades', contactName, 'list_reply');
+  }
+  if (t.includes('gastrono') || t.includes('restaurant') || t.includes('comer') || t.includes('comida cerca')) {
+    return botHandleMessage(from, 'menu_gastronomia', contactName, 'list_reply');
+  }
+  if (t.includes('insumo') || t.includes('tiendita') || t.includes('supermercado') || t.includes('compr')) {
+    return botHandleMessage(from, 'menu_insumos', contactName, 'list_reply');
+  }
+  if (t === 'faq' || t.includes('pregunta') || t.includes('duda')) {
+    return botHandleMessage(from, 'menu_faq', contactName, 'list_reply');
+  }
+  if (t === '1' || t.includes('disponibilidad') || t.includes('disponible') || t.includes('precios') || t.includes('cuanto cuesta') || t.includes('cuánto cuesta') || t.includes('reservar')) {
+    return botHandleMessage(from, 'menu_disponibilidad', contactName, 'list_reply');
   }
 
   // Si esta esperando fechas O el texto tiene pinta de fechas, intentar NLU.
@@ -348,13 +368,8 @@ function botHandleMessage(from, text, contactName, kind) {
     }
   }
 
-  // Fallback
-  sendWhatsAppText(from,
-    '🤔 No estoy seguro de cómo ayudarte. Probá con:\n\n' +
-    '1️⃣  Ver disponibilidad y precios\n' +
-    '2️⃣  Cómo llegar\n' +
-    '3️⃣  Hablar con una persona'
-  );
+  // Fallback: cualquier mensaje no reconocido → menu interactivo amigable
+  _botSendMainMenu(from, contactName);
 }
 
 // ─── Reply helper: muestra disponibilidad con botones, o sugerencias ──
@@ -427,6 +442,118 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
     }
   }
   _saveConv(from, 'SHOWING_AVAILABILITY', { dates: dates, personas: personas, opciones: opciones.length }, contactName);
+}
+
+// ─── Menu principal interactivo (lista) ──────────────────────────
+function _botSendMainMenu(from, contactName) {
+  const firstName = ((contactName || '').toString().trim().split(/\s+/)[0]) || '';
+  const greeting  = firstName ? '¡Hola ' + firstName + '! 🌿' : '¡Hola! 🌿';
+  const body = greeting + '\n\nSoy el asistente de *Las Nubes*. ¿En qué te ayudamos?';
+  const sections = [
+    {
+      title: 'Reservar',
+      rows: [
+        { id: 'menu_disponibilidad', title: '📅 Disponibilidad', description: 'Ver fechas libres y precios' }
+      ]
+    },
+    {
+      title: 'Sobre Las Nubes',
+      rows: [
+        { id: 'menu_como_llegar',  title: '📍 Cómo llegar',  description: 'Dirección, Waze, Maps' },
+        { id: 'menu_actividades',  title: '🏞 Actividades',   description: 'Cascadas, playas, cerros' },
+        { id: 'menu_gastronomia',  title: '🍽 Gastronomía',   description: 'Restaurantes cerca' },
+        { id: 'menu_insumos',      title: '🛒 Insumos',       description: 'Tiendita y supermercados' }
+      ]
+    },
+    {
+      title: 'Ayuda',
+      rows: [
+        { id: 'menu_faq',    title: '❓ Preguntas frecuentes', description: 'Cocina, energía, check-in' },
+        { id: 'menu_humano', title: '🙋 Hablar con persona',  description: 'Atención del equipo' }
+      ]
+    }
+  ];
+  try {
+    sendWhatsAppList(from, body, sections, 'Ver opciones', null, 'Buenos Aires, Chamé · Panamá');
+  } catch(err) {
+    logDebugEntry('bot-menu-FAIL', { error: err.message });
+    sendWhatsAppText(from, body + '\n\nEscribime qué te interesa:\n📅 Disponibilidad · 📍 Cómo llegar · 🏞 Actividades · 🍽 Gastronomía · 🛒 Insumos · ❓ FAQ · 🙋 Persona');
+  }
+}
+
+function _botMenuComoLlegar(from) {
+  sendWhatsAppText(from,
+    '📍 *Cómo llegar a Las Nubes*\n\n' +
+    'Por la carretera Interamericana, entrá por el *Pío Pío de Bejuco* a la carretera Bejuco–Sorá. ' +
+    'Al llegar al pueblo de *Buenos Aires*, doblá a la derecha hacia *Chicá*. La cabaña queda a 100 metros.\n\n' +
+    '🚗 Lo más fácil: poné en *Waze "Aires de Chicá"* — te lleva directo al portón verde. ' +
+    'Cuando llegues, escribime o llamame para abrir y guiarte a la cabaña.\n\n' +
+    '🗺 Google Maps:\nhttps://maps.google.com/?q=8.639400,-79.945900\n\n' +
+    '🚦 Waze:\nhttps://waze.com/ul/hd1x1m46gs'
+  );
+}
+
+function _botMenuActividades(from) {
+  sendWhatsAppText(from,
+    '🏞 *Actividades cerca*\n\n' +
+    '• *Cascada Las Nubes* — sendero desde la cabaña 🥾\n' +
+    '• *Los Cajones de Chame* — cañón con pozas y saltos (10 min) 🏊\n' +
+    '• *Parque Nacional Altos de Campana* — primer parque de Panamá, miradores 🦜\n' +
+    '• *Cascadas Filipinas* — 7 cascadas encadenadas 💧\n' +
+    '• *Cascada Manglarito* — 35m de caída 💦\n' +
+    '• *Cascada Nativa* — acceso fácil, naturaleza solitaria\n' +
+    '• *Playa Gorgona* — tranquila, atardeceres (15 min) 🏖\n' +
+    '• *Coronado* — playa + restaurantes + comercios (20 min)\n\n' +
+    'Fotos, mapas y detalles:\nhttps://lasnubes.cloud#actividades'
+  );
+}
+
+function _botMenuGastronomia(from) {
+  sendWhatsAppText(from,
+    '🍽 *Gastronomía cerca*\n\n' +
+    'Cerca de las cabañas (5-15 min):\n' +
+    '• *Buenas Pizzas de Sorá* — masa fina, horno de leña 🍕\n' +
+    '• *Pío Pío de Bejuco* — entrada interamericana 🍗\n' +
+    '• *Restaurantes de Coronado* (20 min) — variedad: Las Bóvedas Fusión, Vista del Mar y más 🍴\n\n' +
+    'Direcciones, horarios y fotos:\nhttps://lasnubes.cloud#gastronomia'
+  );
+}
+
+function _botMenuInsumos(from) {
+  sendWhatsAppText(from,
+    '🛒 *Insumos y compras*\n\n' +
+    '🌿 *Tiendita Las Nubes* (te lo llevamos a la cabaña):\n' +
+    '• Kit de Fogata $10 (leña, cerillo, palillos, malvaviscos) 🔥\n' +
+    '• Bolsa de carbón $5\n' +
+    '• Repelente OFF Spray $8\n' +
+    '• Repelente Family Care toallitas $5\n' +
+    '• Kit pasta y cepillo $5\n' +
+    '• Toallas sanitarias $5\n\n' +
+    '🛍 *Supermercados cercanos*:\n' +
+    '• Tienda de conveniencia (5 min)\n' +
+    '• MiniSuper Buenos Precios (Bejuco)\n' +
+    '• El Rey, Machetazo, Super 99, Riba Smith (Coronado, 20 min)\n\n' +
+    'Más detalles:\nhttps://lasnubes.cloud#insumos'
+  );
+}
+
+function _botMenuFAQ(from) {
+  sendWhatsAppText(from,
+    '❓ *Preguntas frecuentes*\n\n' +
+    '*¿Tiene cocina equipada?*\n' +
+    'Sí, completa + BBQ. Incluye café, azúcar y especias básicas. Cooler grande (no nevera) — trae hielo y alimentos.\n\n' +
+    '*¿Cómo es la energía?*\n' +
+    '100% solar. Inversor para cargar celulares. Excelente señal de todas las operadoras.\n\n' +
+    '*¿Check-in y check-out?*\n' +
+    'Entrada: *2:00 pm* · Salida: *11:00 am*\n\n' +
+    '*¿Baño?*\n' +
+    'Jabón, papel y toallas incluidos. Fumigamos semanal — si sos sensible a mosquitos, trae repelente.\n\n' +
+    '*¿Privacidad?*\n' +
+    'Sí, toda la cabaña es de uso exclusivo de quienes reservan.\n\n' +
+    '*¿Capacidad?*\n' +
+    'Portal hasta 2 personas. Paseo y Puente hasta 4 (camas matrimoniales + auxiliar).\n\n' +
+    '¿Otra duda? Tocá *Hablar con persona* o escribime "3".'
+  );
 }
 
 // ─── Sprint 3: Booking flow ───────────────────────────────────────
