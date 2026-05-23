@@ -239,6 +239,7 @@ function botHandleMessage(from, text, contactName, kind) {
       _saveConv(from, 'AWAITING_DATES', conv.context, contactName);
       return;
     }
+    if (text === 'menu_he_llegado')   { _botMenuHeLlegado(from, contactName, conv); return; }
     if (text === 'menu_como_llegar')  { _botMenuComoLlegar(from);  _botSendMainMenu(from, contactName, false); _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
     if (text === 'menu_actividades')  { _botMenuActividades(from); _botSendMainMenu(from, contactName, false); _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
     if (text === 'menu_gastronomia')  { _botMenuGastronomia(from); _botSendMainMenu(from, contactName, false); _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
@@ -333,6 +334,9 @@ function botHandleMessage(from, text, contactName, kind) {
   }
   if (t.includes('gastrono') || t.includes('restaurant') || t.includes('comer') || t.includes('comida cerca')) {
     return botHandleMessage(from, 'menu_gastronomia', contactName, 'list_reply');
+  }
+  if (t.includes('he llegado') || t.includes('ya llegue') || t.includes('ya llegué') || t.includes('llegamos') || t.includes('estoy en el porton') || t.includes('estoy en el portón') || t.includes('abrir porton') || t.includes('abrir portón')) {
+    return botHandleMessage(from, 'menu_he_llegado', contactName, 'list_reply');
   }
   if (t.includes('hielo') || t.includes('carbon') || t.includes('carbón') || t.includes('tienda cercana') || t.includes('tienda de conv')) {
     return botHandleMessage(from, 'menu_tienda', contactName, 'list_reply');
@@ -472,9 +476,10 @@ function _botSendMainMenu(from, contactName, firstTime) {
   }
   const sections = [
     {
-      title: 'Reservar',
+      title: 'Reservas',
       rows: [
-        { id: 'menu_disponibilidad', title: '📅 Disponibilidad', description: 'Ver fechas libres y precios' }
+        { id: 'menu_disponibilidad', title: '📅 Disponibilidad', description: 'Ver fechas libres y precios' },
+        { id: 'menu_he_llegado',     title: '🚪 He llegado',     description: 'Estoy en el portón de Las Nubes' }
       ]
     },
     {
@@ -587,7 +592,89 @@ function _botMenuFAQ(from) {
   );
 }
 
-// ─── Sprint 3: Booking flow ───────────────────────────────────────
+// ─── Find reservation by client phone (for "He llegado") ────────
+function _botFindReservaByPhone(phone) {
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+  const today = _botToday();
+  const normalize = (t) => {
+    let d = String(t || '').replace(/\D/g, '');
+    if (d.indexOf('507') === 0 && d.length > 8) d = d.substring(3);
+    return d;
+  };
+  const target = normalize(phone);
+  if (!target) return null;
+  let best = null;
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    if (!r[0]) continue;
+    if ((r[20] || '').toString().toUpperCase() === 'CANCELADA') continue;
+    if (r[9] === 'Abierta') continue;
+    if (normalize(r[23]) !== target) continue;
+    const ci = r[4] instanceof Date ? Utilities.formatDate(r[4], BOT_TZ, 'yyyy-MM-dd') : (r[4] || '').toString().slice(0,10);
+    const co = r[5] instanceof Date ? Utilities.formatDate(r[5], BOT_TZ, 'yyyy-MM-dd') : (r[5] || '').toString().slice(0,10);
+    if (!ci || !co) continue;
+    // Aceptar si hoy esta en [checkin-1, checkout+1]
+    const dayBefore = _botAddDaysISO(ci, -1);
+    const dayAfter  = _botAddDaysISO(co, 1);
+    if (today >= dayBefore && today <= dayAfter) {
+      best = {
+        id: r[0], name: r[1], cabin: r[3],
+        checkin: ci, checkout: co,
+        persons: r[6], origin: r[9]
+      };
+    }
+  }
+  return best;
+}
+
+function _botMenuHeLlegado(from, contactName, conv) {
+  const reserva = _botFindReservaByPhone(from);
+  if (!reserva) {
+    sendWhatsAppText(from,
+      '🤔 No encuentro una reserva activa con este número para hoy.\n\n' +
+      'Si reservaste con otro número, escribime tu *nombre* o "agente" para que el equipo te ayude.'
+    );
+    return;
+  }
+  const cabin    = reserva.cabin;
+  const cabinName = BOT_CABIN_NAMES[cabin] || 'Las Nubes';
+  const firstName = ((reserva.name || contactName || '').toString().trim().split(/\s+/)[0]) || '';
+
+  let body = '🎉 ¡Bienvenidos a *Las Nubes*';
+  if (firstName) body += ', ' + firstName;
+  body += '!\n\nYa les abro el portón. Conducen recto y más adelante se van a encontrar con una *calle huella de concreto* — la suben y, cuando termine, toman la siguiente *calle a mano izquierda*.\n\n';
+
+  if (cabin === 'azul') {
+    body += 'Unos *25 metros más adelante* van a ver un *tanque de reserva de agua azul*. Estacionan *antes del tanque*, a los laterales de la calle.\n\n' +
+            'Al lado del tanque está la *escalera para bajar a la cabaña*. Tiene *techo blanco* y la van a reconocer por los portales con puertas antiguas y la silla colgante.\n\n' +
+            'Cualquier dificultad me escriben o llaman. ¡Quedo atento!';
+  } else {
+    body += 'Apenas doblen, *deténganse y me llaman* para indicarles dónde está la cabaña.\n\nQuedo atento.';
+  }
+  body += '\n\n📞 +507 6981-2266';
+
+  try {
+    sendWhatsAppCTAUrl(from, body, '💬 Escribir al equipo',
+      'https://wa.me/50769812266?text=' + encodeURIComponent('Hola, recién llegué a Las Nubes 🌿'));
+  } catch(err) {
+    sendWhatsAppText(from, body + '\n\n💬 WhatsApp: https://wa.me/50769812266');
+  }
+
+  // Notificar al admin para que abra el porton
+  const datesStr = _botFmtFecha(reserva.checkin) + ' → ' + _botFmtFecha(reserva.checkout);
+  const adminMsg =
+    '🚪 *ABRE EL PORTÓN* — llegó un cliente\n\n' +
+    '👤 ' + (reserva.name || contactName || '?') + '\n' +
+    '📱 +' + from + '\n' +
+    '🏡 ' + cabinName + '\n' +
+    '📅 ' + datesStr + '\n' +
+    '👥 ' + (reserva.persons || '?') + (reserva.persons === 1 ? ' persona' : ' personas') + '\n\n' +
+    '_Notificación automática: el cliente tocó "He llegado" en el bot._';
+  try { sendWhatsAppText('50769812266', adminMsg); } catch(_) {}
+
+  _saveConv(from, 'ARRIVED', Object.assign({}, conv.context, { reservaId: reserva.id }), contactName);
+}
 
 const BOT_ADMIN_PHONE = '50769812266';
 
