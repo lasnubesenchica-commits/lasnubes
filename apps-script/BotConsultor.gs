@@ -380,39 +380,29 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
     return;
   }
 
-  // Hay disponibilidad: mostrar con botones
-  const personasStr = personas + (personas === 1 ? ' persona' : ' personas');
+  // Hay disponibilidad: enviamos cotizacion completa (formato copyPromo) + botones
+  const cotizacion = _botCotizacionAvailability(checkin, checkout, opciones, personas);
+  sendWhatsAppText(from, cotizacion);
+
   if (opciones.length === 1) {
-    // Solo una cabana → CTA fuerte de confirmacion
     const op = opciones[0];
-    const body =
-      '✅ ¡Tenemos disponible *' + BOT_CABIN_NAMES[op.cabin] + '* para *' + fechasStr + '* (' + personasStr + ').\n\n' +
-      '💰 *Total: $' + op.precio.toFixed(2) + '*\n\n' +
-      'Ver fotos y detalles: https://lasnubes.cloud';
     try {
-      sendWhatsAppButtons(from, body, [
+      sendWhatsAppButtons(from, '¿Te interesa reservar *' + BOT_CABIN_NAMES[op.cabin] + '*?', [
         { id: 'pick_' + op.cabin, title: '✅ Reservar' },
         { id: 'try_dates',        title: '📅 Otras fechas' }
       ]);
     } catch(_) {
-      sendWhatsAppText(from, body + '\n\nEscribime "Reservar" para coordinar o "3" para hablar con una persona.');
+      sendWhatsAppText(from, '¿Te interesa? Escribime "Reservar" o "3" para hablar con una persona.');
     }
   } else {
-    // 2-3 cabanas → botones por cabana
-    const lines = opciones.map(op => '• *' + BOT_CABIN_NAMES[op.cabin] + '* — $' + op.precio.toFixed(2) + ' total');
-    const body =
-      '✅ Disponibilidad para *' + fechasStr + '* (' + personasStr + '):\n\n' +
-      lines.join('\n') + '\n\n' +
-      'Ver fotos y detalles: https://lasnubes.cloud\n\n' +
-      '¿Cuál te interesa?';
     const buttons = opciones.map(op => ({
       id: 'pick_' + op.cabin,
-      title: BOT_CABIN_NAMES[op.cabin].split(' ')[0]  // "Paseo" / "Portal" / "Puente"
+      title: BOT_CABIN_NAMES[op.cabin].split(' ')[0]
     }));
     try {
-      sendWhatsAppButtons(from, body, buttons);
+      sendWhatsAppButtons(from, '¿Cuál te interesa?', buttons);
     } catch(_) {
-      sendWhatsAppText(from, body + '\n\nEscribime el nombre de la cabaña (Paseo / Portal / Puente) o "3" para hablar con una persona.');
+      sendWhatsAppText(from, 'Escribime el nombre de la cabaña (Paseo / Portal / Puente) o "3" para hablar con una persona.');
     }
   }
   _saveConv(from, 'SHOWING_AVAILABILITY', { dates: dates, personas: personas, opciones: opciones.length }, contactName);
@@ -422,10 +412,125 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
 
 const BOT_ADMIN_PHONE = '50769812266';
 
+// Camas por cabana (igual que index.html / dashboard)
+const BOT_CABIN_CAMAS = {
+  verde: 'La cabaña cuenta con una cama matrimonial queen y un sofá-cama doble.',
+  azul:  'La cabaña solo cuenta con una cama matrimonial full. Puede traer colchón inflable.',
+  lila:  'La cabaña cuenta con una cama matrimonial queen y una cama auxiliar full.'
+};
+
 function _botPaymentInfo() {
   const custom = PropertiesService.getScriptProperties().getProperty('WA_PAYMENT_INFO');
   if (custom) return custom;
   return '*Yappy*: +507 6981-2266\n*ACH*: Banco General · Cuenta 03-91-XX-XXXXXX · A nombre de _[configurar en Script Properties]_';
+}
+
+// Secciones comunes (espejo de copyPromo en index.html / admin=1)
+function _botSeccionesComunes() {
+  return '*Cocina & Alimentación*\n' +
+    '• Cocina completamente equipada para preparar sus alimentos\n' +
+    '• Área de BBQ disponible\n' +
+    '• Incluye café, azúcar y especias básicas\n' +
+    '• Cooler grande disponible (no contamos con nevera — traer hielo y alimentos)\n' +
+    '• Menú sencillo de comida disponible bajo reserva previa\n' +
+    '\n' +
+    '*Energía & Conectividad*\n' +
+    '• Iluminación 100% solar mediante paneles fotovoltaicos\n' +
+    '• Inversor disponible para cargar celulares y dispositivos\n' +
+    '• Excelente señal de todas las operadoras\n' +
+    '\n' +
+    '*Baño & Comodidades*\n' +
+    '• Jabón de baño, papel higiénico y toallas limpias incluidos\n' +
+    '• Fumigación semanal — se recomienda traer repelente si eres sensible a mosquitos\n' +
+    '\n' +
+    '*Privacidad*\n' +
+    '• Todas las instalaciones son de uso exclusivo para quienes reservan\n' +
+    '\n' +
+    '*Para Reservar*\n' +
+    '• Pago disponible vía Yappy o ACH\n' +
+    '• Quedo atento si desea proceder para compartirle las formas de pago';
+}
+
+// Texto de cotizacion para 1+ cabanas disponibles (formato copyPromo)
+function _botCotizacionAvailability(checkin, checkout, opciones, personas) {
+  const nights      = Math.round((new Date(checkout + 'T12:00:00') - new Date(checkin + 'T12:00:00')) / 86400000);
+  const fechaIn     = _botFmtFecha(checkin);
+  const fechaOut    = _botFmtFecha(checkout);
+  const personasLbl = personas + (personas === 1 ? ' persona' : ' personas');
+
+  let intro;
+  if (nights === 1) intro = 'Tengo la noche del *' + fechaIn + '* disponible para reserva para ' + personasLbl + '.';
+  else              intro = 'Tengo las noches del *' + fechaIn + ' al ' + fechaOut + '* disponibles para reserva para ' + personasLbl + '.';
+
+  let cabinasBlock;
+  if (opciones.length === 1) {
+    const op = opciones[0];
+    cabinasBlock = '🏡 *Cabaña:* ' + BOT_CABIN_NAMES[op.cabin] + '\n';
+    if (personas >= 3) cabinasBlock += BOT_CABIN_CAMAS[op.cabin] + '\n';
+    cabinasBlock += '💰 *Total:* $' + op.precio.toFixed(2) + '\n';
+  } else {
+    cabinasBlock = '*Disponibles:*\n';
+    opciones.forEach(op => {
+      cabinasBlock += '• ' + BOT_CABIN_NAMES[op.cabin] + ' — $' + op.precio.toFixed(2);
+      if (BOT_CABIN_CAPACITY[op.cabin] > 2 && personas <= 2) {
+        cabinasBlock += ' (hasta ' + BOT_CABIN_CAPACITY[op.cabin] + ' personas)';
+      }
+      cabinasBlock += '\n';
+    });
+  }
+
+  return intro + '\n\n' + cabinasBlock +
+    '\nCheck in ' + fechaIn + ': 2:00 pm\nCheck out ' + fechaOut + ': 11:00 am\n' +
+    (nights > 1 ? (nights + 1) + ' días, ' + nights + ' noches\n' : '') +
+    '\n' + _botSeccionesComunes();
+}
+
+// Texto de confirmacion al cliente (espejo de _buildClienteShareText en dashboard)
+function _botConfirmacionText(reservation, publicUrl, referralCode, referralAmount) {
+  const meta = tipoEmailMeta(reservation);
+  const CABIN_NAMES_FULL = {
+    verde: 'Paseo por Las Nubes',
+    azul:  'Portal hacia Las Nubes',
+    lila:  'Puente entre Las Nubes'
+  };
+  const cabin = CABIN_NAMES_FULL[reservation.cabin] || reservation.cabinName || reservation.cabin || '';
+  const tipo  = meta.tipo;
+
+  let fechasLine;
+  if (tipo === 'pasatarde')      fechasLine = '📅 ' + meta.checkinFmt + ' · Pasatarde 12:30pm – 7pm';
+  else if (tipo === 'pasadia')   fechasLine = '📅 ' + meta.checkinFmt + ' · Pasadía 9am – 5pm';
+  else if (tipo === 'early')     fechasLine = '📅 ' + meta.checkinFmt + ' → ' + meta.checkoutFmt + ' · 1 noche (entra 9am)';
+  else if (tipo === 'late')      fechasLine = '📅 ' + meta.checkinFmt + ' → ' + meta.checkoutFmt + ' · 1 noche (sale 4pm)';
+  else                           fechasLine = '📅 ' + meta.checkinFmt + ' → ' + meta.checkoutFmt + ' · ' + meta.estanciaValue + (meta.estanciaValue === 1 ? ' noche' : ' noches');
+
+  const isPasadia = (tipo === 'pasatarde' || tipo === 'pasadia');
+  let checkinH = '2:00 pm', checkoutH = '11:00 am';
+  if (tipo === 'early') checkinH = '9:00 am';
+  if (tipo === 'late')  checkoutH = '4:00 pm';
+  if (reservation.checkoutExtendido && (tipo === 'noche' || tipo === 'early')) {
+    checkoutH = '12:30 pm (cortesía)';
+  }
+
+  let text = '¡Reserva confirmada! 🌿\n\n';
+  text += '👤 ' + (reservation.name || '') + '\n';
+  text += '🏡 ' + cabin + '\n';
+  text += fechasLine + '\n';
+  if (reservation.persons) text += '👥 ' + reservation.persons + (reservation.persons == 1 ? ' persona' : ' personas') + '\n';
+  if (!isPasadia) text += '\nCheck-in: ' + checkinH + '\nCheck-out: ' + checkoutH + '\n';
+  if (reservation.origin === 'Referido') text += '\n🤝 Tarifa pactada con descuento del Programa Amigos.\n';
+  if (publicUrl) text += '\nVer detalles e instrucciones:\n' + publicUrl;
+  if (referralCode) {
+    const amt = referralAmount || 20;
+    text += '\n\n🤝 *Programa Amigos de Las Nubes*';
+    text += '\nSi durante tu estadía disfrutas la experiencia y deseas compartirla, este es tu código personal: *' + referralCode + '*';
+    text += '\n\n• Si un amigo reserva con tu código recibe *$' + amt + ' off*.';
+    text += '\n• Y tú *$' + amt + '* para tu próxima visita.';
+    text += '\n(Aplica Dom–Jue, reservas directas)';
+  }
+  text += '\n\n📸 No olvides etiquetarnos en nuestras redes:';
+  text += '\nInstagram: https://www.instagram.com/las_nubes_de_chica/';
+  text += '\nTikTok: https://www.tiktok.com/@las_nubes_en_chica';
+  return text;
 }
 
 function _botStartBooking(from, contactName, conv, cabin) {
@@ -442,7 +547,7 @@ function _botStartBooking(from, contactName, conv, cabin) {
     '🎉 ¡Excelente! Reservando *' + BOT_CABIN_NAMES[cabin] + '* para *' + fechas + '* (' + personas + (personas === 1 ? ' persona' : ' personas') + ').\n\n' +
     '💰 *Total: $' + precio.toFixed(2) + '*\n\n' +
     '💳 *Métodos de pago*\n' + _botPaymentInfo() + '\n\n' +
-    'Una vez transferido, *enviame el comprobante como imagen* aquí mismo y lo procesamos.'
+    'Una vez transferido, *enviame el comprobante como imagen* aquí mismo y procesamos tu reserva.'
   );
   _saveConv(from, 'OFFERING_PAYMENT', Object.assign({}, conv.context, { cabin: cabin, precio: precio }), contactName);
 }
@@ -596,15 +701,32 @@ function _botAdminApprove(adminPhone, reservaId) {
         origin:   data[i][9],
         email:    data[i][21],
         telefono: data[i][23],
-        tipo:     data[i][24] || 'noche'
+        tipo:     data[i][24] || 'noche',
+        checkoutExtendido: data[i][28] === true || data[i][28] === 'TRUE' || data[i][28] === 'true' || data[i][28] === 1
       };
+      // Construir texto rico (espejo de _buildClienteShareText del dashboard) y enviar
+      // como session message — el bot acaba de tener interaccion con el cliente,
+      // estamos dentro de la ventana de 24h.
       try {
-        sendWAReservaConfirmada(reservation);
-        sendWhatsAppText(reservation.telefono, '🎉 ¡Tu reserva está confirmada! Te enviamos los detalles. Cualquier duda escribinos aquí.');
+        let publicUrl = '';
+        try { publicUrl = getPublicReservaUrl(reservation.id); } catch(_) {}
+        let referralCode = null;
+        try {
+          const isDormido = !(reservation.tipo === 'pasatarde' || reservation.tipo === 'pasadia');
+          if (reservation.email && isDormido) referralCode = getOrCreateReferralCode(reservation.email, reservation.telefono, reservation.name);
+        } catch(_) {}
+        const texto = _botConfirmacionText(reservation, publicUrl, referralCode, 20);
+        sendWhatsAppText(reservation.telefono, texto);
         sendWhatsAppText(adminPhone, '✅ Reserva ' + reservaId + ' aprobada y confirmación enviada al cliente.');
       } catch(err) {
         logDebugEntry('bot-approve-FAIL', { reservaId: reservaId, error: err.message });
-        sendWhatsAppText(adminPhone, '⚠️ Reserva ' + reservaId + ' marcada PAGA pero falló envío al cliente: ' + err.message);
+        // Fallback al template HSM (caso raro: session fuera de 24h)
+        try {
+          sendWAReservaConfirmada(reservation);
+          sendWhatsAppText(adminPhone, '✅ Reserva ' + reservaId + ' aprobada (template HSM enviado, session habia expirado).');
+        } catch(err2) {
+          sendWhatsAppText(adminPhone, '⚠️ Reserva ' + reservaId + ' marcada PAGA pero falló envío al cliente: ' + err.message);
+        }
       }
       return;
     }
