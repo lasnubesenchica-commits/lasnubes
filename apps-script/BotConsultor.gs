@@ -241,30 +241,6 @@ function botHandleMessage(from, text, contactName, kind) {
     return _replyAvailability(from, contactName, { context: conv.context, name: contactName }, dates.checkin, dates.checkout, n);
   }
 
-  // Combo Puente + Portal (5-6 personas): por ahora handoff al agente
-  if ((kind === 'button_reply' || kind === 'list_reply') && text === 'pick_combo') {
-    const dates    = conv.context && conv.context.dates;
-    const personas = (conv.context && conv.context.personas) || 5;
-    sendWhatsAppText(from,
-      '🎉 ¡Excelente! El combo *Puente + Portal* requiere coordinar con el equipo para ajustar detalles.\n\n' +
-      'Tocá el botón abajo para escribir directo a una persona y cerrar la reserva.'
-    );
-    try {
-      const fechas = dates ? _botFmtFecha(dates.checkin) + ' → ' + _botFmtFecha(dates.checkout) : '?';
-      sendWhatsAppCTAUrl(from,
-        'Te pasamos los métodos de pago y coordinamos la reserva del combo.',
-        '💬 Abrir WhatsApp',
-        'https://wa.me/50769812266?text=' + encodeURIComponent('Hola, quiero reservar el combo Puente + Portal para ' + personas + ' personas, ' + fechas)
-      );
-    } catch(_) {}
-    try {
-      sendWhatsAppText('50769812266',
-        '🔔 Combo solicitado via bot:\n👤 ' + (contactName || from) + '\n📱 +' + from + '\n📅 ' + (dates ? dates.checkin + ' → ' + dates.checkout : '?') + '\n👥 ' + personas + ' personas');
-    } catch(_) {}
-    _saveConv(from, 'PENDING_HUMAN_BOOKING', Object.assign({}, conv.context, { cabin: 'combo' }), contactName);
-    return;
-  }
-
   // Boton de seleccion de cabana → empieza booking flow
   if (kind === 'button_reply' && /^pick_(verde|azul|lila)$/.test(text)) {
     const elegida = text.split('_')[1];
@@ -480,31 +456,45 @@ function botHandleMessage(from, text, contactName, kind) {
 
 // ─── Reply helper: muestra disponibilidad con lista interactiva ──
 // 1-4 personas: muestra cabañas individuales libres del tamaño requerido.
-// 5-6 personas: muestra Combo (Puente + Portal) si ambas estan libres.
-// Al final: lista interactiva con cabañas a reservar + opcion para cambiar
-// cantidad de personas (2,3,4,5,6).
+// 5+ personas: deriva al equipo (combo no se cotiza automatico desde el bot).
+// Al final: lista interactiva con cabañas + opcion para cambiar personas (2,3,4).
 function _replyAvailability(from, contactName, conv, checkin, checkout, personas) {
   personas = personas || 2;
   const dates  = { checkin: checkin, checkout: checkout };
+
+  // 5+ personas → handoff al equipo (no cotizamos combo automatico desde el bot)
+  if (personas >= 5) {
+    const fechas = _botFmtFecha(checkin) + ' → ' + _botFmtFecha(checkout);
+    sendWhatsAppText(from,
+      '👥 Para grupos de *' + personas + ' personas* coordinamos directo con vos para ajustar combo de cabañas y detalles.\n\n' +
+      'Tocá el botón abajo para escribir al equipo y resolverlo en un mensaje.'
+    );
+    try {
+      sendWhatsAppCTAUrl(from,
+        'Te pasamos cotización y métodos de pago.',
+        '💬 Abrir WhatsApp',
+        'https://wa.me/50769812266?text=' + encodeURIComponent('Hola, quiero cotizar para ' + personas + ' personas, ' + fechas)
+      );
+    } catch(_) {}
+    try {
+      sendWhatsAppText('50769812266',
+        '🔔 Consulta de grupo grande via bot:\n👤 ' + (contactName || from) + '\n📱 +' + from + '\n📅 ' + fechas + '\n👥 ' + personas + ' personas');
+    } catch(_) {}
+    _saveConv(from, 'PENDING_HUMAN_BOOKING', { dates: dates, personas: personas }, contactName);
+    return;
+  }
+
   const avail  = _botCheckAvailability(checkin, checkout);
   const nights = Math.round((new Date(checkout + 'T12:00:00') - new Date(checkin + 'T12:00:00')) / 86400000);
   const fechasStr = _botFmtFecha(checkin) + ' → ' + _botFmtFecha(checkout) + ' · ' + nights + (nights === 1 ? ' noche' : ' noches');
-  const isCombo = personas >= 5;
 
-  let opciones = [];
-  if (isCombo) {
-    // Combo necesita ambas (Puente lila + Portal azul) libres.
-    if (avail.azul && avail.lila) {
-      opciones.push({ cabin: 'combo', precio: _botPrecioComboTotal(checkin, checkout, personas) });
-    }
-  } else {
-    ['azul', 'verde', 'lila'].forEach(c => {
-      if (!avail[c]) return;
-      if (BOT_CABIN_CAPACITY[c] < personas) return;
-      const precio = _botPrecioCabin(c, checkin, checkout, personas);
-      opciones.push({ cabin: c, precio: precio });
-    });
-  }
+  const opciones = [];
+  ['azul', 'verde', 'lila'].forEach(c => {
+    if (!avail[c]) return;
+    if (BOT_CABIN_CAPACITY[c] < personas) return;
+    const precio = _botPrecioCabin(c, checkin, checkout, personas);
+    opciones.push({ cabin: c, precio: precio });
+  });
 
   if (opciones.length === 0) {
     const alts = _botSuggestAlternatives(checkin, checkout, personas);
@@ -530,26 +520,20 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
     return;
   }
 
-  // Cotizacion (formato copyPromo)
-  const cotizacion = _botCotizacionAvailability(checkin, checkout, opciones, personas, isCombo);
+  // Cotizacion (formato copyPromo, sin combo)
+  const cotizacion = _botCotizacionAvailability(checkin, checkout, opciones, personas, false);
   sendWhatsAppText(from, cotizacion);
 
-  // Lista interactiva: reservar + cambiar personas
-  const reservarRows = opciones.map(op => {
-    if (op.cabin === 'combo') {
-      return { id: 'pick_combo', title: '🏡 Combo Puente+Portal', description: '$' + op.precio.toFixed(2) + ' total' };
-    }
-    return {
-      id: 'pick_' + op.cabin,
-      title: '🏡 ' + BOT_CABIN_NAMES[op.cabin].split(' ')[0],
-      description: '$' + op.precio.toFixed(2) + ' total'
-    };
-  });
-  const personaOpts = [2,3,4,5,6].filter(n => n !== personas);
+  // Lista interactiva: reservar + cambiar personas (2-4) + otras opciones
+  const reservarRows = opciones.map(op => ({
+    id: 'pick_' + op.cabin,
+    title: '🏡 ' + BOT_CABIN_NAMES[op.cabin].split(' ')[0],
+    description: '$' + op.precio.toFixed(2) + ' total'
+  }));
+  const personaOpts = [2, 3, 4].filter(n => n !== personas);
   const personasRows = personaOpts.map(n => ({
     id: 'persons_' + n,
-    title: '👥 ' + n + ' personas',
-    description: n >= 5 ? 'Combo: Puente + Portal' : null
+    title: '👥 ' + n + ' personas'
   }));
 
   const sections = [
@@ -561,7 +545,7 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
   sections.push({
     title: 'Otras opciones',
     rows: [
-      { id: 'try_dates',   title: '📅 Otras fechas',  description: 'Cambiar las fechas de la consulta' },
+      { id: 'try_dates',   title: '📅 Otras fechas',         description: 'Cambiar las fechas de la consulta' },
       { id: 'menu_agente', title: '🙋 Hablar con un agente', description: 'WhatsApp del equipo' }
     ]
   });
@@ -571,7 +555,7 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
   } catch(_) {
     sendWhatsAppText(from, 'Escribime el nombre de la cabaña (Paseo / Portal / Puente) o "agente" para hablar con una persona.');
   }
-  _saveConv(from, 'SHOWING_AVAILABILITY', { dates: dates, personas: personas, opciones: opciones.length, isCombo: isCombo }, contactName);
+  _saveConv(from, 'SHOWING_AVAILABILITY', { dates: dates, personas: personas, opciones: opciones.length }, contactName);
 }
 
 // ─── Menu principal interactivo (lista) ──────────────────────────
