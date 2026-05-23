@@ -239,13 +239,22 @@ function botHandleMessage(from, text, contactName, kind) {
       _saveConv(from, 'AWAITING_DATES', conv.context, contactName);
       return;
     }
-    if (text === 'menu_como_llegar')  { _botMenuComoLlegar(from);  _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
-    if (text === 'menu_actividades')  { _botMenuActividades(from); _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
-    if (text === 'menu_gastronomia')  { _botMenuGastronomia(from); _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
-    if (text === 'menu_insumos')      { _botMenuInsumos(from);     _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
-    if (text === 'menu_faq')          { _botMenuFAQ(from);         _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
-    if (text === 'menu_humano') {
-      sendWhatsAppText(from, '👋 Te derivo con una persona del equipo. En breve te respondemos.');
+    if (text === 'menu_como_llegar')  { _botMenuComoLlegar(from);  _botSendMainMenu(from, contactName, false); _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
+    if (text === 'menu_actividades')  { _botMenuActividades(from); _botSendMainMenu(from, contactName, false); _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
+    if (text === 'menu_gastronomia')  { _botMenuGastronomia(from); _botSendMainMenu(from, contactName, false); _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
+    if (text === 'menu_insumos')      { _botMenuInsumos(from);     _botSendMainMenu(from, contactName, false); _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
+    if (text === 'menu_tienda')       { _botMenuTienda(from);      _botSendMainMenu(from, contactName, false); _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
+    if (text === 'menu_faq')          { _botMenuFAQ(from);         _botSendMainMenu(from, contactName, false); _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
+    if (text === 'menu_agente' || text === 'menu_humano') {
+      try {
+        sendWhatsAppCTAUrl(from,
+          '🙋 ¡Claro! Tocá el botón abajo para escribirle directo a una persona de nuestro equipo por WhatsApp.',
+          'Abrir WhatsApp',
+          'https://wa.me/50769812266?text=' + encodeURIComponent('Hola, vengo del asistente de Las Nubes 🌿')
+        );
+      } catch(err) {
+        sendWhatsAppText(from, '🙋 Escribinos directo aquí:\nhttps://wa.me/50769812266');
+      }
       _saveConv(from, 'HUMAN_HANDOFF', conv.context, contactName);
       try { sendWhatsAppText('50769812266', '🔔 Handoff via menu: ' + (contactName || from) + ' (' + from + ')'); } catch(_) {}
       return;
@@ -308,12 +317,9 @@ function botHandleMessage(from, text, contactName, kind) {
     return _botCreatePreReservation(from, contactName, newCtx);
   }
 
-  // Handoff a humano (prioritario)
+  // Handoff a humano (prioritario) → CTA URL para abrir WhatsApp del equipo
   if (_isHumanRequest(text) || text.trim() === '3') {
-    sendWhatsAppText(from, '👋 Te derivo con una persona del equipo. En breve te respondemos. Si es urgente, llamanos al +507 6981-2266.');
-    _saveConv(from, 'HUMAN_HANDOFF', conv.context, contactName);
-    try { sendWhatsAppText('50769812266', '🔔 Handoff: ' + (contactName || from) + ' (' + from + ') escribió: "' + text.slice(0, 200) + '"'); } catch(_) {}
-    return;
+    return botHandleMessage(from, 'menu_agente', contactName, 'list_reply');
   }
 
   const t = (text || '').toLowerCase().trim();
@@ -327,6 +333,9 @@ function botHandleMessage(from, text, contactName, kind) {
   }
   if (t.includes('gastrono') || t.includes('restaurant') || t.includes('comer') || t.includes('comida cerca')) {
     return botHandleMessage(from, 'menu_gastronomia', contactName, 'list_reply');
+  }
+  if (t.includes('hielo') || t.includes('carbon') || t.includes('carbón') || t.includes('tienda cercana') || t.includes('tienda de conv')) {
+    return botHandleMessage(from, 'menu_tienda', contactName, 'list_reply');
   }
   if (t.includes('insumo') || t.includes('tiendita') || t.includes('supermercado') || t.includes('compr')) {
     return botHandleMessage(from, 'menu_insumos', contactName, 'list_reply');
@@ -445,10 +454,22 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
 }
 
 // ─── Menu principal interactivo (lista) ──────────────────────────
-function _botSendMainMenu(from, contactName) {
+// firstTime=true → muestra bienvenida elaborada. firstTime=false → solo "¿Necesitás algo más?"
+function _botSendMainMenu(from, contactName, firstTime) {
   const firstName = ((contactName || '').toString().trim().split(/\s+/)[0]) || '';
   const greeting  = firstName ? '¡Hola ' + firstName + '! 🌿' : '¡Hola! 🌿';
-  const body = greeting + '\n\nSoy el asistente de *Las Nubes*. ¿En qué te ayudamos?';
+  let body;
+  if (firstTime === false) {
+    body = '¿Necesitás algo más? Tocá *Ver opciones* abajo 👇';
+  } else {
+    body = greeting + '\n\n' +
+      'Soy el asistente virtual de *Las Nubes*. Te puedo ayudar a:\n\n' +
+      '✓ Consultar *disponibilidad y precios*\n' +
+      '✓ Ver *actividades, gastronomía y mercados* cerca\n' +
+      '✓ *Cómo llegar* y *preguntas frecuentes*\n' +
+      '✓ *Reservar* directo conmigo o derivarte con una persona\n\n' +
+      'Tocá *Ver opciones* abajo para empezar 👇';
+  }
   const sections = [
     {
       title: 'Reservar',
@@ -459,17 +480,18 @@ function _botSendMainMenu(from, contactName) {
     {
       title: 'Sobre Las Nubes',
       rows: [
-        { id: 'menu_como_llegar',  title: '📍 Cómo llegar',  description: 'Dirección, Waze, Maps' },
-        { id: 'menu_actividades',  title: '🏞 Actividades',   description: 'Cascadas, playas, cerros' },
-        { id: 'menu_gastronomia',  title: '🍽 Gastronomía',   description: 'Restaurantes cerca' },
-        { id: 'menu_insumos',      title: '🛒 Insumos',       description: 'Tiendita y supermercados' }
+        { id: 'menu_como_llegar',  title: '📍 Cómo llegar',     description: 'Dirección, Waze, Maps' },
+        { id: 'menu_actividades',  title: '🏞 Actividades',     description: 'Cascadas, playas, cerros' },
+        { id: 'menu_gastronomia',  title: '🍽 Gastronomía',     description: 'Restaurantes cerca' },
+        { id: 'menu_insumos',      title: '🛒 Insumos',         description: 'Tiendita y supermercados' },
+        { id: 'menu_tienda',       title: '🧊 Hielo y carbón',  description: 'Tienda a 5 min de la cabaña' }
       ]
     },
     {
       title: 'Ayuda',
       rows: [
-        { id: 'menu_faq',    title: '❓ Preguntas frecuentes', description: 'Cocina, energía, check-in' },
-        { id: 'menu_humano', title: '🙋 Hablar con persona',  description: 'Atención del equipo' }
+        { id: 'menu_faq',     title: '❓ Preguntas frecuentes', description: 'Cocina, energía, check-in' },
+        { id: 'menu_agente',  title: '🙋 Hablar con un agente', description: 'Abrir WhatsApp del equipo' }
       ]
     }
   ];
@@ -477,7 +499,7 @@ function _botSendMainMenu(from, contactName) {
     sendWhatsAppList(from, body, sections, 'Ver opciones', null, 'Buenos Aires, Chamé · Panamá');
   } catch(err) {
     logDebugEntry('bot-menu-FAIL', { error: err.message });
-    sendWhatsAppText(from, body + '\n\nEscribime qué te interesa:\n📅 Disponibilidad · 📍 Cómo llegar · 🏞 Actividades · 🍽 Gastronomía · 🛒 Insumos · ❓ FAQ · 🙋 Persona');
+    sendWhatsAppText(from, body + '\n\nEscribime qué te interesa:\n📅 Disponibilidad · 📍 Cómo llegar · 🏞 Actividades · 🍽 Gastronomía · 🛒 Insumos · 🧊 Hielo y carbón · ❓ FAQ · 🙋 Agente');
   }
 }
 
@@ -489,7 +511,16 @@ function _botMenuComoLlegar(from) {
     '🚗 Lo más fácil: poné en *Waze "Aires de Chicá"* — te lleva directo al portón verde. ' +
     'Cuando llegues, escribime o llamame para abrir y guiarte a la cabaña.\n\n' +
     '🗺 Google Maps:\nhttps://maps.google.com/?q=8.639400,-79.945900\n\n' +
-    '🚦 Waze:\nhttps://waze.com/ul/hd1x1m46gs'
+    '🚦 Waze (abre con navegación):\nhttps://waze.com/ul?ll=8.639400,-79.945900&navigate=yes'
+  );
+}
+
+function _botMenuTienda(from) {
+  sendWhatsAppText(from,
+    '🧊 *Tienda de conveniencia cercana*\n\n' +
+    'Contamos con una tienda a tan solo *5 minutos* de la cabaña. En ella podés encontrar:\n\n' +
+    '• Hielo\n• Carbón\n• Especias\n• Bebidas\n• Insumos básicos\n\n' +
+    '📍 Ubicación:\nhttps://maps.google.com/?q=8.631809,-79.944489'
   );
 }
 

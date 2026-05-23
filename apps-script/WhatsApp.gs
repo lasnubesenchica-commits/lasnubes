@@ -251,6 +251,59 @@ function fetchWhatsAppImage(imageId) {
 }
 
 /**
+ * Envia un mensaje interactivo de boton CTA URL: muestra un boton que
+ * al tocarlo abre la URL en el navegador (o WhatsApp si es wa.me).
+ *
+ * @param {string} toPhone
+ * @param {string} bodyText
+ * @param {string} displayText  texto del boton (max 20)
+ * @param {string} url          URL absoluta (https://...)
+ * @param {string} [headerText] opcional
+ * @param {string} [footerText] opcional
+ */
+function sendWhatsAppCTAUrl(toPhone, bodyText, displayText, url, headerText, footerText) {
+  const cfg = _waProps();
+  if (!cfg.token || !cfg.phoneId) throw new Error('WA: faltan credenciales');
+  const to = _waNormalizePhone(toPhone);
+  if (!to) throw new Error('WA: telefono invalido: ' + toPhone);
+
+  const interactive = {
+    type: 'cta_url',
+    body: { text: bodyText.slice(0, 1024) },
+    action: {
+      name: 'cta_url',
+      parameters: {
+        display_text: String(displayText).slice(0, 20),
+        url: url
+      }
+    }
+  };
+  if (headerText) interactive.header = { type: 'text', text: headerText.slice(0, 60) };
+  if (footerText) interactive.footer = { text: footerText.slice(0, 60) };
+
+  const apiUrl = 'https://graph.facebook.com/v21.0/' + cfg.phoneId + '/messages';
+  const res = UrlFetchApp.fetch(apiUrl, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify({
+      messaging_product: 'whatsapp',
+      to: to,
+      type: 'interactive',
+      interactive: interactive
+    }),
+    headers: { Authorization: 'Bearer ' + cfg.token },
+    muteHttpExceptions: true
+  });
+  const code = res.getResponseCode();
+  const text = res.getContentText();
+  let json;
+  try { json = JSON.parse(text); } catch(_) { json = { raw: text }; }
+  logDebugEntry('WA-send-cta', { to: to, code: code, ok: code >= 200 && code < 300, url: url, error: json.error || null });
+  if (code < 200 || code >= 300) throw new Error('WA cta send failed HTTP ' + code + ': ' + text.slice(0, 400));
+  return json;
+}
+
+/**
  * Envia un mensaje interactivo de lista (hasta 10 opciones agrupadas en
  * secciones). Mucho mejor UX que botones para menus con varias opciones.
  *
