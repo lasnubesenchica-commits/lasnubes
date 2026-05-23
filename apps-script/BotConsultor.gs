@@ -689,6 +689,11 @@ function _botAdminApprove(adminPhone, reservaId) {
     if (data[i][0] && data[i][0].toString() === reservaId) {
       const row = i + 1;
       sheet.getRange(row, 21).setValue('PAGA');
+      // Limpiar el marker de "pendiente revisión" en comentarios
+      const prevCmt = (data[i][22] || '').toString();
+      const newCmt  = prevCmt.replace(/🤖 Pre-reserva v[ií]a bot WhatsApp · pendiente revisi[oó]n\s*\.?\s*/i, '').trim();
+      const approvedTag = '✅ Aprobada vía bot WhatsApp · ' + Utilities.formatDate(new Date(), BOT_TZ, 'yyyy-MM-dd HH:mm');
+      sheet.getRange(row, 23).setValue(newCmt ? (newCmt + '\n' + approvedTag) : approvedTag);
       const reservation = {
         id:       data[i][0],
         name:     data[i][1],
@@ -741,6 +746,10 @@ function _botAdminReject(adminPhone, reservaId) {
     if (data[i][0] && data[i][0].toString() === reservaId) {
       const row = i + 1;
       sheet.getRange(row, 21).setValue('CANCELADA');
+      const prevCmt = (data[i][22] || '').toString();
+      const newCmt  = prevCmt.replace(/🤖 Pre-reserva v[ií]a bot WhatsApp · pendiente revisi[oó]n\s*\.?\s*/i, '').trim();
+      const rejectedTag = '❌ Rechazada vía bot WhatsApp · ' + Utilities.formatDate(new Date(), BOT_TZ, 'yyyy-MM-dd HH:mm');
+      sheet.getRange(row, 23).setValue(newCmt ? (newCmt + '\n' + rejectedTag) : rejectedTag);
       const clientPhone = data[i][23];
       sendWhatsAppText(adminPhone, '❌ Reserva ' + reservaId + ' rechazada y cancelada en el sheet.');
       try {

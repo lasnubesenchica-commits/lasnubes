@@ -101,6 +101,8 @@
   .disp-day.past           { opacity:0.38; }
   .disp-day .day-num       { font-size:14px; line-height:1; }
   .disp-day .day-initials  { font-size:9px; opacity:0.85; margin-top:2px; letter-spacing:0.03em; text-transform:uppercase; }
+  .disp-pending-mark { position:absolute; top:3px; right:4px; font-size:11px; opacity:0.55; line-height:1; pointer-events:none; }
+  .disp-day.occupied .disp-pending-mark { filter: drop-shadow(0 0 1px rgba(0,0,0,0.4)); }
 
 
   /* ── RESPONSIVE HEADER ──────────────────────────────────── */
@@ -3044,7 +3046,7 @@ function buildDispMonth(firstDay, cabinRes, today) {
     for (let cur = new Date(start); cur < end; cur.setDate(cur.getDate() + 1)) {
       const key = cur.toISOString().slice(0,10);
       const kind = getDayKind(r, key);
-      occupied[key] = { initials, id: r.id, origin: r.origin || 'Airbnb', isMaintenance, checkin: r.checkin, checkout: r.checkout, alerta: (r.origin === 'Airbnb' && r.alerta) ? r.alerta : '', tipo: r.tipo || 'noche', kind };
+      occupied[key] = { initials, id: r.id, origin: r.origin || 'Airbnb', isMaintenance, isPending: (r.estadoPago || '').toString().toUpperCase() === 'PENDIENTE', checkin: r.checkin, checkout: r.checkout, alerta: (r.origin === 'Airbnb' && r.alerta) ? r.alerta : '', tipo: r.tipo || 'noche', kind };
     }
   });
 
@@ -3088,6 +3090,7 @@ function buildDispMonth(firstDay, cabinRes, today) {
           + '<span class="day-num" style="font-size:12px;min-width:16px;">' + day + '</span>'
           + '<span class="day-initials">' + occ.initials + '</span>'
           + pasadiaCommentMarkHtml(occ)
+          + (occ.isPending ? '<span class="disp-pending-mark" title="Pendiente de aprobación / pago">⏰</span>' : '')
           + '</div>';
         day += span;
         continue;
@@ -3141,10 +3144,11 @@ function buildDispMonth(firstDay, cabinRes, today) {
     const titleAttr = (occ && occ.kind === 'courtesy')
       ? ' title="Bloqueo cortesía (' + (TIPO_LABEL[occ.tipo]||occ.tipo) + ')"'
       : '';
+    const pendingMark = (occ && occ.isPending) ? '<span class="disp-pending-mark" title="Pendiente de aprobación / pago">⏰</span>' : '';
     const inner = occ
       ? (occ.kind === 'courtesy'
-          ? '<span class="day-num">' + day + '</span>' + pasadiaCommentMarkHtml(occ)
-          : '<span class="day-num">' + day + '</span><span class="day-initials">' + occ.initials + '</span>' + pasadiaCommentMarkHtml(occ))
+          ? '<span class="day-num">' + day + '</span>' + pasadiaCommentMarkHtml(occ) + pendingMark
+          : '<span class="day-num">' + day + '</span><span class="day-initials">' + occ.initials + '</span>' + pasadiaCommentMarkHtml(occ) + pendingMark)
       : '<span class="day-num">' + day + '</span>';
 
     grid += '<div class="' + cls + '"' + titleAttr + ' ' + clickAttr + '>' + inner + '</div>';
