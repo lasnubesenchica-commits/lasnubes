@@ -227,6 +227,17 @@ function botHandleMessage(from, text, contactName, kind) {
     return _botAdminReject(from, text.replace('reject_', ''));
   }
 
+  // Boton "Cancelar" en OFFERING_PAYMENT — libera el estado
+  if ((kind === 'button_reply' && text === 'cancel_booking') ||
+      (conv.step === 'OFFERING_PAYMENT' && /^(cancela|cancelar|atras|atrás)\b/i.test((text || '').trim()))) {
+    sendWhatsAppText(from,
+      '👋 Listo, cancelamos esta reserva.\n\n' +
+      'Cuando quieras, escribime "1" para ver disponibilidad o "3" para hablar con una persona.'
+    );
+    _saveConv(from, 'INITIAL', {}, contactName);
+    return;
+  }
+
   // Boton "Sugerencia: usar esta fecha"
   if (kind === 'button_reply' && text.indexOf('alt_') === 0) {
     const newCheckin = text.replace('alt_', '');
@@ -307,12 +318,18 @@ function botHandleMessage(from, text, contactName, kind) {
     return;
   }
 
-  // Si esta esperando fechas O el texto tiene pinta de fechas, intentar NLU
+  // Si esta esperando fechas O el texto tiene pinta de fechas, intentar NLU.
+  // Si esta en medio de un booking (OFFERING_PAYMENT, AWAITING_EMAIL, AWAITING_NAME)
+  // y el cliente menciona nuevas fechas, reseteamos el flujo.
+  const midBooking = ['OFFERING_PAYMENT', 'AWAITING_VOUCHER_RETRY', 'AWAITING_EMAIL', 'AWAITING_NAME'].indexOf(conv.step) !== -1;
   if (conv.step === 'AWAITING_DATES' || _looksLikeDateQuery(text)) {
     const parsed = _parseDatesWithClaude(text, _botToday());
     if (parsed && parsed.checkin && parsed.checkout && parsed.confidence > 0.4) {
       const personas = parsed.persons || 2;
-      return _replyAvailability(from, contactName, conv, parsed.checkin, parsed.checkout, personas);
+      if (midBooking) {
+        sendWhatsAppText(from, '🔄 Veo que querés cambiar las fechas. Verifico disponibilidad para las nuevas...');
+      }
+      return _replyAvailability(from, contactName, { step: 'AWAITING_DATES', context: {}, name: contactName }, parsed.checkin, parsed.checkout, personas);
     }
     if (parsed && (!parsed.checkin || parsed.confidence <= 0.4)) {
       sendWhatsAppText(from, '🤔 No logré entender las fechas. ¿Podés escribirlas más claras?\n\nEjemplo: "del 5 al 8 de junio, 4 personas".');
@@ -557,12 +574,19 @@ function _botStartBooking(from, contactName, conv, cabin) {
   }
   const precio  = _botPrecioCabin(cabin, dates.checkin, dates.checkout, personas);
   const fechas  = _botFmtFecha(dates.checkin) + ' → ' + _botFmtFecha(dates.checkout);
-  sendWhatsAppText(from,
+  const body =
     '🎉 ¡Excelente! Reservando *' + BOT_CABIN_NAMES[cabin] + '* para *' + fechas + '* (' + personas + (personas === 1 ? ' persona' : ' personas') + ').\n\n' +
     '💰 *Total: $' + precio.toFixed(2) + '*\n\n' +
     _botPaymentInfo() + '\n\n' +
-    'Una vez transferido, *enviame el comprobante como imagen* por aquí mismo.'
-  );
+    'Una vez transferido, *enviame el comprobante como imagen* por aquí mismo.';
+  try {
+    sendWhatsAppButtons(from, body, [
+      { id: 'cancel_booking', title: '❌ Cancelar' },
+      { id: '3',              title: '🙋 Persona' }
+    ]);
+  } catch(_) {
+    sendWhatsAppText(from, body + '\n\nSi querés cancelar, escribime "cancelar". O "3" para hablar con una persona.');
+  }
   _saveConv(from, 'OFFERING_PAYMENT', Object.assign({}, conv.context, { cabin: cabin, precio: precio }), contactName);
 }
 
