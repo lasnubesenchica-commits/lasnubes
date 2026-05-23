@@ -290,6 +290,42 @@ function botHandleMessage(from, text, contactName, kind) {
     return _botHandleVoucherImage(from, text, contactName, conv);
   }
 
+  // He llegado: esperando nombre del titular para ubicar reserva
+  if (conv.step === 'AWAITING_ARRIVAL_NAME') {
+    const tName = (text || '').trim();
+    if (tName.length < 3) {
+      sendWhatsAppText(from, '🤔 Necesito el nombre completo para ubicar la reserva. Probá de nuevo o escribime "agente" para hablar con una persona.');
+      return;
+    }
+    const reservaByName = _botFindReservaByName(tName);
+    if (!reservaByName) {
+      sendWhatsAppText(from,
+        '😔 No encuentro una reserva activa a nombre de *' + tName + '* para hoy.\n\n' +
+        'Te derivo con una persona del equipo para resolverlo. Escribime "agente" si querés contactarla directo.'
+      );
+      try {
+        sendWhatsAppText('50769812266',
+          '⚠️ Cliente intentó "He llegado" sin match:\n' +
+          '📱 +' + from + '\n' +
+          '👤 ' + (contactName || '?') + '\n' +
+          'Dijo nombre: "' + tName + '"\n\n' +
+          'Verificar manualmente.'
+        );
+      } catch(_) {}
+      _saveConv(from, 'INITIAL', {}, contactName);
+      return;
+    }
+    // Encontrada: guardar el telefono en la reserva para futuras consultas
+    try {
+      const sheet = getOrCreateSheet();
+      sheet.getRange(reservaByName.row, 24).setValue(_safeCell(from));
+      logDebugEntry('bot-arrival-phone-update', { reservaId: reservaByName.id, telefono: from });
+    } catch(updateErr) {
+      logDebugEntry('bot-arrival-phone-update-FAIL', { error: updateErr.message });
+    }
+    return _botSendArrivalInstructions(from, contactName, conv, reservaByName);
+  }
+
   // Email step
   if (conv.step === 'AWAITING_EMAIL') {
     const email = (text || '').trim().toLowerCase();
@@ -630,13 +666,56 @@ function _botFindReservaByPhone(phone) {
 
 function _botMenuHeLlegado(from, contactName, conv) {
   const reserva = _botFindReservaByPhone(from);
-  if (!reserva) {
-    sendWhatsAppText(from,
-      '🤔 No encuentro una reserva activa con este número para hoy.\n\n' +
-      'Si reservaste con otro número, escribime tu *nombre* o "agente" para que el equipo te ayude.'
-    );
-    return;
+  if (reserva) {
+    return _botSendArrivalInstructions(from, contactName, conv, reserva);
   }
+  // No match por telefono → preguntar nombre del titular
+  sendWhatsAppText(from,
+    '🌿 Recibí tu mensaje.\n\n' +
+    'No encuentro una reserva activa con este número para hoy. Decime el *nombre completo del titular* de la reserva para ubicarla en el sistema.\n\n' +
+    'Si preferís hablar directo con una persona, escribime "agente".'
+  );
+  _saveConv(from, 'AWAITING_ARRIVAL_NAME', conv.context || {}, contactName);
+}
+
+// Busca reserva por nombre + ventana de fechas activa. Fuzzy match
+// (case-insensitive, sin acentos, substring en ambas direcciones).
+function _botFindReservaByName(name) {
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+  const today = _botToday();
+  const normalize = (s) => String(s || '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9 ]/g, '').trim();
+  const target = normalize(name);
+  if (!target || target.length < 3) return null;
+  let best = null;
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    if (!r[0]) continue;
+    if ((r[20] || '').toString().toUpperCase() === 'CANCELADA') continue;
+    if (r[9] === 'Abierta') continue;
+    const storedName = normalize(r[1]);
+    if (!storedName) continue;
+    if (!storedName.includes(target) && !target.includes(storedName)) continue;
+    const ci = r[4] instanceof Date ? Utilities.formatDate(r[4], BOT_TZ, 'yyyy-MM-dd') : (r[4] || '').toString().slice(0,10);
+    const co = r[5] instanceof Date ? Utilities.formatDate(r[5], BOT_TZ, 'yyyy-MM-dd') : (r[5] || '').toString().slice(0,10);
+    if (!ci || !co) continue;
+    const dayBefore = _botAddDaysISO(ci, -1);
+    const dayAfter  = _botAddDaysISO(co, 1);
+    if (today >= dayBefore && today <= dayAfter) {
+      best = {
+        row: i + 1,
+        id: r[0], name: r[1], cabin: r[3],
+        checkin: ci, checkout: co,
+        persons: r[6], origin: r[9]
+      };
+    }
+  }
+  return best;
+}
+
+function _botSendArrivalInstructions(from, contactName, conv, reserva) {
   const cabin    = reserva.cabin;
   const cabinName = BOT_CABIN_NAMES[cabin] || 'Las Nubes';
   const firstName = ((reserva.name || contactName || '').toString().trim().split(/\s+/)[0]) || '';
@@ -675,7 +754,7 @@ function _botMenuHeLlegado(from, contactName, conv) {
     '_Notificación automática: el cliente tocó "He llegado" en el bot._';
   try { sendWhatsAppText('50769812266', adminMsg); } catch(_) {}
 
-  _saveConv(from, 'ARRIVED', Object.assign({}, conv.context, { reservaId: reserva.id }), contactName);
+  _saveConv(from, 'ARRIVED', Object.assign({}, conv.context || {}, { reservaId: reserva.id }), contactName);
 }
 
 const BOT_ADMIN_PHONE = '50769812266';
