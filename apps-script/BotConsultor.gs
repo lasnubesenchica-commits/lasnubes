@@ -246,12 +246,16 @@ function botHandleMessage(from, text, contactName, kind) {
 
   // Email step
   if (conv.step === 'AWAITING_EMAIL') {
-    const email = (text || '').trim();
+    const email = (text || '').trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       sendWhatsAppText(from, '🤔 No parece un email válido. Por favor envíame algo como: nombre@gmail.com');
       return;
     }
     const newCtx = Object.assign({}, conv.context, { email: email });
+    // Si ya tenemos el nombre (del voucher OCR), saltar AWAITING_NAME y crear directamente
+    if (newCtx.name) {
+      return _botCreatePreReservation(from, contactName, newCtx);
+    }
     _saveConv(from, 'AWAITING_NAME', newCtx, contactName);
     sendWhatsAppText(from, '¡Perfecto! 🌿\n\nÚltimo paso: ¿cuál es tu *nombre completo*?');
     return;
@@ -426,7 +430,13 @@ function _botPaymentInfo() {
     // los guarda asi cuando los tipeas), o newlines reales si los pegas.
     return custom.replace(/\\n/g, '\n');
   }
-  return '*Yappy*: +507 6981-2266\n*ACH*: Banco General · Cuenta 03-91-XX-XXXXXX · A nombre de _[configurar en Script Properties WA_PAYMENT_INFO]_';
+  // Default: formato estandar de Las Nubes
+  return 'Puede realizar el pago a través de:\n\n' +
+    '*Yappy*\n69812266\nJoslyn Lopez\n\n' +
+    '*ACH*\nBanco General\nJoslyn Lopez\nCta de Ahorros\n04-99-99-863047-1\n\n' +
+    '*Colocar en la sección "Agregar Mensaje" del Yappy o descripción de la transferencia:*\n' +
+    '*Nombre Completo*\n*Email*\n*Celular*\n\n' +
+    'Quedo atento para proceder a cerrar el espacio de inmediato.';
 }
 
 // Secciones comunes (espejo de copyPromo en index.html / admin=1)
@@ -550,8 +560,8 @@ function _botStartBooking(from, contactName, conv, cabin) {
   sendWhatsAppText(from,
     '🎉 ¡Excelente! Reservando *' + BOT_CABIN_NAMES[cabin] + '* para *' + fechas + '* (' + personas + (personas === 1 ? ' persona' : ' personas') + ').\n\n' +
     '💰 *Total: $' + precio.toFixed(2) + '*\n\n' +
-    '💳 *Métodos de pago*\n' + _botPaymentInfo() + '\n\n' +
-    'Una vez transferido, *enviame el comprobante como imagen* aquí mismo y procesamos tu reserva.'
+    _botPaymentInfo() + '\n\n' +
+    'Una vez transferido, *enviame el comprobante como imagen* por aquí mismo.'
   );
   _saveConv(from, 'OFFERING_PAYMENT', Object.assign({}, conv.context, { cabin: cabin, precio: precio }), contactName);
 }
@@ -585,23 +595,42 @@ function _botHandleVoucherImage(from, imageId, contactName, conv) {
     return;
   }
   const monto = parseFloat(voucher.monto) || 0;
-  const expectedDeposit = (conv.context && conv.context.precio) ? (conv.context.precio * 0.5) : 0;
+  // Recuperar campos extraidos del campo "Mensaje" del voucher (si el cliente los coloco)
+  const extractedName  = voucher.nombreCompleto ? voucher.nombreCompleto.toString().trim() : '';
+  const extractedEmail = voucher.email ? voucher.email.toString().trim().toLowerCase() : '';
   const newCtx = Object.assign({}, conv.context, {
     voucher: {
       monto: monto,
       codTransferencia: voucher.codTransferencia,
       fechaPago: voucher.fechaPago || _botToday(),
       sender:   voucher.sender || ''
-    }
+    },
+    name:  extractedName  || (conv.context && conv.context.name)  || '',
+    email: extractedEmail || (conv.context && conv.context.email) || ''
   });
-  sendWhatsAppText(from,
-    '✅ ¡Comprobante recibido!\n\n' +
+
+  // Confirmar el voucher con datos extraidos
+  let confirmMsg = '✅ ¡Comprobante recibido!\n\n' +
     '*Remitente:* ' + (voucher.sender || '—') + '\n' +
     '*Monto:* $' + monto.toFixed(2) + '\n' +
-    '*Código:* ' + voucher.codTransferencia + '\n\n' +
-    'Para finalizar, ¿me podés enviar tu *email*?'
-  );
-  _saveConv(from, 'AWAITING_EMAIL', newCtx, contactName);
+    '*Código:* ' + voucher.codTransferencia;
+  if (extractedName)  confirmMsg += '\n*Nombre:* ' + extractedName;
+  if (extractedEmail) confirmMsg += '\n*Email:* ' + extractedEmail;
+
+  // Decidir proximos pasos segun que datos vienen en el voucher
+  if (newCtx.name && newCtx.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newCtx.email)) {
+    // Tenemos todo → crear pre-reserva directamente
+    sendWhatsAppText(from, confirmMsg);
+    return _botCreatePreReservation(from, contactName, newCtx);
+  }
+  if (!newCtx.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newCtx.email)) {
+    sendWhatsAppText(from, confirmMsg + '\n\nPara finalizar, ¿me podés enviar tu *email*?');
+    _saveConv(from, 'AWAITING_EMAIL', newCtx, contactName);
+    return;
+  }
+  // Tenemos email pero falta nombre
+  sendWhatsAppText(from, confirmMsg + '\n\n¿Cuál es tu *nombre completo*?');
+  _saveConv(from, 'AWAITING_NAME', newCtx, contactName);
 }
 
 function _botCreatePreReservation(from, contactName, ctx) {
