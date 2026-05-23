@@ -215,6 +215,42 @@ function testEnviarPlantillaConfirmacion() {
 }
 
 /**
+ * Descarga una imagen recibida en un webhook de WhatsApp.
+ * Meta entrega un id, hay que hacer 2 calls: 1) GET /{id} → URL temporal,
+ * 2) GET URL con el bearer token → binario.
+ *
+ * @param {string} imageId  id del media object (de msg.image.id)
+ * @return {?Object}        { base64, mimeType } o null si falla
+ */
+function fetchWhatsAppImage(imageId) {
+  const cfg = _waProps();
+  if (!cfg.token) return null;
+  const metaRes = UrlFetchApp.fetch('https://graph.facebook.com/v21.0/' + imageId, {
+    headers: { Authorization: 'Bearer ' + cfg.token },
+    muteHttpExceptions: true
+  });
+  let meta;
+  try { meta = JSON.parse(metaRes.getContentText()); } catch(_) { return null; }
+  if (!meta.url) {
+    logDebugEntry('WA-image-no-url', { imageId: imageId, raw: metaRes.getContentText().slice(0, 200) });
+    return null;
+  }
+  const imgRes = UrlFetchApp.fetch(meta.url, {
+    headers: { Authorization: 'Bearer ' + cfg.token },
+    muteHttpExceptions: true
+  });
+  if (imgRes.getResponseCode() !== 200) {
+    logDebugEntry('WA-image-fetch-FAIL', { imageId: imageId, code: imgRes.getResponseCode() });
+    return null;
+  }
+  const blob = imgRes.getBlob();
+  return {
+    base64:   Utilities.base64Encode(blob.getBytes()),
+    mimeType: meta.mime_type || blob.getContentType() || 'image/jpeg'
+  };
+}
+
+/**
  * Envia un mensaje interactivo con botones de respuesta rapida.
  * Max 3 botones, titulo max 20 chars.
  *
