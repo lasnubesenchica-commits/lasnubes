@@ -1620,6 +1620,20 @@ function doPost(e) {
     if (action === 'sendUpdateEmail')       return sendUpdateEmail(payload.reservation, payload.voucherBase64, payload.voucherMimeType);
     if (action === 'sendCheckinReminder')   return sendCheckinReminderEmail(payload.reservation);
 
+    // ── SEND WHATSAPP ─────────────────────────────────────────
+    if (action === 'sendWAConfirmacion') {
+      try {
+        const result = sendWAReservaConfirmada(payload.reservation);
+        return ContentService
+          .createTextOutput(JSON.stringify({ ok: true, result: result }))
+          .setMimeType(ContentService.MimeType.JSON);
+      } catch(waErr) {
+        return ContentService
+          .createTextOutput(JSON.stringify({ ok: false, error: waErr.message }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
     // ── SYNC PAGOS Y ESTADOS ──────────────────────────────────
     if (action === 'syncPayoutsYEstados') {
       try {

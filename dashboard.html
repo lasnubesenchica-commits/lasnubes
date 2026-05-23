@@ -2285,9 +2285,15 @@
     <div id="pricePreview" style="display:none;"></div>
     </div><!-- end modal-body -->
     <div class="modal-footer">
-      <div id="notificarWrap" style="display:none;align-items:center;gap:8px;margin-right:auto;">
-        <input type="checkbox" id="fNotificarActualizacion" style="width:16px;height:16px;cursor:pointer;">
-        <label for="fNotificarActualizacion" style="font-size:13px;color:var(--text-muted);cursor:pointer;user-select:none;">Notificar al huésped</label>
+      <div id="notificarWrap" style="display:none;align-items:center;gap:14px;margin-right:auto;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;">
+          <input type="checkbox" id="fNotificarActualizacion" style="width:16px;height:16px;cursor:pointer;">
+          <span style="font-size:13px;color:var(--text-muted);">📧 Email</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;">
+          <input type="checkbox" id="fNotificarWhatsApp" style="width:16px;height:16px;cursor:pointer;">
+          <span style="font-size:13px;color:var(--text-muted);">💬 WhatsApp</span>
+        </label>
       </div>
       <button class="btn btn-ghost" id="cancelReservationBtn" onclick="closeModal()">Cancelar</button>
       <button class="btn btn-ghost" id="modalWhatsAppBtn" style="display:none;font-size:13px;">💬 Enviar a WhatsApp</button>
@@ -4428,6 +4434,8 @@ function openModal(cabin, date) {
   const _ceNewEl = document.getElementById('fCheckoutExtendido');
   if (_ceNewEl) _ceNewEl.checked = false;
   document.getElementById('fNotificarActualizacion').checked = false;
+  const _waCkNew = document.getElementById('fNotificarWhatsApp');
+  if (_waCkNew) _waCkNew.checked = false;
   document.getElementById('notificarWrap').style.display = 'none';
   document.getElementById('fPromoTarifa').checked = false;
   // 110 si es viernes o sábado, 90 el resto
@@ -4988,6 +4996,7 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
 
   const comentarios = document.getElementById('fComentarios').value.trim();
   const notificar   = document.getElementById('fNotificarActualizacion').checked;
+  const notificarWA = !!(document.getElementById('fNotificarWhatsApp') || {}).checked;
   const tipo = (document.getElementById('fTipo') || {}).value || 'noche';
   const checkoutExtendido = !!(document.getElementById('fCheckoutExtendido') || {}).checked;
   const reservation = { id, name, email, telefono, pagador, cabin, checkin, checkout, persons, origin, deposit, amount,
@@ -5283,6 +5292,31 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
       showToast('📧 Email de confirmación enviado ✓');
     } catch(e) {
       console.warn('No se pudo enviar el email:', e);
+    }
+  }
+
+  // Enviar WhatsApp de confirmación.
+  // - Nueva reserva con telefono + origen Directa/Referido: auto-envia
+  //   (mismo patron que el email de confirmacion).
+  // - Edicion: solo si el admin marca el checkbox 💬 WhatsApp (opt-in resend).
+  const shouldSendWA = syncOk && telefono && (origin === 'Directa' || origin === 'Referido') &&
+    (!editId || notificarWA);
+  if (shouldSendWA) {
+    try {
+      const _waRes  = await fetch(SHEETS_API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'sendWAConfirmacion', reservation })
+      });
+      const _waData = await _waRes.json();
+      console.log('[wa] sendWAConfirmacion response', _waData);
+      if (_waData.ok) {
+        showToast('💬 WhatsApp de confirmación enviado ✓');
+      } else {
+        showToast('⚠ No se pudo enviar WhatsApp: ' + (_waData.error || 'error'));
+      }
+    } catch(e) {
+      console.warn('No se pudo enviar WhatsApp:', e);
+      showToast('⚠ Error de red enviando WhatsApp');
     }
   }
 
