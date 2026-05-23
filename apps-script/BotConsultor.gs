@@ -421,8 +421,12 @@ const BOT_CABIN_CAMAS = {
 
 function _botPaymentInfo() {
   const custom = PropertiesService.getScriptProperties().getProperty('WA_PAYMENT_INFO');
-  if (custom) return custom;
-  return '*Yappy*: +507 6981-2266\n*ACH*: Banco General · Cuenta 03-91-XX-XXXXXX · A nombre de _[configurar en Script Properties]_';
+  if (custom) {
+    // Soporta saltos de linea escritos como literal "\n" (Script Properties UI
+    // los guarda asi cuando los tipeas), o newlines reales si los pegas.
+    return custom.replace(/\\n/g, '\n');
+  }
+  return '*Yappy*: +507 6981-2266\n*ACH*: Banco General · Cuenta 03-91-XX-XXXXXX · A nombre de _[configurar en Script Properties WA_PAYMENT_INFO]_';
 }
 
 // Secciones comunes (espejo de copyPromo en index.html / admin=1)
