@@ -214,3 +214,56 @@ function testEnviarPlantillaConfirmacion() {
   return resultado;
 }
 
+/**
+ * Envia un mensaje interactivo con botones de respuesta rapida.
+ * Max 3 botones, titulo max 20 chars.
+ *
+ * @param {string} toPhone
+ * @param {string} bodyText    texto principal del mensaje
+ * @param {Array}  buttons     [{ id: 'btn_x', title: 'Texto corto' }, ...]
+ * @param {string} [headerText] opcional, hasta 60 chars
+ * @param {string} [footerText] opcional, hasta 60 chars
+ */
+function sendWhatsAppButtons(toPhone, bodyText, buttons, headerText, footerText) {
+  const cfg = _waProps();
+  if (!cfg.token || !cfg.phoneId) throw new Error('WA: faltan credenciales');
+  const to = _waNormalizePhone(toPhone);
+  if (!to) throw new Error('WA: telefono invalido: ' + toPhone);
+  if (!buttons || !buttons.length) throw new Error('WA: sin botones');
+
+  const interactive = {
+    type: 'button',
+    body: { text: bodyText.slice(0, 1024) },
+    action: {
+      buttons: buttons.slice(0, 3).map(b => ({
+        type: 'reply',
+        reply: { id: String(b.id).slice(0, 256), title: String(b.title).slice(0, 20) }
+      }))
+    }
+  };
+  if (headerText) interactive.header = { type: 'text', text: headerText.slice(0, 60) };
+  if (footerText) interactive.footer = { text: footerText.slice(0, 60) };
+
+  const url = 'https://graph.facebook.com/v21.0/' + cfg.phoneId + '/messages';
+  const payload = {
+    messaging_product: 'whatsapp',
+    to: to,
+    type: 'interactive',
+    interactive: interactive
+  };
+  const res = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
+    headers: { Authorization: 'Bearer ' + cfg.token },
+    muteHttpExceptions: true
+  });
+  const code = res.getResponseCode();
+  const text = res.getContentText();
+  let json;
+  try { json = JSON.parse(text); } catch(_) { json = { raw: text }; }
+  logDebugEntry('WA-send-buttons', { to: to, code: code, ok: code >= 200 && code < 300, buttons: buttons.map(b => b.id), error: json.error || null });
+  if (code < 200 || code >= 300) throw new Error('WA buttons send failed HTTP ' + code + ': ' + text.slice(0, 400));
+  return json;
+}
+

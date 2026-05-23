@@ -84,17 +84,30 @@ function handleWhatsAppWebhook(payload) {
 function processInboundMessage(msg, contactName) {
   const from = msg.from;
   const type = msg.type;
-  const text = type === 'text' && msg.text ? msg.text.body : '';
-  logDebugEntry('WA-inbound', { from: from, type: type, text: text.slice(0, 200), name: contactName, msgId: msg.id });
+  let text = '';
+  let kind = type;
+  if (type === 'text' && msg.text) {
+    text = msg.text.body || '';
+  } else if (type === 'interactive' && msg.interactive) {
+    const it = msg.interactive;
+    if (it.type === 'button_reply' && it.button_reply) {
+      text = it.button_reply.id || it.button_reply.title || '';
+      kind = 'button_reply';
+    } else if (it.type === 'list_reply' && it.list_reply) {
+      text = it.list_reply.id || it.list_reply.title || '';
+      kind = 'list_reply';
+    }
+  }
+  logDebugEntry('WA-inbound', { from: from, type: type, kind: kind, text: text.slice(0, 200), name: contactName, msgId: msg.id });
 
-  // Por ahora solo procesamos texto. Imagenes/voucher: Sprint 3.
-  if (type !== 'text') {
-    sendWhatsAppText(from, '🤔 Por ahora solo puedo procesar mensajes de texto. Escribime tu consulta directa o "3" para hablar con una persona.');
+  // Imagenes/audio: Sprint 3 manejara vouchers.
+  if (!text && type !== 'text' && type !== 'interactive') {
+    sendWhatsAppText(from, '🤔 Por ahora solo puedo procesar mensajes de texto y botones. Escribime tu consulta o "3" para hablar con una persona.');
     return;
   }
 
   try {
-    botHandleMessage(from, text, contactName);
+    botHandleMessage(from, text, contactName, kind);
   } catch(err) {
     logDebugEntry('bot-CRASH', { from: from, error: err.message, stack: err.stack ? String(err.stack).slice(0, 400) : '' });
     try { sendWhatsAppText(from, 'Algo salió mal de mi lado. Te derivo con una persona del equipo 🙏'); } catch(_) {}
