@@ -251,6 +251,66 @@ function fetchWhatsAppImage(imageId) {
 }
 
 /**
+ * Envia un mensaje interactivo de lista (hasta 10 opciones agrupadas en
+ * secciones). Mucho mejor UX que botones para menus con varias opciones.
+ *
+ * @param {string} toPhone
+ * @param {string} bodyText
+ * @param {Array}  sections    [{ title: 'Seccion', rows: [{ id, title, description? }] }]
+ * @param {string} buttonText  texto del boton que abre la lista (max 20)
+ * @param {string} [headerText] opcional, max 60
+ * @param {string} [footerText] opcional, max 60
+ */
+function sendWhatsAppList(toPhone, bodyText, sections, buttonText, headerText, footerText) {
+  const cfg = _waProps();
+  if (!cfg.token || !cfg.phoneId) throw new Error('WA: faltan credenciales');
+  const to = _waNormalizePhone(toPhone);
+  if (!to) throw new Error('WA: telefono invalido: ' + toPhone);
+
+  const interactive = {
+    type: 'list',
+    body: { text: bodyText.slice(0, 1024) },
+    action: {
+      button: (buttonText || 'Ver opciones').slice(0, 20),
+      sections: (sections || []).map(s => ({
+        title: (s.title || '').toString().slice(0, 24),
+        rows: (s.rows || []).slice(0, 10).map(r => {
+          const row = {
+            id: String(r.id).slice(0, 200),
+            title: String(r.title).slice(0, 24)
+          };
+          if (r.description) row.description = String(r.description).slice(0, 72);
+          return row;
+        })
+      }))
+    }
+  };
+  if (headerText) interactive.header = { type: 'text', text: headerText.slice(0, 60) };
+  if (footerText) interactive.footer = { text: footerText.slice(0, 60) };
+
+  const url = 'https://graph.facebook.com/v21.0/' + cfg.phoneId + '/messages';
+  const res = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify({
+      messaging_product: 'whatsapp',
+      to: to,
+      type: 'interactive',
+      interactive: interactive
+    }),
+    headers: { Authorization: 'Bearer ' + cfg.token },
+    muteHttpExceptions: true
+  });
+  const code = res.getResponseCode();
+  const text = res.getContentText();
+  let json;
+  try { json = JSON.parse(text); } catch(_) { json = { raw: text }; }
+  logDebugEntry('WA-send-list', { to: to, code: code, ok: code >= 200 && code < 300, error: json.error || null });
+  if (code < 200 || code >= 300) throw new Error('WA list send failed HTTP ' + code + ': ' + text.slice(0, 400));
+  return json;
+}
+
+/**
  * Envia un mensaje interactivo con botones de respuesta rapida.
  * Max 3 botones, titulo max 20 chars.
  *
