@@ -663,8 +663,10 @@ function _botMenuHeLlegado(from, contactName, conv) {
 
   // Notificar al admin para que abra el porton
   const datesStr = _botFmtFecha(reserva.checkin) + ' → ' + _botFmtFecha(reserva.checkout);
+  const gatePhone = PropertiesService.getScriptProperties().getProperty('WA_GATE_PHONE') || '+507 6777-5630';
   const adminMsg =
     '🚪 *ABRE EL PORTÓN* — llegó un cliente\n\n' +
+    '📞 Llamar: ' + gatePhone + '\n\n' +
     '👤 ' + (reserva.name || contactName || '?') + '\n' +
     '📱 +' + from + '\n' +
     '🏡 ' + cabinName + '\n' +
