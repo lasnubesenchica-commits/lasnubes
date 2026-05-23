@@ -78,9 +78,8 @@ function handleWhatsAppWebhook(payload) {
 }
 
 /**
- * Despacha un mensaje inbound al bot.
- * Sprint 1: solo loguea + responde con menu de saludo.
- * Sprints futuros: state machine, NLU, etc.
+ * Despacha un mensaje inbound al bot consultor (BotConsultor.gs).
+ * El bot maneja state machine, NLU de fechas, availability y handoff.
  */
 function processInboundMessage(msg, contactName) {
   const from = msg.from;
@@ -88,23 +87,16 @@ function processInboundMessage(msg, contactName) {
   const text = type === 'text' && msg.text ? msg.text.body : '';
   logDebugEntry('WA-inbound', { from: from, type: type, text: text.slice(0, 200), name: contactName, msgId: msg.id });
 
-  // Sprint 1: auto-reply a cualquier inbound con menu de saludo.
-  // Solo respondemos a mensajes de texto por ahora.
-  if (type !== 'text') return;
-
-  const firstName = (contactName || '').toString().trim().split(/\s+/)[0] || '';
-  const greeting = firstName ? '¡Hola ' + firstName + '! 🌿' : '¡Hola! 🌿';
-  const reply =
-    greeting + '\n\n' +
-    'Soy el asistente de *Las Nubes*. Te puedo ayudar con:\n\n' +
-    '1️⃣  Disponibilidad y precios\n' +
-    '2️⃣  Cómo llegar\n' +
-    '3️⃣  Hablar con una persona\n\n' +
-    'Escribime el número de la opción o tu consulta directa.';
+  // Por ahora solo procesamos texto. Imagenes/voucher: Sprint 3.
+  if (type !== 'text') {
+    sendWhatsAppText(from, '🤔 Por ahora solo puedo procesar mensajes de texto. Escribime tu consulta directa o "3" para hablar con una persona.');
+    return;
+  }
 
   try {
-    sendWhatsAppText(from, reply);
-  } catch(sendErr) {
-    logDebugEntry('WA-reply-FAIL', { from: from, error: sendErr.message });
+    botHandleMessage(from, text, contactName);
+  } catch(err) {
+    logDebugEntry('bot-CRASH', { from: from, error: err.message, stack: err.stack ? String(err.stack).slice(0, 400) : '' });
+    try { sendWhatsAppText(from, 'Algo salió mal de mi lado. Te derivo con una persona del equipo 🙏'); } catch(_) {}
   }
 }
