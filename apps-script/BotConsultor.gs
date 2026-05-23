@@ -213,24 +213,18 @@ function botHandleMessage(from, text, contactName, kind) {
     return;
   }
 
-  // Boton de seleccion de cabana / confirmacion rapida
+  // Boton de seleccion de cabana → empieza booking flow
   if (kind === 'button_reply' && /^pick_(verde|azul|lila)$/.test(text)) {
     const elegida = text.split('_')[1];
-    const dates    = conv.context && conv.context.dates;
-    const personas = conv.context && conv.context.personas;
-    sendWhatsAppText(from,
-      '🎉 ¡Excelente elección! Te derivo con una persona para coordinar el pago y confirmar tu reserva en *' + BOT_CABIN_NAMES[elegida] + '*.'
-    );
-    try {
-      sendWhatsAppText('50769812266',
-        '📅 Nueva consulta de reserva:\n\n' +
-        'Cliente: ' + (contactName || from) + ' (' + from + ')\n' +
-        'Cabaña: ' + BOT_CABIN_NAMES[elegida] + '\n' +
-        'Fechas: ' + (dates ? dates.checkin + ' → ' + dates.checkout : '?') + '\n' +
-        'Personas: ' + (personas || '?'));
-    } catch(_) {}
-    _saveConv(from, 'PENDING_HUMAN_BOOKING', Object.assign({}, conv.context, { cabin: elegida }), contactName);
-    return;
+    return _botStartBooking(from, contactName, conv, elegida);
+  }
+
+  // Boton de admin aprobar/rechazar pre-reserva
+  if (kind === 'button_reply' && text.indexOf('approve_') === 0) {
+    return _botAdminApprove(from, text.replace('approve_', ''));
+  }
+  if (kind === 'button_reply' && text.indexOf('reject_') === 0) {
+    return _botAdminReject(from, text.replace('reject_', ''));
   }
 
   // Boton "Sugerencia: usar esta fecha"
@@ -243,6 +237,35 @@ function botHandleMessage(from, text, contactName, kind) {
       : 1;
     const newCheckout = _botAddDaysISO(newCheckin, nights);
     return _replyAvailability(from, contactName, conv, newCheckin, newCheckout, personas);
+  }
+
+  // Mensaje de imagen → voucher (solo si esta en OFFERING_PAYMENT)
+  if (kind === 'image') {
+    return _botHandleVoucherImage(from, text, contactName, conv);
+  }
+
+  // Email step
+  if (conv.step === 'AWAITING_EMAIL') {
+    const email = (text || '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      sendWhatsAppText(from, '🤔 No parece un email válido. Por favor envíame algo como: nombre@gmail.com');
+      return;
+    }
+    const newCtx = Object.assign({}, conv.context, { email: email });
+    _saveConv(from, 'AWAITING_NAME', newCtx, contactName);
+    sendWhatsAppText(from, '¡Perfecto! 🌿\n\nÚltimo paso: ¿cuál es tu *nombre completo*?');
+    return;
+  }
+
+  // Name step → create pre-reservation
+  if (conv.step === 'AWAITING_NAME') {
+    const fullName = (text || '').trim();
+    if (fullName.length < 3 || !/^[a-zA-ZáéíóúñÁÉÍÓÚÑ\s.'\-]+$/.test(fullName)) {
+      sendWhatsAppText(from, '🤔 Por favor envíame tu nombre completo (solo letras, sin números).');
+      return;
+    }
+    const newCtx = Object.assign({}, conv.context, { name: fullName });
+    return _botCreatePreReservation(from, contactName, newCtx);
   }
 
   // Handoff a humano (prioritario)
@@ -393,4 +416,216 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
     }
   }
   _saveConv(from, 'SHOWING_AVAILABILITY', { dates: dates, personas: personas, opciones: opciones.length }, contactName);
+}
+
+// ─── Sprint 3: Booking flow ───────────────────────────────────────
+
+const BOT_ADMIN_PHONE = '50769812266';
+
+function _botPaymentInfo() {
+  const custom = PropertiesService.getScriptProperties().getProperty('WA_PAYMENT_INFO');
+  if (custom) return custom;
+  return '*Yappy*: +507 6981-2266\n*ACH*: Banco General · Cuenta 03-91-XX-XXXXXX · A nombre de _[configurar en Script Properties]_';
+}
+
+function _botStartBooking(from, contactName, conv, cabin) {
+  const dates    = conv.context && conv.context.dates;
+  const personas = (conv.context && conv.context.personas) || 2;
+  if (!dates) {
+    sendWhatsAppText(from, '🤔 Perdí el contexto de las fechas. ¿Podés decirme de nuevo cuándo querés reservar?');
+    _saveConv(from, 'AWAITING_DATES', conv.context, contactName);
+    return;
+  }
+  const precio  = _botPrecioCabin(cabin, dates.checkin, dates.checkout, personas);
+  const fechas  = _botFmtFecha(dates.checkin) + ' → ' + _botFmtFecha(dates.checkout);
+  sendWhatsAppText(from,
+    '🎉 ¡Excelente! Reservando *' + BOT_CABIN_NAMES[cabin] + '* para *' + fechas + '* (' + personas + (personas === 1 ? ' persona' : ' personas') + ').\n\n' +
+    '💰 *Total: $' + precio.toFixed(2) + '*\n\n' +
+    '💳 *Métodos de pago*\n' + _botPaymentInfo() + '\n\n' +
+    'Una vez transferido, *enviame el comprobante como imagen* aquí mismo y lo procesamos.'
+  );
+  _saveConv(from, 'OFFERING_PAYMENT', Object.assign({}, conv.context, { cabin: cabin, precio: precio }), contactName);
+}
+
+function _botHandleVoucherImage(from, imageId, contactName, conv) {
+  if (conv.step !== 'OFFERING_PAYMENT' && conv.step !== 'AWAITING_VOUCHER_RETRY') {
+    sendWhatsAppText(from, '📷 Recibí tu imagen, pero no estamos en una reserva activa. Si querés reservar, escribime "1" o "disponibilidad".');
+    return;
+  }
+  sendWhatsAppText(from, '⏳ Procesando tu comprobante...');
+  const img = fetchWhatsAppImage(imageId);
+  if (!img) {
+    sendWhatsAppText(from, '⚠️ No pude descargar tu imagen. Probá enviarla de nuevo o escribime "3" para hablar con una persona.');
+    return;
+  }
+  let voucher;
+  try {
+    const out = parseVoucherWithClaude(img.base64, img.mimeType);
+    voucher = JSON.parse(out.getContent());
+  } catch(err) {
+    logDebugEntry('bot-voucher-OCR-CRASH', { error: err.message });
+    sendWhatsAppText(from, '⚠️ No pude leer el voucher. ¿Podés enviarlo más claro o escribime "3" para una persona?');
+    return;
+  }
+  if (!voucher || !voucher.ok || !voucher.codTransferencia) {
+    sendWhatsAppText(from,
+      '⚠️ No pude leer los datos del voucher. Asegurate que la imagen sea clara y tenga:\n\n' +
+      '• Monto\n• Código/referencia\n• Fecha\n\nReenviame la imagen o escribime "3" para una persona.'
+    );
+    _saveConv(from, 'AWAITING_VOUCHER_RETRY', conv.context, contactName);
+    return;
+  }
+  const monto = parseFloat(voucher.monto) || 0;
+  const expectedDeposit = (conv.context && conv.context.precio) ? (conv.context.precio * 0.5) : 0;
+  const newCtx = Object.assign({}, conv.context, {
+    voucher: {
+      monto: monto,
+      codTransferencia: voucher.codTransferencia,
+      fechaPago: voucher.fechaPago || _botToday(),
+      sender:   voucher.sender || ''
+    }
+  });
+  sendWhatsAppText(from,
+    '✅ ¡Comprobante recibido!\n\n' +
+    '*Remitente:* ' + (voucher.sender || '—') + '\n' +
+    '*Monto:* $' + monto.toFixed(2) + '\n' +
+    '*Código:* ' + voucher.codTransferencia + '\n\n' +
+    'Para finalizar, ¿me podés enviar tu *email*?'
+  );
+  _saveConv(from, 'AWAITING_EMAIL', newCtx, contactName);
+}
+
+function _botCreatePreReservation(from, contactName, ctx) {
+  const dates    = ctx.dates;
+  const cabin    = ctx.cabin;
+  const personas = ctx.personas || 2;
+  const email    = ctx.email;
+  const fullName = ctx.name;
+  const voucher  = ctx.voucher || {};
+  const precio   = ctx.precio || _botPrecioCabin(cabin, dates.checkin, dates.checkout, personas);
+  const id       = Date.now().toString();
+  const today    = _botToday();
+  const CABIN_NAMES = {
+    verde: 'Paseo por Las Nubes',
+    azul:  'Portal hacia Las Nubes',
+    lila:  'Puente entre Las Nubes'
+  };
+
+  try {
+    const sheet = getOrCreateSheet();
+    sheet.appendRow([
+      id,
+      _safeCell(fullName),
+      CABIN_NAMES[cabin] || cabin,
+      cabin,
+      dates.checkin,
+      dates.checkout,
+      personas,
+      precio,
+      voucher.monto || 0,
+      'Directa',
+      id,
+      0,                       // serviceFee
+      precio,                  // neto
+      '',                      // alerta
+      _safeCell(fullName),     // pagador
+      today,                   // fechaReserva
+      '',                      // fechaPago
+      0,                       // montoPagado
+      _safeCell(voucher.codTransferencia || ''),
+      voucher.monto ? '$' + voucher.monto.toFixed(2) : '',
+      'PENDIENTE',             // estadoPago → admin debe aprobar
+      _safeCell(email),
+      _safeCell('🤖 Pre-reserva vía bot WhatsApp · pendiente revisión'),
+      _safeCell(from),
+      'noche'                  // tipo
+    ]);
+    logDebugEntry('bot-prereserva-OK', { id: id, name: fullName, cabin: cabin, from: from });
+  } catch(err) {
+    logDebugEntry('bot-prereserva-FAIL', { error: err.message, stack: err.stack ? String(err.stack).slice(0, 400) : '' });
+    sendWhatsAppText(from, '⚠️ Hubo un problema al registrar tu reserva. Te derivo con una persona del equipo.');
+    try { sendWhatsAppText(BOT_ADMIN_PHONE, '⚠️ Bot falló al crear pre-reserva de ' + (contactName || from) + ': ' + err.message); } catch(_) {}
+    return;
+  }
+
+  sendWhatsAppText(from,
+    '🎉 ¡Pre-reserva creada!\n\n' +
+    'Estamos revisando los datos. En breve te confirmamos tu reserva. ¡Gracias!'
+  );
+
+  const fechas = _botFmtFecha(dates.checkin) + ' → ' + _botFmtFecha(dates.checkout);
+  const adminMsg =
+    '📋 *Nueva pre-reserva via bot*\n\n' +
+    '👤 ' + fullName + '\n' +
+    '📧 ' + email + '\n' +
+    '📱 ' + from + '\n\n' +
+    '🏡 ' + (CABIN_NAMES[cabin] || cabin) + '\n' +
+    '📅 ' + fechas + '\n' +
+    '👥 ' + personas + (personas === 1 ? ' persona' : ' personas') + '\n' +
+    '💰 Total: $' + precio.toFixed(2) + '\n\n' +
+    '💳 Voucher: $' + (voucher.monto || 0).toFixed(2) + ' (' + (voucher.sender || '?') + ')\n' +
+    '#️⃣ Código: ' + (voucher.codTransferencia || '?');
+  try {
+    sendWhatsAppButtons(BOT_ADMIN_PHONE, adminMsg, [
+      { id: 'approve_' + id, title: '✅ Aprobar' },
+      { id: 'reject_'  + id, title: '❌ Rechazar' }
+    ]);
+  } catch(_) {
+    sendWhatsAppText(BOT_ADMIN_PHONE, adminMsg + '\n\nResponder "approve_' + id + '" o "reject_' + id + '" para confirmar.');
+  }
+
+  _saveConv(from, 'PENDING_REVIEW', Object.assign({}, ctx, { reservaId: id }), contactName);
+}
+
+function _botAdminApprove(adminPhone, reservaId) {
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] && data[i][0].toString() === reservaId) {
+      const row = i + 1;
+      sheet.getRange(row, 21).setValue('PAGA');
+      const reservation = {
+        id:       data[i][0],
+        name:     data[i][1],
+        cabin:    data[i][3],
+        checkin:  data[i][4] instanceof Date ? Utilities.formatDate(data[i][4], BOT_TZ, 'yyyy-MM-dd') : data[i][4],
+        checkout: data[i][5] instanceof Date ? Utilities.formatDate(data[i][5], BOT_TZ, 'yyyy-MM-dd') : data[i][5],
+        persons:  data[i][6],
+        amount:   data[i][7],
+        deposit:  data[i][8],
+        origin:   data[i][9],
+        email:    data[i][21],
+        telefono: data[i][23],
+        tipo:     data[i][24] || 'noche'
+      };
+      try {
+        sendWAReservaConfirmada(reservation);
+        sendWhatsAppText(reservation.telefono, '🎉 ¡Tu reserva está confirmada! Te enviamos los detalles. Cualquier duda escribinos aquí.');
+        sendWhatsAppText(adminPhone, '✅ Reserva ' + reservaId + ' aprobada y confirmación enviada al cliente.');
+      } catch(err) {
+        logDebugEntry('bot-approve-FAIL', { reservaId: reservaId, error: err.message });
+        sendWhatsAppText(adminPhone, '⚠️ Reserva ' + reservaId + ' marcada PAGA pero falló envío al cliente: ' + err.message);
+      }
+      return;
+    }
+  }
+  sendWhatsAppText(adminPhone, '⚠️ No encontré la reserva ' + reservaId);
+}
+
+function _botAdminReject(adminPhone, reservaId) {
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] && data[i][0].toString() === reservaId) {
+      const row = i + 1;
+      sheet.getRange(row, 21).setValue('CANCELADA');
+      const clientPhone = data[i][23];
+      sendWhatsAppText(adminPhone, '❌ Reserva ' + reservaId + ' rechazada y cancelada en el sheet.');
+      try {
+        sendWhatsAppText(clientPhone, '😔 Hubo un inconveniente con tu reserva. En breve te contactamos para resolverlo.');
+      } catch(_) {}
+      return;
+    }
+  }
+  sendWhatsAppText(adminPhone, '⚠️ No encontré la reserva ' + reservaId);
 }

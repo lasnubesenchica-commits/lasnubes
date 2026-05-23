@@ -97,12 +97,15 @@ function processInboundMessage(msg, contactName) {
       text = it.list_reply.id || it.list_reply.title || '';
       kind = 'list_reply';
     }
+  } else if (type === 'image' && msg.image) {
+    text = msg.image.id || '';
+    kind = 'image';
   }
   logDebugEntry('WA-inbound', { from: from, type: type, kind: kind, text: text.slice(0, 200), name: contactName, msgId: msg.id });
 
-  // Imagenes/audio: Sprint 3 manejara vouchers.
-  if (!text && type !== 'text' && type !== 'interactive') {
-    sendWhatsAppText(from, '🤔 Por ahora solo puedo procesar mensajes de texto y botones. Escribime tu consulta o "3" para hablar con una persona.');
+  // Audio/video/sticker: no soportado todavia
+  if (!text && type !== 'text' && type !== 'interactive' && type !== 'image') {
+    sendWhatsAppText(from, '🤔 Por ahora solo puedo procesar mensajes de texto, botones e imágenes. Escribime tu consulta o "3" para hablar con una persona.');
     return;
   }
 
