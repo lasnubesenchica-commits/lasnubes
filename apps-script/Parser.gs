@@ -840,6 +840,12 @@ function limpiarFechasInvalidas() {
 function doGet(e) {
   const action = e && e.parameter && e.parameter.action;
 
+  // ── WHATSAPP WEBHOOK VERIFY ─────────────────────────────────
+  // Meta hace GET con hub.mode=subscribe&hub.verify_token=...&hub.challenge=...
+  if (e && e.parameter && e.parameter['hub.mode']) {
+    return handleWebhookVerify(e);
+  }
+
   try {
     // ── SAVE TARIFAS (via GET params para evitar redirect 302) ──
     if (action === 'saveTarifas') {
@@ -1111,6 +1117,14 @@ function doPost(e) {
     const contentType = e && e.postData ? (e.postData.type || '?') : 'no-postData';
     _payload = JSON.parse(e.postData.contents);
     const payload = _payload;
+
+    // ── WHATSAPP WEBHOOK INBOUND ─────────────────────────────
+    // Meta envia POST con payload { object: 'whatsapp_business_account', entry: [...] }
+    if (payload && payload.object === 'whatsapp_business_account') {
+      logDebugEntry('doPost-IN', { action: 'wa-webhook', contentLen, contentType });
+      return handleWhatsAppWebhook(payload);
+    }
+
     _action = payload.action;
     _id     = payload.reservation ? payload.reservation.id : (payload.id || '');
     logDebugEntry('doPost-IN', { action: _action, id: _id, contentLen, contentType });
