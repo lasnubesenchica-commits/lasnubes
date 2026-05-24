@@ -441,11 +441,12 @@ function botHandleMessage(from, text, contactName, kind) {
   }
 
   // Date parsing TIENE PRIORIDAD sobre el keyword "disponibilidad".
-  // Si el cliente escribe "Tienen disponibilidad para 27 de julio?" detectamos
-  // las fechas y mostramos disponibilidad directo en vez de pedirle que las
-  // escriba otra vez.
+  // Solo intentamos parsear si el TEXTO tiene pinta de fechas (evita
+  // mostrar "no entendi fechas" ante saludos genericos como "Hola").
+  // Si el step era AWAITING_DATES pero el cliente cambio de tema (no
+  // pinta de fechas), caemos al fallback de menu de bienvenida.
   const midBooking = ['OFFERING_PAYMENT', 'AWAITING_VOUCHER_RETRY', 'AWAITING_EMAIL', 'AWAITING_NAME'].indexOf(conv.step) !== -1;
-  if (conv.step === 'AWAITING_DATES' || _looksLikeDateQuery(text)) {
+  if (_looksLikeDateQuery(text)) {
     const parsed = _parseDatesWithClaude(text, _botToday());
     if (parsed && parsed.checkin && parsed.checkout && parsed.confidence > 0.4) {
       const personas = parsed.persons || 2;
@@ -454,11 +455,9 @@ function botHandleMessage(from, text, contactName, kind) {
       }
       return _replyAvailability(from, contactName, { step: 'AWAITING_DATES', context: {}, name: contactName }, parsed.checkin, parsed.checkout, personas);
     }
-    if (parsed && (!parsed.checkin || parsed.confidence <= 0.4) && conv.step === 'AWAITING_DATES') {
-      // Solo pedimos clarificacion si estabamos esperando fechas explicitamente
-      sendWhatsAppText(from, '🤔 No logré entender las fechas. ¿Podés escribirlas más claras?\n\nEjemplo: "del 5 al 8 de junio, 4 personas".');
-      return;
-    }
+    // Parsing fallo pero texto parecia fechas → clarificar
+    sendWhatsAppText(from, '🤔 No logré entender las fechas. ¿Podés escribirlas más claras?\n\nEjemplo: "del 5 al 8 de junio, 4 personas".');
+    return;
   }
 
   if (t === '1' || t.includes('disponibilidad') || t.includes('disponible') || t.includes('precios') || t.includes('cuanto cuesta') || t.includes('cuánto cuesta') || t.includes('reservar')) {
@@ -476,8 +475,11 @@ function botHandleMessage(from, text, contactName, kind) {
     }
   }
 
-  // Fallback: cualquier mensaje no reconocido → menu interactivo amigable
-  _botSendMainMenu(from, contactName);
+  // Fallback: cualquier mensaje no reconocido → menu interactivo de bienvenida
+  // con instrucciones de reserva al inicio. Resetea state a INITIAL para
+  // que conversaciones atrapadas en AWAITING_DATES vuelvan al menu principal.
+  _saveConv(from, 'INITIAL', conv.context || {}, contactName);
+  _botSendMainMenu(from, contactName, true);
 }
 
 // ─── Reply helper: muestra disponibilidad con lista interactiva ──
