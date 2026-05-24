@@ -96,7 +96,96 @@ function handleGetConversaciones(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// ─── Endpoint: mensajes de una conversacion ───────────────────
+// ─── Migracion one-shot: importar inbounds/outbounds desde DebugLog ─
+// Correr desde el editor UNA VEZ para recuperar historial de testing
+// anterior al deploy del logging persistente.
+//
+// Inbounds tienen el texto del cliente completo. Outbounds solo tienen
+// metadata en DebugLog (no se logueaba contenido), asi que quedan con
+// placeholder descriptivo.
+// Es idempotente: solo importa entradas de DebugLog con ts < primer ts
+// en Mensajes (cutoff), asi que correrlo dos veces no duplica.
+function migrarDebugLogAMensajes() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const debugSheet = ss.getSheetByName('DebugLog');
+  const msgSheet = _mensajesSheet();
+  if (!debugSheet || debugSheet.getLastRow() < 2) {
+    Logger.log('Sin DebugLog para migrar');
+    return { imported: 0 };
+  }
+
+  // Cutoff: el ts mas antiguo ya en Mensajes (no importamos lo que ya esta)
+  let cutoffTs = null;
+  if (msgSheet.getLastRow() > 1) {
+    const msgTs = msgSheet.getRange(2, 1, msgSheet.getLastRow() - 1, 1).getValues();
+    for (const row of msgTs) {
+      const t = row[0] instanceof Date ? Utilities.formatDate(row[0], 'America/Panama', 'yyyy-MM-dd HH:mm:ss') : String(row[0]);
+      if (!cutoffTs || t < cutoffTs) cutoffTs = t;
+    }
+  }
+  Logger.log('Cutoff (no se importa lo mayor o igual): ' + (cutoffTs || '(Mensajes vacio, importar todo)'));
+
+  const data = debugSheet.getDataRange().getValues();
+  const newRows = [];
+  for (let i = 1; i < data.length; i++) {
+    const tsRaw = data[i][0];
+    const ts = tsRaw instanceof Date ? Utilities.formatDate(tsRaw, 'America/Panama', 'yyyy-MM-dd HH:mm:ss') : String(tsRaw);
+    if (cutoffTs && ts >= cutoffTs) continue;
+    const stage = data[i][1];
+    let info = {};
+    try { info = JSON.parse(data[i][2]); } catch(_) { continue; }
+
+    let phone, direction, type, content, msgId;
+    if (stage === 'WA-inbound' && info.from) {
+      phone = info.from; direction = 'in';
+      type = info.kind || info.type || 'text';
+      content = info.text || '';
+      msgId = info.msgId || '';
+    } else if (stage === 'WA-send-text' && info.to) {
+      phone = info.to; direction = 'out';
+      type = 'text';
+      content = '[bot envió texto · contenido no logueado pre-PR #161]';
+      msgId = info.id || '';
+    } else if (stage === 'WA-send-buttons' && info.to) {
+      phone = info.to; direction = 'out';
+      type = 'interactive_buttons';
+      const btns = Array.isArray(info.buttons) ? info.buttons.join(' / ') : '?';
+      content = '[bot envió botones: ' + btns + ']';
+      msgId = info.id || '';
+    } else if (stage === 'WA-send-list' && info.to) {
+      phone = info.to; direction = 'out';
+      type = 'interactive_list';
+      content = '[bot envió lista interactiva]';
+      msgId = info.id || '';
+    } else if (stage === 'WA-send-cta' && info.to) {
+      phone = info.to; direction = 'out';
+      type = 'interactive_cta_url';
+      content = '[bot envió CTA URL: ' + (info.url || '?') + ']';
+      msgId = info.id || '';
+    } else if (stage === 'WA-send-template' && info.to) {
+      phone = info.to; direction = 'out';
+      type = 'template';
+      content = '[bot envió plantilla: ' + (info.template || '?') + ']';
+      msgId = info.id || '';
+    } else {
+      continue;
+    }
+    newRows.push([ts, String(phone).replace(/\D/g, ''), direction, type, content, msgId]);
+  }
+
+  if (newRows.length === 0) {
+    Logger.log('Nada para migrar (todo ya en Mensajes o sin entradas relevantes en DebugLog)');
+    return { imported: 0 };
+  }
+
+  // Insertar al inicio (despues del header) para mantener orden cronologico
+  // antes de las entradas en vivo que ya estaban en Mensajes.
+  msgSheet.insertRowsBefore(2, newRows.length);
+  msgSheet.getRange(2, 1, newRows.length, 6).setValues(newRows);
+  Logger.log('✓ Migrados ' + newRows.length + ' entradas desde DebugLog a Mensajes');
+  return { imported: newRows.length };
+}
+
 // GET ?action=getMensajes&phone=XXX[&limit=N]
 function handleGetMensajes(e) {
   const phone = (e && e.parameter && e.parameter.phone) ? String(e.parameter.phone).replace(/\D/g, '') : null;
