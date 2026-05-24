@@ -1227,6 +1227,7 @@
       <button onclick="showSection('ocupacion')">Ocupación</button>
       <button onclick="showSection('contabilidad')">Contabilidad</button>
       <button onclick="showSection('programa')">Programa</button>
+      <button onclick="showSection('bot')">💬 Bot</button>
     </nav>
     <!-- Mobile dropdown -->
     <div class="nav-mobile">
@@ -1237,6 +1238,7 @@
         <button onclick="showSection('ocupacion');closeNavMenu()">Ocupación</button>
         <button onclick="showSection('contabilidad');closeNavMenu()">Contabilidad</button>
         <button onclick="showSection('programa');closeNavMenu()">Programa</button>
+        <button onclick="showSection('bot');closeNavMenu()">💬 Bot</button>
       </div>
     </div>
   </div>
@@ -1994,6 +1996,55 @@
   </section>
 
 
+  <!-- ===== BOT CRM ===== -->
+  <section id="bot" class="section">
+    <div style="max-width:1180px;margin:0 auto;padding:8px 0 24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+        <div>
+          <h2 style="font-family:'Cormorant Garamond',serif;font-weight:500;font-size:28px;margin:0 0 4px;">💬 Bot · Conversaciones</h2>
+          <p style="font-size:13px;color:var(--text-muted);margin:0;">Leads que interactuaron con el bot de WhatsApp.</p>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span id="botStats" style="font-size:12px;color:var(--text-muted);"></span>
+          <button onclick="loadBotData()" style="padding:6px 12px;font-size:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);cursor:pointer;">↻ Refrescar</button>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;">
+        <!-- Lista de conversaciones -->
+        <div style="flex:0 0 320px;max-width:320px;min-width:280px;">
+          <input id="botSearch" placeholder="🔍 Buscar nombre o teléfono..." style="width:100%;box-sizing:border-box;padding:8px 12px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--bg);margin-bottom:8px;font-family:inherit;" oninput="renderBotList()">
+          <select id="botStepFilter" onchange="renderBotList()" style="width:100%;box-sizing:border-box;padding:7px 10px;font-size:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);margin-bottom:10px;font-family:inherit;">
+            <option value="">Todos los estados</option>
+            <option value="INITIAL">INITIAL</option>
+            <option value="AWAITING_DATES">AWAITING_DATES</option>
+            <option value="SHOWING_AVAILABILITY">SHOWING_AVAILABILITY</option>
+            <option value="SHOWING_ALTERNATIVES">SHOWING_ALTERNATIVES</option>
+            <option value="OFFERING_PAYMENT">OFFERING_PAYMENT</option>
+            <option value="AWAITING_EMAIL">AWAITING_EMAIL</option>
+            <option value="AWAITING_NAME">AWAITING_NAME</option>
+            <option value="PENDING_REVIEW">PENDING_REVIEW</option>
+            <option value="ARRIVED">ARRIVED</option>
+            <option value="HUMAN_HANDOFF">HUMAN_HANDOFF</option>
+            <option value="SHOWED_INFO">SHOWED_INFO</option>
+            <option value="NO_AVAILABILITY">NO_AVAILABILITY</option>
+            <option value="PENDING_HUMAN_BOOKING">PENDING_HUMAN_BOOKING</option>
+          </select>
+          <div id="botList" style="background:var(--card);border:1px solid var(--border);border-radius:10px;max-height:600px;overflow-y:auto;">
+            <div style="text-align:center;padding:30px 12px;color:var(--text-muted);font-size:13px;">Cargando…</div>
+          </div>
+        </div>
+
+        <!-- Detalle del chat -->
+        <div id="botDetail" style="flex:1 1 500px;min-width:300px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;min-height:600px;">
+          <div style="text-align:center;color:var(--text-muted);padding:80px 0;font-size:13px;">
+            Seleccioná una conversación a la izquierda para ver el detalle.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ===== PROGRAMA AMIGOS ===== -->
   <section id="programa" class="section">
     <div style="max-width:980px;margin:0 auto;padding:8px 0 24px;">
@@ -2686,8 +2737,8 @@ document.addEventListener('click', function(e) {
 function showSection(id) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  const sections = ['reservas','contabilidad','disponibilidad','ocupacion','programa'];
-  const labels   = { reservas:'Reservas', contabilidad:'Contabilidad', disponibilidad:'Disponibilidad', ocupacion:'Ocupación', programa:'Programa Amigos' };
+  const sections = ['reservas','contabilidad','disponibilidad','ocupacion','programa','bot'];
+  const labels   = { reservas:'Reservas', contabilidad:'Contabilidad', disponibilidad:'Disponibilidad', ocupacion:'Ocupación', programa:'Programa Amigos', bot:'💬 Bot' };
   document.querySelectorAll('nav button').forEach(b => {
     const sec = b.getAttribute('onclick')?.match(/showSection\('(\w+)'/)?.[1];
     b.classList.toggle('active', sec === id);
@@ -2698,6 +2749,173 @@ function showSection(id) {
   if(id === 'disponibilidad') renderDisponibilidad();
   if(id === 'ocupacion')      { populateOcuMonth(); renderOcupacion(); }
   if(id === 'programa')       renderProgramaMetrics();
+  if(id === 'bot')            loadBotData();
+}
+
+// ─── BOT CRM ──────────────────────────────────────────────────────
+let _botConvs = [];
+let _botSelectedPhone = null;
+
+async function loadBotData() {
+  try {
+    const list = document.getElementById('botList');
+    list.innerHTML = '<div style="text-align:center;padding:30px 12px;color:var(--text-muted);font-size:13px;">Cargando…</div>';
+    const res = await fetch(SHEETS_API_URL + '?action=getConversaciones');
+    const data = await res.json();
+    _botConvs = (data && data.conversations) || [];
+    renderBotStats();
+    renderBotList();
+  } catch(e) {
+    document.getElementById('botList').innerHTML = '<div style="padding:20px;color:#c0392b;font-size:13px;">Error: ' + e.message + '</div>';
+  }
+}
+
+function renderBotStats() {
+  const total = _botConvs.length;
+  const cotizaron = _botConvs.filter(c => ['SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES','OFFERING_PAYMENT','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','ARRIVED','PENDING_HUMAN_BOOKING'].includes(c.step)).length;
+  const reservaron = _botConvs.filter(c => ['PENDING_REVIEW','ARRIVED','PENDING_HUMAN_BOOKING'].includes(c.step)).length;
+  const el = document.getElementById('botStats');
+  if (el) el.textContent = total + ' leads · ' + cotizaron + ' cotizaron · ' + reservaron + ' reservaron';
+}
+
+function _botStepBadge(step) {
+  const map = {
+    'INITIAL':                { color: '#888', text: 'Inicial' },
+    'AWAITING_DATES':         { color: '#5a85b0', text: 'Esperando fechas' },
+    'SHOWING_AVAILABILITY':   { color: '#4a7c5f', text: 'Cotizando' },
+    'SHOWING_ALTERNATIVES':   { color: '#a67c52', text: 'Alternativas' },
+    'NO_AVAILABILITY':        { color: '#c0392b', text: 'Sin dispon.' },
+    'OFFERING_PAYMENT':       { color: '#6a4f9d', text: 'Pagando' },
+    'AWAITING_VOUCHER_RETRY': { color: '#a67c52', text: 'Voucher retry' },
+    'AWAITING_EMAIL':         { color: '#6a4f9d', text: 'Email' },
+    'AWAITING_NAME':          { color: '#6a4f9d', text: 'Nombre' },
+    'PENDING_REVIEW':         { color: '#d4a017', text: 'Pendiente revisión' },
+    'PENDING_HUMAN_BOOKING':  { color: '#d4a017', text: 'Humano coord.' },
+    'AWAITING_ARRIVAL_NAME':  { color: '#a67c52', text: 'He llegado · nombre' },
+    'ARRIVED':                { color: '#2e7d32', text: 'Llegó ✓' },
+    'HUMAN_HANDOFF':          { color: '#5a85b0', text: 'Handoff' },
+    'SHOWED_INFO':            { color: '#888', text: 'Vio info' }
+  };
+  return map[step] || { color: '#888', text: step || '?' };
+}
+
+function _botFmtTime(ts) {
+  if (!ts) return '';
+  // ts: "yyyy-MM-dd HH:mm:ss" o ISO. Mostrar hace X.
+  let date;
+  try { date = new Date(ts.replace(' ', 'T')); } catch(_) { return ts; }
+  if (isNaN(date)) return ts;
+  const diffMs = Date.now() - date.getTime();
+  const m = Math.floor(diffMs / 60000);
+  if (m < 1) return 'ahora';
+  if (m < 60) return 'hace ' + m + ' min';
+  const h = Math.floor(m / 60);
+  if (h < 24) return 'hace ' + h + ' h';
+  const d = Math.floor(h / 24);
+  if (d < 7) return 'hace ' + d + ' día' + (d > 1 ? 's' : '');
+  return date.toLocaleDateString('es-PA', { day: 'numeric', month: 'short' });
+}
+
+function renderBotList() {
+  const search = (document.getElementById('botSearch')?.value || '').toLowerCase().trim();
+  const stepFilter = document.getElementById('botStepFilter')?.value || '';
+  let filtered = _botConvs.slice();
+  if (search) {
+    filtered = filtered.filter(c => (c.name || '').toLowerCase().includes(search) || c.phone.includes(search));
+  }
+  if (stepFilter) {
+    filtered = filtered.filter(c => c.step === stepFilter);
+  }
+  const list = document.getElementById('botList');
+  if (filtered.length === 0) {
+    list.innerHTML = '<div style="text-align:center;padding:30px 12px;color:var(--text-muted);font-size:13px;">Sin conversaciones.</div>';
+    return;
+  }
+  list.innerHTML = filtered.map(c => {
+    const badge = _botStepBadge(c.step);
+    const selected = c.phone === _botSelectedPhone;
+    const last = c.lastMsg ? (c.lastMsg.direction === 'in' ? '↘ ' : '↗ ') + (c.lastMsg.content || '').slice(0, 60) : '';
+    return '<div onclick="selectBotConv(\'' + c.phone + '\')" style="padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;background:' + (selected ? 'var(--bg-secondary, #f5f3f0)' : 'transparent') + ';">' +
+      '<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:3px;">' +
+        '<strong style="font-size:13px;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (c.name || c.phone) + '</strong>' +
+        '<span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">' + _botFmtTime(c.lastUpdated) + '</span>' +
+      '</div>' +
+      '<div style="display:flex;gap:5px;align-items:center;margin-bottom:3px;">' +
+        '<span style="font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#fff;background:' + badge.color + ';padding:2px 6px;border-radius:6px;">' + badge.text + '</span>' +
+        '<span style="font-size:11px;color:var(--text-muted);">+' + c.phone + '</span>' +
+      '</div>' +
+      (last ? '<div style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(last) + '</div>' : '') +
+    '</div>';
+  }).join('');
+}
+
+async function selectBotConv(phone) {
+  _botSelectedPhone = phone;
+  renderBotList();
+  const detail = document.getElementById('botDetail');
+  detail.innerHTML = '<div style="text-align:center;padding:60px 0;color:var(--text-muted);font-size:13px;">Cargando mensajes…</div>';
+  const conv = _botConvs.find(c => c.phone === phone);
+  if (!conv) { detail.innerHTML = '<div style="padding:20px;color:#c0392b;">No encontrado.</div>'; return; }
+  try {
+    const res = await fetch(SHEETS_API_URL + '?action=getMensajes&phone=' + encodeURIComponent(phone) + '&limit=300');
+    const data = await res.json();
+    const messages = (data && data.messages) || [];
+    renderBotDetail(conv, messages);
+  } catch(e) {
+    detail.innerHTML = '<div style="padding:20px;color:#c0392b;">Error: ' + e.message + '</div>';
+  }
+}
+
+function renderBotDetail(conv, messages) {
+  const detail = document.getElementById('botDetail');
+  const badge = _botStepBadge(conv.step);
+  const ctx = conv.context || {};
+  const waLink = 'https://wa.me/' + conv.phone;
+  let ctxHtml = '';
+  const ctxBits = [];
+  if (ctx.dates && ctx.dates.checkin) ctxBits.push('📅 ' + ctx.dates.checkin + ' → ' + ctx.dates.checkout);
+  if (ctx.personas)  ctxBits.push('👥 ' + ctx.personas);
+  if (ctx.cabin)     ctxBits.push('🏡 ' + ctx.cabin);
+  if (ctx.email)     ctxBits.push('📧 ' + ctx.email);
+  if (ctx.voucher && ctx.voucher.monto) ctxBits.push('💰 $' + ctx.voucher.monto);
+  if (ctxBits.length) ctxHtml = '<div style="font-size:12px;color:var(--text-muted);margin-top:6px;">' + ctxBits.join(' · ') + '</div>';
+
+  const header =
+    '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);flex-wrap:wrap;">' +
+      '<div>' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">' +
+          '<strong style="font-size:16px;">' + (conv.name || conv.phone) + '</strong>' +
+          '<span style="font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#fff;background:' + badge.color + ';padding:2px 6px;border-radius:6px;">' + badge.text + '</span>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--text-muted);">+' + conv.phone + ' · última actividad ' + _botFmtTime(conv.lastUpdated) + '</div>' +
+        ctxHtml +
+      '</div>' +
+      '<div style="display:flex;gap:6px;">' +
+        '<a href="' + waLink + '" target="_blank" style="padding:6px 12px;font-size:12px;background:#25d366;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">💬 WhatsApp</a>' +
+      '</div>' +
+    '</div>';
+
+  let body;
+  if (messages.length === 0) {
+    body = '<div style="text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;">Sin mensajes en historial. (Si la conversación es vieja, puede que aún no estuviera activo el log persistente.)</div>';
+  } else {
+    body = '<div style="max-height:600px;overflow-y:auto;padding-right:6px;">' +
+      messages.map(m => {
+        const isOut = m.direction === 'out';
+        const align = isOut ? 'flex-end' : 'flex-start';
+        const bg = isOut ? '#dcf8c6' : '#f0ede8';
+        const dirIcon = isOut ? '🤖' : '👤';
+        const typeHint = (m.type && m.type !== 'text') ? ' · <em>' + m.type + '</em>' : '';
+        return '<div style="display:flex;justify-content:' + align + ';margin-bottom:6px;">' +
+          '<div style="max-width:80%;background:' + bg + ';padding:7px 10px;border-radius:10px;font-size:13px;color:#222;white-space:pre-wrap;word-break:break-word;">' +
+            escapeHtml(m.content || '') +
+            '<div style="font-size:10px;color:#777;margin-top:3px;">' + dirIcon + ' ' + m.ts + typeHint + '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }
+  detail.innerHTML = header + body;
 }
 
 // ─── DISPONIBILIDAD ──────────────────────────────────────

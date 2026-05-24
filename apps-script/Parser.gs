@@ -984,6 +984,8 @@ function doGet(e) {
     if (action === 'getReferrals')      return handleGetReferrals(e);
     if (action === 'debugFindReserva')  return handleDebugFindReserva(e);
     if (action === 'getDebugLog')       return handleGetDebugLog(e);
+    if (action === 'getConversaciones') return handleGetConversaciones(e);
+    if (action === 'getMensajes')       return handleGetMensajes(e);
 
     // ── GET RESERVATIONS (default) ────────────────────────────
     const sheet = getOrCreateSheet();

@@ -66,6 +66,7 @@ function sendWhatsAppText(toPhone, body) {
   if (code < 200 || code >= 300) {
     throw new Error('WA send failed HTTP ' + code + ': ' + text.slice(0, 400));
   }
+  try { logMensaje(to, 'out', 'text', body, (json.messages && json.messages[0] && json.messages[0].id) || null); } catch(_) {}
   return json;
 }
 
@@ -152,6 +153,7 @@ function sendWhatsAppTemplate(toPhone, templateName, languageCode, namedParams, 
   if (code < 200 || code >= 300) {
     throw new Error('WA template send failed HTTP ' + code + ': ' + text.slice(0, 400));
   }
+  try { logMensaje(to, 'out', 'template', templateName + ' · ' + JSON.stringify(namedParams || {}).slice(0, 300), (json.messages && json.messages[0] && json.messages[0].id) || null); } catch(_) {}
   return json;
 }
 
@@ -300,6 +302,7 @@ function sendWhatsAppCTAUrl(toPhone, bodyText, displayText, url, headerText, foo
   try { json = JSON.parse(text); } catch(_) { json = { raw: text }; }
   logDebugEntry('WA-send-cta', { to: to, code: code, ok: code >= 200 && code < 300, url: url, error: json.error || null });
   if (code < 200 || code >= 300) throw new Error('WA cta send failed HTTP ' + code + ': ' + text.slice(0, 400));
+  try { logMensaje(to, 'out', 'interactive_cta_url', bodyText + ' [btn: ' + displayText + ' → ' + url + ']', (json.messages && json.messages[0] && json.messages[0].id) || null); } catch(_) {}
   return json;
 }
 
@@ -360,6 +363,10 @@ function sendWhatsAppList(toPhone, bodyText, sections, buttonText, headerText, f
   try { json = JSON.parse(text); } catch(_) { json = { raw: text }; }
   logDebugEntry('WA-send-list', { to: to, code: code, ok: code >= 200 && code < 300, error: json.error || null });
   if (code < 200 || code >= 300) throw new Error('WA list send failed HTTP ' + code + ': ' + text.slice(0, 400));
+  try {
+    const summary = bodyText + ' [opts: ' + (sections || []).map(s => (s.rows || []).map(r => r.title).join('/')).join(' | ') + ']';
+    logMensaje(to, 'out', 'interactive_list', summary, (json.messages && json.messages[0] && json.messages[0].id) || null);
+  } catch(_) {}
   return json;
 }
 
@@ -413,6 +420,10 @@ function sendWhatsAppButtons(toPhone, bodyText, buttons, headerText, footerText)
   try { json = JSON.parse(text); } catch(_) { json = { raw: text }; }
   logDebugEntry('WA-send-buttons', { to: to, code: code, ok: code >= 200 && code < 300, buttons: buttons.map(b => b.id), error: json.error || null });
   if (code < 200 || code >= 300) throw new Error('WA buttons send failed HTTP ' + code + ': ' + text.slice(0, 400));
+  try {
+    const summary = bodyText + ' [btns: ' + buttons.map(b => b.title).join(' / ') + ']';
+    logMensaje(to, 'out', 'interactive_buttons', summary, (json.messages && json.messages[0] && json.messages[0].id) || null);
+  } catch(_) {}
   return json;
 }
 
