@@ -2416,7 +2416,8 @@
 
 <script>
 const SHEETS_API_URL  = 'https://script.google.com/macros/s/AKfycbwDHyfGSyHZvmgiOenw_mm84pMKIs1aMixkyLxAXrjw8uNBcjvPYdIX0HFv_LkDesr0/exec';
-const WHATSAPP_NUMBER = '50769812266';
+const WHATSAPP_NUMBER     = '50769812266';
+const WHATSAPP_BOT_NUMBER = '50760188278';
 
 const CABINS = [
   { key: 'verde', name: 'Paseo por Las Nubes',   short: 'Paseo' },
@@ -2896,7 +2897,7 @@ function _reservaPickerGoWA() {
   closeReservaPicker();
   // Picker solo abre para hospedaje single cabin
   const msg = _buildClientReservaMessage({ dateStr, cabinKey, nights, personas, tipo: 'noche', isCombo: false });
-  window.open('https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg), '_blank');
+  window.open('https://wa.me/' + WHATSAPP_BOT_NUMBER + '?text=' + encodeURIComponent(msg), '_blank');
 }
 
 function _reservaPickerGoAirbnb() {
@@ -2927,7 +2928,7 @@ function openWAcombo(dateStr) {
     tipo: 'noche',
     isCombo: true
   });
-  window.open('https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg), '_blank');
+  window.open('https://wa.me/' + WHATSAPP_BOT_NUMBER + '?text=' + encodeURIComponent(msg), '_blank');
 }
 
 function openWA(dateStr, cabinKey) {
@@ -2944,7 +2945,7 @@ function openWA(dateStr, cabinKey) {
     tipo: tipo,
     isCombo: false
   });
-  window.open('https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg), '_blank');
+  window.open('https://wa.me/' + WHATSAPP_BOT_NUMBER + '?text=' + encodeURIComponent(msg), '_blank');
 }
 
 // Builder del mensaje que envía el cliente. Incluye todo lo necesario
