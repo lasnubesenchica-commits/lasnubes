@@ -295,6 +295,18 @@ function botHandleMessage(from, text, contactName, kind) {
     }
   }
 
+  // Boton "Reservar sin abono" en OFFERING_PAYMENT — saltea voucher
+  if ((kind === 'button_reply' && text === 'book_no_deposit') ||
+      (conv.step === 'OFFERING_PAYMENT' && /^(sin abono|sin voucher|reservar sin)/i.test((text || '').trim()))) {
+    const newCtx = Object.assign({}, conv.context || {}, { skipVoucher: true });
+    sendWhatsAppText(from,
+      '📋 ¡Listo! Coordinaremos el pago directo con vos.\n\n' +
+      'Para finalizar tu pre-reserva necesito tu *email*.'
+    );
+    _saveConv(from, 'AWAITING_EMAIL', newCtx, contactName);
+    return;
+  }
+
   // Boton "Cancelar" en OFFERING_PAYMENT — libera el estado
   if ((kind === 'button_reply' && text === 'cancel_booking') ||
       (conv.step === 'OFFERING_PAYMENT' && /^(cancela|cancelar|atras|atrás)\b/i.test((text || '').trim()))) {
@@ -973,14 +985,16 @@ function _botStartBooking(from, contactName, conv, cabin) {
     '🎉 ¡Excelente! Reservando *' + BOT_CABIN_NAMES[cabin] + '* para *' + fechas + '* (' + personas + (personas === 1 ? ' persona' : ' personas') + ').\n\n' +
     '💰 *Total: $' + precio.toFixed(2) + '*\n\n' +
     _botPaymentInfo() + '\n\n' +
-    'Una vez transferido, *enviame el comprobante como imagen* por aquí mismo.';
+    'Una vez transferido, *enviame el comprobante como imagen* por aquí mismo.\n\n' +
+    '_Si preferís coordinar el pago después, tocá *Reservar sin abono*._';
   try {
     sendWhatsAppButtons(from, body, [
-      { id: 'cancel_booking', title: '❌ Cancelar' },
-      { id: '3',              title: '🙋 Persona' }
+      { id: 'book_no_deposit', title: '📋 Sin abono' },
+      { id: 'cancel_booking',  title: '❌ Cancelar' },
+      { id: '3',               title: '🙋 Persona' }
     ]);
   } catch(_) {
-    sendWhatsAppText(from, body + '\n\nSi querés cancelar, escribime "cancelar". O "3" para hablar con una persona.');
+    sendWhatsAppText(from, body + '\n\nSi querés cancelar, escribime "cancelar". Si querés reservar sin enviar voucher ahora, escribime "sin abono".');
   }
   _saveConv(from, 'OFFERING_PAYMENT', Object.assign({}, conv.context, { cabin: cabin, precio: precio }), contactName);
 }
@@ -1059,6 +1073,7 @@ function _botCreatePreReservation(from, contactName, ctx) {
   const email    = ctx.email;
   const fullName = ctx.name;
   const voucher  = ctx.voucher || {};
+  const skipVoucher = !!ctx.skipVoucher;
   const precio   = ctx.precio || _botPrecioCabin(cabin, dates.checkin, dates.checkout, personas);
   const id       = Date.now().toString();
   const today    = _botToday();
@@ -1067,6 +1082,9 @@ function _botCreatePreReservation(from, contactName, ctx) {
     azul:  'Portal hacia Las Nubes',
     lila:  'Puente entre Las Nubes'
   };
+  const comentario = skipVoucher
+    ? '🤖 Pre-reserva vía bot WhatsApp · SIN ABONO · coordinar pago · pendiente revisión'
+    : '🤖 Pre-reserva vía bot WhatsApp · pendiente revisión';
 
   try {
     const sheet = getOrCreateSheet();
@@ -1093,11 +1111,11 @@ function _botCreatePreReservation(from, contactName, ctx) {
       voucher.monto ? '$' + voucher.monto.toFixed(2) : '',
       'PENDIENTE',             // estadoPago → admin debe aprobar
       _safeCell(email),
-      _safeCell('🤖 Pre-reserva vía bot WhatsApp · pendiente revisión'),
+      _safeCell(comentario),
       _safeCell(from),
       'noche'                  // tipo
     ]);
-    logDebugEntry('bot-prereserva-OK', { id: id, name: fullName, cabin: cabin, from: from });
+    logDebugEntry('bot-prereserva-OK', { id: id, name: fullName, cabin: cabin, from: from, skipVoucher: skipVoucher });
   } catch(err) {
     logDebugEntry('bot-prereserva-FAIL', { error: err.message, stack: err.stack ? String(err.stack).slice(0, 400) : '' });
     sendWhatsAppText(from, '⚠️ Hubo un problema al registrar tu reserva. Te derivo con una persona del equipo.');
@@ -1111,8 +1129,15 @@ function _botCreatePreReservation(from, contactName, ctx) {
   );
 
   const fechas = _botFmtFecha(dates.checkin) + ' → ' + _botFmtFecha(dates.checkout);
+  const adminHeader = skipVoucher
+    ? '📋 *Nueva pre-reserva SIN ABONO via bot*\n⚠️ Coordinar el pago manualmente antes de aprobar.\n'
+    : '📋 *Nueva pre-reserva via bot*\n';
+  const voucherBlock = skipVoucher
+    ? '💳 _Sin voucher · coordinar pago_'
+    : '💳 Voucher: $' + (voucher.monto || 0).toFixed(2) + ' (' + (voucher.sender || '?') + ')\n' +
+      '#️⃣ Código: ' + (voucher.codTransferencia || '?');
   const adminMsg =
-    '📋 *Nueva pre-reserva via bot*\n\n' +
+    adminHeader + '\n' +
     '👤 ' + fullName + '\n' +
     '📧 ' + email + '\n' +
     '📱 ' + from + '\n\n' +
@@ -1120,8 +1145,7 @@ function _botCreatePreReservation(from, contactName, ctx) {
     '📅 ' + fechas + '\n' +
     '👥 ' + personas + (personas === 1 ? ' persona' : ' personas') + '\n' +
     '💰 Total: $' + precio.toFixed(2) + '\n\n' +
-    '💳 Voucher: $' + (voucher.monto || 0).toFixed(2) + ' (' + (voucher.sender || '?') + ')\n' +
-    '#️⃣ Código: ' + (voucher.codTransferencia || '?');
+    voucherBlock;
   try {
     sendWhatsAppButtons(BOT_ADMIN_PHONE, adminMsg, [
       { id: 'approve_' + id, title: '✅ Aprobar' },
