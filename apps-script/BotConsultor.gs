@@ -267,7 +267,10 @@ function _botSmartFallback(from, contactName, conv, text) {
   const apiKey = PropertiesService.getScriptProperties().getProperty('CLAUDE_API_KEY');
   if (!apiKey) return false;
 
-  const systemPrompt = _botKnowledgeBase();
+  // System prompt base + bloques de conocimiento especifico por topic detectado
+  // en el mensaje (actividades, gastronomia, insumos, como llegar).
+  const topicCtx = _botKnowledgeTopics(text);
+  const systemPrompt = _botKnowledgeBase() + (topicCtx ? '\n\n' + topicCtx : '');
 
   try {
     const res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
@@ -353,6 +356,84 @@ function _botKnowledgeBase() {
 '- Si la consulta es sobre disponibilidad/precios, terminá con: "Decime *fechas* y *personas* (ej: _\'del 5 al 8 de junio, 2 personas\'_) y te cotizo al instante 🤝"\n' +
 '- Si pueden ver fotos: invitá a ver el catálogo en https://lasnubes.cloud\n\n' +
 'Respondé directo al mensaje del cliente, sin saludos largos.'
+  );
+}
+
+// Detecta topics relevantes en el mensaje y devuelve bloques de knowledge
+// especifico para apendear al system prompt. Mantenemos los bloques cortos
+// (sin inundar el prompt) y solo se agregan los que matchean.
+function _botKnowledgeTopics(text) {
+  const t = (text || '').toLowerCase();
+  const blocks = [];
+  if (/\b(actividad|qu[eé]\s+(hacer|hay)|que\s+(hacer|hay)|cerca|excursi[oó]n|pasear|caminar|cascada|playa|tour|senderismo|aventura|cajones|parque|naturaleza|cerro|chic[aá]|coronado|sor[aá]|filipinas|manglarito|gorgona|campana|hike|trail|nadar|surf|mirador)\b/i.test(t)) {
+    blocks.push(_botKbActividades());
+  }
+  if (/\b(gastronom|restaurant|comer|comida\b|cenar|almorzar|desayun|d[oó]nde\s+comer|pizza|sushi|carne|parrilla|bar\b|caf[eé]|peruano|italiano|asi[aá]tico|fusi[oó]n|pollo|ceviche|menu|men[uú])\b/i.test(t)) {
+    blocks.push(_botKbGastronomia());
+  }
+  if (/\b(insumo|tienda|super|supermerc|comprar|provee|provisi[oó]n|aproviv|aprovision|hielo|carb[oó]n|repelente|farmacia|botiqu[ií]n|leña|le[ñn]a|fogata|malvaviscos)\b/i.test(t)) {
+    blocks.push(_botKbInsumos());
+  }
+  if (/(c[oó]mo\s+llegar|como\s+llegar|llegar|ubicaci|d[oó]nde\s+(est[aá]n?|queda)|direcci[oó]n|waze|maps|gps|carretera|interameric|panamericana)/i.test(t)) {
+    blocks.push(_botKbComoLlegar());
+  }
+  return blocks.join('\n\n');
+}
+
+function _botKbActividades() {
+  return (
+'## ACTIVIDADES Y ALREDEDORES (más detalles: https://lasnubes.cloud)\n' +
+'Naturaleza y aventura cerca de Las Nubes:\n' +
+'- *Los Cajones de Chamé* (~10 min): cañón con piscinas naturales conectadas y saltos al agua. Snorkel, natación. 4x4 recomendado. Estacionamiento $3. Mejor en temporada seca.\n' +
+'- *Parque Nacional Altos de Campana* (~20 min): primer parque nacional de Panamá. Senderismo al Cerro de la Cruz (905m, ~2h ida y vuelta) con vistas al Pacífico y Canal. Entrada ~$5.\n' +
+'- *Coronado* (~20 min): playa de arena oscura, surf, supermercados y restaurantes. Mejor entre semana.\n' +
+'- *Playa Gorgona* (~15 min): playa tranquila, atardeceres, chiringuitos de mariscos.\n' +
+'- *Cascadas Filipinas* (Sorá, ~20 min): sistema de 7 cascadas encadenadas, la segunda de 15m. Nivel medio-alto. Entrada ~$3. 4x4 + jeeps locales disponibles.\n' +
+'- *Cascada Manglarito* (Sorá, ~20 min): cascada de 35+m con salto al agua. Mejor con guía local.\n' +
+'- *Cascada Nativa* (Sorá, ~20 min): propiedad privada familiar, caminata corta. Accesible. Entrada ~$3.\n' +
+'- *Senderismo* por las faldas del Cerro Chicá, vistas panorámicas y fotografía de naturaleza.'
+  );
+}
+
+function _botKbGastronomia() {
+  return (
+'## GASTRONOMÍA CERCANA (lista completa con mapas: https://lasnubes.cloud)\n' +
+'- *Buenas Pizzas de Sorá* (~20 min): pizzería artesanal con horno de leña, ambiente familiar.\n' +
+'- *Pío Pío de Bejuco* (~10 min): pollo asado a la leña — punto rápido al llegar.\n' +
+'- *Nación Sushi* (Coronado, ~25 min): sushi fresco, opción de delivery.\n' +
+'- *Slabón* (Coronado): restaurante-bar con ambiente animado, ideal para grupos.\n' +
+'- *Don Chacho Grill* (Coronado): carnes a la parrilla, familiar.\n' +
+'- *Luna Rossa* (Coronado): italiano con pastas y pizzas, cenas en pareja o grupo pequeño.\n' +
+'- *Las Bóvedas Fusión* (Coronado): cocina de fusión bien presentada.\n' +
+'- *Don Lee* (Coronado): asiático con precios amigables, opción para llevar.\n' +
+'- *Nazca 21* (Coronado): peruano con ceviches y tiraditos, ideal para cena especial.\n' +
+'- *Coronado zona gastronómica*: muchas opciones — cadenas, cafés de especialidad, bares.'
+  );
+}
+
+function _botKbInsumos() {
+  return (
+'## INSUMOS, TIENDAS Y COMPRAS (detalles: https://lasnubes.cloud)\n' +
+'- *Tienda de Conveniencia* (a 5 min de las cabañas): hielo, carbón, especias, bebidas — lo básico.\n' +
+'- *MiniSuper Buenos Precios* (Bejuco, ~15 min): surtido para aprovisionarse antes de subir.\n' +
+'- *Supermercados en Coronado* (~20 min): El Rey, Machetazo, Riba Smith (premium), Super 99 — opciones completas.\n' +
+'- *Tiendita Las Nubes* (entrega directo a la cabaña, pago Yappy):\n' +
+'  · 🔥 Kit de Fogata (leña + cerillo + palillos + 8 malvaviscos): $10\n' +
+'  · 🪨 Bolsa de carbón con cerillo: $5\n' +
+'  · 🦟 Repelente OFF spray: $8\n' +
+'  · 🧻 Repelente Family Care (toallitas): $5\n' +
+'  · 🪥 Kit pasta + cepillo: $5\n' +
+'  · 🌸 Toallas sanitarias: $5'
+  );
+}
+
+function _botKbComoLlegar() {
+  return (
+'## UBICACIÓN Y CÓMO LLEGAR\n' +
+'- Buenos Aires, Chamé · faldas del Cerro Chicá, Panamá.\n' +
+'- Desde Ciudad de Panamá: aproximadamente *1h 15min* por la Interamericana.\n' +
+'- Indicaciones detalladas, Waze y Google Maps con coordenadas exactas se comparten al confirmar la reserva.\n' +
+'- Tip: hay tramos de calle de huella de concreto al final — sedanes llegan sin problema en temporada seca; en lluvia, conducción con cuidado.'
   );
 }
 
