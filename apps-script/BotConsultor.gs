@@ -295,14 +295,12 @@ function botHandleMessage(from, text, contactName, kind) {
     }
   }
 
-  // Boton "Cancelar" en OFFERING_PAYMENT — libera el estado
+  // Boton "Cancelar" en OFFERING_PAYMENT — libera el estado + muestra menu principal
   if ((kind === 'button_reply' && text === 'cancel_booking') ||
       (conv.step === 'OFFERING_PAYMENT' && /^(cancela|cancelar|atras|atrás)\b/i.test((text || '').trim()))) {
-    sendWhatsAppText(from,
-      '👋 Listo, cancelamos esta reserva.\n\n' +
-      'Cuando quieras, escribime "1" para ver disponibilidad o "3" para hablar con una persona.'
-    );
+    sendWhatsAppText(from, '👋 Listo, cancelamos esta reserva. ¿En qué más te ayudamos?');
     _saveConv(from, 'INITIAL', {}, contactName);
+    _botSendMainMenu(from, contactName, true);
     return;
   }
 
@@ -524,10 +522,16 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
   const cotizacion = _botCotizacionAvailability(checkin, checkout, opciones, personas, false);
   sendWhatsAppText(from, cotizacion);
 
-  // Botones directos para reservar cada cabaña disponible (max 3)
+  // Botones directos para reservar cada cabaña disponible (max 3).
+  // WhatsApp limita title a 20 chars — usamos formato corto sin "por/hacia/entre".
+  const CABIN_BUTTON_LABELS = {
+    verde: '🏡 Paseo Las Nubes',
+    azul:  '🏡 Portal Las Nubes',
+    lila:  '🏡 Puente Las Nubes'
+  };
   const cabinButtons = opciones.slice(0, 3).map(op => ({
     id: 'pick_' + op.cabin,
-    title: '🏡 ' + BOT_CABIN_NAMES[op.cabin].split(' ')[0]
+    title: CABIN_BUTTON_LABELS[op.cabin] || ('🏡 ' + BOT_CABIN_NAMES[op.cabin].split(' ')[0])
   }));
   try {
     sendWhatsAppButtons(from, '¿Cuál te interesa reservar?', cabinButtons, null, personas + ' personas · ' + nights + (nights === 1 ? ' noche' : ' noches'));
@@ -974,14 +978,14 @@ function _botStartBooking(from, contactName, conv, cabin) {
     '🎉 ¡Excelente! Reservando *' + BOT_CABIN_NAMES[cabin] + '* para *' + fechas + '* (' + personas + (personas === 1 ? ' persona' : ' personas') + ').\n\n' +
     '💰 *Total: $' + precio.toFixed(2) + '*\n\n' +
     _botPaymentInfo() + '\n\n' +
+    '⚠️ *Importante*: en el detalle de la transferencia colocá tu *nombre completo* y *email* para procesar tu reserva más rápido.\n\n' +
     'Una vez transferido, *enviame el comprobante como imagen* por aquí mismo.';
   try {
     sendWhatsAppButtons(from, body, [
-      { id: 'cancel_booking', title: '❌ Cancelar' },
-      { id: '3',              title: '🙋 Persona' }
+      { id: 'cancel_booking', title: '❌ Cancelar' }
     ]);
   } catch(_) {
-    sendWhatsAppText(from, body + '\n\nSi querés cancelar, escribime "cancelar". O "3" para hablar con una persona.');
+    sendWhatsAppText(from, body + '\n\nSi querés cancelar, escribime "cancelar".');
   }
   _saveConv(from, 'OFFERING_PAYMENT', Object.assign({}, conv.context, { cabin: cabin, precio: precio }), contactName);
 }
