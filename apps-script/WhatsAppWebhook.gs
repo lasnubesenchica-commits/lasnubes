@@ -102,6 +102,7 @@ function processInboundMessage(msg, contactName) {
     kind = 'image';
   }
   logDebugEntry('WA-inbound', { from: from, type: type, kind: kind, text: text.slice(0, 200), name: contactName, msgId: msg.id });
+  try { logMensaje(from, 'in', kind || type, text || '', msg.id || ''); } catch(_) {}
 
   // Audio/video/sticker: no soportado todavia
   if (!text && type !== 'text' && type !== 'interactive' && type !== 'image') {
