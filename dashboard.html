@@ -2866,6 +2866,27 @@ async function selectBotConv(phone) {
   }
 }
 
+async function deleteBotConv(phone, name) {
+  if (!confirm('¿Borrar conversación con ' + (name || phone) + '?\n\nSe eliminará la fila de Conversaciones y TODOS los mensajes del historial.\nEsta acción no se puede deshacer.')) return;
+  try {
+    const res = await fetch(SHEETS_API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'deleteConversation', phone: phone })
+    });
+    const data = await res.json();
+    if (data && data.ok) {
+      showToast('🗑️ Eliminada: ' + data.removedConv + ' fila + ' + data.removedMsg + ' mensajes');
+      _botSelectedPhone = null;
+      document.getElementById('botDetail').innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:80px 0;font-size:13px;">Conversación eliminada.</div>';
+      await loadBotData();
+    } else {
+      alert('No se pudo borrar: ' + (data && data.error || 'error'));
+    }
+  } catch(e) {
+    alert('Error: ' + e.message);
+  }
+}
+
 function renderBotDetail(conv, messages) {
   const detail = document.getElementById('botDetail');
   const badge = _botStepBadge(conv.step);
@@ -2892,6 +2913,7 @@ function renderBotDetail(conv, messages) {
       '</div>' +
       '<div style="display:flex;gap:6px;">' +
         '<a href="' + waLink + '" target="_blank" style="padding:6px 12px;font-size:12px;background:#25d366;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">💬 WhatsApp</a>' +
+        '<button onclick="deleteBotConv(\'' + conv.phone + '\', \'' + (conv.name || '').replace(/[\\\'"]/g, '') + '\')" style="padding:6px 12px;font-size:12px;background:#c0392b;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-family:inherit;">🗑️ Borrar</button>' +
       '</div>' +
     '</div>';
 
