@@ -826,6 +826,42 @@
     to { transform: translateY(0); opacity: 1; }
   }
 
+  /* BOT DETAIL: sheet full-screen estilo WhatsApp para mobile */
+  .bot-sheet {
+    position: fixed;
+    inset: 0;
+    background: var(--card, #fff);
+    z-index: 9000;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform .22s ease;
+    visibility: hidden;
+  }
+  .bot-sheet.open { transform: translateX(0); visibility: visible; }
+  .bot-sheet-header {
+    position: sticky;
+    top: 0;
+    background: var(--card, #fff);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .bot-sheet-back {
+    background: none; border: none; font-size: 24px;
+    line-height: 1; padding: 4px 8px; cursor: pointer;
+    color: var(--text); font-family: inherit;
+  }
+  .bot-sheet-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 14px;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .modal-title {
     font-family: 'Cormorant Garamond', serif;
     font-size: 24px;
@@ -2010,40 +2046,34 @@
         </div>
       </div>
 
-      <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;">
-        <!-- Lista de conversaciones -->
-        <div style="flex:0 0 320px;max-width:320px;min-width:280px;">
-          <input id="botSearch" placeholder="🔍 Buscar nombre o teléfono..." style="width:100%;box-sizing:border-box;padding:8px 12px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--bg);margin-bottom:8px;font-family:inherit;" oninput="renderBotList()">
-          <select id="botStepFilter" onchange="renderBotList()" style="width:100%;box-sizing:border-box;padding:7px 10px;font-size:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);margin-bottom:10px;font-family:inherit;">
-            <option value="">Todos los estados</option>
-            <option value="INITIAL">INITIAL</option>
-            <option value="AWAITING_DATES">AWAITING_DATES</option>
-            <option value="SHOWING_AVAILABILITY">SHOWING_AVAILABILITY</option>
-            <option value="SHOWING_ALTERNATIVES">SHOWING_ALTERNATIVES</option>
-            <option value="OFFERING_PAYMENT">OFFERING_PAYMENT</option>
-            <option value="AWAITING_EMAIL">AWAITING_EMAIL</option>
-            <option value="AWAITING_NAME">AWAITING_NAME</option>
-            <option value="PENDING_REVIEW">PENDING_REVIEW</option>
-            <option value="ARRIVED">ARRIVED</option>
-            <option value="HUMAN_HANDOFF">HUMAN_HANDOFF</option>
-            <option value="SHOWED_INFO">SHOWED_INFO</option>
-            <option value="NO_AVAILABILITY">NO_AVAILABILITY</option>
-            <option value="PENDING_HUMAN_BOOKING">PENDING_HUMAN_BOOKING</option>
-          </select>
-          <div id="botList" style="background:var(--card);border:1px solid var(--border);border-radius:10px;max-height:600px;overflow-y:auto;">
-            <div style="text-align:center;padding:30px 12px;color:var(--text-muted);font-size:13px;">Cargando…</div>
-          </div>
-        </div>
-
-        <!-- Detalle del chat -->
-        <div id="botDetail" style="flex:1 1 500px;min-width:300px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;min-height:600px;">
-          <div style="text-align:center;color:var(--text-muted);padding:80px 0;font-size:13px;">
-            Seleccioná una conversación a la izquierda para ver el detalle.
-          </div>
+      <!-- Lista de conversaciones (ancho completo). Al tap, abre sheet full-screen #botDetail. -->
+      <div>
+        <input id="botSearch" placeholder="🔍 Buscar nombre o teléfono..." style="width:100%;box-sizing:border-box;padding:10px 12px;font-size:14px;border:1px solid var(--border);border-radius:8px;background:var(--bg);margin-bottom:8px;font-family:inherit;" oninput="renderBotList()">
+        <select id="botStepFilter" onchange="renderBotList()" style="width:100%;box-sizing:border-box;padding:9px 10px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--bg);margin-bottom:12px;font-family:inherit;">
+          <option value="">Todos los estados</option>
+          <option value="INITIAL">INITIAL</option>
+          <option value="AWAITING_DATES">AWAITING_DATES</option>
+          <option value="SHOWING_AVAILABILITY">SHOWING_AVAILABILITY</option>
+          <option value="SHOWING_ALTERNATIVES">SHOWING_ALTERNATIVES</option>
+          <option value="OFFERING_PAYMENT">OFFERING_PAYMENT</option>
+          <option value="AWAITING_EMAIL">AWAITING_EMAIL</option>
+          <option value="AWAITING_NAME">AWAITING_NAME</option>
+          <option value="PENDING_REVIEW">PENDING_REVIEW</option>
+          <option value="ARRIVED">ARRIVED</option>
+          <option value="HUMAN_HANDOFF">HUMAN_HANDOFF</option>
+          <option value="SHOWED_INFO">SHOWED_INFO</option>
+          <option value="NO_AVAILABILITY">NO_AVAILABILITY</option>
+          <option value="PENDING_HUMAN_BOOKING">PENDING_HUMAN_BOOKING</option>
+        </select>
+        <div id="botList" style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+          <div style="text-align:center;padding:30px 12px;color:var(--text-muted);font-size:13px;">Cargando…</div>
         </div>
       </div>
     </div>
   </section>
+
+  <!-- BOT DETAIL: sheet full-screen, abre desde la derecha al tappear una conversación -->
+  <div id="botDetail" class="bot-sheet" role="dialog" aria-label="Detalle de conversación"></div>
 
   <!-- ===== PROGRAMA AMIGOS ===== -->
   <section id="programa" class="section">
@@ -2853,17 +2883,31 @@ async function selectBotConv(phone) {
   _botSelectedPhone = phone;
   renderBotList();
   const detail = document.getElementById('botDetail');
-  detail.innerHTML = '<div style="text-align:center;padding:60px 0;color:var(--text-muted);font-size:13px;">Cargando mensajes…</div>';
+  detail.innerHTML =
+    '<div class="bot-sheet-header"><button class="bot-sheet-back" onclick="closeBotDetail()" aria-label="Volver">←</button><div style="font-size:14px;color:var(--text-muted);">Cargando…</div></div>';
+  detail.classList.add('open');
+  document.body.style.overflow = 'hidden';
   const conv = _botConvs.find(c => c.phone === phone);
-  if (!conv) { detail.innerHTML = '<div style="padding:20px;color:#c0392b;">No encontrado.</div>'; return; }
+  if (!conv) {
+    detail.innerHTML = '<div class="bot-sheet-header"><button class="bot-sheet-back" onclick="closeBotDetail()">←</button></div><div class="bot-sheet-body"><div style="padding:20px;color:#c0392b;">No encontrado.</div></div>';
+    return;
+  }
   try {
     const res = await fetch(SHEETS_API_URL + '?action=getMensajes&phone=' + encodeURIComponent(phone) + '&limit=300');
     const data = await res.json();
     const messages = (data && data.messages) || [];
     renderBotDetail(conv, messages);
   } catch(e) {
-    detail.innerHTML = '<div style="padding:20px;color:#c0392b;">Error: ' + e.message + '</div>';
+    detail.innerHTML = '<div class="bot-sheet-header"><button class="bot-sheet-back" onclick="closeBotDetail()">←</button></div><div class="bot-sheet-body"><div style="padding:20px;color:#c0392b;">Error: ' + e.message + '</div></div>';
   }
+}
+
+function closeBotDetail() {
+  const detail = document.getElementById('botDetail');
+  if (detail) detail.classList.remove('open');
+  document.body.style.overflow = '';
+  _botSelectedPhone = null;
+  renderBotList();
 }
 
 async function deleteBotConv(phone, name) {
@@ -2876,8 +2920,7 @@ async function deleteBotConv(phone, name) {
     const data = await res.json();
     if (data && data.ok) {
       showToast('🗑️ Eliminada: ' + data.removedConv + ' fila + ' + data.removedMsg + ' mensajes');
-      _botSelectedPhone = null;
-      document.getElementById('botDetail').innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:80px 0;font-size:13px;">Conversación eliminada.</div>';
+      closeBotDetail();
       await loadBotData();
     } else {
       alert('No se pudo borrar: ' + (data && data.error || 'error'));
@@ -2902,26 +2945,30 @@ function renderBotDetail(conv, messages) {
   if (ctxBits.length) ctxHtml = '<div style="font-size:12px;color:var(--text-muted);margin-top:6px;">' + ctxBits.join(' · ') + '</div>';
 
   const header =
-    '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);flex-wrap:wrap;">' +
-      '<div>' +
-        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">' +
-          '<strong style="font-size:16px;">' + (conv.name || conv.phone) + '</strong>' +
+    '<div class="bot-sheet-header">' +
+      '<button class="bot-sheet-back" onclick="closeBotDetail()" aria-label="Volver">←</button>' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;flex-wrap:wrap;">' +
+          '<strong style="font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (conv.name || conv.phone) + '</strong>' +
           '<span style="font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#fff;background:' + badge.color + ';padding:2px 6px;border-radius:6px;">' + badge.text + '</span>' +
         '</div>' +
-        '<div style="font-size:12px;color:var(--text-muted);">+' + conv.phone + ' · última actividad ' + _botFmtTime(conv.lastUpdated) + '</div>' +
-        ctxHtml +
+        '<div style="font-size:11px;color:var(--text-muted);">+' + conv.phone + ' · ' + _botFmtTime(conv.lastUpdated) + '</div>' +
       '</div>' +
-      '<div style="display:flex;gap:6px;">' +
-        '<a href="' + waLink + '" target="_blank" style="padding:6px 12px;font-size:12px;background:#25d366;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">💬 WhatsApp</a>' +
-        '<button onclick="deleteBotConv(\'' + conv.phone + '\', \'' + (conv.name || '').replace(/[\\\'"]/g, '') + '\')" style="padding:6px 12px;font-size:12px;background:#c0392b;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-family:inherit;">🗑️ Borrar</button>' +
+      '<div style="display:flex;gap:6px;flex-shrink:0;">' +
+        '<a href="' + waLink + '" target="_blank" style="padding:7px 10px;font-size:12px;background:#25d366;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">💬</a>' +
+        '<button onclick="deleteBotConv(\'' + conv.phone + '\', \'' + (conv.name || '').replace(/[\\\'"]/g, '') + '\')" style="padding:7px 10px;font-size:12px;background:#c0392b;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-family:inherit;">🗑️</button>' +
       '</div>' +
     '</div>';
 
   let body;
   if (messages.length === 0) {
-    body = '<div style="text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;">Sin mensajes en historial. (Si la conversación es vieja, puede que aún no estuviera activo el log persistente.)</div>';
+    body = '<div class="bot-sheet-body">' +
+      (ctxHtml ? '<div style="padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border);">' + ctxHtml + '</div>' : '') +
+      '<div style="text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;">Sin mensajes en historial. (Si la conversación es vieja, puede que aún no estuviera activo el log persistente.)</div>' +
+      '</div>';
   } else {
-    body = '<div style="max-height:600px;overflow-y:auto;padding-right:6px;">' +
+    body = '<div class="bot-sheet-body">' +
+      (ctxHtml ? '<div style="padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border);">' + ctxHtml + '</div>' : '') +
       messages.map(m => {
         const isOut = m.direction === 'out';
         const align = isOut ? 'flex-end' : 'flex-start';
