@@ -248,6 +248,36 @@ function _botHandleInfoQuery(from, contactName, conv, text) {
     return true;
   }
 
+  // Decoracion / sorpresas para cumpleaños / aniversarios
+  if (/\b(decoraci[oó]n|decorar|decorad|sorpresa|globos?|flores|cumple|cumplea[ñn]os|aniversario|luna\s+de\s+miel|romant|rom[aá]ntic|propon|pedida\s+de\s+mano|propuesta)\b/i.test(t)) {
+    sendWhatsAppText(from,
+      '🎉 *Decoración especial para aniversarios y cumpleaños*\n\n' +
+      'Realizamos una decoración básica que incluye:\n' +
+      '• Arreglo de flores\n' +
+      '• Globos\n' +
+      '• Letreros de cumpleaños o aniversarios\n' +
+      '• Elementos decorativos románticos\n' +
+      '• Una botella de espumante 🥂\n\n' +
+      '*Costo:* $40 adicional a tu reserva.\n\n' +
+      'Si querés agregarlo, decímelo al confirmar las fechas y lo coordinamos. ¿Para cuándo sería?'
+    );
+    return true;
+  }
+
+  // Jacuzzi / piscina / sauna → no tenemos, pero tenemos cascada propia + alternativas
+  if (/\b(jacuzzi|piscina|pool|sauna|hot\s+tub|tina\s+caliente)\b/i.test(t)) {
+    sendWhatsAppText(from,
+      '🌊 No tenemos jacuzzi ni piscina en las cabañas, pero algo mejor: una *cascada propia dentro del proyecto*, en plena naturaleza y exclusiva para nuestros huéspedes. 🌿\n\n' +
+      'Y en los alrededores hay opciones increíbles:\n' +
+      '• *Los Cajones de Chamé* (~10 min) — piscinas naturales y saltos al agua\n' +
+      '• *Cascadas Filipinas* (Sorá, ~20 min) — 7 cascadas encadenadas\n' +
+      '• *Cascada Manglarito* (Sorá, ~20 min) — 35m de caída\n' +
+      '• *Playas* Coronado y Gorgona (~15-20 min)\n\n' +
+      '¿Querés cotizar para alguna fecha? Decime *fechas* y *personas* 📅'
+    );
+    return true;
+  }
+
   return false;
 }
 
@@ -321,6 +351,7 @@ function _botKnowledgeBase() {
 '- 3-4 personas: recargo pequeño por persona adicional ($' + BOT_RECARGO_PERSONA_PORTAL + ' en Portal, $' + BOT_RECARGO_PERSONA_GRANDE + ' en Paseo/Puente)\n' +
 '- 5-6 personas: combo Puente + Portal (cabañas contiguas), cotización aparte\n\n' +
 '## AMENIDADES\n' +
+'- *Cascada propia dentro del proyecto*, exclusiva para huéspedes (en plena naturaleza)\n' +
 '- Cocina completa + área de BBQ\n' +
 '- Cooler grande (NO hay nevera — traer hielo)\n' +
 '- Café, azúcar y especias básicas incluidos\n' +
@@ -328,7 +359,10 @@ function _botKnowledgeBase() {
 '- Iluminación 100% solar + inversor para cargar celulares\n' +
 '- Toallas, jabón y papel higiénico incluidos\n' +
 '- Excelente señal de todas las operadoras\n' +
-'- Fumigamos semanalmente (traer repelente si sos sensible a mosquitos)\n\n' +
+'- Fumigamos semanalmente (traer repelente si sos sensible a mosquitos)\n' +
+'- NO hay jacuzzi, piscina ni sauna en las cabañas\n\n' +
+'## SERVICIOS EXTRAS\n' +
+'- *Decoración para aniversarios y cumpleaños* — $40 adicionales. Incluye arreglo de flores, globos, letreros, elementos decorativos románticos y una botella de espumante. Se coordina al confirmar la reserva.\n\n' +
 '## UBICACIÓN\n' +
 '- Buenos Aires, Chamé · faldas del Cerro Chicá\n' +
 '- A 1h 15min de Ciudad de Panamá\n' +
@@ -383,7 +417,8 @@ function _botKnowledgeTopics(text) {
 function _botKbActividades() {
   return (
 '## ACTIVIDADES Y ALREDEDORES (más detalles: https://lasnubes.cloud)\n' +
-'Naturaleza y aventura cerca de Las Nubes:\n' +
+'En el mismo proyecto y cerca:\n' +
+'- *Cascada propia* dentro del proyecto Las Nubes — exclusiva para huéspedes, sin tener que salir.\n' +
 '- *Los Cajones de Chamé* (~10 min): cañón con piscinas naturales conectadas y saltos al agua. Snorkel, natación. 4x4 recomendado. Estacionamiento $3. Mejor en temporada seca.\n' +
 '- *Parque Nacional Altos de Campana* (~20 min): primer parque nacional de Panamá. Senderismo al Cerro de la Cruz (905m, ~2h ida y vuelta) con vistas al Pacífico y Canal. Entrada ~$5.\n' +
 '- *Coronado* (~20 min): playa de arena oscura, surf, supermercados y restaurantes. Mejor entre semana.\n' +
