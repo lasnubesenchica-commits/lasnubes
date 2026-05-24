@@ -414,13 +414,11 @@ function botHandleMessage(from, text, contactName, kind) {
   if (t === 'faq' || t.includes('pregunta') || t.includes('duda')) {
     return botHandleMessage(from, 'menu_faq', contactName, 'list_reply');
   }
-  if (t === '1' || t.includes('disponibilidad') || t.includes('disponible') || t.includes('precios') || t.includes('cuanto cuesta') || t.includes('cuánto cuesta') || t.includes('reservar')) {
-    return botHandleMessage(from, 'menu_disponibilidad', contactName, 'list_reply');
-  }
 
-  // Si esta esperando fechas O el texto tiene pinta de fechas, intentar NLU.
-  // Si esta en medio de un booking (OFFERING_PAYMENT, AWAITING_EMAIL, AWAITING_NAME)
-  // y el cliente menciona nuevas fechas, reseteamos el flujo.
+  // Date parsing TIENE PRIORIDAD sobre el keyword "disponibilidad".
+  // Si el cliente escribe "Tienen disponibilidad para 27 de julio?" detectamos
+  // las fechas y mostramos disponibilidad directo en vez de pedirle que las
+  // escriba otra vez.
   const midBooking = ['OFFERING_PAYMENT', 'AWAITING_VOUCHER_RETRY', 'AWAITING_EMAIL', 'AWAITING_NAME'].indexOf(conv.step) !== -1;
   if (conv.step === 'AWAITING_DATES' || _looksLikeDateQuery(text)) {
     const parsed = _parseDatesWithClaude(text, _botToday());
@@ -431,10 +429,15 @@ function botHandleMessage(from, text, contactName, kind) {
       }
       return _replyAvailability(from, contactName, { step: 'AWAITING_DATES', context: {}, name: contactName }, parsed.checkin, parsed.checkout, personas);
     }
-    if (parsed && (!parsed.checkin || parsed.confidence <= 0.4)) {
+    if (parsed && (!parsed.checkin || parsed.confidence <= 0.4) && conv.step === 'AWAITING_DATES') {
+      // Solo pedimos clarificacion si estabamos esperando fechas explicitamente
       sendWhatsAppText(from, '🤔 No logré entender las fechas. ¿Podés escribirlas más claras?\n\nEjemplo: "del 5 al 8 de junio, 4 personas".');
       return;
     }
+  }
+
+  if (t === '1' || t.includes('disponibilidad') || t.includes('disponible') || t.includes('precios') || t.includes('cuanto cuesta') || t.includes('cuánto cuesta') || t.includes('reservar')) {
+    return botHandleMessage(from, 'menu_disponibilidad', contactName, 'list_reply');
   }
 
   // Fallback de seleccion de cabana por texto (por si el cliente escribe en vez de tocar el boton)
