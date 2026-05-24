@@ -86,6 +86,39 @@ function _looksLikeDateQuery(text) {
   return /\d|fin de sem|finde|del .* al|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo|\bhoy\b|\bma[ñn]ana\b|pasado ma[ñn]ana|esta semana|pr[oó]xima semana|semana que viene|mes que viene|fin de a[ñn]o/i.test(text || '');
 }
 
+// Detecta consultas vagas tipo "para julio", "segunda semana de agosto",
+// "principios de septiembre", "el mes que viene". En estos casos no
+// intentamos cotizar — mandamos al calendario publico para que el cliente
+// elija fechas concretas.
+function _looksLikeVagueDateQuery(text) {
+  const t = (text || '').toLowerCase();
+  const MONTHS = '(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)';
+  // "primera/segunda/tercera/cuarta/última semana de <mes>"
+  if (new RegExp('(primera|segunda|tercera|cuarta|[uú]ltima)\\s+semana\\s+de\\s+' + MONTHS, 'i').test(t)) return true;
+  // "principios/mediados/finales de <mes>"
+  if (new RegExp('(principios|mediados|fines|finales)\\s+de\\s+' + MONTHS, 'i').test(t)) return true;
+  // "para/en/durante <mes>" sin numero de dia ni rango
+  const hasMonth   = new RegExp('\\b' + MONTHS + '\\b', 'i').test(t);
+  const hasDayNum  = /\b\d{1,2}\b/.test(t);
+  const hasDayRange = /del\s+\d+\s+al\s+\d+|al\s+\d+\s+de/i.test(t);
+  if (hasMonth && !hasDayNum && !hasDayRange) return true;
+  // "proximo mes" / "mes que viene" sin dia especifico
+  if (/(pr[oó]xim[oa]|siguiente)\s+mes|mes\s+que\s+viene/i.test(t) && !hasDayNum) return true;
+  return false;
+}
+
+// Envia link al calendario publico para consultas de fechas vagas.
+function _botSendCalendarLink(from, contactName) {
+  const body =
+    '🗓 Para fechas amplias o flexibles, podés explorar todo el calendario de disponibilidad en nuestra página.\n\n' +
+    'Tocá el botón abajo, mirá los días libres y cuando tengas fechas concretas decímelas por aquí (ej: _"del 5 al 8 de julio, 2 personas"_) para cotizar al instante. 🤝';
+  try {
+    sendWhatsAppCTAUrl(from, body, '📅 Ver calendario', 'https://lasnubes.cloud');
+  } catch(_) {
+    sendWhatsAppText(from, body + '\n\n👉 https://lasnubes.cloud');
+  }
+}
+
 // Keywords que indican cambio/cancelacion → no cotizar, derivar a humano
 function _isReservaChangeRequest(text) {
   const t = (text || '').toLowerCase();
@@ -554,6 +587,14 @@ function botHandleMessage(from, text, contactName, kind) {
   }
   if (t === 'faq' || t.includes('pregunta') || t.includes('duda')) {
     return botHandleMessage(from, 'menu_faq', contactName, 'list_reply');
+  }
+
+  // Consultas vagas tipo "para julio", "segunda semana de agosto", "el mes
+  // que viene" → mandamos al calendario publico en vez de intentar cotizar.
+  if (_looksLikeVagueDateQuery(text)) {
+    _botSendCalendarLink(from, contactName);
+    _saveConv(from, 'INITIAL', conv.context || {}, contactName);
+    return;
   }
 
   // Date parsing TIENE PRIORIDAD sobre el keyword "disponibilidad".
