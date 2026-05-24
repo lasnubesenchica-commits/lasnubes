@@ -3286,7 +3286,13 @@ function buildDispMonth(firstDay, cabinRes, today) {
     for (let cur = new Date(start); cur < end; cur.setDate(cur.getDate() + 1)) {
       const key = cur.toISOString().slice(0,10);
       const kind = getDayKind(r, key);
-      occupied[key] = { initials, id: r.id, origin: r.origin || 'Airbnb', isMaintenance, isPending: (r.estadoPago || '').toString().toUpperCase() === 'PENDIENTE', checkin: r.checkin, checkout: r.checkout, alerta: (r.origin === 'Airbnb' && r.alerta) ? r.alerta : '', tipo: r.tipo || 'noche', kind };
+      // Solo marcamos como "pendiente" las pre-reservas del bot esperando aprobacion,
+      // no las reservas que el admin creo manualmente sin pago todavia (esas no necesitan
+      // distintivo porque el admin ya las conoce).
+      const _cmt = (r.comentarios || '').toString();
+      const isPending = (r.estadoPago || '').toString().toUpperCase() === 'PENDIENTE'
+                        && /pendiente revisi/i.test(_cmt);
+      occupied[key] = { initials, id: r.id, origin: r.origin || 'Airbnb', isMaintenance, isPending: isPending, checkin: r.checkin, checkout: r.checkout, alerta: (r.origin === 'Airbnb' && r.alerta) ? r.alerta : '', tipo: r.tipo || 'noche', kind };
     }
   });
 
