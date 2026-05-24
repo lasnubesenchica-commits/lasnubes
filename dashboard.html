@@ -1227,7 +1227,7 @@
       <button onclick="showSection('ocupacion')">Ocupación</button>
       <button onclick="showSection('contabilidad')">Contabilidad</button>
       <button onclick="showSection('programa')">Programa</button>
-      <button onclick="showSection('bot')">💬 Bot</button>
+      <button id="btnBotNav" onclick="showSection('bot')" style="display:none;">💬 Bot</button>
     </nav>
     <!-- Mobile dropdown -->
     <div class="nav-mobile">
@@ -1238,7 +1238,7 @@
         <button onclick="showSection('ocupacion');closeNavMenu()">Ocupación</button>
         <button onclick="showSection('contabilidad');closeNavMenu()">Contabilidad</button>
         <button onclick="showSection('programa');closeNavMenu()">Programa</button>
-        <button onclick="showSection('bot');closeNavMenu()">💬 Bot</button>
+        <button id="btnBotNavMobile" onclick="showSection('bot');closeNavMenu()" style="display:none;">💬 Bot</button>
       </div>
     </div>
   </div>
@@ -8921,13 +8921,23 @@ renderDisponibilidad();
 syncFromSheets();
 setInterval(syncFromSheets, 15 * 60 * 1000);
 
+// Modo admin via ?admin=1 → habilita acceso al tab Bot (CRM de conversaciones).
+const IS_ADMIN = new URLSearchParams(window.location.search).get('admin') === '1';
+if (IS_ADMIN) {
+  const b1 = document.getElementById('btnBotNav');       if (b1) b1.style.display = '';
+  const b2 = document.getElementById('btnBotNavMobile'); if (b2) b2.style.display = '';
+}
+
 // Deep link: si la URL tiene #bot:<phone> abrir el tab Bot y seleccionar
 // esa conversacion. Util para los links que el bot manda al admin
-// cuando un nuevo cliente escribe.
+// cuando un nuevo cliente escribe. Tambien fuerza modo admin para que se
+// vea el boton en el nav.
 (function handleDeepLink() {
   const hash = window.location.hash || '';
   const botMatch = hash.match(/^#bot(?::(\d+))?/);
   if (botMatch) {
+    const b1 = document.getElementById('btnBotNav');       if (b1) b1.style.display = '';
+    const b2 = document.getElementById('btnBotNavMobile'); if (b2) b2.style.display = '';
     showSection('bot');
     if (botMatch[1]) {
       const phone = botMatch[1];
