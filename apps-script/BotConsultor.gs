@@ -603,13 +603,11 @@ function _botSendMainMenu(from, contactName, firstTime) {
     body = '¿Necesitás algo más? Tocá *Ver opciones* abajo 👇';
   } else {
     body = greeting + '\n\n' +
-      'Soy el asistente virtual de *Las Nubes*. 🌿\n\n' +
-      '✨ *Para reservar*, decime las *fechas* y *cuántas personas*. Por ejemplo:\n' +
-      '• "del 5 al 8 de junio, 2 personas"\n' +
-      '• "viernes a domingo, 4 personas"\n' +
-      '• "este fin de semana, 3 personas"\n\n' +
-      'Te paso disponibilidad y precio al instante, y cerramos la reserva por aquí mismo. 🤝\n\n' +
-      'También podés tocar *Ver opciones* abajo para: 📍 cómo llegar, 🏞 actividades, 🍽 gastronomía, 🧊 hielo/carbón, ❓ preguntas frecuentes y más 👇';
+      'Qué bueno tenerte por aquí. Soy el asistente virtual de *Las Nubes*, las cabañas en las faldas de Chicá.\n\n' +
+      'Para reservar o consultar disponibilidad, cuéntame *fechas* y *personas*. Por ejemplo:\n' +
+      '   _"del 5 al 8 de junio, 2 personas"_\n\n' +
+      'Te envío disponibilidad y precio al instante, y cerramos la reserva por aquí mismo. 🤝\n\n' +
+      '¿Quieres explorar antes — cómo llegar, actividades, fotos o hablar con un agente? Toca *Ver opciones* ⬇';
   }
   const sections = [
     {
