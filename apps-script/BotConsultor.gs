@@ -82,8 +82,14 @@ function _isHumanRequest(text) {
 }
 
 function _looksLikeDateQuery(text) {
-  // numeros, fines de semana, nombres de mes, "del .. al .."
-  return /\d|fin de sem|finde|del .* al|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre/i.test(text || '');
+  // Agresivo: numeros, dias de la semana, meses, expresiones relativas
+  return /\d|fin de sem|finde|del .* al|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo|\bhoy\b|\bma[ñn]ana\b|pasado ma[ñn]ana|esta semana|pr[oó]xima semana|semana que viene|mes que viene|fin de a[ñn]o/i.test(text || '');
+}
+
+// Keywords que indican cambio/cancelacion → no cotizar, derivar a humano
+function _isReservaChangeRequest(text) {
+  const t = (text || '').toLowerCase();
+  return /cambiar fecha|cambio de fecha|cambio de reserva|cambiar reserva|reagenda|reprograma|cancelar reserva|cancelaci[oó]n|cancelar mi|no podr[eé] ir|no voy a poder|no podemos ir|no vamos a poder|posponer|adelantar mi/.test(t);
 }
 
 // ─── NLU con Claude ────────────────────────────────────────────────
@@ -264,10 +270,7 @@ function botHandleMessage(from, text, contactName, kind) {
   if ((kind === 'list_reply' || kind === 'button_reply') && /^menu_/.test(text)) {
     if (text === 'menu_disponibilidad') {
       sendWhatsAppText(from,
-        '¡Genial! 🌿\n\nDecime las *fechas* y cuántas *personas* serían. Por ejemplo:\n\n' +
-        '• "del 5 al 8 de junio, 2 personas"\n' +
-        '• "viernes a domingo, 4 personas"\n' +
-        '• "este fin de semana, 3 personas"'
+        '¡Genial! 🌿 Decime *fechas* y *personas* (ej: _"del 5 al 8 de junio, 2 personas"_).'
       );
       _saveConv(from, 'AWAITING_DATES', conv.context, contactName);
       return;
@@ -388,6 +391,28 @@ function botHandleMessage(from, text, contactName, kind) {
   // Handoff a humano (prioritario) → CTA URL para abrir WhatsApp del equipo
   if (_isHumanRequest(text) || text.trim() === '3') {
     return botHandleMessage(from, 'menu_agente', contactName, 'list_reply');
+  }
+
+  // Cambio de fecha / cancelacion / "no podre ir" → handoff directo al admin
+  // (no intenta cotizar aunque haya fechas en el texto).
+  if (_isReservaChangeRequest(text)) {
+    sendWhatsAppText(from,
+      '🙏 Entiendo, te derivo con una persona del equipo para coordinar el cambio o cancelación.\n\n' +
+      'Tocá el botón abajo para escribirle directo.'
+    );
+    try {
+      sendWhatsAppCTAUrl(from,
+        'Te resolvemos el cambio en un mensaje.',
+        '💬 Abrir WhatsApp',
+        'https://wa.me/50769812266?text=' + encodeURIComponent('Hola, quiero coordinar un cambio o cancelación de mi reserva.')
+      );
+    } catch(_) {}
+    try {
+      sendWhatsAppText('50769812266',
+        '⚠️ Cambio/cancelación pedido vía bot:\n👤 ' + (contactName || from) + '\n📱 +' + from + '\nMensaje: "' + (text || '').slice(0, 200) + '"');
+    } catch(_) {}
+    _saveConv(from, 'HUMAN_HANDOFF', conv.context || {}, contactName);
+    return;
   }
 
   const t = (text || '').toLowerCase().trim();
@@ -576,12 +601,13 @@ function _botSendMainMenu(from, contactName, firstTime) {
     body = '¿Necesitás algo más? Tocá *Ver opciones* abajo 👇';
   } else {
     body = greeting + '\n\n' +
-      'Soy el asistente virtual de *Las Nubes*. Te puedo ayudar a:\n\n' +
-      '✓ Consultar *disponibilidad y precios*\n' +
-      '✓ Ver *actividades, gastronomía y mercados* cerca\n' +
-      '✓ *Cómo llegar* y *preguntas frecuentes*\n' +
-      '✓ *Reservar* directo conmigo o derivarte con una persona\n\n' +
-      'Tocá *Ver opciones* abajo para empezar 👇';
+      'Soy el asistente virtual de *Las Nubes*. 🌿\n\n' +
+      '✨ *Para reservar*, decime las *fechas* y *cuántas personas*. Por ejemplo:\n' +
+      '• "del 5 al 8 de junio, 2 personas"\n' +
+      '• "viernes a domingo, 4 personas"\n' +
+      '• "este fin de semana, 3 personas"\n\n' +
+      'Te paso disponibilidad y precio al instante, y cerramos la reserva por aquí mismo. 🤝\n\n' +
+      'También podés tocar *Ver opciones* abajo para: 📍 cómo llegar, 🏞 actividades, 🍽 gastronomía, 🧊 hielo/carbón, ❓ preguntas frecuentes y más 👇';
   }
   const sections = [
     {
