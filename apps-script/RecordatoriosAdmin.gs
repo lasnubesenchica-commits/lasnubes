@@ -42,6 +42,20 @@ function _adminWaLink(rawPhone) {
   return 'https://wa.me/' + waNum;
 }
 
+// Formatea telefono panameno legible: +507 XXXX-XXXX. WhatsApp autodetecta
+// este formato y lo vuelve tappable (abre options: chat/llamar).
+function _adminFormatPhone(rawPhone) {
+  if (!rawPhone) return null;
+  const digits = String(rawPhone).replace(/\D/g, '');
+  if (digits.length === 8) return '+507 ' + digits.slice(0, 4) + '-' + digits.slice(4);
+  if (digits.length === 11 && digits.indexOf('507') === 0) {
+    const rest = digits.slice(3);
+    return '+507 ' + rest.slice(0, 4) + '-' + rest.slice(4);
+  }
+  if (digits.length >= 10) return '+' + digits;
+  return null;
+}
+
 // Devuelve [{ kind: 'entrada'|'salida'|'pasadia', reserva }] para targetDate.
 // Mirror simplificado de renderReservasHoy en dashboard.html.
 function _adminGetMovimientosDia(targetDate) {
@@ -123,8 +137,8 @@ function enviarRecordatorioAdminReservasHoy() {
       msg += '\n\n🏡 ' + r.cabinName;
       msg += '\n👤 ' + r.name + ' · ' + r.persons + (r.persons == 1 ? ' persona' : ' personas');
       if (r.origin && r.origin !== 'Airbnb') msg += ' · ' + r.origin;
-      const wa = _adminWaLink(r.telefono);
-      if (wa) msg += '\n💬 ' + wa;
+      const phone = _adminFormatPhone(r.telefono);
+      if (phone) msg += '\n💬 ' + phone;
       if (it.kind === 'pasadia') {
         msg += '\n⏰ ' + (r.tipo === 'pasadia' ? '9am – 5pm' : '12:30pm – 7pm');
       } else if (r.tipo === 'early') {
@@ -140,8 +154,8 @@ function enviarRecordatorioAdminReservasHoy() {
       const r = it.reserva;
       msg += '\n\n🏡 ' + r.cabinName;
       msg += '\n👤 ' + r.name + ' · ' + r.persons + (r.persons == 1 ? ' persona' : ' personas');
-      const wa = _adminWaLink(r.telefono);
-      if (wa) msg += '\n💬 ' + wa;
+      const phone = _adminFormatPhone(r.telefono);
+      if (phone) msg += '\n💬 ' + phone;
       if (r.tipo === 'late') msg += '\n⏰ Sale 4pm (late check-out)';
     });
   }
@@ -170,8 +184,8 @@ function enviarRecordatorioServiciosEspeciales() {
     const r = it.reserva;
     msg += '\n\n🏡 ' + r.cabinName;
     msg += '\n👤 ' + r.name;
-    const wa = _adminWaLink(r.telefono);
-    if (wa) msg += '\n💬 ' + wa;
+    const phone = _adminFormatPhone(r.telefono);
+    if (phone) msg += '\n💬 ' + phone;
     msg += '\n📝 ' + r.comentarios;
   });
 
