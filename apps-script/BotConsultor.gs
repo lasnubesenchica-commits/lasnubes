@@ -535,16 +535,24 @@ function _parseDatesWithClaude(text, today) {
   const prompt =
     'Hoy es ' + today + ' (timezone America/Panama). Un cliente escribio en espanol:\n\n"' +
     text.replace(/"/g, '\\"') + '"\n\n' +
-    'Extrae las fechas de reserva (checkin/checkout) y numero de personas. Devuelve SOLO JSON con esta forma exacta:\n' +
-    '{"checkin":"YYYY-MM-DD"|null,"checkout":"YYYY-MM-DD"|null,"persons":N|null,"confidence":0-1}\n\n' +
+    'Extrae las fechas de reserva (checkin/checkout), total de personas y niños menores de 5 años (que no pagan). Devuelve SOLO JSON con esta forma exacta:\n' +
+    '{"checkin":"YYYY-MM-DD"|null,"checkout":"YYYY-MM-DD"|null,"persons":N|null,"freeChildren":N|null,"confidence":0-1}\n\n' +
     'Reglas:\n' +
     '- checkin = dia que llegan\n' +
     '- checkout = dia que se van (mayor a checkin)\n' +
     '- Si solo mencionan 1 fecha y "N noches", calcular checkout = checkin + N\n' +
     '- Si solo mencionan 1 fecha sin noches, asumir 1 noche y checkout = checkin + 1\n' +
+    '- persons = TOTAL de personas (adultos + niños de todas las edades, los menores TAMBIÉN cuentan acá)\n' +
+    '- freeChildren = SOLO niños menores de 5 años (bebés, infantes). Si no se menciona edad, dejá en 0\n' +
+    '- Ejemplos de freeChildren:\n' +
+    '   "2 adultos y 1 bebé" → persons=3, freeChildren=1\n' +
+    '   "somos 4: 2 grandes, niños de 3 y 7" → persons=4, freeChildren=1 (solo el de 3 es menor de 5)\n' +
+    '   "2 adultos y 2 niños" (sin edad) → persons=4, freeChildren=0 (asumimos que pagan)\n' +
+    '   "4 personas" → persons=4, freeChildren=0\n' +
+    '   "mi esposa y yo + nuestra hija de 2 años" → persons=3, freeChildren=1\n' +
     '- persons = null si no se menciona\n' +
     '- confidence 0 a 1: 1 = muy claro, 0 = ambiguo\n' +
-    '- Si no podes inferir fechas con confianza > 0.4, devuelve {"checkin":null,"checkout":null,"persons":null,"confidence":0}\n' +
+    '- Si no podes inferir fechas con confianza > 0.4, devuelve {"checkin":null,"checkout":null,"persons":null,"freeChildren":null,"confidence":0}\n' +
     '- "este finde" / "este fin de semana" = el viernes-domingo mas proximo\n' +
     '- "proximo finde" = el siguiente fin de semana\n' +
     '- "del viernes al domingo" sin mes = el siguiente viernes-domingo\n' +
@@ -868,14 +876,15 @@ function botHandleMessage(from, text, contactName, kind) {
 
   // Boton "Sugerencia: usar esta fecha"
   if (kind === 'button_reply' && text.indexOf('alt_') === 0) {
-    const newCheckin = text.replace('alt_', '');
-    const prevDates  = conv.context && conv.context.dates;
-    const personas   = (conv.context && conv.context.personas) || 2;
-    const nights     = prevDates
+    const newCheckin   = text.replace('alt_', '');
+    const prevDates    = conv.context && conv.context.dates;
+    const personas     = (conv.context && conv.context.personas) || 2;
+    const freeChildren = (conv.context && conv.context.freeChildren) || 0;
+    const nights       = prevDates
       ? Math.round((new Date(prevDates.checkout + 'T12:00:00') - new Date(prevDates.checkin + 'T12:00:00')) / 86400000)
       : 1;
     const newCheckout = _botAddDaysISO(newCheckin, nights);
-    return _replyAvailability(from, contactName, conv, newCheckin, newCheckout, personas);
+    return _replyAvailability(from, contactName, conv, newCheckin, newCheckout, personas, freeChildren);
   }
 
   // Mensaje de imagen → voucher (solo si esta en OFFERING_PAYMENT)
@@ -1021,11 +1030,12 @@ function botHandleMessage(from, text, contactName, kind) {
   if (_looksLikeDateQuery(text)) {
     const parsed = _parseDatesWithClaude(text, _botToday());
     if (parsed && parsed.checkin && parsed.checkout && parsed.confidence > 0.4) {
-      const personas = parsed.persons || 2;
+      const personas     = parsed.persons || 2;
+      const freeChildren = parsed.freeChildren || 0;
       if (midBooking) {
         sendWhatsAppText(from, '🔄 Veo que querés cambiar las fechas. Verifico disponibilidad para las nuevas...');
       }
-      return _replyAvailability(from, contactName, { step: 'AWAITING_DATES', context: {}, name: contactName }, parsed.checkin, parsed.checkout, personas);
+      return _replyAvailability(from, contactName, { step: 'AWAITING_DATES', context: {}, name: contactName }, parsed.checkin, parsed.checkout, personas, freeChildren);
     }
     // Parsing fallo. Si el cliente mencionó personas o noches sueltas
     // (sin fechas concretas), mostramos tarifas como fallback util.
@@ -1072,11 +1082,17 @@ function botHandleMessage(from, text, contactName, kind) {
 // 1-4 personas: muestra cabañas individuales libres del tamaño requerido.
 // 5+ personas: deriva al equipo (combo no se cotiza automatico desde el bot).
 // Al final: lista interactiva con cabañas + opcion para cambiar personas (2,3,4).
-function _replyAvailability(from, contactName, conv, checkin, checkout, personas) {
-  personas = personas || 2;
+function _replyAvailability(from, contactName, conv, checkin, checkout, personas, freeChildren) {
+  personas     = personas || 2;
+  freeChildren = freeChildren || 0;
+  // payingPersons = adultos + niños mayores/iguales a 5. La tarifa base
+  // ($90/$110 noche) cubre 2 personas; el recargo solo aplica desde la 3ra
+  // pagante. Los niños <5 ocupan espacio en la cabaña (cuentan en personas)
+  // pero NO suman al recargo.
+  const payingPersons = Math.max(2, personas - freeChildren);
   const dates  = { checkin: checkin, checkout: checkout };
 
-  // 5+ personas → handoff al equipo (no cotizamos combo automatico desde el bot)
+  // 5+ personas (TOTAL) → handoff al equipo (no cotizamos combo automatico desde el bot)
   if (personas >= 5) {
     const fechas = _botFmtFecha(checkin) + ' → ' + _botFmtFecha(checkout);
     sendWhatsAppText(from,
@@ -1094,7 +1110,7 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
       sendWhatsAppText('50769812266',
         '🔔 Consulta de grupo grande via bot:\n👤 ' + (contactName || from) + '\n📱 +' + from + '\n📅 ' + fechas + '\n👥 ' + personas + ' personas');
     } catch(_) {}
-    _saveConv(from, 'PENDING_HUMAN_BOOKING', { dates: dates, personas: personas }, contactName);
+    _saveConv(from, 'PENDING_HUMAN_BOOKING', { dates: dates, personas: personas, freeChildren: freeChildren }, contactName);
     return;
   }
 
@@ -1106,7 +1122,8 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
   ['azul', 'verde', 'lila'].forEach(c => {
     if (!avail[c]) return;
     if (BOT_CABIN_CAPACITY[c] < personas) return;
-    const precio = _botPrecioCabin(c, checkin, checkout, personas);
+    // Capacidad usa total; pricing usa solo los pagantes (descuenta niños <5).
+    const precio = _botPrecioCabin(c, checkin, checkout, payingPersons);
     opciones.push({ cabin: c, precio: precio });
   });
 
@@ -1122,7 +1139,7 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
       } catch(_) {
         sendWhatsAppText(from, body + '\n\n' + alts.map(a => '• ' + _botFmtFecha(a.checkin) + ' → ' + _botFmtFecha(a.checkout)).join('\n') + '\n\nEscribime las fechas que prefieras.');
       }
-      _saveConv(from, 'SHOWING_ALTERNATIVES', { dates: dates, personas: personas, alts: alts }, contactName);
+      _saveConv(from, 'SHOWING_ALTERNATIVES', { dates: dates, personas: personas, freeChildren: freeChildren, alts: alts }, contactName);
       return;
     }
     sendWhatsAppText(from,
@@ -1130,12 +1147,12 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
       'Podés ver el calendario público:\nhttps://lasnubes.cloud\n\n' +
       '¿O preferís hablar con un agente? Tocá *Hablar con un agente* en el menú.'
     );
-    _saveConv(from, 'NO_AVAILABILITY', { dates: dates, personas: personas }, contactName);
+    _saveConv(from, 'NO_AVAILABILITY', { dates: dates, personas: personas, freeChildren: freeChildren }, contactName);
     return;
   }
 
   // Cotizacion (formato copyPromo, sin combo)
-  const cotizacion = _botCotizacionAvailability(checkin, checkout, opciones, personas, false);
+  const cotizacion = _botCotizacionAvailability(checkin, checkout, opciones, personas, false, freeChildren);
   sendWhatsAppText(from, cotizacion);
 
   // Botones directos para reservar cada cabaña disponible (max 3).
@@ -1176,7 +1193,7 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
     sendWhatsAppList(from, '¿Querés cambiar algo? Tocá ⬇', sections, '📋 Ver opciones');
   } catch(_) { /* ignorable: ya tiene los botones de cabaña */ }
 
-  _saveConv(from, 'SHOWING_AVAILABILITY', { dates: dates, personas: personas, opciones: opciones.length }, contactName);
+  _saveConv(from, 'SHOWING_AVAILABILITY', { dates: dates, personas: personas, freeChildren: freeChildren, opciones: opciones.length }, contactName);
 }
 
 // ─── Menu principal interactivo (lista) ──────────────────────────
@@ -1497,11 +1514,16 @@ function _botSeccionesComunes() {
 }
 
 // Texto de cotizacion para 1+ cabanas disponibles (formato copyPromo)
-function _botCotizacionAvailability(checkin, checkout, opciones, personas, isCombo) {
+function _botCotizacionAvailability(checkin, checkout, opciones, personas, isCombo, freeChildren) {
+  freeChildren = freeChildren || 0;
   const nights      = Math.round((new Date(checkout + 'T12:00:00') - new Date(checkin + 'T12:00:00')) / 86400000);
   const fechaIn     = _botFmtFecha(checkin);
   const fechaOut    = _botFmtFecha(checkout);
-  const personasLbl = personas + (personas === 1 ? ' persona' : ' personas');
+  let personasLbl = personas + (personas === 1 ? ' persona' : ' personas');
+  if (freeChildren > 0) {
+    const childWord = freeChildren === 1 ? 'menor de 5 años (sin cargo)' : 'menores de 5 años (sin cargo)';
+    personasLbl += ' (incluye ' + freeChildren + ' ' + childWord + ')';
+  }
 
   let intro;
   if (nights === 1) intro = 'Tengo la noche del *' + fechaIn + '* disponible para reserva para ' + personasLbl + '.';
@@ -1583,17 +1605,23 @@ function _botConfirmacionText(reservation, publicUrl, referralCode, referralAmou
 }
 
 function _botStartBooking(from, contactName, conv, cabin) {
-  const dates    = conv.context && conv.context.dates;
-  const personas = (conv.context && conv.context.personas) || 2;
+  const dates        = conv.context && conv.context.dates;
+  const personas     = (conv.context && conv.context.personas) || 2;
+  const freeChildren = (conv.context && conv.context.freeChildren) || 0;
   if (!dates) {
     sendWhatsAppText(from, '🤔 Perdí el contexto de las fechas. ¿Podés decirme de nuevo cuándo querés reservar?');
     _saveConv(from, 'AWAITING_DATES', conv.context, contactName);
     return;
   }
-  const precio  = _botPrecioCabin(cabin, dates.checkin, dates.checkout, personas);
+  const payingPersons = Math.max(2, personas - freeChildren);
+  const precio  = _botPrecioCabin(cabin, dates.checkin, dates.checkout, payingPersons);
   const fechas  = _botFmtFecha(dates.checkin) + ' → ' + _botFmtFecha(dates.checkout);
+  let personasLbl = personas + (personas === 1 ? ' persona' : ' personas');
+  if (freeChildren > 0) {
+    personasLbl += ' · ' + freeChildren + ' menor' + (freeChildren === 1 ? '' : 'es') + ' de 5 sin cargo';
+  }
   const body =
-    '🎉 ¡Excelente! Reservando *' + BOT_CABIN_NAMES[cabin] + '* para *' + fechas + '* (' + personas + (personas === 1 ? ' persona' : ' personas') + ').\n\n' +
+    '🎉 ¡Excelente! Reservando *' + BOT_CABIN_NAMES[cabin] + '* para *' + fechas + '* (' + personasLbl + ').\n\n' +
     '💰 *Total: $' + precio.toFixed(2) + '*\n\n' +
     _botPaymentInfo() + '\n\n' +
     '⚠️ *Importante*: en el detalle de la transferencia colocá tu *nombre completo* y *email* para procesar tu reserva más rápido.\n\n' +
@@ -1676,14 +1704,16 @@ function _botHandleVoucherImage(from, imageId, contactName, conv) {
 }
 
 function _botCreatePreReservation(from, contactName, ctx) {
-  const dates    = ctx.dates;
-  const cabin    = ctx.cabin;
-  const personas = ctx.personas || 2;
-  const email    = ctx.email;
-  const fullName = ctx.name;
-  const voucher  = ctx.voucher || {};
-  const skipVoucher = !!ctx.skipVoucher;
-  const precio   = ctx.precio || _botPrecioCabin(cabin, dates.checkin, dates.checkout, personas);
+  const dates        = ctx.dates;
+  const cabin        = ctx.cabin;
+  const personas     = ctx.personas || 2;
+  const freeChildren = ctx.freeChildren || 0;
+  const email        = ctx.email;
+  const fullName     = ctx.name;
+  const voucher      = ctx.voucher || {};
+  const skipVoucher  = !!ctx.skipVoucher;
+  const payingPersons = Math.max(2, personas - freeChildren);
+  const precio   = ctx.precio || _botPrecioCabin(cabin, dates.checkin, dates.checkout, payingPersons);
   const id       = Date.now().toString();
   const today    = _botToday();
   const CABIN_NAMES = {
@@ -1752,7 +1782,8 @@ function _botCreatePreReservation(from, contactName, ctx) {
     '📱 ' + from + '\n\n' +
     '🏡 ' + (CABIN_NAMES[cabin] || cabin) + '\n' +
     '📅 ' + fechas + '\n' +
-    '👥 ' + personas + (personas === 1 ? ' persona' : ' personas') + '\n' +
+    '👥 ' + personas + (personas === 1 ? ' persona' : ' personas') +
+      (freeChildren > 0 ? ' (incluye ' + freeChildren + ' menor' + (freeChildren === 1 ? '' : 'es') + ' de 5)' : '') + '\n' +
     '💰 Total: $' + precio.toFixed(2) + '\n\n' +
     voucherBlock;
   try {
