@@ -295,18 +295,6 @@ function botHandleMessage(from, text, contactName, kind) {
     }
   }
 
-  // Boton "Reservar sin abono" en OFFERING_PAYMENT — saltea voucher
-  if ((kind === 'button_reply' && text === 'book_no_deposit') ||
-      (conv.step === 'OFFERING_PAYMENT' && /^(sin abono|sin voucher|reservar sin)/i.test((text || '').trim()))) {
-    const newCtx = Object.assign({}, conv.context || {}, { skipVoucher: true });
-    sendWhatsAppText(from,
-      '📋 ¡Listo! Coordinaremos el pago directo con vos.\n\n' +
-      'Para finalizar tu pre-reserva necesito tu *email*.'
-    );
-    _saveConv(from, 'AWAITING_EMAIL', newCtx, contactName);
-    return;
-  }
-
   // Boton "Cancelar" en OFFERING_PAYMENT — libera el estado
   if ((kind === 'button_reply' && text === 'cancel_booking') ||
       (conv.step === 'OFFERING_PAYMENT' && /^(cancela|cancelar|atras|atrás)\b/i.test((text || '').trim()))) {
@@ -985,16 +973,14 @@ function _botStartBooking(from, contactName, conv, cabin) {
     '🎉 ¡Excelente! Reservando *' + BOT_CABIN_NAMES[cabin] + '* para *' + fechas + '* (' + personas + (personas === 1 ? ' persona' : ' personas') + ').\n\n' +
     '💰 *Total: $' + precio.toFixed(2) + '*\n\n' +
     _botPaymentInfo() + '\n\n' +
-    'Una vez transferido, *enviame el comprobante como imagen* por aquí mismo.\n\n' +
-    '_Si preferís coordinar el pago después, tocá *Reservar sin abono*._';
+    'Una vez transferido, *enviame el comprobante como imagen* por aquí mismo.';
   try {
     sendWhatsAppButtons(from, body, [
-      { id: 'book_no_deposit', title: '📋 Sin abono' },
-      { id: 'cancel_booking',  title: '❌ Cancelar' },
-      { id: '3',               title: '🙋 Persona' }
+      { id: 'cancel_booking', title: '❌ Cancelar' },
+      { id: '3',              title: '🙋 Persona' }
     ]);
   } catch(_) {
-    sendWhatsAppText(from, body + '\n\nSi querés cancelar, escribime "cancelar". Si querés reservar sin enviar voucher ahora, escribime "sin abono".');
+    sendWhatsAppText(from, body + '\n\nSi querés cancelar, escribime "cancelar". O "3" para hablar con una persona.');
   }
   _saveConv(from, 'OFFERING_PAYMENT', Object.assign({}, conv.context, { cabin: cabin, precio: precio }), contactName);
 }
