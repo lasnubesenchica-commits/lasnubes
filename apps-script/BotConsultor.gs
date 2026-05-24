@@ -808,7 +808,7 @@ function _botSendMainMenu(from, contactName, firstTime, customBody) {
     body = '¿Necesitás algo más? Tocá *Ver opciones* abajo 👇';
   } else {
     body = greeting + '\n\n' +
-      'Qué bueno tenerte por aquí. Soy el asistente virtual de *Las Nubes*, las cabañas en las faldas de Chicá.\n\n' +
+      'Bienvenido a *Las Nubes* — un refugio de tres cabañas en las faldas del Cerro Chicá, a 1h 15min de la ciudad.\n\n' +
       'Para reservar o consultar disponibilidad, cuéntame *fechas* y *personas*. Por ejemplo:\n' +
       '   _"del 5 al 8 de junio, 2 personas"_\n\n' +
       'Te envío disponibilidad y precio al instante, y cerramos la reserva por aquí mismo. 🤝\n\n' +
