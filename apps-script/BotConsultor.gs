@@ -524,21 +524,24 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
   const cotizacion = _botCotizacionAvailability(checkin, checkout, opciones, personas, false);
   sendWhatsAppText(from, cotizacion);
 
-  // Lista interactiva: reservar + cambiar personas (2-4) + otras opciones
-  const reservarRows = opciones.map(op => ({
+  // Botones directos para reservar cada cabaña disponible (max 3)
+  const cabinButtons = opciones.slice(0, 3).map(op => ({
     id: 'pick_' + op.cabin,
-    title: '🏡 ' + BOT_CABIN_NAMES[op.cabin].split(' ')[0],
-    description: '$' + op.precio.toFixed(2) + ' total'
+    title: '🏡 ' + BOT_CABIN_NAMES[op.cabin].split(' ')[0]
   }));
+  try {
+    sendWhatsAppButtons(from, '¿Cuál te interesa reservar?', cabinButtons, null, personas + ' personas · ' + nights + (nights === 1 ? ' noche' : ' noches'));
+  } catch(_) {
+    sendWhatsAppText(from, 'Escribime el nombre de la cabaña (Paseo / Portal / Puente) o "agente" para hablar con una persona.');
+  }
+
+  // Despues: lista "Ver opciones" con cambiar personas / otras fechas / agente
   const personaOpts = [2, 3, 4].filter(n => n !== personas);
   const personasRows = personaOpts.map(n => ({
     id: 'persons_' + n,
     title: '👥 ' + n + ' personas'
   }));
-
-  const sections = [
-    { title: 'Reservar', rows: reservarRows }
-  ];
+  const sections = [];
   if (personasRows.length > 0) {
     sections.push({ title: 'Cambiar personas', rows: personasRows });
   }
@@ -549,12 +552,10 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
       { id: 'menu_agente', title: '🙋 Hablar con un agente', description: 'WhatsApp del equipo' }
     ]
   });
-
   try {
-    sendWhatsAppList(from, '¿Cuál te interesa? Tocá una opción ⬇', sections, 'Ver opciones', null, personas + ' personas · ' + nights + (nights === 1 ? ' noche' : ' noches'));
-  } catch(_) {
-    sendWhatsAppText(from, 'Escribime el nombre de la cabaña (Paseo / Portal / Puente) o "agente" para hablar con una persona.');
-  }
+    sendWhatsAppList(from, '¿Querés cambiar algo? Tocá ⬇', sections, '📋 Ver opciones');
+  } catch(_) { /* ignorable: ya tiene los botones de cabaña */ }
+
   _saveConv(from, 'SHOWING_AVAILABILITY', { dates: dates, personas: personas, opciones: opciones.length }, contactName);
 }
 
