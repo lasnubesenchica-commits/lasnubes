@@ -224,9 +224,125 @@ function _botSuggestAlternatives(checkin, checkout, personas) {
   return suggestions;
 }
 
+// ─── Mensaje pre-rellenado del calendario publico ─────────────────
+// Detecta el texto que envia el cliente al tocar "Reservar" en
+// index.html. Formato (ver _buildClientReservaMessage en index.html):
+//   Hola! Deseo reservar:
+//
+//   *Fecha:* miércoles 27 de mayo · 1 noche
+//   *Cabaña:* Paseo por Las Nubes
+//   *Personas:* 2
+//   *Total:* $90.00
+//   ... (secciones informativas) ...
+//   Quedo atento a las formas de pago. ¡Gracias!
+function _parseClientReservaMessage(text) {
+  if (!text) return null;
+  if (!/Deseo reservar/i.test(text)) return null;
+  if (!/\*Fecha:\*/.test(text) || !/\*Caba.a:\*/.test(text)) return null;
+
+  const cabinMatch = text.match(/\*Caba.a:\*\s*([^\n]+)/);
+  const persMatch  = text.match(/\*Personas:\*\s*(\d+)/);
+  const fechaMatch = text.match(/\*Fecha:\*\s*([^\n]+)/);
+  const totalMatch = text.match(/\*Total:\*\s*\$?([\d,.]+)/);
+  if (!cabinMatch || !persMatch || !fechaMatch) return null;
+
+  const cabinStr  = cabinMatch[1];
+  let cabin = null, isCombo = false;
+  if (/combo/i.test(cabinStr)) isCombo = true;
+  else if (/paseo/i.test(cabinStr))  cabin = 'verde';
+  else if (/portal/i.test(cabinStr)) cabin = 'azul';
+  else if (/puente/i.test(cabinStr)) cabin = 'lila';
+
+  const fechaLine = fechaMatch[1].trim();
+  const isPasadia = /pasad[íi]a|pasatarde/i.test(fechaLine);
+
+  return {
+    cabin: cabin,
+    isCombo: isCombo,
+    isPasadia: isPasadia,
+    personas: parseInt(persMatch[1], 10),
+    fechaLine: fechaLine,
+    total: totalMatch ? parseFloat(totalMatch[1].replace(/,/g, '')) : null
+  };
+}
+
+// Maneja el mensaje pre-rellenado del calendario publico.
+// - Combo / pasadia / 5+ personas → handoff al equipo (no se cotiza auto).
+// - Noche + cabana single + disponible → directo a OFFERING_PAYMENT.
+// - No disponible → flujo normal de disponibilidad con alternativas.
+function _botHandleClientReservaMessage(from, contactName, conv, parsed) {
+  logDebugEntry('bot-client-reserva-msg', {
+    from: from, cabin: parsed.cabin, isCombo: parsed.isCombo,
+    isPasadia: parsed.isPasadia, personas: parsed.personas, fechaLine: parsed.fechaLine
+  });
+
+  // Combo / pasadia / 5+ personas → handoff
+  if (parsed.isCombo || parsed.isPasadia || parsed.personas >= 5) {
+    sendWhatsAppText(from,
+      '🌿 ¡Recibí tu solicitud! Para este tipo de reserva coordinamos directo con vos. ' +
+      'Tocá el botón abajo para escribir al equipo.'
+    );
+    try {
+      sendWhatsAppCTAUrl(from,
+        'Te pasamos métodos de pago en un mensaje.',
+        '💬 Abrir WhatsApp',
+        'https://wa.me/50769812266?text=' + encodeURIComponent('Hola, quiero reservar (vengo del calendario web).')
+      );
+    } catch(_) {}
+    try {
+      sendWhatsAppText(BOT_ADMIN_PHONE,
+        '⚠️ Solicitud especial vía calendario web:\n' +
+        '👤 ' + (contactName || from) + '\n' +
+        '📱 +' + from + '\n' +
+        '📝 ' + parsed.fechaLine + '\n' +
+        '🏡 ' + (parsed.isCombo ? 'Combo' : (parsed.cabin || '?')) + '\n' +
+        '👥 ' + parsed.personas
+      );
+    } catch(_) {}
+    _saveConv(from, 'HUMAN_HANDOFF', conv.context || {}, contactName);
+    return;
+  }
+
+  // Parsear fechas del fechaLine usando NLU existente
+  const datesParsed = _parseDatesWithClaude(parsed.fechaLine, _botToday());
+  if (!datesParsed || !datesParsed.checkin || !datesParsed.checkout) {
+    sendWhatsAppText(from,
+      '🌿 ¡Recibí tu solicitud! Para confirmar disponibilidad, recordame las *fechas exactas* ' +
+      '(ej: _"del 5 al 8 de junio"_).'
+    );
+    _saveConv(from, 'AWAITING_DATES', { personas: parsed.personas }, contactName);
+    return;
+  }
+
+  // Verificar disponibilidad de la cabana solicitada
+  const avail = _botCheckAvailability(datesParsed.checkin, datesParsed.checkout);
+  if (!parsed.cabin || !avail[parsed.cabin]) {
+    // No disponible: caer al flujo normal de disponibilidad (muestra opciones libres + alternativas)
+    return _replyAvailability(from, contactName, conv, datesParsed.checkin, datesParsed.checkout, parsed.personas);
+  }
+
+  // Disponible: jumpear directo a OFFERING_PAYMENT con formas de pago
+  const newCtx = Object.assign({}, conv.context || {}, {
+    dates: { checkin: datesParsed.checkin, checkout: datesParsed.checkout },
+    personas: parsed.personas
+  });
+  const fakeConv = { step: 'INITIAL', context: newCtx, name: contactName };
+  return _botStartBooking(from, contactName, fakeConv, parsed.cabin);
+}
+
 // ─── Main handler ──────────────────────────────────────────────────
 function botHandleMessage(from, text, contactName, kind) {
   const conv = _getConv(from) || { step: 'INITIAL', context: {}, name: contactName || '' };
+
+  // Mensaje pre-rellenado desde el calendario publico (index.html → btn "Reservar").
+  // Estructura: "Hola! Deseo reservar:" + *Fecha:* + *Cabaña:* + *Personas:* + *Total:*
+  // Si lo detectamos, saltamos directo a OFFERING_PAYMENT con las formas de pago.
+  if (kind === 'text') {
+    const reservaMsg = _parseClientReservaMessage(text);
+    if (reservaMsg) {
+      return _botHandleClientReservaMessage(from, contactName, conv, reservaMsg);
+    }
+  }
 
   // Boton "Ver otras fechas" → vuelve a AWAITING_DATES
   if (kind === 'button_reply' && text === 'try_dates') {
@@ -603,13 +719,11 @@ function _botSendMainMenu(from, contactName, firstTime) {
     body = '¿Necesitás algo más? Tocá *Ver opciones* abajo 👇';
   } else {
     body = greeting + '\n\n' +
-      'Soy el asistente virtual de *Las Nubes*. 🌿\n\n' +
-      '✨ *Para reservar*, decime las *fechas* y *cuántas personas*. Por ejemplo:\n' +
-      '• "del 5 al 8 de junio, 2 personas"\n' +
-      '• "viernes a domingo, 4 personas"\n' +
-      '• "este fin de semana, 3 personas"\n\n' +
-      'Te paso disponibilidad y precio al instante, y cerramos la reserva por aquí mismo. 🤝\n\n' +
-      'También podés tocar *Ver opciones* abajo para: 📍 cómo llegar, 🏞 actividades, 🍽 gastronomía, 🧊 hielo/carbón, ❓ preguntas frecuentes y más 👇';
+      'Qué bueno tenerte por aquí. Soy el asistente virtual de *Las Nubes*, las cabañas en las faldas de Chicá.\n\n' +
+      'Para reservar o consultar disponibilidad, cuéntame *fechas* y *personas*. Por ejemplo:\n' +
+      '   _"del 5 al 8 de junio, 2 personas"_\n\n' +
+      'Te envío disponibilidad y precio al instante, y cerramos la reserva por aquí mismo. 🤝\n\n' +
+      '¿Quieres explorar antes — cómo llegar, actividades, fotos o hablar con un agente? Toca *Ver opciones* ⬇';
   }
   const sections = [
     {
