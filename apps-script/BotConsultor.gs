@@ -251,6 +251,111 @@ function _botHandleInfoQuery(from, contactName, conv, text) {
   return false;
 }
 
+// Decide si vale la pena gastar una llamada a Claude para responder al
+// mensaje. Skipea saludos triviales y mensajes muy cortos.
+function _botShouldUseSmartFallback(text, conv) {
+  const t = (text || '').trim().toLowerCase();
+  if (t.length < 6) return false;
+  if (/^(hola|hi|hey|buenas|buenos\s+d[ií]as|buenas\s+tardes|buenas\s+noches|gracias|grax|ok|okay|listo|s[ií]|no|claro|perfecto|dale|bien)[!.,\s]*$/i.test(t)) return false;
+  return true;
+}
+
+// Fallback inteligente: pasa el mensaje del cliente a Claude con todo el
+// contexto del negocio en system prompt y devuelve respuesta conversacional.
+// Solo corre si ningun handler regex/state-machine matcheo.
+function _botSmartFallback(from, contactName, conv, text) {
+  const apiKey = PropertiesService.getScriptProperties().getProperty('CLAUDE_API_KEY');
+  if (!apiKey) return false;
+
+  const systemPrompt = _botKnowledgeBase();
+
+  try {
+    const res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      payload: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 450,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: text }]
+      }),
+      muteHttpExceptions: true
+    });
+    const data = JSON.parse(res.getContentText());
+    const reply = data.content && data.content[0] && data.content[0].text;
+    if (!reply) {
+      logDebugEntry('smart-fallback-NO-REPLY', { text: text.slice(0, 120), raw: JSON.stringify(data).slice(0, 200) });
+      return false;
+    }
+    sendWhatsAppText(from, reply.trim());
+    logDebugEntry('smart-fallback-OK', {
+      from: from, text: text.slice(0, 120), reply: reply.slice(0, 200),
+      inputTokens: data.usage && data.usage.input_tokens, outputTokens: data.usage && data.usage.output_tokens
+    });
+    _saveConv(from, 'INITIAL', conv.context || {}, contactName);
+    return true;
+  } catch(err) {
+    logDebugEntry('smart-fallback-FAIL', { error: err.message, text: text.slice(0, 120) });
+    return false;
+  }
+}
+
+// System prompt grounded en toda la info del negocio. Cualquier ajuste de
+// politica / precios / amenidades se hace aca para que Claude responda
+// consistente con los handlers regex.
+function _botKnowledgeBase() {
+  return (
+'Sos el asistente conversacional de *Las Nubes*, un refugio de tres cabañas privadas en las faldas del Cerro Chicá, Panamá. Respondes mensajes de clientes por WhatsApp.\n\n' +
+'## CABAÑAS\n' +
+'- *Paseo por Las Nubes*: 2-4 personas (cama queen + sofá-cama doble)\n' +
+'- *Portal hacia Las Nubes*: 2 personas (cama matrimonial full)\n' +
+'- *Puente entre Las Nubes*: 2-4 personas (cama queen + cama auxiliar)\n' +
+'Las tres son independientes, privadas y de uso exclusivo de quienes reservan.\n\n' +
+'## TARIFAS POR NOCHE (2 personas)\n' +
+'- Domingo a jueves: $' + BOT_RATE_WEEKDAY + '/noche (mismo precio en las 3 cabañas)\n' +
+'- Viernes y sábado: $' + BOT_RATE_WEEKEND + '/noche\n' +
+'- 3-4 personas: recargo pequeño por persona adicional ($' + BOT_RECARGO_PERSONA_PORTAL + ' en Portal, $' + BOT_RECARGO_PERSONA_GRANDE + ' en Paseo/Puente)\n' +
+'- 5-6 personas: combo Puente + Portal (cabañas contiguas), cotización aparte\n\n' +
+'## AMENIDADES\n' +
+'- Cocina completa + área de BBQ\n' +
+'- Cooler grande (NO hay nevera — traer hielo)\n' +
+'- Café, azúcar y especias básicas incluidos\n' +
+'- Menú simple de comida disponible bajo reserva previa\n' +
+'- Iluminación 100% solar + inversor para cargar celulares\n' +
+'- Toallas, jabón y papel higiénico incluidos\n' +
+'- Excelente señal de todas las operadoras\n' +
+'- Fumigamos semanalmente (traer repelente si sos sensible a mosquitos)\n\n' +
+'## UBICACIÓN\n' +
+'- Buenos Aires, Chamé · faldas del Cerro Chicá\n' +
+'- A 1h 15min de Ciudad de Panamá\n' +
+'- Naturaleza, vistas y privacidad total\n\n' +
+'## HORARIOS\n' +
+'- Check-in: 2:00 pm · Check-out: 11:00 am\n' +
+'- Entradas anticipadas / salidas tardías se coordinan según disponibilidad\n\n' +
+'## PAGO\n' +
+'- Yappy y ACH (transferencia bancaria)\n' +
+'- NO aceptamos tarjeta de crédito ni pago contraentrega\n' +
+'- Sin voucher/abono, no se confirma la reserva\n\n' +
+'## POLÍTICAS\n' +
+'- No se reciben mascotas por el momento\n' +
+'- Cancelaciones/cambios: coordinar con el equipo (derivá al agente)\n' +
+'- Eventos especiales (cumpleaños, aniversarios, lunas de miel): bienvenidos, coordiná con el equipo\n\n' +
+'## QUÉ HACER Y QUÉ NO\n' +
+'- NO inventes datos, precios ni promos que no estén acá\n' +
+'- NO confirmes disponibilidad de fechas específicas — eso requiere consultar sistema, pedí *fechas* y *personas* y avisá que cotizás al instante\n' +
+'- Si la pregunta es ambigua o requiere coordinación humana (eventos grandes, cambios de fecha, cancelaciones, descuentos), invitá a tocar *Hablar con un agente* en el menú o escribir "3"\n' +
+'- NO ofrezcas descuentos\n\n' +
+'## TONO\n' +
+'- Cálido, breve, conversacional. Español neutral latinoamericano (usá "tú", no "vos")\n' +
+'- Usa *negritas* de WhatsApp para énfasis y emojis con moderación (🌿 🏡 ☕ 🛏 📍)\n' +
+'- Máximo 4-5 líneas. Directo al punto\n' +
+'- Si la consulta es sobre disponibilidad/precios, terminá con: "Decime *fechas* y *personas* (ej: _\'del 5 al 8 de junio, 2 personas\'_) y te cotizo al instante 🤝"\n' +
+'- Si pueden ver fotos: invitá a ver el catálogo en https://lasnubes.cloud\n\n' +
+'Respondé directo al mensaje del cliente, sin saludos largos.'
+  );
+}
+
 // Keywords que indican cambio/cancelacion → no cotizar, derivar a humano
 function _isReservaChangeRequest(text) {
   const t = (text || '').toLowerCase();
@@ -783,9 +888,16 @@ function botHandleMessage(from, text, contactName, kind) {
     }
   }
 
-  // Fallback: cualquier mensaje no reconocido → menu interactivo de bienvenida
-  // con instrucciones de reserva al inicio. Resetea state a INITIAL para
-  // que conversaciones atrapadas en AWAITING_DATES vuelvan al menu principal.
+  // Smart fallback con Claude grounded: si el mensaje vale la pena procesar
+  // con LLM (no es un saludo trivial), intentamos respuesta conversacional
+  // antes de caer al menu de bienvenida.
+  if (kind === 'text' && _botShouldUseSmartFallback(text, conv)) {
+    if (_botSmartFallback(from, contactName, conv, text)) return;
+  }
+
+  // Fallback final: menu interactivo de bienvenida con instrucciones de
+  // reserva al inicio. Resetea state a INITIAL para que conversaciones
+  // atrapadas en AWAITING_DATES vuelvan al menu principal.
   _saveConv(from, 'INITIAL', conv.context || {}, contactName);
   _botSendMainMenu(from, contactName, true);
 }
