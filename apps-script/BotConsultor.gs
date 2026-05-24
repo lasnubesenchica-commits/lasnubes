@@ -264,6 +264,20 @@ function _botHandleInfoQuery(from, contactName, conv, text) {
     return true;
   }
 
+  // Niños / familia
+  if (/\b(ni[ñn]o|ni[ñn]a|hijo|hija|hijos|hijas|beb[eé]|infantil|familia|family|kid|menor(es)?\s+de|aptas?\s+para\s+ni[ñn]os|family\s+friendly|chicos)\b/i.test(t)) {
+    sendWhatsAppText(from,
+      '👨‍👩‍👧 *Familias con niños*\n\n' +
+      '¡Las cabañas son ideales para escapadas familiares! 🌿\n\n' +
+      '🛏 *Camas* — Paseo y Puente tienen recámara con cama *queen* + cama auxiliar *doble* debajo. Perfectas para 2 adultos y 2 niños.\n\n' +
+      '💰 *Política de niños*\n' +
+      '• Menores de *5 años* no pagan.\n' +
+      '• De la 3ra persona en adelante (5 años o más): $' + BOT_RECARGO_PERSONA_GRANDE + ' por persona/noche en Paseo y Puente, $' + BOT_RECARGO_PERSONA_PORTAL + ' en Portal.\n\n' +
+      'Decime *fechas* y *cuántas personas* (incluí la edad de los niños) y te cotizo al instante 📅'
+    );
+    return true;
+  }
+
   // Clima / temperatura
   if (/\b(clima|hace\s+(calor|fr[ií]o)|temperatura|qu[eé]\s+tiempo|humedad|caluroso|fresco|ventilador|aire\s+acondicionado|\bac\b)\b/i.test(t)) {
     sendWhatsAppText(from,
@@ -370,7 +384,13 @@ function _botKnowledgeBase() {
 '- Domingo a jueves: $' + BOT_RATE_WEEKDAY + '/noche (mismo precio en las 3 cabañas)\n' +
 '- Viernes y sábado: $' + BOT_RATE_WEEKEND + '/noche\n' +
 '- 3-4 personas: recargo pequeño por persona adicional ($' + BOT_RECARGO_PERSONA_PORTAL + ' en Portal, $' + BOT_RECARGO_PERSONA_GRANDE + ' en Paseo/Puente)\n' +
+'- Niños menores de 5 años NO pagan\n' +
 '- 5-6 personas: combo Puente + Portal (cabañas contiguas), cotización aparte\n\n' +
+'## FAMILIAS CON NIÑOS\n' +
+'- Paseo y Puente: recámara con cama queen + cama auxiliar doble debajo (ideal para 2 adultos + 2 niños)\n' +
+'- Portal: cama matrimonial full (para 2 personas, no incluye espacio para niños extra)\n' +
+'- Niños menores de 5 años no pagan\n' +
+'- A partir de los 5 años aplican como persona adicional con recargo normal\n\n' +
 '## AMENIDADES\n' +
 '- *Cascada propia dentro del proyecto*, exclusiva para huéspedes (en plena naturaleza)\n' +
 '- Cocina completa + área de BBQ\n' +
