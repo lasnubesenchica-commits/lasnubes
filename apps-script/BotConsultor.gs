@@ -264,6 +264,27 @@ function _botHandleInfoQuery(from, contactName, conv, text) {
     return true;
   }
 
+  // Clima / temperatura
+  if (/\b(clima|hace\s+(calor|fr[ií]o)|temperatura|qu[eé]\s+tiempo|humedad|caluroso|fresco|ventilador|aire\s+acondicionado|\bac\b)\b/i.test(t)) {
+    sendWhatsAppText(from,
+      '🌤 *Clima*\n\n' +
+      'Las Nubes está en zona de montaña, con clima fresco — unos 4°C por debajo de la temperatura de la ciudad y brisa constante todo el día.\n\n' +
+      'Cada cabaña tiene un ventilador pequeño, pero rara vez se usa. Te recomendamos traer una chaqueta liviana para las noches 🧥.\n\n' +
+      '¿Querés cotizar para alguna fecha? Decime *fechas* y *personas* 📅'
+    );
+    return true;
+  }
+
+  // Mosquitos / repelente
+  if (/\b(mosquit|zancud|insect|bicho|repelente|off\s+spray)\b/i.test(t)) {
+    sendWhatsAppText(from,
+      '🦟 *Mosquitos*\n\n' +
+      'Fumigamos con frecuencia, así que hay muy pocos. La única franja en que molestan un poco es entre las *6 y 7 pm*.\n\n' +
+      'Tenemos repelente disponible en la *Tiendita Las Nubes*: OFF spray ($8) o toallitas Family Care ($5).'
+    );
+    return true;
+  }
+
   // Jacuzzi / piscina / sauna → no tenemos, pero tenemos cascada propia + alternativas
   if (/\b(jacuzzi|piscina|pool|sauna|hot\s+tub|tina\s+caliente)\b/i.test(t)) {
     sendWhatsAppText(from,
@@ -363,6 +384,15 @@ function _botKnowledgeBase() {
 '- NO hay jacuzzi, piscina ni sauna en las cabañas\n\n' +
 '## SERVICIOS EXTRAS\n' +
 '- *Decoración para aniversarios y cumpleaños* — $40 adicionales. Incluye arreglo de flores, globos, letreros, elementos decorativos románticos y una botella de espumante. Se coordina al confirmar la reserva.\n\n' +
+'## CLIMA\n' +
+'- Zona de montaña, clima fresco — aprox 4°C por debajo de la temperatura de Ciudad de Panamá\n' +
+'- Brisa constante todo el día\n' +
+'- Cada cabaña tiene ventilador pequeño (rara vez necesario)\n' +
+'- Recomendación: traer chaqueta liviana para las noches\n\n' +
+'## MOSQUITOS\n' +
+'- Hay muy pocos porque fumigamos con frecuencia\n' +
+'- Solo molestan un poco entre las 6 y 7 pm\n' +
+'- Repelente disponible en la Tiendita Las Nubes: OFF spray ($8) o toallitas Family Care ($5)\n\n' +
 '## UBICACIÓN\n' +
 '- Buenos Aires, Chamé · faldas del Cerro Chicá\n' +
 '- A 1h 15min de Ciudad de Panamá\n' +
