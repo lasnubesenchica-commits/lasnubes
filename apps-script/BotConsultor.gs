@@ -119,6 +119,44 @@ function _botSendCalendarLink(from, contactName) {
   }
 }
 
+// Detecta mensajes tipicos de campanas de Instagram/Facebook:
+// "¡Hola! Quiero más información", "Hola, me interesa", etc. En esos casos
+// mandamos una bienvenida con pitch breve de las 3 cabanas y amenidades.
+function _isCampaignInquiry(text) {
+  const t = (text || '').toLowerCase().trim();
+  if (/quiero\s+m[aá]s\s+informaci[oó]n/.test(t)) return true;
+  if (/^(hola[!,.\s]+)?(quisiera|quiero|necesito|me\s+gustar[ií]a)\s+(m[aá]s\s+)?info(rmaci[oó]n)?/.test(t)) return true;
+  if (/^m[aá]s\s+info(rmaci[oó]n)?\b/.test(t)) return true;
+  if (/informaci[oó]n\s+por\s+favor/.test(t)) return true;
+  if (/^(hola[!,.\s]+)?me\s+interesa(n)?(\s+(saber|conocer|sus|las|tus))?/.test(t)) return true;
+  return false;
+}
+
+function _botSendCampaignWelcome(from, contactName) {
+  const firstName = ((contactName || '').toString().trim().split(/\s+/)[0]) || '';
+  const greeting  = firstName ? '¡Hola ' + firstName + '! 🌿' : '¡Hola! 🌿';
+
+  const info =
+    greeting + ' Gracias por escribirnos.\n\n' +
+    '*Las Nubes* es un refugio de tres cabañas privadas en las faldas del *Cerro Chicá*, a 1h 15min de Ciudad de Panamá. Naturaleza, vistas y privacidad total.\n\n' +
+    '🏡 *Nuestras cabañas*\n' +
+    '• *Paseo por Las Nubes* — 2 a 4 personas (cama queen + sofá-cama doble)\n' +
+    '• *Portal hacia Las Nubes* — 2 personas (cama matrimonial full)\n' +
+    '• *Puente entre Las Nubes* — 2 a 4 personas (cama queen + cama auxiliar)\n\n' +
+    '✨ *Lo que incluye*\n' +
+    '• Cocina equipada con área de BBQ y cooler grande\n' +
+    '• Iluminación 100% solar\n' +
+    '• Toallas, jabón y papel higiénico incluidos\n' +
+    '• Uso exclusivo de las instalaciones — sin vecinos\n\n' +
+    '📅 *Para reservar o consultar disponibilidad*, cuéntame *fechas* y *personas*. Por ejemplo:\n' +
+    '   _"del 5 al 8 de junio, 2 personas"_\n\n' +
+    'Te envío disponibilidad y precio al instante. 🤝';
+
+  sendWhatsAppText(from, info);
+  _botSendMainMenu(from, contactName, false, '¿Querés explorar más? Tocá *Ver opciones* abajo 👇');
+  _saveConv(from, 'AWAITING_DATES', {}, contactName);
+}
+
 // Keywords que indican cambio/cancelacion → no cotizar, derivar a humano
 function _isReservaChangeRequest(text) {
   const t = (text || '').toLowerCase();
@@ -375,6 +413,13 @@ function botHandleMessage(from, text, contactName, kind) {
     if (reservaMsg) {
       return _botHandleClientReservaMessage(from, contactName, conv, reservaMsg);
     }
+  }
+
+  // Lead tipico de campana en Instagram/Facebook ("Hola! Quiero más información").
+  // Solo lo disparamos si es el primer mensaje (step INITIAL) para no
+  // sobreescribir conversaciones en curso.
+  if (kind === 'text' && conv.step === 'INITIAL' && _isCampaignInquiry(text)) {
+    return _botSendCampaignWelcome(from, contactName);
   }
 
   // Boton "Ver otras fechas" → vuelve a AWAITING_DATES
@@ -752,11 +797,14 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
 
 // ─── Menu principal interactivo (lista) ──────────────────────────
 // firstTime=true → muestra bienvenida elaborada. firstTime=false → solo "¿Necesitás algo más?"
-function _botSendMainMenu(from, contactName, firstTime) {
+// customBody (opcional) → reemplaza el cuerpo (uso desde flujos especiales como campaign).
+function _botSendMainMenu(from, contactName, firstTime, customBody) {
   const firstName = ((contactName || '').toString().trim().split(/\s+/)[0]) || '';
   const greeting  = firstName ? '¡Hola ' + firstName + '! 🌿' : '¡Hola! 🌿';
   let body;
-  if (firstTime === false) {
+  if (customBody) {
+    body = customBody;
+  } else if (firstTime === false) {
     body = '¿Necesitás algo más? Tocá *Ver opciones* abajo 👇';
   } else {
     body = greeting + '\n\n' +
