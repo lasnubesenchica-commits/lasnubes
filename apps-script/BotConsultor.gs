@@ -157,6 +157,100 @@ function _botSendCampaignWelcome(from, contactName) {
   _saveConv(from, 'AWAITING_DATES', {}, contactName);
 }
 
+// Tarifas base para 2 personas en las 3 cabanas (mismas tarifas, recargo por
+// persona extra solo aplica a partir de 3 personas).
+function _botSendPricingInfo(from, contactName, conv) {
+  const msg =
+    '💰 *Tarifas por noche · 2 personas*\n\n' +
+    'Mismo precio en las tres cabañas (*Paseo*, *Portal* y *Puente*):\n\n' +
+    '• Domingo a jueves: *$' + BOT_RATE_WEEKDAY + '/noche*\n' +
+    '• Viernes y sábado: *$' + BOT_RATE_WEEKEND + '/noche*\n\n' +
+    '_Para 3 o 4 personas hay un pequeño recargo por persona adicional._\n\n' +
+    '¿Querés verificar disponibilidad para alguna fecha? Decime *fechas* y *personas* (ej: _"del 5 al 8 de junio, 2 personas"_) y te cotizo al instante. 🤝';
+  sendWhatsAppText(from, msg);
+  _saveConv(from, 'AWAITING_DATES', (conv && conv.context) || {}, contactName);
+}
+
+// Respuestas puntuales a topics FAQ. Devuelve true si manejo el mensaje.
+function _botHandleInfoQuery(from, contactName, conv, text) {
+  const t = (text || '').toLowerCase();
+
+  // Detectamos si el texto trae marcadores de fecha (mes, rango, relativo) →
+  // entonces NO es info generica, es consulta con fechas y la dejamos a NLU.
+  const hasMonth = /(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)/i.test(t);
+  const hasRange = /del\s+\d+\s+al\s+\d+/i.test(t);
+  const hasRelative = /\b(finde|fin\s+de\s+sem|este|pr[oó]xim|siguiente|hoy|ma[ñn]ana|pasado\s+ma[ñn]ana|esta\s+semana|semana\s+que\s+viene|mes\s+que\s+viene)\b/i.test(t);
+  const isDatesQuery = hasMonth || hasRange || hasRelative;
+
+  // 1) Precio / tarifa sin fechas → muestra tarifas para 2 pax
+  const asksPrice = /\b(precios?|tarifas?|costo|valor|costos?)\b/i.test(t) ||
+                    /cu[aá]nto\s+(cuesta|sale|vale|valen|cuestan)/i.test(t);
+  if (asksPrice && !isDatesQuery) {
+    _botSendPricingInfo(from, contactName, conv);
+    return true;
+  }
+
+  // 2) FAQ topics — respuesta puntual + invitacion a cotizar
+  const tail = '\n\n¿Querés cotizar para alguna fecha? Decime *fechas* y *personas* 📅';
+  if (/\b(cocina|bbq|cocinar|parrilla|cooler|nevera|comida|alimentos|equipada)\b/i.test(t)) {
+    sendWhatsAppText(from,
+      '🍳 *Cocina & alimentación*\n\n' +
+      'Cocina completamente equipada y área de BBQ. Incluye café, azúcar y especias básicas. ' +
+      'Cooler grande disponible (no contamos con nevera) — te recomendamos traer hielo y los alimentos que vayas a usar.' + tail
+    );
+    return true;
+  }
+  if (/\b(energ[ií]a|electric|luz|solar|panel|inversor|cargar|se[ñn]al|internet|wifi)\b/i.test(t)) {
+    sendWhatsAppText(from,
+      '⚡ *Energía & conectividad*\n\n' +
+      'Iluminación 100% solar mediante paneles fotovoltaicos. Inversor disponible para cargar celulares y dispositivos. ' +
+      'Excelente señal de todas las operadoras.' + tail
+    );
+    return true;
+  }
+  if (/check.?in|checkin|check.?out|checkout|\bhora\s+(de\s+)?(llegada|entrada|salida)|a\s+qu[eé]\s+hora/i.test(t)) {
+    sendWhatsAppText(from,
+      '🕒 *Horarios*\n\n' +
+      '• Check-in: *2:00 pm*\n' +
+      '• Check-out: *11:00 am*\n\n' +
+      'Si necesitás entrar más temprano o salir más tarde lo coordinamos según disponibilidad.' + tail
+    );
+    return true;
+  }
+  if (/\b(toalla|jab[oó]n|papel|ba[ñn]o|amenidades|amenities)\b/i.test(t)) {
+    sendWhatsAppText(from,
+      '🛁 *Baño & comodidades*\n\n' +
+      'Jabón, papel higiénico y toallas limpias incluidos. Fumigamos semanalmente — si sos sensible a mosquitos, te recomendamos traer repelente.' + tail
+    );
+    return true;
+  }
+  if (/\b(privacidad|vecinos|exclusiv|compartid)\b/i.test(t)) {
+    sendWhatsAppText(from,
+      '🌿 *Privacidad*\n\n' +
+      'Las tres cabañas son independientes y de uso exclusivo de quienes reservan. Sin vecinos compartidos.' + tail
+    );
+    return true;
+  }
+  if (/\b(capacidad|cu[aá]ntas?\s+personas|cu[aá]ntos?\s+(hu[eé]spedes|hu[eé]sped|caben))\b/i.test(t)) {
+    sendWhatsAppText(from,
+      '👥 *Capacidad por cabaña*\n\n' +
+      '• *Paseo por Las Nubes* — 2 a 4 personas (cama queen + sofá-cama doble)\n' +
+      '• *Portal hacia Las Nubes* — 2 personas (cama matrimonial full)\n' +
+      '• *Puente entre Las Nubes* — 2 a 4 personas (cama queen + cama auxiliar)' + tail
+    );
+    return true;
+  }
+  if (/\b(mascot|pet|llevar\s+(mi\s+)?perr|mi\s+gat)\b/i.test(t)) {
+    sendWhatsAppText(from,
+      '🐾 *Mascotas*\n\n' +
+      'Por el momento no recibimos mascotas. Para coordinaciones puntuales podés escribir al equipo y vemos. 🙏'
+    );
+    return true;
+  }
+
+  return false;
+}
+
 // Keywords que indican cambio/cancelacion → no cotizar, derivar a humano
 function _isReservaChangeRequest(text) {
   const t = (text || '').toLowerCase();
@@ -642,6 +736,11 @@ function botHandleMessage(from, text, contactName, kind) {
     return;
   }
 
+  // Info generica (tarifas sin fechas, FAQ topics) → respuesta puntual.
+  if (kind === 'text' && _botHandleInfoQuery(from, contactName, conv, text)) {
+    return;
+  }
+
   // Date parsing TIENE PRIORIDAD sobre el keyword "disponibilidad".
   // Solo intentamos parsear si el TEXTO tiene pinta de fechas (evita
   // mostrar "no entendi fechas" ante saludos genericos como "Hola").
@@ -657,7 +756,14 @@ function botHandleMessage(from, text, contactName, kind) {
       }
       return _replyAvailability(from, contactName, { step: 'AWAITING_DATES', context: {}, name: contactName }, parsed.checkin, parsed.checkout, personas);
     }
-    // Parsing fallo pero texto parecia fechas → clarificar
+    // Parsing fallo. Si el cliente mencionó personas o noches sueltas
+    // (sin fechas concretas), mostramos tarifas como fallback util.
+    const hasPersons = /\d+\s*personas?\b|\b(una|dos|tres|cuatro|cinco|seis)\s+personas?\b/i.test(text);
+    const hasNoches  = /\d+\s*noches?\b|\b(una|dos|tres|cuatro|cinco)\s+noches?\b/i.test(text);
+    if (hasPersons || hasNoches) {
+      _botSendPricingInfo(from, contactName, conv);
+      return;
+    }
     sendWhatsAppText(from, '🤔 No logré entender las fechas. ¿Podés escribirlas más claras?\n\nEjemplo: "del 5 al 8 de junio, 4 personas".');
     return;
   }
