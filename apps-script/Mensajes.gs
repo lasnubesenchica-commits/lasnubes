@@ -96,7 +96,43 @@ function handleGetConversaciones(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// ─── Migracion one-shot: importar inbounds/outbounds desde DebugLog ─
+// ─── Endpoint: borrar conversacion (Conversaciones + Mensajes) ───
+// POST action=deleteConversation con { phone }
+function handleDeleteConversation(payload) {
+  const phone = String((payload && payload.phone) || '').replace(/\D/g, '');
+  if (!phone) {
+    return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'MISSING_PHONE' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  let removedConv = 0, removedMsg = 0;
+
+  const convSheet = ss.getSheetByName('Conversaciones');
+  if (convSheet && convSheet.getLastRow() > 1) {
+    const data = convSheet.getDataRange().getValues();
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (String(data[i][0] || '').replace(/\D/g, '') === phone) {
+        convSheet.deleteRow(i + 1);
+        removedConv++;
+      }
+    }
+  }
+
+  const msgSheet = ss.getSheetByName('Mensajes');
+  if (msgSheet && msgSheet.getLastRow() > 1) {
+    const data = msgSheet.getDataRange().getValues();
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (String(data[i][1] || '').replace(/\D/g, '') === phone) {
+        msgSheet.deleteRow(i + 1);
+        removedMsg++;
+      }
+    }
+  }
+
+  logDebugEntry('conversation-deleted', { phone: phone, removedConv: removedConv, removedMsg: removedMsg });
+  return ContentService.createTextOutput(JSON.stringify({ ok: true, removedConv: removedConv, removedMsg: removedMsg }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
 // Correr desde el editor UNA VEZ para recuperar historial de testing
 // anterior al deploy del logging persistente.
 //

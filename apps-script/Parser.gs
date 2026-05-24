@@ -1636,6 +1636,9 @@ function doPost(e) {
     if (action === 'sendUpdateEmail')       return sendUpdateEmail(payload.reservation, payload.voucherBase64, payload.voucherMimeType);
     if (action === 'sendCheckinReminder')   return sendCheckinReminderEmail(payload.reservation);
 
+    // ── BOT CRM ───────────────────────────────────────────────
+    if (action === 'deleteConversation') return handleDeleteConversation(payload);
+
     // ── SEND WHATSAPP ─────────────────────────────────────────
     if (action === 'sendWAConfirmacion') {
       try {
