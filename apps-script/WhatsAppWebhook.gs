@@ -104,6 +104,13 @@ function processInboundMessage(msg, contactName) {
   logDebugEntry('WA-inbound', { from: from, type: type, kind: kind, text: text.slice(0, 200), name: contactName, msgId: msg.id });
   try { logMensaje(from, 'in', kind || type, text || '', msg.id || ''); } catch(_) {}
 
+  // Detectar primer contacto (no existia conversacion previa) para notificar al admin
+  let isFirstContact = false;
+  try {
+    const existingConv = _getConv(from);
+    isFirstContact = !existingConv;
+  } catch(_) {}
+
   // Audio/video/sticker: no soportado todavia
   if (!text && type !== 'text' && type !== 'interactive' && type !== 'image') {
     sendWhatsAppText(from, '🤔 Por ahora solo puedo procesar mensajes de texto, botones e imágenes. Escribime tu consulta o "3" para hablar con una persona.');
@@ -115,5 +122,24 @@ function processInboundMessage(msg, contactName) {
   } catch(err) {
     logDebugEntry('bot-CRASH', { from: from, error: err.message, stack: err.stack ? String(err.stack).slice(0, 400) : '' });
     try { sendWhatsAppText(from, 'Algo salió mal de mi lado. Te derivo con una persona del equipo 🙏'); } catch(_) {}
+  }
+
+  // Notificar al admin si es primer contacto (no spam de notificaciones por cada msg)
+  if (isFirstContact && from !== BOT_ADMIN_PHONE) {
+    try {
+      const name = contactName || from;
+      const firstMsg = (text || '').slice(0, 200) || '(mensaje sin texto)';
+      const dashUrl = 'https://lasnubes.cloud/dashboard.html#bot:' + from;
+      const adminMsg =
+        '🔔 *Nuevo cliente en el bot*\n\n' +
+        '👤 ' + name + '\n' +
+        '📱 +' + from + '\n\n' +
+        'Me ha consultado:\n_"' + firstMsg + '"_\n\n' +
+        '👀 Ver conversación:\n' + dashUrl;
+      sendWhatsAppText(BOT_ADMIN_PHONE, adminMsg);
+      logDebugEntry('admin-new-lead-notif', { from: from, name: name });
+    } catch(notifErr) {
+      logDebugEntry('admin-new-lead-notif-FAIL', { error: notifErr.message });
+    }
   }
 }
