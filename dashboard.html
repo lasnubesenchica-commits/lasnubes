@@ -8920,6 +8920,29 @@ renderDisponibilidad();
 // Auto-sync con Google Sheets al cargar y cada 15 minutos
 syncFromSheets();
 setInterval(syncFromSheets, 15 * 60 * 1000);
+
+// Deep link: si la URL tiene #bot:<phone> abrir el tab Bot y seleccionar
+// esa conversacion. Util para los links que el bot manda al admin
+// cuando un nuevo cliente escribe.
+(function handleDeepLink() {
+  const hash = window.location.hash || '';
+  const botMatch = hash.match(/^#bot(?::(\d+))?/);
+  if (botMatch) {
+    showSection('bot');
+    if (botMatch[1]) {
+      const phone = botMatch[1];
+      // Esperar a que loadBotData termine y luego seleccionar
+      const waitForList = () => {
+        if (Array.isArray(_botConvs) && _botConvs.length > 0) {
+          selectBotConv(phone);
+        } else {
+          setTimeout(waitForList, 300);
+        }
+      };
+      setTimeout(waitForList, 500);
+    }
+  }
+})();
 </script>
 </body>
 </html>
