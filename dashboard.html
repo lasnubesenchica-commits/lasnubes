@@ -2906,6 +2906,23 @@ function _botQuotedDayMap() {
   return map;
 }
 
+// Cuántas de las 3 cabañas están libres en una noche (ISO), según las
+// reservas reales actuales (excluye canceladas y bloqueos "Abierta").
+function _botCabinsFreeOn(iso) {
+  const CABINS = ['verde', 'azul', 'lila'];
+  const occ = {};
+  reservations.forEach(r => {
+    if (!r.checkin || !r.checkout) return;
+    if (CABINS.indexOf(r.cabin) === -1) return;
+    if ((r.estadoPago || '').toString().toUpperCase() === 'CANCELADA') return;
+    if (r.origin === 'Abierta') return;
+    // checkin/checkout son el rango de bloqueo; la noche está ocupada si
+    // checkin <= iso < checkout.
+    if (r.checkin <= iso && iso < r.checkout) occ[r.cabin] = true;
+  });
+  return CABINS.filter(c => !occ[c]).length;
+}
+
 function toggleBotQuoteCal() {
   _botQuoteCalExpanded = !_botQuoteCalExpanded;
   const body = document.getElementById('botQuoteCalBody');
@@ -2940,6 +2957,7 @@ function renderBotQuoteCal() {
   const DIAS = ['D','L','M','M','J','V','S'];
   const firstDow = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayIso = (function(){ const t = new Date(); return t.getFullYear() + '-' + String(t.getMonth()+1).padStart(2,'0') + '-' + String(t.getDate()).padStart(2,'0'); })();
 
   let html = '<div style="display:flex;align-items:center;justify-content:space-between;margin:10px 0 8px;">' +
     '<button onclick="botQuoteCalNav(-1)" style="border:1px solid var(--border);background:var(--bg);border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:14px;">‹</button>' +
@@ -2954,21 +2972,38 @@ function renderBotQuoteCal() {
     const iso = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
     const count = (map[iso] || []).length;
     const isSel = _botQuoteFilterDay === iso;
+    const isToday = iso === todayIso;
     const bg = isSel ? 'var(--azul-dark, #5a85b0)' : (count > 0 ? 'rgba(90,133,176,' + Math.min(0.18 + count * 0.18, 0.85) + ')' : 'transparent');
     const color = isSel ? '#fff' : (count > 0 ? '#1c3a52' : 'var(--text-muted)');
     const cursor = count > 0 ? 'pointer' : 'default';
     const onclick = count > 0 ? ' onclick="botQuoteCalSelectDay(\'' + iso + '\')"' : '';
-    html += '<div' + onclick + ' style="position:relative;aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:6px;font-size:12px;background:' + bg + ';color:' + color + ';cursor:' + cursor + ';font-weight:' + (count > 0 ? '600' : '400') + ';">' +
+    // Anillo para HOY
+    const todayRing = isToday ? 'box-shadow:inset 0 0 0 2px #e0843c;' : '';
+    // Punto de disponibilidad actual SOLO en noches cotizadas
+    let availDot = '';
+    if (count > 0) {
+      const free = _botCabinsFreeOn(iso);
+      const dotColor = free === 0 ? '#e05c5c' : (free <= 2 ? '#e0a23c' : '#5fa860');
+      availDot = '<span title="' + free + ' de 3 cabañas libres" style="position:absolute;bottom:2px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:' + dotColor + ';"></span>';
+    }
+    html += '<div' + onclick + ' style="position:relative;aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:6px;font-size:12px;background:' + bg + ';color:' + color + ';cursor:' + cursor + ';font-weight:' + (count > 0 || isToday ? '600' : '400') + ';' + todayRing + '">' +
       day +
       (count > 0 ? '<span style="position:absolute;top:1px;right:3px;font-size:8px;font-weight:700;">' + count + '</span>' : '') +
+      availDot +
     '</div>';
   }
   html += '</div>';
 
-  html += '<div style="font-size:11px;color:var(--text-muted);margin-top:8px;line-height:1.5;">' +
-    'El número indica cuántos clientes cotizaron esa noche. Tocá un día para filtrar la lista.';
+  html += '<div style="font-size:11px;color:var(--text-muted);margin-top:8px;line-height:1.6;">' +
+    '<div>El número = clientes que cotizaron esa noche. Tocá un día para filtrar la lista.</div>' +
+    '<div style="margin-top:4px;">Disponibilidad hoy: ' +
+      '<span style="color:#5fa860;">🟢 libre</span> · ' +
+      '<span style="color:#e0a23c;">🟡 queda poco</span> · ' +
+      '<span style="color:#e05c5c;">🔴 llena</span>' +
+      ' · <span style="color:#e0843c;">▢ hoy</span>' +
+    '</div>';
   if (_botQuoteFilterDay) {
-    html += ' <a href="#" onclick="botQuoteCalSelectDay(\'' + _botQuoteFilterDay + '\');return false;" style="color:var(--azul-dark,#5a85b0);font-weight:600;">✕ Quitar filtro</a>';
+    html += '<div style="margin-top:4px;"><a href="#" onclick="botQuoteCalSelectDay(\'' + _botQuoteFilterDay + '\');return false;" style="color:var(--azul-dark,#5a85b0);font-weight:600;">✕ Quitar filtro</a></div>';
   }
   html += '</div>';
 
