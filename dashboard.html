@@ -1263,7 +1263,7 @@
       <button onclick="showSection('ocupacion')">Ocupación</button>
       <button onclick="showSection('contabilidad')">Contabilidad</button>
       <button onclick="showSection('programa')">Programa</button>
-      <button id="btnBotNav" onclick="showSection('bot')" style="display:none;">💬 Bot</button>
+      <button id="btnBotNav" onclick="showSection('bot')" style="display:none;">💬 Agente</button>
     </nav>
     <!-- Mobile dropdown -->
     <div class="nav-mobile">
@@ -1274,7 +1274,7 @@
         <button onclick="showSection('ocupacion');closeNavMenu()">Ocupación</button>
         <button onclick="showSection('contabilidad');closeNavMenu()">Contabilidad</button>
         <button onclick="showSection('programa');closeNavMenu()">Programa</button>
-        <button id="btnBotNavMobile" onclick="showSection('bot');closeNavMenu()" style="display:none;">💬 Bot</button>
+        <button id="btnBotNavMobile" onclick="showSection('bot');closeNavMenu()" style="display:none;">💬 Agente</button>
       </div>
     </div>
   </div>
@@ -2037,8 +2037,8 @@
     <div style="max-width:1180px;margin:0 auto;padding:8px 0 24px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
         <div>
-          <h2 style="font-family:'Cormorant Garamond',serif;font-weight:500;font-size:28px;margin:0 0 4px;">💬 Bot · Conversaciones</h2>
-          <p style="font-size:13px;color:var(--text-muted);margin:0;">Leads que interactuaron con el bot de WhatsApp.</p>
+          <h2 style="font-family:'Cormorant Garamond',serif;font-weight:500;font-size:28px;margin:0 0 4px;">💬 Agente · Conversaciones</h2>
+          <p style="font-size:13px;color:var(--text-muted);margin:0;">Leads que interactuaron con el Agente de WhatsApp.</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
           <span id="botStats" style="font-size:12px;color:var(--text-muted);"></span>
@@ -2059,19 +2059,19 @@
         <input id="botSearch" placeholder="🔍 Buscar nombre o teléfono..." style="width:100%;box-sizing:border-box;padding:10px 12px;font-size:14px;border:1px solid var(--border);border-radius:8px;background:var(--bg);margin-bottom:8px;font-family:inherit;" oninput="renderBotList()">
         <select id="botStepFilter" onchange="renderBotList()" style="width:100%;box-sizing:border-box;padding:9px 10px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--bg);margin-bottom:12px;font-family:inherit;">
           <option value="">Todos los estados</option>
-          <option value="INITIAL">INITIAL</option>
-          <option value="AWAITING_DATES">AWAITING_DATES</option>
-          <option value="SHOWING_AVAILABILITY">SHOWING_AVAILABILITY</option>
-          <option value="SHOWING_ALTERNATIVES">SHOWING_ALTERNATIVES</option>
-          <option value="OFFERING_PAYMENT">OFFERING_PAYMENT</option>
-          <option value="AWAITING_EMAIL">AWAITING_EMAIL</option>
-          <option value="AWAITING_NAME">AWAITING_NAME</option>
-          <option value="PENDING_REVIEW">PENDING_REVIEW</option>
-          <option value="ARRIVED">ARRIVED</option>
-          <option value="HUMAN_HANDOFF">HUMAN_HANDOFF</option>
-          <option value="SHOWED_INFO">SHOWED_INFO</option>
-          <option value="NO_AVAILABILITY">NO_AVAILABILITY</option>
-          <option value="PENDING_HUMAN_BOOKING">PENDING_HUMAN_BOOKING</option>
+          <option value="INITIAL">Inicial</option>
+          <option value="AWAITING_DATES">Esperando fechas</option>
+          <option value="SHOWING_AVAILABILITY">Cotizando</option>
+          <option value="SHOWING_ALTERNATIVES">Alternativas</option>
+          <option value="OFFERING_PAYMENT">Pagando</option>
+          <option value="AWAITING_EMAIL">Email</option>
+          <option value="AWAITING_NAME">Nombre</option>
+          <option value="PENDING_REVIEW">Pendiente revisión</option>
+          <option value="ARRIVED">Llegó ✓</option>
+          <option value="HUMAN_HANDOFF">Handoff</option>
+          <option value="SHOWED_INFO">Vio info</option>
+          <option value="NO_AVAILABILITY">Sin dispon.</option>
+          <option value="PENDING_HUMAN_BOOKING">Humano coord.</option>
         </select>
         <div id="botList" style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
           <div style="text-align:center;padding:30px 12px;color:var(--text-muted);font-size:13px;">Cargando…</div>
@@ -2776,7 +2776,7 @@ function showSection(id) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   const sections = ['reservas','contabilidad','disponibilidad','ocupacion','programa','bot'];
-  const labels   = { reservas:'Reservas', contabilidad:'Contabilidad', disponibilidad:'Disponibilidad', ocupacion:'Ocupación', programa:'Programa Amigos', bot:'💬 Bot' };
+  const labels   = { reservas:'Reservas', contabilidad:'Contabilidad', disponibilidad:'Disponibilidad', ocupacion:'Ocupación', programa:'Programa Amigos', bot:'💬 Agente' };
   document.querySelectorAll('nav button').forEach(b => {
     const sec = b.getAttribute('onclick')?.match(/showSection\('(\w+)'/)?.[1];
     b.classList.toggle('active', sec === id);
