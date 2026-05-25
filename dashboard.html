@@ -2855,6 +2855,33 @@ function _botFmtTime(ts) {
   return date.toLocaleDateString('es-PA', { day: 'numeric', month: 'short' });
 }
 
+// Construye el wa.me con texto precargado personalizado para el cliente.
+function _botWaUrl(c) {
+  const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const fmt = function(iso) {
+    const d = new Date(iso + 'T12:00:00');
+    if (isNaN(d)) return '';
+    return d.getDate() + ' de ' + MESES[d.getMonth()];
+  };
+  // Primer nombre, sin emojis ni símbolos.
+  let nombre = (c.name || '').replace(/[^\p{L}\p{M}\s'.-]/gu, '').trim().split(/\s+/)[0] || '';
+  const saludo = nombre ? 'Hola ' + nombre : 'Hola';
+
+  const dts = c.context && c.context.dates;
+  let fechasFrase;
+  if (dts && dts.checkin && dts.checkout) {
+    fechasFrase = 'respecto a las fechas del ' + fmt(dts.checkin) + ' al ' + fmt(dts.checkout);
+  } else {
+    fechasFrase = 'sobre nuestras cabañas en Las Nubes';
+  }
+
+  const msg =
+    saludo + ', mi nombre es Josh de Las Nubes. Veo que tienes la intención de reservar o conocer más información ' + fechasFrase + '.\n\n' +
+    'Quedo atento para asistirte en tu reserva o aclararte cualquier duda antes de hacerla.';
+
+  return 'https://wa.me/' + c.phone + '?text=' + encodeURIComponent(msg);
+}
+
 // ─── Calendario de fechas cotizadas (colapsable, default colapsado) ──
 let _botQuoteCalExpanded = false;
 let _botQuoteCalMonth = null;   // Date apuntando al 1ro del mes mostrado
@@ -2973,7 +3000,7 @@ function renderBotList() {
     const badge = _botStepBadge(c.step);
     const selected = c.phone === _botSelectedPhone;
     const last = c.lastMsg ? (c.lastMsg.direction === 'in' ? '↘ ' : '↗ ') + (c.lastMsg.content || '').slice(0, 60) : '';
-    const waLink = 'https://wa.me/' + c.phone;
+    const waLink = _botWaUrl(c);
     return '<div onclick="selectBotConv(\'' + c.phone + '\')" style="padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;background:' + (selected ? 'var(--bg-secondary, #f5f3f0)' : 'transparent') + ';display:flex;align-items:center;gap:10px;">' +
       '<div style="flex:1;min-width:0;">' +
         '<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:3px;">' +
@@ -3046,7 +3073,7 @@ function renderBotDetail(conv, messages) {
   const detail = document.getElementById('botDetail');
   const badge = _botStepBadge(conv.step);
   const ctx = conv.context || {};
-  const waLink = 'https://wa.me/' + conv.phone;
+  const waLink = _botWaUrl(conv);
   let ctxHtml = '';
   const ctxBits = [];
   if (ctx.dates && ctx.dates.checkin) ctxBits.push('📅 ' + ctx.dates.checkin + ' → ' + ctx.dates.checkout);
