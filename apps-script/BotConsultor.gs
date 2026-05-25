@@ -1034,9 +1034,18 @@ function botHandleMessage(from, text, contactName, kind) {
     }
   }
 
-  // Boton "Cancelar" en OFFERING_PAYMENT — libera el estado + muestra menu principal
+  // Eleccion de cierre: autoservicio vs asistido (estado CHOOSING_CLOSE)
+  if (kind === 'button_reply' && text === 'close_self')   return _botOfferPayment(from, contactName, conv);
+  if (kind === 'button_reply' && text === 'close_asesor') return _botCloseWithAsesor(from, contactName, conv);
+  if (conv.step === 'CHOOSING_CLOSE') {
+    const tt = (text || '').trim().toLowerCase();
+    if (tt === '1' || /reservar\s+ahora|autoservicio|autogest/.test(tt)) return _botOfferPayment(from, contactName, conv);
+    if (tt === '2' || /asistid|asesor|josh/.test(tt))                    return _botCloseWithAsesor(from, contactName, conv);
+  }
+
+  // Boton "Cancelar" en el cierre/pago — libera el estado + muestra menu principal
   if ((kind === 'button_reply' && text === 'cancel_booking') ||
-      (conv.step === 'OFFERING_PAYMENT' && /^(cancela|cancelar|atras|atrás)\b/i.test((text || '').trim()))) {
+      ((conv.step === 'OFFERING_PAYMENT' || conv.step === 'CHOOSING_CLOSE') && /^(cancela|cancelar|atras|atrás)\b/i.test((text || '').trim()))) {
     sendWhatsAppText(from, '👋 Listo, cancelamos esta reserva. ¿En qué más te ayudamos?');
     _saveConv(from, 'INITIAL', {}, contactName);
     _botSendMainMenu(from, contactName, true);
@@ -1199,7 +1208,7 @@ function botHandleMessage(from, text, contactName, kind) {
   // mostrar "no entendi fechas" ante saludos genericos como "Hola").
   // Si el step era AWAITING_DATES pero el cliente cambio de tema (no
   // pinta de fechas), caemos al fallback de menu de bienvenida.
-  const midBooking = ['OFFERING_PAYMENT', 'AWAITING_VOUCHER_RETRY', 'AWAITING_EMAIL', 'AWAITING_NAME'].indexOf(conv.step) !== -1;
+  const midBooking = ['CHOOSING_CLOSE', 'OFFERING_PAYMENT', 'AWAITING_VOUCHER_RETRY', 'AWAITING_EMAIL', 'AWAITING_NAME'].indexOf(conv.step) !== -1;
   if (_looksLikeDateQuery(text)) {
     // Primero parser determinista (formatos explícitos con mes); si no
     // aplica, recurrimos al NLU de Claude (relativos, lenguaje natural).
@@ -1878,7 +1887,7 @@ function _botStartBooking(from, contactName, conv, cabin) {
   const personas     = (conv.context && conv.context.personas) || 2;
   const freeChildren = (conv.context && conv.context.freeChildren) || 0;
   if (!dates) {
-    sendWhatsAppText(from, '🤔 Perdí el contexto de las fechas. ¿Podés decirme de nuevo cuándo querés reservar?');
+    sendWhatsAppText(from, '🤔 Perdí el contexto de las fechas. ¿Puedes decirme de nuevo cuándo quieres reservar?');
     _saveConv(from, 'AWAITING_DATES', conv.context, contactName);
     return;
   }
@@ -1892,18 +1901,78 @@ function _botStartBooking(from, contactName, conv, cabin) {
   const body =
     '🎉 ¡Excelente! Reservando *' + BOT_CABIN_NAMES[cabin] + '* para *' + fechas + '* (' + personasLbl + ').\n\n' +
     '💰 *Total: $' + precio.toFixed(2) + '*\n\n' +
-    _botPaymentInfo() + '\n\n' +
-    '⚠️ *Importante*: en el detalle de la transferencia colocá tu *nombre completo* y *email* para procesar tu reserva más rápido.\n\n' +
-    'Una vez transferido, *enviame el comprobante como imagen* por aquí mismo.';
+    '¿Cómo quieres cerrar tu reserva?\n\n' +
+    '🤖 *Reservar Ahora*: te autogestionas la reserva de forma automática — te comparto las formas de pago y subes tu comprobante aquí mismo, al instante.\n\n' +
+    '🙋 *Reservar Asistido*: Josh te acompaña durante todo el proceso de reserva.';
   try {
     sendWhatsAppButtons(from, body, [
+      { id: 'close_self',     title: 'Reservar Ahora 🤖' },
+      { id: 'close_asesor',   title: 'Reservar Asistido 🙋' },
       { id: 'cancel_booking', title: '❌ Cancelar' }
     ]);
   } catch(_) {
-    sendWhatsAppText(from, body + '\n\nSi querés cancelar, escribime "cancelar".');
+    sendWhatsAppText(from, body + '\n\nEscribe "1" para *Reservar Ahora*, "2" para *Asistido*, o "cancelar".');
   }
-  _saveConv(from, 'OFFERING_PAYMENT', Object.assign({}, conv.context, { cabin: cabin, precio: precio }), contactName);
+  _saveConv(from, 'CHOOSING_CLOSE', Object.assign({}, conv.context, { cabin: cabin, precio: precio }), contactName);
 }
+
+// Autoservicio: muestra formas de pago y pide el comprobante.
+function _botOfferPayment(from, contactName, conv) {
+  const cabin = conv.context && conv.context.cabin;
+  if (!cabin) {
+    sendWhatsAppText(from, '🤔 Perdí el contexto de la reserva. Decime de nuevo las fechas y personas, por favor.');
+    _saveConv(from, 'AWAITING_DATES', {}, contactName);
+    return;
+  }
+  const body =
+    '🌿 ¡Perfecto! Cerramos *' + BOT_CABIN_NAMES[cabin] + '*.\n\n' +
+    _botPaymentInfo() + '\n\n' +
+    '⚠️ *Importante*: en el detalle de la transferencia coloca tu *nombre completo* y *email* para procesar tu reserva más rápido.\n\n' +
+    'Una vez transferido, *envíame el comprobante como imagen* por aquí mismo.';
+  try {
+    sendWhatsAppButtons(from, body, [{ id: 'cancel_booking', title: '❌ Cancelar' }]);
+  } catch(_) {
+    sendWhatsAppText(from, body + '\n\nSi quieres cancelar, escribe "cancelar".');
+  }
+  _saveConv(from, 'OFFERING_PAYMENT', conv.context, contactName);
+}
+
+// Asistido: conecta con Josh para cerrar + alerta al admin (lead caliente).
+function _botCloseWithAsesor(from, contactName, conv) {
+  const ctx       = conv.context || {};
+  const cabinName = BOT_CABIN_NAMES[ctx.cabin] || '';
+  const dates     = ctx.dates;
+  const fechas    = (dates && dates.checkin) ? (_botFmtFecha(dates.checkin) + ' al ' + _botFmtFecha(dates.checkout)) : '';
+  const personas  = ctx.personas || '';
+
+  let prefill = 'Hola Josh, quiero reservar';
+  if (cabinName) prefill += ' ' + cabinName;
+  if (fechas)    prefill += ' del ' + fechas;
+  if (personas)  prefill += ' (' + personas + ' personas)';
+  prefill += '. ¿Me ayudas a cerrar la reserva?';
+
+  sendWhatsAppText(from, 'Genial 🌿 Josh te va a acompañar para cerrar tu reserva.');
+  try {
+    sendWhatsAppCTAUrl(from, 'Toca el botón para escribirle 👇', 'Escribir a Josh',
+      'https://wa.me/50769812266?text=' + encodeURIComponent(prefill));
+  } catch(_) {
+    sendWhatsAppText(from, 'Escríbele directo:\nhttps://wa.me/50769812266');
+  }
+  try {
+    const precioStr = (typeof ctx.precio === 'number') ? ('$' + ctx.precio.toFixed(2)) : '?';
+    sendWhatsAppText(BOT_ADMIN_PHONE,
+      '🔥 *Lead listo para cerrar (asistido)*\n\n' +
+      '👤 ' + (contactName || from) + '\n' +
+      '📱 +' + from + '\n' +
+      '🏡 ' + (cabinName || '?') + '\n' +
+      '📅 ' + (fechas || '?') + '\n' +
+      '👥 ' + (personas || '?') + '\n' +
+      '💰 ' + precioStr + '\n\n' +
+      '_El cliente eligió "Reservar Asistido" tras cotizar._');
+  } catch(_) {}
+  _saveConv(from, 'PENDING_HUMAN_BOOKING', ctx, contactName);
+}
+
 
 function _botHandleVoucherImage(from, imageId, contactName, conv) {
   if (conv.step !== 'OFFERING_PAYMENT' && conv.step !== 'AWAITING_VOUCHER_RETRY') {

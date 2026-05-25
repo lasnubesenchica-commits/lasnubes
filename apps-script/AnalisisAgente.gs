@@ -18,7 +18,8 @@ const _FUNNEL_STAGES = {
   SHOWING_AVAILABILITY:   'D. Cotizó (vio disponibilidad)',
   SHOWING_ALTERNATIVES:   'D. Cotizó (alternativas)',
   NO_AVAILABILITY:        'D. Cotizó (sin disponibilidad)',
-  OFFERING_PAYMENT:       'E. Eligió cabaña / formas de pago',
+  CHOOSING_CLOSE:         'E. Eligió cabaña (eligiendo cierre)',
+  OFFERING_PAYMENT:       'E. Autoservicio / formas de pago',
   AWAITING_VOUCHER_RETRY: 'E. Reintentando voucher',
   AWAITING_EMAIL:         'F. Dando datos (email)',
   AWAITING_NAME:          'F. Dando datos (nombre)',
@@ -54,9 +55,9 @@ function analizarAgente() {
       stepCount[step] = (stepCount[step] || 0) + 1;
       const stage = _FUNNEL_STAGES[step] || ('? ' + step);
       stageCount[stage] = (stageCount[stage] || 0) + 1;
-      if (['AWAITING_DATES','SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES','NO_AVAILABILITY','OFFERING_PAYMENT','AWAITING_VOUCHER_RETRY','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','ARRIVED'].indexOf(step) !== -1) conGanasDeFecha++;
-      if (['SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES','NO_AVAILABILITY','OFFERING_PAYMENT','AWAITING_VOUCHER_RETRY','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','ARRIVED'].indexOf(step) !== -1) cotizaron++;
-      if (['OFFERING_PAYMENT','AWAITING_VOUCHER_RETRY','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','ARRIVED'].indexOf(step) !== -1) avanzaronPago++;
+      if (['AWAITING_DATES','SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES','NO_AVAILABILITY','CHOOSING_CLOSE','OFFERING_PAYMENT','AWAITING_VOUCHER_RETRY','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','ARRIVED'].indexOf(step) !== -1) conGanasDeFecha++;
+      if (['SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES','NO_AVAILABILITY','CHOOSING_CLOSE','OFFERING_PAYMENT','AWAITING_VOUCHER_RETRY','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','ARRIVED'].indexOf(step) !== -1) cotizaron++;
+      if (['CHOOSING_CLOSE','OFFERING_PAYMENT','AWAITING_VOUCHER_RETRY','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','ARRIVED'].indexOf(step) !== -1) avanzaronPago++;
       if (['PENDING_REVIEW','ARRIVED'].indexOf(step) !== -1) preReservas++;
       if (['HUMAN_HANDOFF','PENDING_HUMAN_BOOKING'].indexOf(step) !== -1) handoffs++;
     }
