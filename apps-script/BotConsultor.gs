@@ -172,6 +172,56 @@ function _botSendPricingInfo(from, contactName, conv) {
 }
 
 // Respuestas puntuales a topics FAQ. Devuelve true si manejo el mensaje.
+// Fotos por cabaña (subset de la galería del sitio). lh3 de Drive con
+// =w1280 para que se sirvan como JPEG dimensionado (compatible con WhatsApp).
+const BOT_CABIN_PHOTOS = {
+  verde: [
+    'https://lh3.googleusercontent.com/d/1UitkVZ9KCRqvWv5zNueXlfil01FBpDLB=w1280',
+    'https://lh3.googleusercontent.com/d/1ETkiIiNih83W0rTMcSndTNbQvDInkM6W=w1280',
+    'https://lh3.googleusercontent.com/d/1fCDD95d680rEyUTh3c0moXe3H29nf1vt=w1280',
+    'https://lh3.googleusercontent.com/d/1jnNxg_3WXQT0f5DjciDgdhRp8HsJkZbC=w1280'
+  ],
+  azul: [
+    'https://lh3.googleusercontent.com/d/1kolAp8PKDO3ws6abcUUfD2hpN_3ZLBjB=w1280',
+    'https://lh3.googleusercontent.com/d/171GVtaWLZAZCqds8yXLOVfVUgbT1URfy=w1280',
+    'https://lh3.googleusercontent.com/d/1jn9m_ON3_UnZtq_PRiln9TKHt1c2zimj=w1280',
+    'https://lh3.googleusercontent.com/d/1mqwRDpSB5p_6ozufxtC18LQLmDnPTa8j=w1280'
+  ],
+  lila: [
+    'https://lh3.googleusercontent.com/d/1TktbGLMLIXCRLXQh-ctE00wv7NrHjPjg=w1280',
+    'https://lh3.googleusercontent.com/d/1xpjjxmuC5nqiF8VsCfwZixRkHLFLPlPR=w1280',
+    'https://lh3.googleusercontent.com/d/1D0es4EEzyr10UOr1ohKTGNZpw9AMX8FV=w1280',
+    'https://lh3.googleusercontent.com/d/1dPcwrLUoqgonOdZ-Y7hDGoYxjbmU5byo=w1280'
+  ]
+};
+
+// Envia fotos de una cabaña (o un sampler de las 3 si no se especifica).
+function _botSendCabinPhotos(from, contactName, cabinKey) {
+  if (cabinKey && BOT_CABIN_PHOTOS[cabinKey]) {
+    const fotos = BOT_CABIN_PHOTOS[cabinKey];
+    fotos.forEach((url, i) => {
+      try { sendWhatsAppImage(from, url, i === 0 ? ('🏡 ' + BOT_CABIN_NAMES[cabinKey]) : ''); } catch(_) {}
+    });
+    sendWhatsAppText(from,
+      'Estas son algunas fotos de *' + BOT_CABIN_NAMES[cabinKey] + '* 🌿\n\n' +
+      'Galería completa: https://lasnubes.cloud\n\n' +
+      '¿Querés cotizar para alguna fecha? Decime *fechas* y *personas* 📅'
+    );
+    logDebugEntry('bot-fotos', { from: from, cabin: cabinKey });
+    return;
+  }
+  // Sin cabaña específica → una foto de cada una + invitación a elegir
+  ['verde', 'azul', 'lila'].forEach(c => {
+    try { sendWhatsAppImage(from, BOT_CABIN_PHOTOS[c][0], '🏡 ' + BOT_CABIN_NAMES[c]); } catch(_) {}
+  });
+  sendWhatsAppText(from,
+    '🌿 Estas son nuestras tres cabañas. Decime de cuál querés ver *más fotos* (Paseo, Portal o Puente) ' +
+    'o mirá la galería completa en https://lasnubes.cloud\n\n' +
+    'Y si ya tenés fechas en mente, te cotizo al instante 📅'
+  );
+  logDebugEntry('bot-fotos', { from: from, cabin: 'all' });
+}
+
 function _botHandleInfoQuery(from, contactName, conv, text) {
   const t = (text || '').toLowerCase();
 
@@ -181,6 +231,17 @@ function _botHandleInfoQuery(from, contactName, conv, text) {
   const hasRange = /del\s+\d+\s+al\s+\d+/i.test(t);
   const hasRelative = /\b(finde|fin\s+de\s+sem|este|pr[oó]xim|siguiente|hoy|ma[ñn]ana|pasado\s+ma[ñn]ana|esta\s+semana|semana\s+que\s+viene|mes\s+que\s+viene)\b/i.test(t);
   const isDatesQuery = hasMonth || hasRange || hasRelative;
+
+  // 0) Fotos / imágenes de cabañas → enviar fotos reales en el chat
+  if (/\b(fotos?|im[aá]genes?|im[aá]gen|fotograf[ií]a|mu[eé]stra(me)?|ens[eé][ñn]a(me)?|c[oó]mo\s+(es|son|luce|se\s+ve)|conocer\s+la\s+caba)\b/i.test(t)) {
+    let cabinKey = null;
+    if (/paseo/i.test(t))       cabinKey = 'verde';
+    else if (/portal/i.test(t)) cabinKey = 'azul';
+    else if (/puente/i.test(t)) cabinKey = 'lila';
+    if (!cabinKey && conv.context && conv.context.cabin) cabinKey = conv.context.cabin;
+    _botSendCabinPhotos(from, contactName, cabinKey);
+    return true;
+  }
 
   // 1) Precio / tarifa sin fechas → muestra tarifas para 2 pax
   const asksPrice = /\b(precios?|tarifas?|costo|valor|costos?)\b/i.test(t) ||
