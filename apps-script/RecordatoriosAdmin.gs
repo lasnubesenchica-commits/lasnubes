@@ -7,8 +7,11 @@
  * - 9:00 am: alerta si alguna reserva del dia tiene servicios
  *   especiales mencionados en comentarios (decoración, traslado,
  *   cumpleaños, menú, etc.).
+ * - 8:00 am: recordatorio de limpieza a la Sra que limpia (numero en
+ *   Script Property LIMPIEZA_PHONE), con instrucciones por cabaña.
  *
- * Setup: correr UNA VEZ desde el editor `instalarTriggersAdminReminders()`.
+ * Setup: correr UNA VEZ desde el editor `instalarTriggersAdminReminders()`
+ * y `instalarTriggerLimpieza()` (este ultimo tras setear LIMPIEZA_PHONE).
  */
 
 // Reusa BOT_ADMIN_PHONE, BOT_TZ, BOT_CABIN_NAMES, _botAddDaysISO de BotConsultor.gs
@@ -193,6 +196,80 @@ function enviarRecordatorioServiciosEspeciales() {
   logDebugEntry('admin-recordatorio-9am', { count: conServicios.length });
 }
 
+// ─── Trigger 8am: limpieza del dia (a la Sra que limpia) ────────
+// Mensaje orientado a limpieza, por cabaña, segun el estado de hoy:
+//  - Salida hoy           → 🧹 limpiar + cambiar sábanas (urgente si entra alguien hoy)
+//  - Estadía multi-noche  → ✅ no limpiar (huésped sigue)
+//  - Entra hoy, vacía ayer→ 👀 no cambiar sábanas, solo verificar
+//  - Sin actividad        → ⚪ libre
+// Numero destino en Script Property LIMPIEZA_PHONE (agregarlo en Meta).
+function enviarRecordatorioLimpieza() {
+  const phone = PropertiesService.getScriptProperties().getProperty('LIMPIEZA_PHONE');
+  if (!phone) { logDebugEntry('recordatorio-limpieza-no-phone', {}); return; }
+
+  const today     = Utilities.formatDate(new Date(), BOT_TZ, 'yyyy-MM-dd');
+  const yesterday = _botAddDaysISO(today, -1);
+  const fechaLbl  = _adminFmtFechaLarga(today);
+
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+
+  const CABINS = [
+    { key: 'verde', name: 'Paseo por Las Nubes' },
+    { key: 'azul',  name: 'Portal hacia Las Nubes' },
+    { key: 'lila',  name: 'Puente entre Las Nubes' }
+  ];
+  const byCabin = { verde: [], azul: [], lila: [] };
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    if (!r[0]) continue;
+    if (r[9] === 'Abierta') continue;
+    if ((r[20] || '').toString().toUpperCase() === 'CANCELADA') continue;
+    const cabin = r[3];
+    if (!byCabin[cabin]) continue;
+    const ci = r[4] instanceof Date ? Utilities.formatDate(r[4], BOT_TZ, 'yyyy-MM-dd') : (r[4] || '').toString().slice(0,10);
+    const co = r[5] instanceof Date ? Utilities.formatDate(r[5], BOT_TZ, 'yyyy-MM-dd') : (r[5] || '').toString().slice(0,10);
+    if (!ci || !co) continue;
+    byCabin[cabin].push({ name: r[1] || '?', ci: ci, co: co });
+  }
+
+  let limpiar = 0;
+  const lines = CABINS.map(cab => {
+    const res = byCabin[cab.key];
+    const checkoutToday = res.find(x => x.co === today);
+    const checkinToday  = res.find(x => x.ci === today);
+    const occLastNight  = res.find(x => x.ci <= yesterday && x.co > yesterday);
+    const occTonight    = res.find(x => x.ci <= today && x.co > today);
+
+    let line = '🏡 *' + cab.name + '*\n';
+    if (checkoutToday) {
+      limpiar++;
+      line += '🧹 *LIMPIAR* — salió ' + checkoutToday.name + '. Cambiar sábanas y dejar la cabaña lista.';
+      if (checkinToday) {
+        line += '\n⚠️ ¡Hoy mismo llega ' + checkinToday.name + '! Dejarla lista a tiempo.';
+      }
+    } else if (occTonight && occLastNight) {
+      line += '✅ *No limpiar* — ' + occTonight.name + ' sigue hospedado (estadía de varias noches).';
+    } else if (checkinToday && !occLastNight) {
+      limpiar++;
+      line += '👀 Llega ' + checkinToday.name + ' hoy. Anoche estuvo vacía: no hace falta cambiar sábanas, solo pasá a verificar que todo esté en orden.';
+    } else if (occTonight) {
+      line += '✅ *No limpiar* — ocupada.';
+    } else {
+      line += '⚪ Libre, sin actividad hoy.';
+    }
+    return line;
+  });
+
+  const intro = limpiar > 0
+    ? 'Buenos días 🌿 Esto es lo de hoy:'
+    : 'Buenos días 🌿 Hoy no hay cabañas que limpiar. Igual te dejo el estado de cada una:';
+  const msg = '🧹 *Limpieza de hoy* — ' + fechaLbl + '\n\n' + intro + '\n\n' + lines.join('\n\n');
+
+  sendWhatsAppText(phone, msg);
+  logDebugEntry('recordatorio-limpieza', { limpiar: limpiar });
+}
+
 // ─── Setup ────────────────────────────────────────────────────────
 // Correr UNA VEZ desde el editor para instalar los triggers diarios.
 function instalarTriggersAdminReminders() {
@@ -210,6 +287,19 @@ function instalarTriggersAdminReminders() {
   Logger.log('✓ Triggers instalados:\n - 9am: enviarRecordatorioServiciosEspeciales\n - 11am: enviarRecordatorioAdminReservasHoy');
 }
 
+// Instala (o reinstala) el trigger diario 8am de limpieza. Correr UNA VEZ
+// desde el editor DESPUÉS de configurar la Script Property LIMPIEZA_PHONE.
+function instalarTriggerLimpieza() {
+  const triggers = ScriptApp.getProjectTriggers();
+  for (const t of triggers) {
+    if (t.getHandlerFunction() === 'enviarRecordatorioLimpieza') ScriptApp.deleteTrigger(t);
+  }
+  ScriptApp.newTrigger('enviarRecordatorioLimpieza')
+    .timeBased().everyDays(1).atHour(8).inTimezone(BOT_TZ).create();
+  Logger.log('✓ Trigger de limpieza instalado: 8am diario → enviarRecordatorioLimpieza');
+}
+
 // Funciones para probar manualmente desde el editor
-function _testRecordatorio11am() { return enviarRecordatorioAdminReservasHoy(); }
-function _testRecordatorio9am()  { return enviarRecordatorioServiciosEspeciales(); }
+function _testRecordatorio11am()  { return enviarRecordatorioAdminReservasHoy(); }
+function _testRecordatorio9am()   { return enviarRecordatorioServiciosEspeciales(); }
+function _testRecordatorioLimpieza() { return enviarRecordatorioLimpieza(); }
