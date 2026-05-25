@@ -214,7 +214,7 @@ function _botSendCabinPhotos(from, contactName, cabinKey) {
     });
     sendWhatsAppText(from,
       'Estas son algunas fotos de *' + BOT_CABIN_NAMES[cabinKey] + '* 🌿\n\n' +
-      'Galería completa: https://lasnubes.cloud\n\n' +
+      'Galería completa: https://lasnubes.cloud/#cabanas-' + cabinKey + '\n\n' +
       '¿Querés cotizar para alguna fecha? Decime *fechas* y *personas* 📅'
     );
     logDebugEntry('bot-fotos', { from: from, cabin: cabinKey });
@@ -226,7 +226,7 @@ function _botSendCabinPhotos(from, contactName, cabinKey) {
   });
   sendWhatsAppText(from,
     '🌿 Estas son nuestras tres cabañas. Decime de cuál querés ver *más fotos* (Paseo, Portal o Puente) ' +
-    'o mirá la galería completa en https://lasnubes.cloud\n\n' +
+    'o mirá la galería completa en https://lasnubes.cloud/#cabanas\n\n' +
     'Y si ya tenés fechas en mente, te cotizo al instante 📅'
   );
   logDebugEntry('bot-fotos', { from: from, cabin: 'all' });
