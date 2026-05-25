@@ -232,6 +232,36 @@ function _botSendCabinPhotos(from, contactName, cabinKey) {
   logDebugEntry('bot-fotos', { from: from, cabin: 'all' });
 }
 
+// Consultas de acceso: con qué auto se llega, o cómo llegar sin auto.
+// Devuelve true si manejó el mensaje. Transporte (bus) se chequea primero.
+function _botHandleAccesoQuery(from, contactName, text) {
+  const t = (text || '').toLowerCase();
+
+  // Sin auto / transporte público / bus / Albrook
+  if (/\b(sin\s+(auto|carro|veh[ií]culo|movilidad)|no\s+tengo\s+(auto|carro|veh[ií]culo|carro)|transporte\s+p[uú]blic|en\s+bus\b|\bbus\b|autob[uú]s|albrook|terminal)\b/.test(t)) {
+    sendWhatsAppText(from,
+      '🚌 *Cómo llegar sin auto*\n\n' +
+      'Desde la terminal de *Albrook* podés tomar cualquier bus hacia el interior y bajarte en el *Pío Pío de Bejuco*. Ahí te recogemos y trasladamos a la cabaña, ida y vuelta, por *$20 adicionales* en tu reserva. 🌿\n\n' +
+      '¿Querés cotizar para alguna fecha? Decime *fechas* y *personas* 📅'
+    );
+    logDebugEntry('bot-acceso', { from: from, tipo: 'sin-auto' });
+    return true;
+  }
+
+  // Tipo de auto / 4x4 / sedán / estado del camino
+  if (/\b(4\s*x\s*4|4x4|cuatro\s+por\s+cuatro|sed[aá]n|tipo\s+de\s+(auto|carro|veh)|cualquier\s+(auto|carro|veh|tipo\s+de\s+auto)|mi\s+(auto|carro)|camino\s+(es|est[aá]|de)|carretera\s+(es|est[aá]|de|en)|c[oó]mo\s+(es|est[aá])\s+(el\s+camino|la\s+carretera|la\s+calle)|se\s+puede\s+(ir|llegar|subir|entrar)\s+en|necesito\s+(un\s+)?4|hace\s+falta\s+(un\s+)?4|sube[ns]?\s+carros?)\b/.test(t)) {
+    sendWhatsAppText(from,
+      '🚗 *Acceso a Las Nubes*\n\n' +
+      'La carretera es de asfalto y en muy buen estado hasta la entrada del proyecto. Luego son unos *5 minutos en camino de tosca fina*. Recibimos *sedanes y todo tipo de autos* sin problema. 🌿\n\n' +
+      '¿Querés cotizar para alguna fecha? Decime *fechas* y *personas* 📅'
+    );
+    logDebugEntry('bot-acceso', { from: from, tipo: 'vehiculo' });
+    return true;
+  }
+
+  return false;
+}
+
 function _botHandleInfoQuery(from, contactName, conv, text) {
   const t = (text || '').toLowerCase();
 
@@ -586,7 +616,8 @@ function _botKbComoLlegar() {
 '- Buenos Aires, Chamé · faldas del Cerro Chicá, Panamá.\n' +
 '- Desde Ciudad de Panamá: aproximadamente *1h 15min* por la Interamericana.\n' +
 '- Indicaciones detalladas, Waze y Google Maps con coordenadas exactas se comparten al confirmar la reserva.\n' +
-'- Tip: hay tramos de calle de huella de concreto al final — sedanes llegan sin problema en temporada seca; en lluvia, conducción con cuidado.'
+'- *Acceso en auto*: carretera de asfalto en muy buen estado hasta la entrada del proyecto, luego ~5 min en camino de tosca fina. Se reciben sedanes y todo tipo de autos sin problema (NO hace falta 4x4).\n' +
+'- *Sin auto*: desde la terminal de Albrook tomar cualquier bus hacia el interior y bajarse en el Pío Pío de Bejuco; ahí los recogemos y trasladamos a la cabaña ida y vuelta por $20 adicionales en la reserva.'
   );
 }
 
@@ -1062,6 +1093,10 @@ function botHandleMessage(from, text, contactName, kind) {
   }
 
   const t = (text || '').toLowerCase().trim();
+
+  // Acceso: tipo de auto (4x4/sedán) o sin auto (bus/Albrook). Va ANTES del
+  // keyword genérico "cómo llegar" para que no lo intercepte el menú de mapas.
+  if (_botHandleAccesoQuery(from, contactName, t)) return;
 
   // Opciones por keywords (compatibilidad: clientes que escriben en vez de tocar)
   if (t === '2' || t.includes('como llegar') || t.includes('cómo llegar') || t.includes('ubicacion') || t.includes('ubicación') || t.includes('direccion') || t.includes('dirección') || t.includes('llegar')) {
