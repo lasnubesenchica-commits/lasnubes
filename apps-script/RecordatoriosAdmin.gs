@@ -274,6 +274,43 @@ function enviarRecordatorioLimpieza() {
   logDebugEntry('recordatorio-limpieza', { phone: phone });
 }
 
+// ─── Trigger 9am: instrucciones de check-out al huésped que sale hoy ──
+// Envia la plantilla 'instrucciones_checkout' (con boton quick-reply
+// "Ya me retiré") a cada reserva que sale hoy y tiene teléfono. Al tocar
+// el boton, el Agente avisa al admin (portón) y a Erika (limpieza).
+//
+// REQUISITO de la plantilla en Meta:
+//   - Nombre: instrucciones_checkout · idioma es_PA
+//   - Body con variables {{nombre}} y {{cabana}}
+//   - 1 boton de Respuesta rápida (ej. "✅ Ya me retiré")
+function enviarRecordatoriosCheckout() {
+  const today = Utilities.formatDate(new Date(), BOT_TZ, 'yyyy-MM-dd');
+  const salidas = _adminGetMovimientosDia(today).filter(i => i.kind === 'salida');
+
+  let enviados = 0;
+  salidas.forEach(it => {
+    const r = it.reserva;
+    if (!r.telefono) return;                 // sin teléfono no podemos contactar
+    if (r.origin === 'Airbnb') return;        // Airbnb gestiona su propio canal
+    const firstName  = (r.name || '').toString().trim().split(/\s+/)[0] || 'amigo';
+    const cabinName  = r.cabinName || BOT_CABIN_NAMES[r.cabin] || r.cabin;
+    try {
+      sendWhatsAppTemplate(
+        r.telefono,
+        'instrucciones_checkout',
+        'es_PA',
+        { nombre: firstName, cabana: cabinName },
+        null,
+        'checkout_' + r.id           // payload del boton quick-reply
+      );
+      enviados++;
+    } catch(err) {
+      logDebugEntry('checkout-template-FAIL', { id: r.id, error: err.message });
+    }
+  });
+  logDebugEntry('recordatorios-checkout', { salidas: salidas.length, enviados: enviados });
+}
+
 // ─── Setup ────────────────────────────────────────────────────────
 // Correr UNA VEZ desde el editor para instalar los triggers diarios.
 function instalarTriggersAdminReminders() {
@@ -303,7 +340,20 @@ function instalarTriggerLimpieza() {
   Logger.log('✓ Trigger de limpieza instalado: 8am diario → enviarRecordatorioLimpieza');
 }
 
+// Instala (o reinstala) el trigger diario 9am de check-out al huésped.
+// Correr UNA VEZ tras aprobar la plantilla instrucciones_checkout con boton.
+function instalarTriggerCheckout() {
+  const triggers = ScriptApp.getProjectTriggers();
+  for (const t of triggers) {
+    if (t.getHandlerFunction() === 'enviarRecordatoriosCheckout') ScriptApp.deleteTrigger(t);
+  }
+  ScriptApp.newTrigger('enviarRecordatoriosCheckout')
+    .timeBased().everyDays(1).atHour(9).inTimezone(BOT_TZ).create();
+  Logger.log('✓ Trigger de check-out instalado: 9am diario → enviarRecordatoriosCheckout');
+}
+
 // Funciones para probar manualmente desde el editor
 function _testRecordatorio11am()  { return enviarRecordatorioAdminReservasHoy(); }
 function _testRecordatorio9am()   { return enviarRecordatorioServiciosEspeciales(); }
 function _testRecordatorioLimpieza() { return enviarRecordatorioLimpieza(); }
+function _testCheckout()          { return enviarRecordatoriosCheckout(); }

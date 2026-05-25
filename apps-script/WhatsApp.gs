@@ -97,7 +97,7 @@ function testEnviarWhatsAppPrueba() {
  * @param {Array}  [buttonParams] opcional, parametros del boton CTA dinamico
  * @return {Object}               response JSON
  */
-function sendWhatsAppTemplate(toPhone, templateName, languageCode, namedParams, buttonParams) {
+function sendWhatsAppTemplate(toPhone, templateName, languageCode, namedParams, buttonParams, quickReplyPayload) {
   const cfg = _waProps();
   if (!cfg.token || !cfg.phoneId) throw new Error('WA: faltan credenciales en Script Properties');
   const to = _waNormalizePhone(toPhone);
@@ -120,6 +120,16 @@ function sendWhatsAppTemplate(toPhone, templateName, languageCode, namedParams, 
       sub_type: 'url',
       index: '0',
       parameters: buttonParams.map(v => ({ type: 'text', text: String(v) }))
+    });
+  }
+  // Boton quick-reply con payload dinamico (ej. checkout_<reservaId>). El
+  // payload vuelve en el webhook cuando el cliente toca el boton.
+  if (quickReplyPayload) {
+    components.push({
+      type: 'button',
+      sub_type: 'quick_reply',
+      index: '0',
+      parameters: [{ type: 'payload', payload: String(quickReplyPayload) }]
     });
   }
 
