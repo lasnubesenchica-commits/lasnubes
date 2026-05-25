@@ -2867,16 +2867,26 @@ function _botWaUrl(c) {
   let nombre = (c.name || '').replace(/[^\p{L}\p{M}\s'.-]/gu, '').trim().split(/\s+/)[0] || '';
   const saludo = nombre ? 'Hola ' + nombre : 'Hola';
 
-  const dts = c.context && c.context.dates;
-  let fechasFrase;
-  if (dts && dts.checkin && dts.checkout) {
-    fechasFrase = 'respecto a las fechas del ' + fmt(dts.checkin) + ' al ' + fmt(dts.checkout);
+  const CABIN_NAMES = { verde: 'Paseo por Las Nubes', azul: 'Portal hacia Las Nubes', lila: 'Puente entre Las Nubes' };
+  const ctx = c.context || {};
+  const dts = ctx.dates;
+  const cabinName = CABIN_NAMES[ctx.cabin] || '';
+  const tieneFechas = dts && dts.checkin && dts.checkout;
+  const fechasTxt = tieneFechas ? ('las fechas del ' + fmt(dts.checkin) + ' al ' + fmt(dts.checkout)) : '';
+
+  let frase;
+  if (cabinName && tieneFechas) {
+    frase = 'respecto a la cabaña ' + cabinName + ' para ' + fechasTxt;
+  } else if (cabinName) {
+    frase = 'respecto a la cabaña ' + cabinName;
+  } else if (tieneFechas) {
+    frase = 'respecto a ' + fechasTxt;
   } else {
-    fechasFrase = 'sobre nuestras cabañas en Las Nubes';
+    frase = 'sobre nuestras cabañas en Las Nubes';
   }
 
   const msg =
-    saludo + ', mi nombre es Josh de Las Nubes. Veo que tienes la intención de reservar o conocer más información ' + fechasFrase + '.\n\n' +
+    saludo + ', mi nombre es Josh de Las Nubes. Veo que tienes la intención de reservar o conocer más información ' + frase + '.\n\n' +
     'Quedo atento para asistirte en tu reserva o aclararte cualquier duda antes de hacerla.';
 
   return 'https://wa.me/' + c.phone + '?text=' + encodeURIComponent(msg);
