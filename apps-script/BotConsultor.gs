@@ -1902,7 +1902,7 @@ function _botStartBooking(from, contactName, conv, cabin) {
     '🎉 ¡Excelente! Reservando *' + BOT_CABIN_NAMES[cabin] + '* para *' + fechas + '* (' + personasLbl + ').\n\n' +
     '💰 *Total: $' + precio.toFixed(2) + '*\n\n' +
     '¿Cómo quieres cerrar tu reserva?\n\n' +
-    '⚡ *Reservar Ahora*: te autogestionas — te comparto las formas de pago, subes el comprobante aquí mismo, tu reserva queda confirmada automáticamente y recibes todo por email y por este WhatsApp.\n\n' +
+    '⚡ *Reservar Ahora*: te autogestionas — te comparto las formas de pago, subes el comprobante aquí mismo, tu reserva queda registrada y la confirmamos en breve por email y por este WhatsApp.\n\n' +
     '🙋 *Reservar Asistido*: te transfiero con Josh para que te asista durante todo el proceso de reserva.';
   try {
     sendWhatsAppButtons(from, body, [
