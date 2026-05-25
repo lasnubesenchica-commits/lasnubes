@@ -3435,10 +3435,24 @@ const _origShowSection = showSection;
 
 loadData();
 
+// Activa la galería de una cabaña específica (selecciona su tab).
+function _activarGaleria(cabin) {
+  var btn = document.querySelector('#section-cabanas .galeria-tab.' + cabin);
+  if (btn) setGaleriaCabin(cabin, btn);
+  else renderGaleriaGrid(cabin);
+}
+
 // ── Deep-link: abre sección según #hash en la URL ───────────────────────
+//   #cabanas-azul / #cabanas-verde / #cabanas-lila → galería de esa cabaña
 (function() {
   var hash = window.location.hash.replace('#', '');
   var valid = ['disponibilidad','reservas','cabanas','guia','actividades','gastronomia','insumos'];
+  var m = hash.match(/^cabanas-(verde|azul|lila)$/);
+  if (m) {
+    showSection('cabanas');
+    _activarGaleria(m[1]);
+    return;
+  }
   if (hash && valid.indexOf(hash) !== -1) {
     showSection(hash);
   }
