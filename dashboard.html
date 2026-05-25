@@ -2063,7 +2063,8 @@
           <option value="AWAITING_DATES">Esperando fechas</option>
           <option value="SHOWING_AVAILABILITY">Cotizando</option>
           <option value="SHOWING_ALTERNATIVES">Alternativas</option>
-          <option value="OFFERING_PAYMENT">Pagando</option>
+          <option value="CHOOSING_CLOSE">Eligiendo cierre</option>
+          <option value="OFFERING_PAYMENT">Pagando (autoservicio)</option>
           <option value="AWAITING_EMAIL">Email</option>
           <option value="AWAITING_NAME">Nombre</option>
           <option value="PENDING_REVIEW">Pendiente revisión</option>
@@ -2811,7 +2812,7 @@ async function loadBotData() {
 
 function renderBotStats() {
   const total = _botConvs.length;
-  const cotizaron = _botConvs.filter(c => ['SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES','OFFERING_PAYMENT','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','ARRIVED','PENDING_HUMAN_BOOKING'].includes(c.step)).length;
+  const cotizaron = _botConvs.filter(c => ['SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES','CHOOSING_CLOSE','OFFERING_PAYMENT','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','ARRIVED','PENDING_HUMAN_BOOKING'].includes(c.step)).length;
   const reservaron = _botConvs.filter(c => ['PENDING_REVIEW','ARRIVED','PENDING_HUMAN_BOOKING'].includes(c.step)).length;
   const el = document.getElementById('botStats');
   if (el) el.textContent = total + ' leads · ' + cotizaron + ' cotizaron · ' + reservaron + ' reservaron';
@@ -2824,6 +2825,7 @@ function _botStepBadge(step) {
     'SHOWING_AVAILABILITY':   { color: '#4a7c5f', text: 'Cotizando' },
     'SHOWING_ALTERNATIVES':   { color: '#a67c52', text: 'Alternativas' },
     'NO_AVAILABILITY':        { color: '#c0392b', text: 'Sin dispon.' },
+    'CHOOSING_CLOSE':         { color: '#7a5fb0', text: 'Eligiendo cierre' },
     'OFFERING_PAYMENT':       { color: '#6a4f9d', text: 'Pagando' },
     'AWAITING_VOUCHER_RETRY': { color: '#a67c52', text: 'Voucher retry' },
     'AWAITING_EMAIL':         { color: '#6a4f9d', text: 'Email' },
