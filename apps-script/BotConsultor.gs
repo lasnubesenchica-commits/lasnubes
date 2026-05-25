@@ -833,6 +833,11 @@ function botHandleMessage(from, text, contactName, kind) {
     return _botAdminReject(from, text.replace('reject_', ''));
   }
 
+  // Boton "Ya me retiré" de la plantilla de check-out → avisar admin + Erika
+  if (kind === 'button_reply' && text.indexOf('checkout_') === 0) {
+    return _botHandleCheckoutDone(from, contactName, text.replace('checkout_', ''));
+  }
+
   // Menu list/button reply → handler especifico
   if ((kind === 'list_reply' || kind === 'button_reply') && /^menu_/.test(text)) {
     if (text === 'menu_disponibilidad') {
@@ -1460,6 +1465,68 @@ function _botSendArrivalInstructions(from, contactName, conv, reserva) {
   try { sendWhatsAppText('50769812266', adminMsg); } catch(_) {}
 
   _saveConv(from, 'ARRIVED', Object.assign({}, conv.context || {}, { reservaId: reserva.id }), contactName);
+}
+
+// Busca una reserva por su id en la hoja. Devuelve datos basicos o null.
+function _botFindReservaById(reservaId) {
+  if (!reservaId) return null;
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] && data[i][0].toString() === reservaId.toString()) {
+      const r = data[i];
+      return {
+        id: r[0], name: r[1] || '?', cabin: r[3],
+        cabinName: r[2] || BOT_CABIN_NAMES[r[3]] || r[3],
+        telefono: r[23] || ''
+      };
+    }
+  }
+  return null;
+}
+
+// El huesped tocó "Ya me retiré" en la plantilla de check-out.
+// → avisa al admin que abra el portón y a Erika que puede limpiar la cabaña.
+function _botHandleCheckoutDone(from, contactName, reservaId) {
+  let reserva = _botFindReservaById(reservaId);
+  // Fallback: si no vino id valido, intentar ubicar por telefono.
+  if (!reserva) {
+    try { reserva = _botFindReservaByPhone(from); } catch(_) {}
+  }
+  const cabinName = (reserva && reserva.cabinName) || (reserva && BOT_CABIN_NAMES[reserva.cabin]) || 'una cabaña';
+  const guestName = (reserva && reserva.name) || contactName || from;
+
+  // Confirmacion al huésped
+  sendWhatsAppText(from,
+    '¡Gracias por avisar! 🌿 Ya le avisé al equipo, en un momento te abren el portón. ' +
+    '¡Buen viaje y esperamos verte pronto de nuevo en Las Nubes! 🙌'
+  );
+
+  // Aviso al admin: abrir portón
+  const gatePhone = PropertiesService.getScriptProperties().getProperty('WA_GATE_PHONE') || '+507 6777-5630';
+  try {
+    sendWhatsAppText(BOT_ADMIN_PHONE,
+      '🚪 *ABRE EL PORTÓN — salida*\n\n' +
+      '📞 Llamar: ' + gatePhone + '\n\n' +
+      '👤 ' + guestName + '\n' +
+      '📱 +' + from + '\n' +
+      '🏡 ' + cabinName + '\n\n' +
+      '_El huésped tocó "Ya me retiré" en el check-out._'
+    );
+  } catch(_) {}
+
+  // Aviso a Erika (limpieza): cabaña libre para limpiar
+  try {
+    const limpiezaPhone = PropertiesService.getScriptProperties().getProperty('LIMPIEZA_PHONE');
+    if (limpiezaPhone) {
+      sendWhatsAppText(limpiezaPhone,
+        '🧹 *' + cabinName + '* ya está libre\n\n' +
+        guestName + ' acaba de retirarse. Podés proceder con la limpieza cuando puedas. 🌿'
+      );
+    }
+  } catch(_) {}
+
+  logDebugEntry('checkout-done', { from: from, reservaId: reservaId, cabin: (reserva && reserva.cabin) || '?' });
 }
 
 const BOT_ADMIN_PHONE = '50769812266';

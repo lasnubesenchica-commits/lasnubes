@@ -100,6 +100,10 @@ function processInboundMessage(msg, contactName) {
   } else if (type === 'image' && msg.image) {
     text = msg.image.id || '';
     kind = 'image';
+  } else if (type === 'button' && msg.button) {
+    // Boton quick-reply de una plantilla (ej. "Ya me retiré" en checkout).
+    text = msg.button.payload || msg.button.text || '';
+    kind = 'button_reply';
   }
   logDebugEntry('WA-inbound', { from: from, type: type, kind: kind, text: text.slice(0, 200), name: contactName, msgId: msg.id });
   try { logMensaje(from, 'in', kind || type, text || '', msg.id || ''); } catch(_) {}
@@ -126,7 +130,7 @@ function processInboundMessage(msg, contactName) {
   } catch(_) {}
 
   // Audio/video/sticker: no soportado todavia
-  if (!text && type !== 'text' && type !== 'interactive' && type !== 'image') {
+  if (!text && type !== 'text' && type !== 'interactive' && type !== 'image' && type !== 'button') {
     sendWhatsAppText(from, '🤔 Por ahora solo puedo procesar mensajes de texto, botones e imágenes. Escribime tu consulta o "3" para hablar con una persona.');
     return;
   }
