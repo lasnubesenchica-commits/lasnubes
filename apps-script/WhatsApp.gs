@@ -216,7 +216,7 @@ function sendWAReservaConfirmada(reservation) {
     fechas: fechas,
     personas: personasStr,
     link: link
-  });
+  }, null, 'consulta_' + reservation.id);   // payload del boton "Consultas y cambios"
 }
 
 /**

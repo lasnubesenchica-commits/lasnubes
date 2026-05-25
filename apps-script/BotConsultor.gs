@@ -838,6 +838,11 @@ function botHandleMessage(from, text, contactName, kind) {
     return _botHandleCheckoutDone(from, contactName, text.replace('checkout_', ''));
   }
 
+  // Boton "Consultas y cambios" de la plantilla de confirmación → CTA a Josh
+  if (kind === 'button_reply' && text.indexOf('consulta_') === 0) {
+    return _botHandleConsultaReserva(from, contactName, text.replace('consulta_', ''));
+  }
+
   // Menu list/button reply → handler especifico
   if ((kind === 'list_reply' || kind === 'button_reply') && /^menu_/.test(text)) {
     if (text === 'menu_disponibilidad') {
@@ -1475,14 +1480,48 @@ function _botFindReservaById(reservaId) {
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] && data[i][0].toString() === reservaId.toString()) {
       const r = data[i];
+      const ci = r[4] instanceof Date ? Utilities.formatDate(r[4], BOT_TZ, 'yyyy-MM-dd') : (r[4] || '').toString().slice(0,10);
+      const co = r[5] instanceof Date ? Utilities.formatDate(r[5], BOT_TZ, 'yyyy-MM-dd') : (r[5] || '').toString().slice(0,10);
       return {
         id: r[0], name: r[1] || '?', cabin: r[3],
         cabinName: r[2] || BOT_CABIN_NAMES[r[3]] || r[3],
+        checkin: ci, checkout: co, tipo: r[24] || 'noche',
         telefono: r[23] || ''
       };
     }
   }
   return null;
+}
+
+// El cliente tocó "Consultas y cambios" en la plantilla de confirmación.
+// → el Agente le ofrece un botón para escribirle directo a Josh, con un
+//   mensaje precargado que incluye su nombre, fecha y cabaña.
+function _botHandleConsultaReserva(from, contactName, reservaId) {
+  let reserva = _botFindReservaById(reservaId);
+  if (!reserva) { try { reserva = _botFindReservaByPhone(from); } catch(_) {} }
+
+  const nombre    = (reserva && reserva.name) || contactName || '';
+  const cabinName = (reserva && reserva.cabinName) || (reserva && BOT_CABIN_NAMES[reserva.cabin]) || '';
+  const fechaStr  = (reserva && reserva.checkin) ? _botFmtFecha(reserva.checkin) : '';
+
+  let prefill = 'Hola Josh, mi nombre es ' + (nombre || '...');
+  if (fechaStr)  prefill += ' y tengo una reserva para el ' + fechaStr;
+  else           prefill += ' y tengo una reserva en Las Nubes';
+  if (cabinName) prefill += ' en la cabaña ' + cabinName;
+  prefill += '. Tengo una consulta respecto a mi reserva, ¿me ayudás?';
+
+  sendWhatsAppText(from, 'Josh te va a asistir con cualquier duda o consulta relacionada a tu reserva. 🌿');
+  try {
+    sendWhatsAppCTAUrl(from,
+      'Tocá el botón para escribirle directo 👇',
+      'Escribirle a Josh',
+      'https://wa.me/50769812266?text=' + encodeURIComponent(prefill)
+    );
+  } catch(_) {
+    sendWhatsAppText(from, 'Escribile directo aquí:\nhttps://wa.me/50769812266');
+  }
+  _saveConv(from, 'HUMAN_HANDOFF', (reserva && reserva.id) ? { reservaId: reserva.id } : {}, contactName);
+  logDebugEntry('consulta-reserva', { from: from, reservaId: reservaId });
 }
 
 // El huesped tocó "Ya me retiré" en la plantilla de check-out.
