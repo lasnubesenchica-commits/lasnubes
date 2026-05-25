@@ -627,6 +627,66 @@ function _isReservaChangeRequest(text) {
   return /cambiar fecha|cambio de fecha|cambio de reserva|cambiar reserva|reagenda|reprograma|cancelar reserva|cancelaci[oó]n|cancelar mi|no podr[eé] ir|no voy a poder|no podemos ir|no vamos a poder|posponer|adelantar mi/.test(t);
 }
 
+// ─── Parser determinista de fechas explícitas ─────────────────────
+// Resuelve formatos numéricos con mes ("del 5 al 8 de junio", "2 de junio",
+// "martes 02 junio") sin depender del LLM. Devuelve null si no aplica
+// (relativos como "este finde" o si menciona niños → los maneja Claude).
+function _parseDatesDeterministic(text, today) {
+  const t = (text || '').toLowerCase();
+  // Niños → dejar a Claude (maneja descuento de menores de 5)
+  if (/\b(ni[ñn]o|ni[ñn]a|beb[eé]|hijo|hija|menor(es)?\s+de)\b/.test(t)) return null;
+
+  const MESES = {
+    enero:0, febrero:1, marzo:2, abril:3, mayo:4, junio:5,
+    julio:6, agosto:7, septiembre:8, setiembre:8, octubre:9, noviembre:10, diciembre:11
+  };
+  const MONTH = '(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)';
+
+  const ymd = (y, mo, d) => y + '-' + String(mo + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+  const resolveYear = (mo, d) => {
+    const td = new Date(today + 'T12:00:00');
+    let y = td.getFullYear();
+    const cand = new Date(y, mo, d, 12);
+    const todayMid = new Date(td.getFullYear(), td.getMonth(), td.getDate(), 12);
+    if (cand < todayMid) y += 1;   // fecha ya pasó este año → próximo año
+    return y;
+  };
+  const validDay = (d) => d >= 1 && d <= 31;
+
+  // Rango mismo mes: "del 5 al 8 de junio" / "del 2 al 3 junio"
+  let m = t.match(new RegExp('del?\\s+(\\d{1,2})\\s+al\\s+(\\d{1,2})\\s+(?:de\\s+)?' + MONTH));
+  if (m) {
+    const d1 = parseInt(m[1], 10), d2 = parseInt(m[2], 10), mo = MESES[m[3]];
+    if (validDay(d1) && validDay(d2) && d2 > d1) {
+      const y = resolveYear(mo, d1);
+      return { checkin: ymd(y, mo, d1), checkout: ymd(y, mo, d2), persons: _botExtractPersons(t), confidence: 1 };
+    }
+  }
+
+  // Fecha única: "[para el] [martes] 02 [de] junio" / "2 de junio"
+  m = t.match(new RegExp('(\\d{1,2})\\s+(?:de\\s+)?' + MONTH));
+  if (m) {
+    const d1 = parseInt(m[1], 10), mo = MESES[m[2]];
+    if (validDay(d1)) {
+      const y = resolveYear(mo, d1);
+      const ci = ymd(y, mo, d1);
+      return { checkin: ci, checkout: _botAddDaysISO(ci, 1), persons: _botExtractPersons(t), confidence: 1 };
+    }
+  }
+
+  return null;
+}
+
+// Extrae cantidad de personas de frases como "3 personas", "dos adultos".
+function _botExtractPersons(t) {
+  const NUM = { una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6 };
+  let m = t.match(/(\d+)\s*(personas?|adultos?|grandes?|pax|hu[eé]spedes?)\b/);
+  if (m) return parseInt(m[1], 10);
+  m = t.match(/\b(una|dos|tres|cuatro|cinco|seis)\s+(personas?|adultos?|grandes?)\b/);
+  if (m) return NUM[m[1]];
+  return null;
+}
+
 // ─── NLU con Claude ────────────────────────────────────────────────
 function _parseDatesWithClaude(text, today) {
   const apiKey = PropertiesService.getScriptProperties().getProperty('CLAUDE_API_KEY');
@@ -1141,8 +1201,11 @@ function botHandleMessage(from, text, contactName, kind) {
   // pinta de fechas), caemos al fallback de menu de bienvenida.
   const midBooking = ['OFFERING_PAYMENT', 'AWAITING_VOUCHER_RETRY', 'AWAITING_EMAIL', 'AWAITING_NAME'].indexOf(conv.step) !== -1;
   if (_looksLikeDateQuery(text)) {
-    const parsed = _parseDatesWithClaude(text, _botToday());
-    if (parsed && parsed.checkin && parsed.checkout && parsed.confidence > 0.4) {
+    // Primero parser determinista (formatos explícitos con mes); si no
+    // aplica, recurrimos al NLU de Claude (relativos, lenguaje natural).
+    let parsed = _parseDatesDeterministic(text, _botToday());
+    if (!parsed || !parsed.checkin) parsed = _parseDatesWithClaude(text, _botToday());
+    if (parsed && parsed.checkin && parsed.checkout && (parsed.confidence === undefined || parsed.confidence > 0.4)) {
       const personas     = parsed.persons || 2;
       const freeChildren = parsed.freeChildren || 0;
       if (midBooking) {
