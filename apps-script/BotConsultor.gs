@@ -195,6 +195,16 @@ const BOT_CABIN_PHOTOS = {
   ]
 };
 
+// Detecta a qué cabaña se refiere el texto, por NOMBRE o por color.
+//   Paseo / verde · Portal / azul · Puente / lila
+function _botDetectCabin(text) {
+  const t = (text || '').toLowerCase();
+  if (/\bpaseo\b|\bverde\b/.test(t))  return 'verde';
+  if (/\bportal\b|\bazul\b/.test(t))  return 'azul';
+  if (/\bpuente\b|\blila\b/.test(t))  return 'lila';
+  return null;
+}
+
 // Envia fotos de una cabaña (o un sampler de las 3 si no se especifica).
 function _botSendCabinPhotos(from, contactName, cabinKey) {
   if (cabinKey && BOT_CABIN_PHOTOS[cabinKey]) {
@@ -234,10 +244,7 @@ function _botHandleInfoQuery(from, contactName, conv, text) {
 
   // 0) Fotos / imágenes de cabañas → enviar fotos reales en el chat
   if (/\b(fotos?|im[aá]genes?|im[aá]gen|fotograf[ií]a|mu[eé]stra(me)?|ens[eé][ñn]a(me)?|c[oó]mo\s+(es|son|luce|se\s+ve)|conocer\s+la\s+caba)\b/i.test(t)) {
-    let cabinKey = null;
-    if (/paseo/i.test(t))       cabinKey = 'verde';
-    else if (/portal/i.test(t)) cabinKey = 'azul';
-    else if (/puente/i.test(t)) cabinKey = 'lila';
+    let cabinKey = _botDetectCabin(t);
     if (!cabinKey && conv.context && conv.context.cabin) cabinKey = conv.context.cabin;
     _botSendCabinPhotos(from, contactName, cabinKey);
     return true;
@@ -1126,10 +1133,7 @@ function botHandleMessage(from, text, contactName, kind) {
 
   // Fallback de seleccion de cabana por texto (por si el cliente escribe en vez de tocar el boton)
   if (conv.step === 'SHOWING_AVAILABILITY') {
-    let elegida = null;
-    if (/paseo/i.test(text))      elegida = 'verde';
-    else if (/portal/i.test(text)) elegida = 'azul';
-    else if (/puente/i.test(text)) elegida = 'lila';
+    const elegida = _botDetectCabin(text);
     if (elegida) {
       return botHandleMessage(from, 'pick_' + elegida, contactName, 'button_reply');
     }
