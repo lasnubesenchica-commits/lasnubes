@@ -196,17 +196,15 @@ function enviarRecordatorioServiciosEspeciales() {
   logDebugEntry('admin-recordatorio-9am', { count: conServicios.length });
 }
 
-// ─── Trigger 8am: limpieza del dia (a la Sra que limpia) ────────
+// ─── Limpieza del dia ──────────────────────────────────────────
 // Mensaje orientado a limpieza, por cabaña, segun el estado de hoy:
 //  - Salida hoy           → 🧹 limpiar + cambiar sábanas (urgente si entra alguien hoy)
 //  - Estadía multi-noche  → ✅ no limpiar (huésped sigue)
 //  - Entra hoy, vacía ayer→ 👀 no cambiar sábanas, solo verificar
 //  - Sin actividad        → ⚪ libre
-// Numero destino en Script Property LIMPIEZA_PHONE (agregarlo en Meta).
-function enviarRecordatorioLimpieza() {
-  const phone = PropertiesService.getScriptProperties().getProperty('LIMPIEZA_PHONE');
-  if (!phone) { logDebugEntry('recordatorio-limpieza-no-phone', {}); return; }
-
+// Se envia: (a) por trigger 8am a LIMPIEZA_PHONE, y (b) on-demand cuando
+// ese numero le escribe al Agente (ver WhatsAppWebhook).
+function _buildLimpiezaMessage(greeting) {
   const today     = Utilities.formatDate(new Date(), BOT_TZ, 'yyyy-MM-dd');
   const yesterday = _botAddDaysISO(today, -1);
   const fechaLbl  = _adminFmtFechaLarga(today);
@@ -261,13 +259,19 @@ function enviarRecordatorioLimpieza() {
     return line;
   });
 
+  const saludo = greeting || '¡Hola Erika! 🌿';
   const intro = limpiar > 0
-    ? 'Buenos días 🌿 Esto es lo de hoy:'
-    : 'Buenos días 🌿 Hoy no hay cabañas que limpiar. Igual te dejo el estado de cada una:';
-  const msg = '🧹 *Limpieza de hoy* — ' + fechaLbl + '\n\n' + intro + '\n\n' + lines.join('\n\n');
+    ? saludo + ' Acá está la limpieza de hoy:'
+    : saludo + ' Hoy no hay cabañas que limpiar. Igual te dejo el estado de cada una:';
+  return '🧹 *Limpieza de hoy* — ' + fechaLbl + '\n\n' + intro + '\n\n' + lines.join('\n\n');
+}
 
-  sendWhatsAppText(phone, msg);
-  logDebugEntry('recordatorio-limpieza', { limpiar: limpiar });
+// Trigger 8am: envia el parte de limpieza a LIMPIEZA_PHONE.
+function enviarRecordatorioLimpieza() {
+  const phone = PropertiesService.getScriptProperties().getProperty('LIMPIEZA_PHONE');
+  if (!phone) { logDebugEntry('recordatorio-limpieza-no-phone', {}); return; }
+  sendWhatsAppText(phone, _buildLimpiezaMessage('¡Buenos días, Erika! 🌿'));
+  logDebugEntry('recordatorio-limpieza', { phone: phone });
 }
 
 // ─── Setup ────────────────────────────────────────────────────────

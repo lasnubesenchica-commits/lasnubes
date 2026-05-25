@@ -104,6 +104,20 @@ function processInboundMessage(msg, contactName) {
   logDebugEntry('WA-inbound', { from: from, type: type, kind: kind, text: text.slice(0, 200), name: contactName, msgId: msg.id });
   try { logMensaje(from, 'in', kind || type, text || '', msg.id || ''); } catch(_) {}
 
+  // Erika (limpieza): cualquier mensaje que mande abre la ventana de 24h y le
+  // respondemos con el parte de limpieza de hoy. No entra al flujo del Agente
+  // ni dispara la notificacion de "nuevo cliente".
+  try {
+    const limpiezaPhone = (PropertiesService.getScriptProperties().getProperty('LIMPIEZA_PHONE') || '').replace(/\D/g, '');
+    if (limpiezaPhone && String(from).replace(/\D/g, '') === limpiezaPhone) {
+      sendWhatsAppText(from, _buildLimpiezaMessage());
+      logDebugEntry('limpieza-on-demand', { from: from });
+      return;
+    }
+  } catch(err) {
+    logDebugEntry('limpieza-on-demand-FAIL', { error: err.message });
+  }
+
   // Detectar primer contacto (no existia conversacion previa) para notificar al admin
   let isFirstContact = false;
   try {
