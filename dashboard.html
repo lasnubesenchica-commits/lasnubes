@@ -2048,6 +2048,14 @@
 
       <!-- Lista de conversaciones (ancho completo). Al tap, abre sheet full-screen #botDetail. -->
       <div>
+        <!-- Calendario colapsable de fechas cotizadas -->
+        <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden;">
+          <button id="botQuoteCalToggle" onclick="toggleBotQuoteCal()" style="width:100%;box-sizing:border-box;padding:10px 12px;font-size:13px;font-weight:600;border:none;background:var(--card-bg, #fff);cursor:pointer;display:flex;align-items:center;justify-content:space-between;font-family:inherit;color:var(--text);">
+            <span>📅 Fechas cotizadas por clientes</span>
+            <span id="botQuoteCalChevron">▾</span>
+          </button>
+          <div id="botQuoteCalBody" style="display:none;padding:0 12px 12px;"></div>
+        </div>
         <input id="botSearch" placeholder="🔍 Buscar nombre o teléfono..." style="width:100%;box-sizing:border-box;padding:10px 12px;font-size:14px;border:1px solid var(--border);border-radius:8px;background:var(--bg);margin-bottom:8px;font-family:inherit;" oninput="renderBotList()">
         <select id="botStepFilter" onchange="renderBotList()" style="width:100%;box-sizing:border-box;padding:9px 10px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--bg);margin-bottom:12px;font-family:inherit;">
           <option value="">Todos los estados</option>
@@ -2794,6 +2802,7 @@ async function loadBotData() {
     const data = await res.json();
     _botConvs = (data && data.conversations) || [];
     renderBotStats();
+    if (_botQuoteCalExpanded) renderBotQuoteCal();
     renderBotList();
   } catch(e) {
     document.getElementById('botList').innerHTML = '<div style="padding:20px;color:#c0392b;font-size:13px;">Error: ' + e.message + '</div>';
@@ -2846,6 +2855,99 @@ function _botFmtTime(ts) {
   return date.toLocaleDateString('es-PA', { day: 'numeric', month: 'short' });
 }
 
+// ─── Calendario de fechas cotizadas (colapsable, default colapsado) ──
+let _botQuoteCalExpanded = false;
+let _botQuoteCalMonth = null;   // Date apuntando al 1ro del mes mostrado
+let _botQuoteFilterDay = null;  // ISO 'YYYY-MM-DD' filtrando la lista, o null
+
+// Mapa { 'YYYY-MM-DD': [phones...] } de noches cotizadas por los clientes.
+function _botQuotedDayMap() {
+  const map = {};
+  _botConvs.forEach(c => {
+    const d = c.context && c.context.dates;
+    if (!d || !d.checkin || !d.checkout) return;
+    const end = new Date(d.checkout + 'T12:00:00');
+    let cur = new Date(d.checkin + 'T12:00:00');
+    let guard = 0;
+    while (cur < end && guard < 120) {
+      const iso = cur.toISOString().slice(0, 10);
+      (map[iso] = map[iso] || []).push(c.phone);
+      cur.setDate(cur.getDate() + 1);
+      guard++;
+    }
+  });
+  return map;
+}
+
+function toggleBotQuoteCal() {
+  _botQuoteCalExpanded = !_botQuoteCalExpanded;
+  const body = document.getElementById('botQuoteCalBody');
+  const chev = document.getElementById('botQuoteCalChevron');
+  if (chev) chev.textContent = _botQuoteCalExpanded ? '▴' : '▾';
+  if (body) body.style.display = _botQuoteCalExpanded ? 'block' : 'none';
+  if (_botQuoteCalExpanded) {
+    if (!_botQuoteCalMonth) _botQuoteCalMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    renderBotQuoteCal();
+  }
+}
+
+function botQuoteCalNav(delta) {
+  if (!_botQuoteCalMonth) _botQuoteCalMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  _botQuoteCalMonth = new Date(_botQuoteCalMonth.getFullYear(), _botQuoteCalMonth.getMonth() + delta, 1);
+  renderBotQuoteCal();
+}
+
+function botQuoteCalSelectDay(iso) {
+  _botQuoteFilterDay = (_botQuoteFilterDay === iso) ? null : iso;
+  renderBotQuoteCal();
+  renderBotList();
+}
+
+function renderBotQuoteCal() {
+  const body = document.getElementById('botQuoteCalBody');
+  if (!body) return;
+  const map = _botQuotedDayMap();
+  const m = _botQuoteCalMonth || new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  const year = m.getFullYear(), month = m.getMonth();
+  const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const DIAS = ['D','L','M','M','J','V','S'];
+  const firstDow = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  let html = '<div style="display:flex;align-items:center;justify-content:space-between;margin:10px 0 8px;">' +
+    '<button onclick="botQuoteCalNav(-1)" style="border:1px solid var(--border);background:var(--bg);border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:14px;">‹</button>' +
+    '<strong style="font-size:14px;">' + MESES[month] + ' ' + year + '</strong>' +
+    '<button onclick="botQuoteCalNav(1)" style="border:1px solid var(--border);background:var(--bg);border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:14px;">›</button>' +
+  '</div>';
+
+  html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;">';
+  DIAS.forEach(d => { html += '<div style="text-align:center;font-size:10px;color:var(--text-muted);font-weight:600;padding:2px 0;">' + d + '</div>'; });
+  for (let i = 0; i < firstDow; i++) html += '<div></div>';
+  for (let day = 1; day <= daysInMonth; day++) {
+    const iso = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+    const count = (map[iso] || []).length;
+    const isSel = _botQuoteFilterDay === iso;
+    const bg = isSel ? 'var(--azul-dark, #5a85b0)' : (count > 0 ? 'rgba(90,133,176,' + Math.min(0.18 + count * 0.18, 0.85) + ')' : 'transparent');
+    const color = isSel ? '#fff' : (count > 0 ? '#1c3a52' : 'var(--text-muted)');
+    const cursor = count > 0 ? 'pointer' : 'default';
+    const onclick = count > 0 ? ' onclick="botQuoteCalSelectDay(\'' + iso + '\')"' : '';
+    html += '<div' + onclick + ' style="position:relative;aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:6px;font-size:12px;background:' + bg + ';color:' + color + ';cursor:' + cursor + ';font-weight:' + (count > 0 ? '600' : '400') + ';">' +
+      day +
+      (count > 0 ? '<span style="position:absolute;top:1px;right:3px;font-size:8px;font-weight:700;">' + count + '</span>' : '') +
+    '</div>';
+  }
+  html += '</div>';
+
+  html += '<div style="font-size:11px;color:var(--text-muted);margin-top:8px;line-height:1.5;">' +
+    'El número indica cuántos clientes cotizaron esa noche. Tocá un día para filtrar la lista.';
+  if (_botQuoteFilterDay) {
+    html += ' <a href="#" onclick="botQuoteCalSelectDay(\'' + _botQuoteFilterDay + '\');return false;" style="color:var(--azul-dark,#5a85b0);font-weight:600;">✕ Quitar filtro</a>';
+  }
+  html += '</div>';
+
+  body.innerHTML = html;
+}
+
 function renderBotList() {
   const search = (document.getElementById('botSearch')?.value || '').toLowerCase().trim();
   const stepFilter = document.getElementById('botStepFilter')?.value || '';
@@ -2856,9 +2958,15 @@ function renderBotList() {
   if (stepFilter) {
     filtered = filtered.filter(c => c.step === stepFilter);
   }
+  if (_botQuoteFilterDay) {
+    const dayMap = _botQuotedDayMap();
+    const phones = dayMap[_botQuoteFilterDay] || [];
+    filtered = filtered.filter(c => phones.includes(c.phone));
+  }
   const list = document.getElementById('botList');
   if (filtered.length === 0) {
-    list.innerHTML = '<div style="text-align:center;padding:30px 12px;color:var(--text-muted);font-size:13px;">Sin conversaciones.</div>';
+    const extra = _botQuoteFilterDay ? ' para esa fecha' : '';
+    list.innerHTML = '<div style="text-align:center;padding:30px 12px;color:var(--text-muted);font-size:13px;">Sin conversaciones' + extra + '.</div>';
     return;
   }
   list.innerHTML = filtered.map(c => {
