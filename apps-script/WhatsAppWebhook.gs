@@ -129,12 +129,12 @@ function processInboundMessage(msg, contactName) {
     try {
       const name = contactName || from;
       const firstMsg = (text || '').slice(0, 200) || '(mensaje sin texto)';
-      const dashUrl = 'https://lasnubes.cloud/dashboard.html#bot:' + from;
+      const dashUrl = 'https://lasnubes.cloud/dashboard.html?admin=1#bot:' + from;
       const adminMsg =
-        '🔔 *Nuevo cliente en el bot*\n\n' +
+        '🔔 *El Agente está atendiendo a un nuevo cliente*\n\n' +
         '👤 ' + name + '\n' +
         '📱 +' + from + '\n\n' +
-        'Me ha consultado:\n_"' + firstMsg + '"_\n\n' +
+        'Ha consultado:\n_"' + firstMsg + '"_\n\n' +
         '👀 Ver conversación:\n' + dashUrl;
       sendWhatsAppText(BOT_ADMIN_PHONE, adminMsg);
       logDebugEntry('admin-new-lead-notif', { from: from, name: name });

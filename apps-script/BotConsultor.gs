@@ -860,7 +860,7 @@ function botHandleMessage(from, text, contactName, kind) {
         sendWhatsAppText(from, '🙋 Escribinos directo aquí:\nhttps://wa.me/50769812266');
       }
       _saveConv(from, 'HUMAN_HANDOFF', conv.context, contactName);
-      try { sendWhatsAppText('50769812266', '🔔 Handoff via menu: ' + (contactName || from) + ' (' + from + ')'); } catch(_) {}
+      try { sendWhatsAppText('50769812266', '🔔 El Agente derivó a un cliente (menú): ' + (contactName || from) + ' (' + from + ')'); } catch(_) {}
       return;
     }
   }
@@ -977,7 +977,7 @@ function botHandleMessage(from, text, contactName, kind) {
     } catch(_) {}
     try {
       sendWhatsAppText('50769812266',
-        '⚠️ Cambio/cancelación pedido vía bot:\n👤 ' + (contactName || from) + '\n📱 +' + from + '\nMensaje: "' + (text || '').slice(0, 200) + '"');
+        '⚠️ Cambio/cancelación pedido vía Agente:\n👤 ' + (contactName || from) + '\n📱 +' + from + '\nMensaje: "' + (text || '').slice(0, 200) + '"');
     } catch(_) {}
     _saveConv(from, 'HUMAN_HANDOFF', conv.context || {}, contactName);
     return;
@@ -1108,7 +1108,7 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
     } catch(_) {}
     try {
       sendWhatsAppText('50769812266',
-        '🔔 Consulta de grupo grande via bot:\n👤 ' + (contactName || from) + '\n📱 +' + from + '\n📅 ' + fechas + '\n👥 ' + personas + ' personas');
+        '🔔 Consulta de grupo grande vía Agente:\n👤 ' + (contactName || from) + '\n📱 +' + from + '\n📅 ' + fechas + '\n👥 ' + personas + ' personas');
     } catch(_) {}
     _saveConv(from, 'PENDING_HUMAN_BOOKING', { dates: dates, personas: personas, freeChildren: freeChildren }, contactName);
     return;
@@ -1456,7 +1456,7 @@ function _botSendArrivalInstructions(from, contactName, conv, reserva) {
     '🏡 ' + cabinName + '\n' +
     '📅 ' + datesStr + '\n' +
     '👥 ' + (reserva.persons || '?') + (reserva.persons === 1 ? ' persona' : ' personas') + '\n\n' +
-    '_Notificación automática: el cliente tocó "He llegado" en el bot._';
+    '_Notificación automática: el cliente tocó "He llegado" en el Agente._';
   try { sendWhatsAppText('50769812266', adminMsg); } catch(_) {}
 
   _saveConv(from, 'ARRIVED', Object.assign({}, conv.context || {}, { reservaId: reserva.id }), contactName);
@@ -1722,8 +1722,8 @@ function _botCreatePreReservation(from, contactName, ctx) {
     lila:  'Puente entre Las Nubes'
   };
   const comentario = skipVoucher
-    ? '🤖 Pre-reserva vía bot WhatsApp · SIN ABONO · coordinar pago · pendiente revisión'
-    : '🤖 Pre-reserva vía bot WhatsApp · pendiente revisión';
+    ? '🤖 Pre-reserva vía Agente WhatsApp · SIN ABONO · coordinar pago · pendiente revisión'
+    : '🤖 Pre-reserva vía Agente WhatsApp · pendiente revisión';
 
   try {
     const sheet = getOrCreateSheet();
@@ -1769,8 +1769,8 @@ function _botCreatePreReservation(from, contactName, ctx) {
 
   const fechas = _botFmtFecha(dates.checkin) + ' → ' + _botFmtFecha(dates.checkout);
   const adminHeader = skipVoucher
-    ? '📋 *Nueva pre-reserva SIN ABONO via bot*\n⚠️ Coordinar el pago manualmente antes de aprobar.\n'
-    : '📋 *Nueva pre-reserva via bot*\n';
+    ? '📋 *Nueva pre-reserva SIN ABONO vía Agente*\n⚠️ Coordinar el pago manualmente antes de aprobar.\n'
+    : '📋 *Nueva pre-reserva vía Agente*\n';
   const voucherBlock = skipVoucher
     ? '💳 _Sin voucher · coordinar pago_'
     : '💳 Voucher: $' + (voucher.monto || 0).toFixed(2) + ' (' + (voucher.sender || '?') + ')\n' +
@@ -1807,8 +1807,8 @@ function _botAdminApprove(adminPhone, reservaId) {
       sheet.getRange(row, 21).setValue('PAGA');
       // Limpiar el marker de "pendiente revisión" en comentarios
       const prevCmt = (data[i][22] || '').toString();
-      const newCmt  = prevCmt.replace(/🤖 Pre-reserva v[ií]a bot WhatsApp · pendiente revisi[oó]n\s*\.?\s*/i, '').trim();
-      const approvedTag = '✅ Aprobada vía bot WhatsApp · ' + Utilities.formatDate(new Date(), BOT_TZ, 'yyyy-MM-dd HH:mm');
+      const newCmt  = prevCmt.replace(/🤖 Pre-reserva v[ií]a (?:bot|Agente) WhatsApp · pendiente revisi[oó]n\s*\.?\s*/i, '').trim();
+      const approvedTag = '✅ Aprobada vía Agente WhatsApp · ' + Utilities.formatDate(new Date(), BOT_TZ, 'yyyy-MM-dd HH:mm');
       sheet.getRange(row, 23).setValue(newCmt ? (newCmt + '\n' + approvedTag) : approvedTag);
       const reservation = {
         id:       data[i][0],
@@ -1863,8 +1863,8 @@ function _botAdminReject(adminPhone, reservaId) {
       const row = i + 1;
       sheet.getRange(row, 21).setValue('CANCELADA');
       const prevCmt = (data[i][22] || '').toString();
-      const newCmt  = prevCmt.replace(/🤖 Pre-reserva v[ií]a bot WhatsApp · pendiente revisi[oó]n\s*\.?\s*/i, '').trim();
-      const rejectedTag = '❌ Rechazada vía bot WhatsApp · ' + Utilities.formatDate(new Date(), BOT_TZ, 'yyyy-MM-dd HH:mm');
+      const newCmt  = prevCmt.replace(/🤖 Pre-reserva v[ií]a (?:bot|Agente) WhatsApp · pendiente revisi[oó]n\s*\.?\s*/i, '').trim();
+      const rejectedTag = '❌ Rechazada vía Agente WhatsApp · ' + Utilities.formatDate(new Date(), BOT_TZ, 'yyyy-MM-dd HH:mm');
       sheet.getRange(row, 23).setValue(newCmt ? (newCmt + '\n' + rejectedTag) : rejectedTag);
       const clientPhone = data[i][23];
       sendWhatsAppText(adminPhone, '❌ Reserva ' + reservaId + ' rechazada y cancelada en el sheet.');

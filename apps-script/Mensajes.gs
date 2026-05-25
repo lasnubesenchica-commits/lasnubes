@@ -180,28 +180,28 @@ function migrarDebugLogAMensajes() {
     } else if (stage === 'WA-send-text' && info.to) {
       phone = info.to; direction = 'out';
       type = 'text';
-      content = '[bot envió texto · contenido no logueado pre-PR #161]';
+      content = '[Agente envió texto · contenido no logueado pre-PR #161]';
       msgId = info.id || '';
     } else if (stage === 'WA-send-buttons' && info.to) {
       phone = info.to; direction = 'out';
       type = 'interactive_buttons';
       const btns = Array.isArray(info.buttons) ? info.buttons.join(' / ') : '?';
-      content = '[bot envió botones: ' + btns + ']';
+      content = '[Agente envió botones: ' + btns + ']';
       msgId = info.id || '';
     } else if (stage === 'WA-send-list' && info.to) {
       phone = info.to; direction = 'out';
       type = 'interactive_list';
-      content = '[bot envió lista interactiva]';
+      content = '[Agente envió lista interactiva]';
       msgId = info.id || '';
     } else if (stage === 'WA-send-cta' && info.to) {
       phone = info.to; direction = 'out';
       type = 'interactive_cta_url';
-      content = '[bot envió CTA URL: ' + (info.url || '?') + ']';
+      content = '[Agente envió CTA URL: ' + (info.url || '?') + ']';
       msgId = info.id || '';
     } else if (stage === 'WA-send-template' && info.to) {
       phone = info.to; direction = 'out';
       type = 'template';
-      content = '[bot envió plantilla: ' + (info.template || '?') + ']';
+      content = '[Agente envió plantilla: ' + (info.template || '?') + ']';
       msgId = info.id || '';
     } else {
       continue;
