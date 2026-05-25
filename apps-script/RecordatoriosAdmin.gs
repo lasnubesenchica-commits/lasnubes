@@ -281,8 +281,8 @@ function enviarRecordatorioLimpieza() {
 //
 // REQUISITO de la plantilla en Meta:
 //   - Nombre: instrucciones_checkout · idioma es_PA
-//   - Body con variables {{nombre}} y {{cabana}}
-//   - 1 boton de Respuesta rápida (ej. "✅ Ya me retiré")
+//   - Body con variables posicionales {{1}} (nombre) y {{2}} (cabaña)
+//   - 1 boton de Respuesta rápida (ej. "Ya me retiré")
 function enviarRecordatoriosCheckout() {
   const today = Utilities.formatDate(new Date(), BOT_TZ, 'yyyy-MM-dd');
   const salidas = _adminGetMovimientosDia(today).filter(i => i.kind === 'salida');
@@ -299,7 +299,7 @@ function enviarRecordatoriosCheckout() {
         r.telefono,
         'instrucciones_checkout',
         'es_PA',
-        { nombre: firstName, cabana: cabinName },
+        [firstName, cabinName],      // posicionales: {{1}} nombre, {{2}} cabaña
         null,
         'checkout_' + r.id           // payload del boton quick-reply
       );

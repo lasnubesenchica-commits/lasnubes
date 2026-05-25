@@ -104,7 +104,15 @@ function sendWhatsAppTemplate(toPhone, templateName, languageCode, namedParams, 
   if (!to) throw new Error('WA: telefono invalido: ' + toPhone);
 
   const components = [];
-  if (namedParams && Object.keys(namedParams).length > 0) {
+  // namedParams puede ser:
+  //  - Array  → parámetros POSICIONALES ({{1}}, {{2}}, ...)
+  //  - Object → parámetros NOMBRADOS ({{nombre}}, {{cabana}}, ...)
+  if (Array.isArray(namedParams) && namedParams.length > 0) {
+    components.push({
+      type: 'body',
+      parameters: namedParams.map(v => ({ type: 'text', text: String(v) }))
+    });
+  } else if (namedParams && !Array.isArray(namedParams) && Object.keys(namedParams).length > 0) {
     components.push({
       type: 'body',
       parameters: Object.keys(namedParams).map(name => ({
