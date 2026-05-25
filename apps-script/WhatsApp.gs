@@ -70,6 +70,36 @@ function sendWhatsAppText(toPhone, body) {
   return json;
 }
 
+// Envia una imagen por URL (la descarga Meta al enviar). caption opcional.
+function sendWhatsAppImage(toPhone, imageUrl, caption) {
+  const cfg = _waProps();
+  if (!cfg.token || !cfg.phoneId) throw new Error('WA: faltan credenciales en Script Properties');
+  const to = _waNormalizePhone(toPhone);
+  if (!to) throw new Error('WA: telefono invalido: ' + toPhone);
+
+  const url = 'https://graph.facebook.com/v21.0/' + cfg.phoneId + '/messages';
+  const image = { link: imageUrl };
+  if (caption) image.caption = caption;
+  const payload = { messaging_product: 'whatsapp', to: to, type: 'image', image: image };
+  const res = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
+    headers: { Authorization: 'Bearer ' + cfg.token },
+    muteHttpExceptions: true
+  });
+  const code = res.getResponseCode();
+  const text = res.getContentText();
+  let json;
+  try { json = JSON.parse(text); } catch(_) { json = { raw: text }; }
+  logDebugEntry('WA-send-image', { to: to, code: code, ok: code >= 200 && code < 300, url: String(imageUrl).slice(0, 120), error: json.error || null });
+  if (code < 200 || code >= 300) {
+    throw new Error('WA image send failed HTTP ' + code + ': ' + text.slice(0, 300));
+  }
+  try { logMensaje(to, 'out', 'image', (caption || '[imagen]') + ' · ' + String(imageUrl).slice(0, 100), (json.messages && json.messages[0] && json.messages[0].id) || null); } catch(_) {}
+  return json;
+}
+
 /**
  * Test: corre desde el editor de Apps Script con tu propio numero.
  * Si funciona, te llega un mensaje al WhatsApp.
@@ -82,6 +112,19 @@ function testEnviarWhatsAppPrueba() {
   // Cambia este numero al tuyo (el que registraste como destinatario de prueba)
   const numeroDestino = '50769812266';
   const resultado = sendWhatsAppText(numeroDestino, 'Hola, prueba desde Apps Script ✅\n\nSi recibes esto, la API de WhatsApp Cloud esta funcionando.');
+  Logger.log('Respuesta: ' + JSON.stringify(resultado));
+  return resultado;
+}
+
+/**
+ * Test: envia una foto de cabaña (link de Drive) a tu numero para verificar
+ * que WhatsApp acepta esas URLs. Requiere que el numero tenga ventana de 24h
+ * abierta (escribile algo al Agente antes de correr esto).
+ */
+function testEnviarFotoCabana() {
+  const numeroDestino = '50769812266';
+  const url = 'https://lh3.googleusercontent.com/d/1kolAp8PKDO3ws6abcUUfD2hpN_3ZLBjB=w1280';
+  const resultado = sendWhatsAppImage(numeroDestino, url, '🏡 Portal hacia Las Nubes (prueba)');
   Logger.log('Respuesta: ' + JSON.stringify(resultado));
   return resultado;
 }
