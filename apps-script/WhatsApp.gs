@@ -204,11 +204,11 @@ function sendWAReservaConfirmada(reservation) {
   const personasStr  = persons + (persons === 1 ? ' persona' : ' personas');
   const nombre       = (reservation.name || 'amigo').toString().trim();
 
-  // Link público de la reserva (short link ?c=codigo, un solo parámetro).
+  // Link público de la reserva. Usamos el HMAC largo (?id=&t=) que está
+  // probado en producción; el short link (?c=) crashea en la web app
+  // desplegada al leer la hoja ShareLinks, así que no lo usamos.
   let link = '';
-  try { link = getPublicReservaShortUrl(reservation.id); } catch(e) {
-    try { link = getPublicReservaUrl(reservation.id); } catch(_) { link = 'https://lasnubes.cloud'; }
-  }
+  try { link = getPublicReservaUrl(reservation.id); } catch(e) { link = 'https://lasnubes.cloud'; }
 
   return sendWhatsAppTemplate(reservation.telefono, 'confirmacion_reserva', 'es_PA', {
     nombre: nombre,
