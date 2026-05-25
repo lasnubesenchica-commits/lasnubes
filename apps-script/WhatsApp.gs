@@ -202,15 +202,20 @@ function sendWAReservaConfirmada(reservation) {
 
   const persons      = parseInt(reservation.persons, 10) || 1;
   const personasStr  = persons + (persons === 1 ? ' persona' : ' personas');
-  const total        = (parseFloat(reservation.amount) || 0).toFixed(2);
-  const firstName    = ((reservation.name || '').toString().trim().split(/\s+/)[0]) || 'amigo';
+  const nombre       = (reservation.name || 'amigo').toString().trim();
+
+  // Link público de la reserva (short link ?c=codigo, un solo parámetro).
+  let link = '';
+  try { link = getPublicReservaShortUrl(reservation.id); } catch(e) {
+    try { link = getPublicReservaUrl(reservation.id); } catch(_) { link = 'https://lasnubes.cloud'; }
+  }
 
   return sendWhatsAppTemplate(reservation.telefono, 'confirmacion_reserva', 'es_PA', {
-    nombre: firstName,
+    nombre: nombre,
     cabana: cabin,
     fechas: fechas,
     personas: personasStr,
-    total: total
+    link: link
   });
 }
 
@@ -220,6 +225,7 @@ function sendWAReservaConfirmada(reservation) {
  */
 function testEnviarPlantillaConfirmacion() {
   const reservaMock = {
+    id:       'TEST-' + Date.now(),
     name:     'Carlos Test',
     telefono: '50769812266',
     cabin:    'azul',
