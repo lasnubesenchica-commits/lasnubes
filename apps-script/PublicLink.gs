@@ -113,6 +113,34 @@ function getPublicReservaShortUrl(reservaId) {
   return _publicLinkBaseUrl() + '?c=' + encodeURIComponent(code);
 }
 
+// ── Prueba desde el editor ──────────────────────────────────────
+// Genera un short link real para la reserva mas reciente (o para el id
+// que le pases) y lo loguea, verificando el round-trip codigo→id.
+// Uso: correr generarShortLinkPrueba() y mirar el Logger / Ejecuciones.
+function generarShortLinkPrueba(reservaId) {
+  if (!reservaId) {
+    const sheet = getOrCreateSheet();
+    const data  = sheet.getDataRange().getValues();
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (data[i][0]) { reservaId = data[i][0].toString(); break; }
+    }
+  }
+  if (!reservaId) { Logger.log('⚠️ No hay reservas en la hoja.'); return null; }
+
+  const r         = _readReservaById(reservaId);
+  const code      = getOrCreateShareCode(reservaId);
+  const shortUrl  = _publicLinkBaseUrl() + '?c=' + encodeURIComponent(code);
+  let   longUrl   = '';
+  try { longUrl = getPublicReservaUrl(reservaId); } catch(_) {}
+  const roundTrip = lookupReservaIdByShareCode(code);
+
+  Logger.log('Reserva: ' + reservaId + (r ? ' · ' + (r.name || '?') + ' · ' + (r.cabin || '?') : ' — ⚠️ NO encontrada en Reservas'));
+  Logger.log('Short link: ' + shortUrl);
+  Logger.log('Long link : ' + longUrl);
+  Logger.log('Round-trip codigo→id: ' + roundTrip + (String(roundTrip) === String(reservaId) ? ' ✓' : ' ✗ MISMATCH'));
+  return { reservaId: reservaId, shortUrl: shortUrl, longUrl: longUrl, found: !!r, roundTrip: roundTrip };
+}
+
 // Hora de inicio/fin del evento de calendario segun tipo (Panama UTC-5).
 function _getEventTimes(r) {
   const meta = tipoEmailMeta(r);
