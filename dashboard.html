@@ -2040,8 +2040,8 @@
           <h2 style="font-family:'Cormorant Garamond',serif;font-weight:500;font-size:28px;margin:0 0 4px;">💬 Agente · Conversaciones</h2>
           <p style="font-size:13px;color:var(--text-muted);margin:0;">Leads que interactuaron con el Agente de WhatsApp.</p>
         </div>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <span id="botStats" style="font-size:12px;color:var(--text-muted);"></span>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <span id="botStats" style="font-size:12px;color:var(--text-muted);line-height:1.8;"></span>
           <button onclick="loadBotData()" style="padding:6px 12px;font-size:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);cursor:pointer;">↻ Refrescar</button>
         </div>
       </div>
@@ -2798,8 +2798,10 @@ let _botSelectedPhone = null;
 
 // Conjuntos de estados para el funnel y filtros por stat.
 const BOT_COTIZARON_STEPS  = ['SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES','CHOOSING_DECOR','CHOOSING_CLOSE','OFFERING_PAYMENT','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','ARRIVED','PENDING_HUMAN_BOOKING'];
-const BOT_RESERVARON_STEPS = ['PENDING_REVIEW','PENDING_HUMAN_BOOKING'];  // pre-reserva creada (apruebas) + derivado a Josh para cerrar
-let _botStatFilter = null;  // null | 'cotizaron' | 'reservaron'
+const BOT_CIERRE_STEPS     = ['CHOOSING_DECOR','CHOOSING_CLOSE'];                 // eligiendo cómo cerrar
+const BOT_PAGANDO_STEPS    = ['OFFERING_PAYMENT','AWAITING_VOUCHER_RETRY'];       // en formas de pago / voucher
+const BOT_RESERVARON_STEPS = ['PENDING_REVIEW','PENDING_HUMAN_BOOKING'];          // pre-reserva creada (apruebas) + cierre asistido con Josh
+let _botStatFilter = null;  // null | 'cotizaron' | 'cierre' | 'pagando' | 'reservaron'
 
 function setBotStatFilter(which) {
   _botStatFilter = (_botStatFilter === which) ? null : which;
@@ -2823,17 +2825,21 @@ async function loadBotData() {
 }
 
 function renderBotStats() {
-  const total = _botConvs.length;
+  const total      = _botConvs.length;
   const cotizaron  = _botConvs.filter(c => BOT_COTIZARON_STEPS.includes(c.step)).length;
+  const cierre     = _botConvs.filter(c => BOT_CIERRE_STEPS.includes(c.step)).length;
+  const pagando    = _botConvs.filter(c => BOT_PAGANDO_STEPS.includes(c.step)).length;
   const reservaron = _botConvs.filter(c => BOT_RESERVARON_STEPS.includes(c.step)).length;
   const el = document.getElementById('botStats');
   if (!el) return;
   const chip = (label, which, active) =>
-    '<span onclick="setBotStatFilter(' + (which ? "'" + which + "'" : 'null') + ')" style="cursor:pointer;' +
+    '<span onclick="setBotStatFilter(' + (which ? "'" + which + "'" : 'null') + ')" style="cursor:pointer;white-space:nowrap;' +
     (active ? 'font-weight:700;text-decoration:underline;' : '') + '">' + label + '</span>';
   el.innerHTML =
     chip(total + ' leads', null, false) + ' · ' +
     chip(cotizaron + ' cotizaron', 'cotizaron', _botStatFilter === 'cotizaron') + ' · ' +
+    chip(cierre + ' eligiendo cierre', 'cierre', _botStatFilter === 'cierre') + ' · ' +
+    chip(pagando + ' pagando', 'pagando', _botStatFilter === 'pagando') + ' · ' +
     chip(reservaron + ' reservaron', 'reservaron', _botStatFilter === 'reservaron');
 }
 
@@ -3058,6 +3064,8 @@ function renderBotList() {
     filtered = filtered.filter(c => phones.includes(c.phone));
   }
   if (_botStatFilter === 'cotizaron')  filtered = filtered.filter(c => BOT_COTIZARON_STEPS.includes(c.step));
+  if (_botStatFilter === 'cierre')     filtered = filtered.filter(c => BOT_CIERRE_STEPS.includes(c.step));
+  if (_botStatFilter === 'pagando')    filtered = filtered.filter(c => BOT_PAGANDO_STEPS.includes(c.step));
   if (_botStatFilter === 'reservaron') filtered = filtered.filter(c => BOT_RESERVARON_STEPS.includes(c.step));
   const list = document.getElementById('botList');
   if (filtered.length === 0) {
