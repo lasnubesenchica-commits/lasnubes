@@ -2798,7 +2798,7 @@ let _botSelectedPhone = null;
 
 // Conjuntos de estados para el funnel y filtros por stat.
 const BOT_COTIZARON_STEPS  = ['SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES','CHOOSING_DECOR','CHOOSING_CLOSE','OFFERING_PAYMENT','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','ARRIVED','PENDING_HUMAN_BOOKING'];
-const BOT_RESERVARON_STEPS = ['PENDING_REVIEW','ARRIVED'];  // reservas reales (no incluye handoff a Josh)
+const BOT_RESERVARON_STEPS = ['PENDING_REVIEW','PENDING_HUMAN_BOOKING'];  // pre-reserva creada (apruebas) + derivado a Josh para cerrar
 let _botStatFilter = null;  // null | 'cotizaron' | 'reservaron'
 
 function setBotStatFilter(which) {
