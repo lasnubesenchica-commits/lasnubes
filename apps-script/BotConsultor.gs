@@ -21,6 +21,7 @@ const BOT_RECARGO_PERSONA_GRANDE = 20;  // Paseo, Puente
 const BOT_RECARGO_PERSONA_PORTAL = 10;  // Portal
 const BOT_RECARGO_COMBO_5 = 80;          // 5 personas: Puente + Portal contiguas, por noche
 const BOT_RECARGO_COMBO_6 = 100;         // 6 personas
+const BOT_DECOR_FEE = 40;                // decoración especial (cumpleaños/aniversario)
 const BOT_CABIN_NAMES = {
   verde: 'Paseo por Las Nubes',
   azul:  'Portal hacia Las Nubes',
@@ -194,6 +195,12 @@ const BOT_CABIN_PHOTOS = {
     'https://lh3.googleusercontent.com/d/1dPcwrLUoqgonOdZ-Y7hDGoYxjbmU5byo=w1280'
   ]
 };
+
+// ¿El mensaje sugiere interés en decoración (servicio +$40)?
+function _botMentionsDecoracion(text) {
+  const t = (text || '').toLowerCase();
+  return /\b(decoraci[oó]n|decorar|decorad|sorpresa|globos?|flores|luna\s+de\s+miel|pedida\s+de\s+mano|propuesta|romant|rom[aá]ntic|cumple|cumplea[ñn]os|aniversario)\b/.test(t);
+}
 
 // Detecta a qué cabaña se refiere el texto, por NOMBRE o por color.
 //   Paseo / verde · Portal / azul · Puente / lila
@@ -995,7 +1002,7 @@ function botHandleMessage(from, text, contactName, kind) {
       if (!parsed || !parsed.checkin) parsed = _parseDatesWithClaude(text, _botToday());
       if (parsed && parsed.checkin && parsed.checkout && (parsed.confidence === undefined || parsed.confidence > 0.4)) {
         return _replyAvailability(from, contactName, { step: 'AWAITING_DATES', context: {}, name: contactName },
-          parsed.checkin, parsed.checkout, parsed.persons || 2, parsed.freeChildren || 0, parsed.ambiguousNights);
+          parsed.checkin, parsed.checkout, parsed.persons || 2, parsed.freeChildren || 0, parsed.ambiguousNights, _botMentionsDecoracion(text));
       }
     }
     return _botSendCampaignWelcome(from, contactName);
@@ -1082,6 +1089,22 @@ function botHandleMessage(from, text, contactName, kind) {
   }
 
   // Eleccion de cierre: autoservicio vs asistido (estado CHOOSING_CLOSE)
+  // Eleccion de decoración (estado CHOOSING_DECOR)
+  if (kind === 'button_reply' && text === 'deco_yes') {
+    conv.context = Object.assign({}, conv.context, { decoracion: true });
+    return _botShowCloseChoice(from, contactName, conv);
+  }
+  if (kind === 'button_reply' && text === 'deco_no') {
+    conv.context = Object.assign({}, conv.context, { decoracion: false });
+    return _botShowCloseChoice(from, contactName, conv);
+  }
+  if (conv.step === 'CHOOSING_DECOR') {
+    const td = (text || '').trim().toLowerCase();
+    if (td === '1' || /con\s+decor|s[ií]\b|decora/.test(td))  { conv.context = Object.assign({}, conv.context, { decoracion: true });  return _botShowCloseChoice(from, contactName, conv); }
+    if (td === '2' || /sin\s+decor|no\b/.test(td))            { conv.context = Object.assign({}, conv.context, { decoracion: false }); return _botShowCloseChoice(from, contactName, conv); }
+  }
+
+  // Eleccion de cierre: autoservicio vs asistido (estado CHOOSING_CLOSE)
   if (kind === 'button_reply' && text === 'close_self')   return _botOfferPayment(from, contactName, conv);
   if (kind === 'button_reply' && text === 'close_asesor') return _botCloseWithAsesor(from, contactName, conv);
   if (conv.step === 'CHOOSING_CLOSE') {
@@ -1092,7 +1115,7 @@ function botHandleMessage(from, text, contactName, kind) {
 
   // Boton "Cancelar" en el cierre/pago — libera el estado + muestra menu principal
   if ((kind === 'button_reply' && text === 'cancel_booking') ||
-      ((conv.step === 'OFFERING_PAYMENT' || conv.step === 'CHOOSING_CLOSE') && /^(cancela|cancelar|atras|atrás)\b/i.test((text || '').trim()))) {
+      ((conv.step === 'OFFERING_PAYMENT' || conv.step === 'CHOOSING_CLOSE' || conv.step === 'CHOOSING_DECOR') && /^(cancela|cancelar|atras|atrás)\b/i.test((text || '').trim()))) {
     sendWhatsAppText(from, '👋 Listo, cancelamos esta reserva. ¿En qué más te ayudamos?');
     _saveConv(from, 'INITIAL', {}, contactName);
     _botSendMainMenu(from, contactName, true);
@@ -1271,7 +1294,7 @@ function botHandleMessage(from, text, contactName, kind) {
   // mostrar "no entendi fechas" ante saludos genericos como "Hola").
   // Si el step era AWAITING_DATES pero el cliente cambio de tema (no
   // pinta de fechas), caemos al fallback de menu de bienvenida.
-  const midBooking = ['CHOOSING_CLOSE', 'OFFERING_PAYMENT', 'AWAITING_VOUCHER_RETRY', 'AWAITING_EMAIL', 'AWAITING_NAME'].indexOf(conv.step) !== -1;
+  const midBooking = ['CHOOSING_DECOR', 'CHOOSING_CLOSE', 'OFFERING_PAYMENT', 'AWAITING_VOUCHER_RETRY', 'AWAITING_EMAIL', 'AWAITING_NAME'].indexOf(conv.step) !== -1;
   if (_looksLikeDateQuery(text)) {
     // Primero parser determinista (formatos explícitos con mes); si no
     // aplica, recurrimos al NLU de Claude (relativos, lenguaje natural).
@@ -1283,7 +1306,7 @@ function botHandleMessage(from, text, contactName, kind) {
       if (midBooking) {
         sendWhatsAppText(from, '🔄 Veo que querés cambiar las fechas. Verifico disponibilidad para las nuevas...');
       }
-      return _replyAvailability(from, contactName, { step: 'AWAITING_DATES', context: {}, name: contactName }, parsed.checkin, parsed.checkout, personas, freeChildren, parsed.ambiguousNights);
+      return _replyAvailability(from, contactName, { step: 'AWAITING_DATES', context: {}, name: contactName }, parsed.checkin, parsed.checkout, personas, freeChildren, parsed.ambiguousNights, _botMentionsDecoracion(text));
     }
     // Parsing fallo. Si el cliente mencionó personas o noches sueltas
     // (sin fechas concretas), mostramos tarifas como fallback util.
@@ -1327,7 +1350,7 @@ function botHandleMessage(from, text, contactName, kind) {
 // 1-4 personas: muestra cabañas individuales libres del tamaño requerido.
 // 5+ personas: deriva al equipo (combo no se cotiza automatico desde el bot).
 // Al final: lista interactiva con cabañas + opcion para cambiar personas (2,3,4).
-function _replyAvailability(from, contactName, conv, checkin, checkout, personas, freeChildren, ambiguousNights) {
+function _replyAvailability(from, contactName, conv, checkin, checkout, personas, freeChildren, ambiguousNights, wantsDecoracion) {
   personas     = personas || 2;
   freeChildren = freeChildren || 0;
   // payingPersons = adultos + niños mayores/iguales a 5. La tarifa base
@@ -1479,7 +1502,7 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
     sendWhatsAppList(from, '¿Querés cambiar algo? Tocá ⬇', sections, '📋 Ver opciones');
   } catch(_) { /* ignorable: ya tiene los botones de cabaña */ }
 
-  _saveConv(from, 'SHOWING_AVAILABILITY', { dates: dates, personas: personas, freeChildren: freeChildren, opciones: opciones.length }, contactName);
+  _saveConv(from, 'SHOWING_AVAILABILITY', { dates: dates, personas: personas, freeChildren: freeChildren, opciones: opciones.length, wantsDecoracion: !!wantsDecoracion }, contactName);
 }
 
 // ─── Menu principal interactivo (lista) ──────────────────────────
@@ -1996,15 +2019,59 @@ function _botStartBooking(from, contactName, conv, cabin) {
     return;
   }
   const payingPersons = Math.max(2, personas - freeChildren);
-  const precio  = _botPrecioCabin(cabin, dates.checkin, dates.checkout, payingPersons);
-  const fechas  = _botFmtFecha(dates.checkin) + ' → ' + _botFmtFecha(dates.checkout);
-  let personasLbl = personas + (personas === 1 ? ' persona' : ' personas');
-  if (freeChildren > 0) {
-    personasLbl += ' · ' + freeChildren + ' menor' + (freeChildren === 1 ? '' : 'es') + ' de 5 sin cargo';
+  const basePrecio    = _botPrecioCabin(cabin, dates.checkin, dates.checkout, payingPersons);
+  const ctx = Object.assign({}, conv.context, { cabin: cabin, basePrecio: basePrecio });
+
+  // Si hubo señal de decoración y aún no decidió → preguntar con/sin antes del cierre.
+  if (ctx.wantsDecoracion && ctx.decoracion === undefined) {
+    return _botAskDecoracion(from, contactName, { context: ctx, name: contactName });
   }
+  return _botShowCloseChoice(from, contactName, { context: ctx, name: contactName });
+}
+
+// Pregunta si agrega decoración especial (+$40) antes de elegir el cierre.
+function _botAskDecoracion(from, contactName, conv) {
+  const ctx   = conv.context || {};
+  const cabin = ctx.cabin;
+  const base  = ctx.basePrecio || 0;
+  const fechas = _botFmtFecha(ctx.dates.checkin) + ' → ' + _botFmtFecha(ctx.dates.checkout);
+  const body =
+    '🎉 Reservando *' + BOT_CABIN_NAMES[cabin] + '* para *' + fechas + '*.\n\n' +
+    '¿Quieres agregar nuestra *decoración especial*? Incluye flores, globos, letrero, detalles románticos y una botella de espumante 🥂.\n\n' +
+    '💰 Sin decoración: *$' + base.toFixed(2) + '*\n' +
+    '🎉 Con decoración: *$' + (base + BOT_DECOR_FEE).toFixed(2) + '* (+$' + BOT_DECOR_FEE + ')';
+  try {
+    sendWhatsAppButtons(from, body, [
+      { id: 'deco_yes',       title: '🎉 Con decoración' },
+      { id: 'deco_no',        title: 'Sin decoración' },
+      { id: 'cancel_booking', title: '❌ Cancelar' }
+    ]);
+  } catch(_) {
+    sendWhatsAppText(from, body + '\n\nEscribe "1" para *con decoración*, "2" para *sin*, o "cancelar".');
+  }
+  _saveConv(from, 'CHOOSING_DECOR', ctx, contactName);
+}
+
+// Muestra la elección de cierre (autoservicio vs asistido) con el total final.
+function _botShowCloseChoice(from, contactName, conv) {
+  const ctx          = conv.context || {};
+  const cabin        = ctx.cabin;
+  const dates        = ctx.dates;
+  const personas     = ctx.personas || 2;
+  const freeChildren = ctx.freeChildren || 0;
+  const base         = (typeof ctx.basePrecio === 'number') ? ctx.basePrecio : (ctx.precio || 0);
+  const deco         = !!ctx.decoracion;
+  const total        = base + (deco ? BOT_DECOR_FEE : 0);
+  const fechas       = _botFmtFecha(dates.checkin) + ' → ' + _botFmtFecha(dates.checkout);
+  let personasLbl = personas + (personas === 1 ? ' persona' : ' personas');
+  if (freeChildren > 0) personasLbl += ' · ' + freeChildren + ' menor' + (freeChildren === 1 ? '' : 'es') + ' de 5 sin cargo';
+
+  let totalLine = '💰 *Total: $' + total.toFixed(2) + '*';
+  if (deco) totalLine += ' _(incluye decoración especial 🎉)_';
+
   const body =
     '🎉 ¡Excelente! Reservando *' + BOT_CABIN_NAMES[cabin] + '* para *' + fechas + '* (' + personasLbl + ').\n\n' +
-    '💰 *Total: $' + precio.toFixed(2) + '*\n\n' +
+    totalLine + '\n\n' +
     '¿Cómo quieres cerrar tu reserva?\n\n' +
     '⚡ *Reservar Ahora*: te autogestionas — te comparto las formas de pago, subes el comprobante aquí mismo, tu reserva queda registrada y la confirmamos en breve por email y por este WhatsApp.\n\n' +
     '🙋 *Reservar Asistido*: te transfiero con Josh para que te asista durante todo el proceso de reserva.';
@@ -2017,7 +2084,7 @@ function _botStartBooking(from, contactName, conv, cabin) {
   } catch(_) {
     sendWhatsAppText(from, body + '\n\nEscribe "1" para *Reservar Ahora*, "2" para *Asistido*, o "cancelar".');
   }
-  _saveConv(from, 'CHOOSING_CLOSE', Object.assign({}, conv.context, { cabin: cabin, precio: precio }), contactName);
+  _saveConv(from, 'CHOOSING_CLOSE', Object.assign({}, ctx, { precio: total }), contactName);
 }
 
 // Autoservicio: muestra formas de pago y pide el comprobante.
@@ -2049,10 +2116,12 @@ function _botCloseWithAsesor(from, contactName, conv) {
   const fechas    = (dates && dates.checkin) ? (_botFmtFecha(dates.checkin) + ' al ' + _botFmtFecha(dates.checkout)) : '';
   const personas  = ctx.personas || '';
 
+  const deco = !!ctx.decoracion;
   let prefill = 'Hola Josh, quiero reservar';
   if (cabinName) prefill += ' ' + cabinName;
   if (fechas)    prefill += ' del ' + fechas;
   if (personas)  prefill += ' (' + personas + ' personas)';
+  if (deco)      prefill += ' con decoración especial';
   prefill += '. ¿Me ayudas a cerrar la reserva?';
 
   sendWhatsAppText(from, 'Genial 🌿 Josh te va a acompañar para cerrar tu reserva.');
@@ -2071,6 +2140,7 @@ function _botCloseWithAsesor(from, contactName, conv) {
       '🏡 ' + (cabinName || '?') + '\n' +
       '📅 ' + (fechas || '?') + '\n' +
       '👥 ' + (personas || '?') + '\n' +
+      (deco ? '🎉 Con decoración especial (+$' + BOT_DECOR_FEE + ')\n' : '') +
       '💰 ' + precioStr + '\n\n' +
       '_El cliente eligió "Reservar Asistido" tras cotizar._');
   } catch(_) {}
@@ -2203,9 +2273,11 @@ function _botCreatePreReservation(from, contactName, ctx) {
     azul:  'Portal hacia Las Nubes',
     lila:  'Puente entre Las Nubes'
   };
-  const comentario = skipVoucher
+  const decoracion = !!ctx.decoracion;
+  let comentario = skipVoucher
     ? '🤖 Pre-reserva vía Agente WhatsApp · SIN ABONO · coordinar pago · pendiente revisión'
     : '🤖 Pre-reserva vía Agente WhatsApp · pendiente revisión';
+  if (decoracion) comentario += ' · 🎉 CON DECORACIÓN ESPECIAL (+$' + BOT_DECOR_FEE + ')';
 
   try {
     const sheet = getOrCreateSheet();
@@ -2266,6 +2338,7 @@ function _botCreatePreReservation(from, contactName, ctx) {
     '📅 ' + fechas + '\n' +
     '👥 ' + personas + (personas === 1 ? ' persona' : ' personas') +
       (freeChildren > 0 ? ' (incluye ' + freeChildren + ' menor' + (freeChildren === 1 ? '' : 'es') + ' de 5)' : '') + '\n' +
+    (decoracion ? '🎉 *CON DECORACIÓN ESPECIAL* (+$' + BOT_DECOR_FEE + ') — preparar\n' : '') +
     '💰 Total: $' + precio.toFixed(2) + '\n\n' +
     voucherBlock;
   try {
