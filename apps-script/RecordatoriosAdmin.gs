@@ -396,3 +396,20 @@ function _testReferidoAMiNumero() {
   Logger.log('referido: ' + JSON.stringify(r));
   return r;
 }
+
+// confirmacion_reserva: named params + botón "Consultas y cambios" (es_PA).
+function _testConfirmacionAMiNumero() {
+  const r = sendWAReservaConfirmada({
+    id:       'TEST-' + Date.now(),
+    name:     'María Pérez (PRUEBA)',
+    telefono: '50769812266',
+    cabin:    'azul',
+    checkin:  '2026-08-15',
+    checkout: '2026-08-17',
+    persons:  2,
+    amount:   180,
+    tipo:     'noche'
+  });
+  Logger.log('confirmacion: ' + JSON.stringify(r));
+  return r;
+}
