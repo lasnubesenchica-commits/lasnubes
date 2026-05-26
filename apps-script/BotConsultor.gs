@@ -1166,6 +1166,14 @@ function botHandleMessage(from, text, contactName, kind) {
     return botHandleMessage(from, 'menu_agente', contactName, 'list_reply');
   }
 
+  // Insistencia en una fecha sin disponibilidad → derivar a Josh.
+  // (El cliente acaba de ver "sin disponibilidad" / alternativas y vuelve a
+  // pedir esa misma fecha o muestra apego emocional → oportunidad de cierre
+  // humano: lista de espera, mover otra reserva, etc.)
+  if ((conv.step === 'NO_AVAILABILITY' || conv.step === 'SHOWING_ALTERNATIVES') && _botIsDateInsistence(text)) {
+    return _botHandleDateInsistence(from, contactName, conv);
+  }
+
   // Cambio de fecha / cancelacion / "no podre ir" → handoff directo al admin
   // (no intenta cotizar aunque haya fechas en el texto).
   if (_isReservaChangeRequest(text)) {
@@ -1998,6 +2006,46 @@ function _botCloseWithAsesor(from, contactName, conv) {
       '_El cliente eligió "Reservar Asistido" tras cotizar._');
   } catch(_) {}
   _saveConv(from, 'PENDING_HUMAN_BOOKING', ctx, contactName);
+}
+
+// ¿El cliente insiste en una fecha (tras ver que no hay disponibilidad)?
+function _botIsDateInsistence(text) {
+  const t = (text || '').toLowerCase();
+  return /\b(esa\s+fecha|esas\s+fechas|quiero\s+esa|necesito\s+esa|tiene\s+que\s+ser|s[ií]\s+o\s+s[ií]|justo\s+esa|esa\s+es\s+la|no\s+puede\s+ser\s+otra|s[oó]lo\s+esa|solo\s+esa|es\s+importante|importante)\b/.test(t)
+      || /\b(cumple|cumplea[ñn]os|aniversario|luna\s+de\s+miel)\b/.test(t);
+}
+
+// Insistencia en fecha ocupada → empatía + conectar con Josh + alerta al admin.
+function _botHandleDateInsistence(from, contactName, conv) {
+  const ctx    = conv.context || {};
+  const dates  = ctx.dates;
+  const fechas = (dates && dates.checkin) ? (_botFmtFecha(dates.checkin) + (dates.checkout ? ' → ' + _botFmtFecha(dates.checkout) : '')) : '';
+  const personas = ctx.personas || '';
+
+  let prefill = 'Hola Josh, quiero reservar';
+  if (fechas)   prefill += ' para el ' + fechas;
+  if (personas) prefill += ' (' + personas + ' personas)';
+  prefill += ' — sé que aparece sin disponibilidad pero esa fecha es importante para mí. ¿Hay alguna opción?';
+
+  sendWhatsAppText(from,
+    '🌿 Entiendo que esa fecha es especial para ti. Déjame conectarte con Josh para ver opciones — a veces se puede coordinar algo (lista de espera, fechas muy cercanas, etc.).'
+  );
+  try {
+    sendWhatsAppCTAUrl(from, 'Toca el botón para escribirle 👇', 'Escribir a Josh',
+      'https://wa.me/50769812266?text=' + encodeURIComponent(prefill));
+  } catch(_) {
+    sendWhatsAppText(from, 'Escríbele directo:\nhttps://wa.me/50769812266');
+  }
+  try {
+    sendWhatsAppText(BOT_ADMIN_PHONE,
+      '⭐ *Cliente insiste en fecha sin disponibilidad*\n\n' +
+      '👤 ' + (contactName || from) + '\n' +
+      '📱 +' + from + '\n' +
+      '📅 ' + (fechas || '?') + '\n' +
+      '👥 ' + (personas || '?') + '\n\n' +
+      '_Quiere esa fecha específica. Ver si se puede acomodar (lista de espera / mover otra reserva)._');
+  } catch(_) {}
+  _saveConv(from, 'HUMAN_HANDOFF', ctx, contactName);
 }
 
 
