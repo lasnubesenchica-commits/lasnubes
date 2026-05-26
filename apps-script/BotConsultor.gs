@@ -663,6 +663,16 @@ function _parseDatesDeterministic(text, today) {
     }
   }
 
+  // "10 y 11 de octubre" → noches del 10 y 11 → checkout = 12 (segundo día + 1)
+  m = t.match(new RegExp('(\\d{1,2})\\s+y\\s+(\\d{1,2})\\s+(?:de\\s+)?' + MONTH));
+  if (m) {
+    const d1 = parseInt(m[1], 10), d2 = parseInt(m[2], 10), mo = MESES[m[3]];
+    if (validDay(d1) && validDay(d2) && d2 > d1) {
+      const y = resolveYear(mo, d1);
+      return { checkin: ymd(y, mo, d1), checkout: _botAddDaysISO(ymd(y, mo, d2), 1), persons: _botExtractPersons(t), confidence: 1 };
+    }
+  }
+
   // Fecha única: "[para el] [martes] 02 [de] junio" / "2 de junio"
   m = t.match(new RegExp('(\\d{1,2})\\s+(?:de\\s+)?' + MONTH));
   if (m) {
@@ -951,6 +961,16 @@ function botHandleMessage(from, text, contactName, kind) {
   // Solo lo disparamos si es el primer mensaje (step INITIAL) para no
   // sobreescribir conversaciones en curso.
   if (kind === 'text' && conv.step === 'INITIAL' && _isCampaignInquiry(text)) {
+    // Si el mismo mensaje ya trae fechas (ej: "quiero info, reservar para
+    // el 10 y 11 de octubre"), cotizamos directo en vez del pitch genérico.
+    if (_looksLikeDateQuery(text) && !_looksLikeVagueDateQuery(text)) {
+      let parsed = _parseDatesDeterministic(text, _botToday());
+      if (!parsed || !parsed.checkin) parsed = _parseDatesWithClaude(text, _botToday());
+      if (parsed && parsed.checkin && parsed.checkout && (parsed.confidence === undefined || parsed.confidence > 0.4)) {
+        return _replyAvailability(from, contactName, { step: 'AWAITING_DATES', context: {}, name: contactName },
+          parsed.checkin, parsed.checkout, parsed.persons || 2, parsed.freeChildren || 0);
+      }
+    }
     return _botSendCampaignWelcome(from, contactName);
   }
 
