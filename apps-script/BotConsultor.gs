@@ -670,13 +670,15 @@ function _parseDatesDeterministic(text, today) {
     }
   }
 
-  // "10 y 11 de octubre" → noches del 10 y 11 → checkout = 12 (segundo día + 1)
+  // "10 y 11 de octubre" → típicamente entra 10, sale 11 (1 noche), igual que
+  // el rango. Es ambiguo (a veces quieren ambas noches) → marcamos para
+  // aclarar con una nota al cotizar.
   m = t.match(new RegExp('(\\d{1,2})\\s+y\\s+(\\d{1,2})\\s+(?:de\\s+)?' + MONTH));
   if (m) {
     const d1 = parseInt(m[1], 10), d2 = parseInt(m[2], 10), mo = MESES[m[3]];
     if (validDay(d1) && validDay(d2) && d2 > d1) {
       const y = resolveYear(mo, d1);
-      return { checkin: ymd(y, mo, d1), checkout: _botAddDaysISO(ymd(y, mo, d2), 1), persons: _botExtractPersons(t), confidence: 1 };
+      return { checkin: ymd(y, mo, d1), checkout: ymd(y, mo, d2), persons: _botExtractPersons(t), confidence: 1, ambiguousNights: true };
     }
   }
 
@@ -775,6 +777,24 @@ function _botCheckAvailability(checkin, checkout) {
     if (ci < checkout && co > checkin) occupied[cabin] = true;
   }
   return { verde: !occupied.verde, azul: !occupied.azul, lila: !occupied.lila };
+}
+
+// Desglose noche por noche de un rango: para cada noche, qué cabañas (de
+// capacidad suficiente) están libres. Usado para ofrecer noches sueltas
+// cuando el rango completo no está disponible (B2).
+function _botNightsBreakdown(checkin, checkout, personas) {
+  personas = personas || 2;
+  const out = [];
+  let cur = checkin, guard = 0;
+  while (cur < checkout && guard < 60) {
+    const next = _botAddDaysISO(cur, 1);
+    const avail = _botCheckAvailability(cur, next);
+    const freeCabins = ['azul', 'verde', 'lila'].filter(c => avail[c] && BOT_CABIN_CAPACITY[c] >= personas);
+    out.push({ night: cur, next: next, free: freeCabins.length > 0, freeCabins: freeCabins });
+    cur = next;
+    guard++;
+  }
+  return out;
 }
 
 function _botPrecioPorNoche(dateStr) {
@@ -975,7 +995,7 @@ function botHandleMessage(from, text, contactName, kind) {
       if (!parsed || !parsed.checkin) parsed = _parseDatesWithClaude(text, _botToday());
       if (parsed && parsed.checkin && parsed.checkout && (parsed.confidence === undefined || parsed.confidence > 0.4)) {
         return _replyAvailability(from, contactName, { step: 'AWAITING_DATES', context: {}, name: contactName },
-          parsed.checkin, parsed.checkout, parsed.persons || 2, parsed.freeChildren || 0);
+          parsed.checkin, parsed.checkout, parsed.persons || 2, parsed.freeChildren || 0, parsed.ambiguousNights);
       }
     }
     return _botSendCampaignWelcome(from, contactName);
@@ -1077,6 +1097,14 @@ function botHandleMessage(from, text, contactName, kind) {
     _saveConv(from, 'INITIAL', {}, contactName);
     _botSendMainMenu(from, contactName, true);
     return;
+  }
+
+  // Boton "Cotiza esa" (noche libre de un rango parcialmente ocupado, B2)
+  if (kind === 'button_reply' && /^quote_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}$/.test(text)) {
+    const parts = text.replace('quote_', '').split('_');
+    const personas     = (conv.context && conv.context.personas) || 2;
+    const freeChildren = (conv.context && conv.context.freeChildren) || 0;
+    return _replyAvailability(from, contactName, conv, parts[0], parts[1], personas, freeChildren);
   }
 
   // Boton "Sugerencia: usar esta fecha"
@@ -1255,7 +1283,7 @@ function botHandleMessage(from, text, contactName, kind) {
       if (midBooking) {
         sendWhatsAppText(from, '🔄 Veo que querés cambiar las fechas. Verifico disponibilidad para las nuevas...');
       }
-      return _replyAvailability(from, contactName, { step: 'AWAITING_DATES', context: {}, name: contactName }, parsed.checkin, parsed.checkout, personas, freeChildren);
+      return _replyAvailability(from, contactName, { step: 'AWAITING_DATES', context: {}, name: contactName }, parsed.checkin, parsed.checkout, personas, freeChildren, parsed.ambiguousNights);
     }
     // Parsing fallo. Si el cliente mencionó personas o noches sueltas
     // (sin fechas concretas), mostramos tarifas como fallback util.
@@ -1299,7 +1327,7 @@ function botHandleMessage(from, text, contactName, kind) {
 // 1-4 personas: muestra cabañas individuales libres del tamaño requerido.
 // 5+ personas: deriva al equipo (combo no se cotiza automatico desde el bot).
 // Al final: lista interactiva con cabañas + opcion para cambiar personas (2,3,4).
-function _replyAvailability(from, contactName, conv, checkin, checkout, personas, freeChildren) {
+function _replyAvailability(from, contactName, conv, checkin, checkout, personas, freeChildren, ambiguousNights) {
   personas     = personas || 2;
   freeChildren = freeChildren || 0;
   // payingPersons = adultos + niños mayores/iguales a 5. La tarifa base
@@ -1345,6 +1373,39 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
   });
 
   if (opciones.length === 0) {
+    // B2: disponibilidad parcial — si el rango es multi-noche y solo algunas
+    // noches están ocupadas, ofrecemos las noches libres en vez de un "no" seco.
+    if (nights > 1) {
+      const bd = _botNightsBreakdown(checkin, checkout, personas);
+      const someFree = bd.some(n => n.free), someOcc = bd.some(n => !n.free);
+      if (someFree && someOcc) {
+        // bloque contiguo libre más largo
+        let bStart = -1, bLen = 0, cStart = -1, cLen = 0;
+        bd.forEach((n, i) => {
+          if (n.free) { if (cStart < 0) cStart = i; cLen++; if (cLen > bLen) { bLen = cLen; bStart = cStart; } }
+          else { cStart = -1; cLen = 0; }
+        });
+        const freeCi = bd[bStart].night, freeCo = bd[bStart + bLen - 1].next;
+        const occ = bd.filter(n => !n.free).map(n => _botFmtFecha(n.night));
+        const libreLbl = (bLen === 1)
+          ? 'la noche del *' + _botFmtFecha(freeCi) + '*'
+          : 'del *' + _botFmtFecha(freeCi) + '* al *' + _botFmtFecha(freeCo) + '*';
+        const body =
+          '😔 No tengo las *' + nights + ' noches* completas para ' + personas + (personas === 1 ? ' persona' : ' personas') + '.\n\n' +
+          'La noche del *' + occ.join('*, *') + '* ya está reservada.\n\n' +
+          'Pero sí tengo libre ' + libreLbl + '. ¿Te sirve?';
+        try {
+          sendWhatsAppButtons(from, body, [
+            { id: 'quote_' + freeCi + '_' + freeCo, title: '✅ Cotiza esa' },
+            { id: 'menu_agente', title: '🙋 Hablar con Josh' }
+          ]);
+        } catch(_) {
+          sendWhatsAppText(from, body + '\n\nEscríbeme si te sirve o "agente" para hablar con Josh.');
+        }
+        _saveConv(from, 'SHOWING_ALTERNATIVES', { dates: { checkin: freeCi, checkout: freeCo }, personas: personas, freeChildren: freeChildren }, contactName);
+        return;
+      }
+    }
     const alts = _botSuggestAlternatives(checkin, checkout, personas);
     if (alts.length > 0) {
       const body =
@@ -1371,6 +1432,14 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
   // Cotizacion (formato copyPromo, sin combo)
   const cotizacion = _botCotizacionAvailability(checkin, checkout, opciones, personas, false, freeChildren);
   sendWhatsAppText(from, cotizacion);
+
+  // Nota aclaratoria si la fecha vino en formato ambiguo "10 y 11" (1 noche).
+  if (ambiguousNights && nights === 1) {
+    sendWhatsAppText(from,
+      '📝 Lo coticé como *1 noche* (entras el ' + _botFmtFecha(checkin) + ' y sales el ' + _botFmtFecha(checkout) + '). ' +
+      'Si querías quedarte *ambas noches*, dímelo y lo ajusto.'
+    );
+  }
 
   // Botones directos para reservar cada cabaña disponible (max 3).
   // WhatsApp limita title a 20 chars — usamos formato corto sin "por/hacia/entre".
