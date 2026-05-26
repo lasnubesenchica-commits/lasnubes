@@ -346,8 +346,14 @@ function _botHandleInfoQuery(from, contactName, conv, text) {
     return true;
   }
 
-  // Decoracion / sorpresas para cumpleaños / aniversarios
-  if (/\b(decoraci[oó]n|decorar|decorad|sorpresa|globos?|flores|cumple|cumplea[ñn]os|aniversario|luna\s+de\s+miel|romant|rom[aá]ntic|propon|pedida\s+de\s+mano|propuesta)\b/i.test(t)) {
+  // Decoracion / sorpresas para cumpleaños / aniversarios.
+  // "decoración/globos/flores/sorpresa/propuesta" → siempre (piden el servicio).
+  // "cumple/aniversario" SOLO si no hay fechas en el mensaje — si hay fechas,
+  // es contexto de una reserva (ej: "mi pareja cumple el 10, quiero esa fecha")
+  // y debe ir a cotización, no al pitch de decoración.
+  const pideDecoracion  = /\b(decoraci[oó]n|decorar|decorad|sorpresa|globos?|flores|luna\s+de\s+miel|pedida\s+de\s+mano|propuesta|romant|rom[aá]ntic)\b/i.test(t);
+  const mencionaOcasion = /\b(cumple|cumplea[ñn]os|aniversario)\b/i.test(t);
+  if (pideDecoracion || (mencionaOcasion && !isDatesQuery)) {
     sendWhatsAppText(from,
       '🎉 *Decoración especial para aniversarios y cumpleaños*\n\n' +
       'Realizamos una decoración básica que incluye:\n' +
@@ -357,13 +363,14 @@ function _botHandleInfoQuery(from, contactName, conv, text) {
       '• Elementos decorativos románticos\n' +
       '• Una botella de espumante 🥂\n\n' +
       '*Costo:* $40 adicional a tu reserva.\n\n' +
-      'Si querés agregarlo, decímelo al confirmar las fechas y lo coordinamos. ¿Para cuándo sería?'
+      'Si quieres agregarlo, dímelo al confirmar las fechas y lo coordinamos. ¿Para cuándo sería?'
     );
     return true;
   }
 
-  // Niños / familia
-  if (/\b(ni[ñn]o|ni[ñn]a|hijo|hija|hijos|hijas|beb[eé]|infantil|familia|family|kid|menor(es)?\s+de|aptas?\s+para\s+ni[ñn]os|family\s+friendly|chicos)\b/i.test(t)) {
+  // Niños / familia. Si el mensaje trae fechas, lo dejamos al flujo de
+  // cotización (el parser/Claude manejan personas y descuento de menores).
+  if (!isDatesQuery && /\b(ni[ñn]o|ni[ñn]a|hijo|hija|hijos|hijas|beb[eé]|infantil|familia|family|kid|menor(es)?\s+de|aptas?\s+para\s+ni[ñn]os|family\s+friendly|chicos)\b/i.test(t)) {
     sendWhatsAppText(from,
       '👨‍👩‍👧 *Familias con niños*\n\n' +
       '¡Las cabañas son ideales para escapadas familiares! 🌿\n\n' +
