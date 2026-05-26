@@ -373,3 +373,26 @@ function _testCheckoutAMiNumero() {
   Logger.log('Enviado: ' + JSON.stringify(r));
   return r;
 }
+
+// ─── Tests SEGUROS a tu número (no escriben a clientes) ──────────────
+// Plantillas en español (es). Datos de prueba. Solo para ver el render.
+function _testCheckinAMiNumero() {
+  const r = sendWhatsAppTemplate('50769812266', 'recordatorio_checkin', 'es',
+    ['María (PRUEBA)', 'Portal hacia Las Nubes', 'vie 5 al dom 7 de junio']);
+  Logger.log('checkin: ' + JSON.stringify(r));
+  return r;
+}
+
+function _testSaldoAMiNumero() {
+  const r = sendWhatsAppTemplate('50769812266', 'recordatorio_saldo', 'es',
+    ['María (PRUEBA)', 'Portal hacia Las Nubes', 'vie 5 al dom 7 de junio', '90.00']);
+  Logger.log('saldo: ' + JSON.stringify(r));
+  return r;
+}
+
+function _testReferidoAMiNumero() {
+  const r = sendWhatsAppTemplate('50769812266', 'referido_postestadia', 'es',
+    ['María (PRUEBA)', 'LN-AB12CD']);
+  Logger.log('referido: ' + JSON.stringify(r));
+  return r;
+}
