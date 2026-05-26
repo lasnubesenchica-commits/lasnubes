@@ -76,6 +76,18 @@ function _saveConv(phone, step, context, name) {
   sheet.appendRow([phone, step, now, ctx, name || '']);
 }
 
+// Util admin: corrige el estado de una conversación (preserva contexto/nombre).
+// Correr desde el editor. Ej: corregirEstadoConversacion('50762879298', 'HUMAN_HANDOFF')
+function corregirEstadoConversacion(phone, nuevoStep) {
+  const conv = _getConv(String(phone));
+  if (!conv) { Logger.log('No existe conversación: ' + phone); return; }
+  _saveConv(String(phone), nuevoStep, conv.context, conv.name);
+  Logger.log('✓ ' + phone + ': ' + conv.step + ' → ' + nuevoStep);
+}
+
+// Yessickam era una consulta de grupo (no un cierre) — sacarla del conteo.
+function _fixYessickam() { return corregirEstadoConversacion('50762879298', 'HUMAN_HANDOFF'); }
+
 // ─── Keywords y heuristicas ─────────────────────────────────────────
 function _isHumanRequest(text) {
   const t = (text || '').toLowerCase();
