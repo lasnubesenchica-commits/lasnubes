@@ -862,6 +862,13 @@
     -webkit-overflow-scrolling: touch;
   }
 
+  /* Resaltado de conversación nueva (live) — parpadea ~7s y para */
+  @keyframes botNewPulse {
+    0%, 100% { background: transparent; }
+    50% { background: rgba(52,199,89,0.18); }
+  }
+  .bot-row-new { animation: botNewPulse 1s ease-in-out 7; }
+
   .modal-title {
     font-family: 'Cormorant Garamond', serif;
     font-size: 24px;
@@ -2789,12 +2796,16 @@ function showSection(id) {
   if(id === 'disponibilidad') renderDisponibilidad();
   if(id === 'ocupacion')      { populateOcuMonth(); renderOcupacion(); }
   if(id === 'programa')       renderProgramaMetrics();
-  if(id === 'bot')            loadBotData();
+  if(id === 'bot')            { loadBotData(); startBotLive(); }
+  else                        stopBotLive();
 }
 
 // ─── BOT CRM ──────────────────────────────────────────────────────
 let _botConvs = [];
 let _botSelectedPhone = null;
+let _botLiveTimer = null;
+let _botSeenPhones = null;   // null = aún no se hizo la 1ra carga
+let _botNewPhones = new Set();
 
 // Conjuntos de estados para el funnel y filtros por stat.
 const BOT_COTIZARON_STEPS  = ['SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES','CHOOSING_DECOR','CHOOSING_CLOSE','OFFERING_PAYMENT','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','ARRIVED','PENDING_HUMAN_BOOKING'];
@@ -2816,12 +2827,46 @@ async function loadBotData() {
     const res = await fetch(SHEETS_API_URL + '?action=getConversaciones');
     const data = await res.json();
     _botConvs = (data && data.conversations) || [];
+    // 1ra carga: marcar todos como "vistos" (sin resaltar).
+    _botSeenPhones = new Set(_botConvs.map(c => c.phone));
     renderBotStats();
     if (_botQuoteCalExpanded) renderBotQuoteCal();
     renderBotList();
   } catch(e) {
     document.getElementById('botList').innerHTML = '<div style="padding:20px;color:#c0392b;font-size:13px;">Error: ' + e.message + '</div>';
   }
+}
+
+// ─── Live update: detecta conversaciones nuevas sin refrescar ──────
+function startBotLive() {
+  if (_botLiveTimer) return;
+  _botLiveTimer = setInterval(botLivePoll, 25000);  // cada 25s
+}
+function stopBotLive() {
+  if (_botLiveTimer) { clearInterval(_botLiveTimer); _botLiveTimer = null; }
+}
+
+async function botLivePoll() {
+  // No molestar si hay un chat abierto en el sheet
+  if (document.getElementById('botDetail')?.classList.contains('open')) return;
+  try {
+    const res = await fetch(SHEETS_API_URL + '?action=getConversaciones');
+    const data = await res.json();
+    const convs = (data && data.conversations) || [];
+    if (_botSeenPhones === null) { _botSeenPhones = new Set(convs.map(c => c.phone)); }
+    // Detectar teléfonos nuevos (no vistos antes)
+    const nuevos = convs.filter(c => !_botSeenPhones.has(c.phone)).map(c => c.phone);
+    _botConvs = convs;
+    if (nuevos.length) {
+      nuevos.forEach(p => { _botSeenPhones.add(p); _botNewPhones.add(p); });
+    }
+    renderBotStats();
+    if (_botQuoteCalExpanded) renderBotQuoteCal();
+    renderBotList();
+    // El resaltado (CSS) corre solo unos segundos; limpiamos el set para que
+    // el próximo render no lo repita.
+    if (nuevos.length) setTimeout(() => { _botNewPhones.clear(); renderBotList(); }, 8000);
+  } catch(_) { /* silencioso: reintenta en el próximo ciclo */ }
 }
 
 function renderBotStats() {
@@ -3076,9 +3121,11 @@ function renderBotList() {
   list.innerHTML = filtered.map(c => {
     const badge = _botStepBadge(c.step);
     const selected = c.phone === _botSelectedPhone;
+    const isNew = _botNewPhones.has(c.phone);
     const last = c.lastMsg ? (c.lastMsg.direction === 'in' ? '↘ ' : '↗ ') + (c.lastMsg.content || '').slice(0, 60) : '';
     const waLink = _botWaUrl(c);
-    return '<div onclick="selectBotConv(\'' + c.phone + '\')" style="padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;background:' + (selected ? 'var(--bg-secondary, #f5f3f0)' : 'transparent') + ';display:flex;align-items:center;gap:10px;">' +
+    return '<div class="' + (isNew ? 'bot-row-new' : '') + '" onclick="selectBotConv(\'' + c.phone + '\')" style="padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;background:' + (selected ? 'var(--bg-secondary, #f5f3f0)' : 'transparent') + ';display:flex;align-items:center;gap:10px;">' +
+      (isNew ? '<span style="flex-shrink:0;width:8px;height:8px;border-radius:50%;background:#34c759;"></span>' : '') +
       '<div style="flex:1;min-width:0;">' +
         '<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:3px;">' +
           '<strong style="font-size:13px;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (c.name || c.phone) + '</strong>' +
