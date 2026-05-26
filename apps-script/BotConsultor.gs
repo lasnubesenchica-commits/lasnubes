@@ -1073,17 +1073,36 @@ function botHandleMessage(from, text, contactName, kind) {
     if (text === 'menu_tienda')       { _botMenuTienda(from);      _botSendMainMenu(from, contactName, false); _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
     if (text === 'menu_faq')          { _botMenuFAQ(from);         _botSendMainMenu(from, contactName, false); _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
     if (text === 'menu_agente' || text === 'menu_humano') {
+      // Enriquecemos con el contexto que haya (cabaña, fechas, personas).
+      const ctx       = conv.context || {};
+      const cabinName = BOT_CABIN_NAMES[ctx.cabin] || '';
+      const dts       = ctx.dates;
+      const fechas    = (dts && dts.checkin) ? (_botFmtFecha(dts.checkin) + (dts.checkout ? ' al ' + _botFmtFecha(dts.checkout) : '')) : '';
+      const personas  = ctx.personas || '';
+
+      let ctxDesc = '';
+      if (cabinName && fechas) ctxDesc = 'Estuve viendo ' + cabinName + ' para el ' + fechas + (personas ? ' (' + personas + ' personas)' : '');
+      else if (cabinName)      ctxDesc = 'Estuve viendo ' + cabinName;
+      else if (fechas)         ctxDesc = 'Estuve consultando para el ' + fechas + (personas ? ' (' + personas + ' personas)' : '');
+      const prefill = 'Hola, vengo del Agente de Las Nubes 🌿. ' + (ctxDesc ? ctxDesc + '. ' : '') + 'Quiero hablar con una persona.';
+
       try {
         sendWhatsAppCTAUrl(from,
           '🙋 ¡Claro! Tocá el botón abajo para escribirle directo a una persona de nuestro equipo por WhatsApp.',
           'Abrir WhatsApp',
-          'https://wa.me/50769812266?text=' + encodeURIComponent('Hola, vengo del asistente de Las Nubes 🌿')
+          'https://wa.me/50769812266?text=' + encodeURIComponent(prefill)
         );
       } catch(err) {
         sendWhatsAppText(from, '🙋 Escribinos directo aquí:\nhttps://wa.me/50769812266');
       }
       _saveConv(from, 'HUMAN_HANDOFF', conv.context, contactName);
-      try { sendWhatsAppText('50769812266', '🔔 El Agente derivó a un cliente (menú): ' + (contactName || from) + ' (' + from + ')'); } catch(_) {}
+      try {
+        let adminMsg = '🔔 *El Agente derivó a un cliente*\n👤 ' + (contactName || from) + '\n📱 +' + from;
+        if (cabinName) adminMsg += '\n🏡 ' + cabinName;
+        if (fechas)    adminMsg += '\n📅 ' + fechas;
+        if (personas)  adminMsg += '\n👥 ' + personas;
+        sendWhatsAppText('50769812266', adminMsg);
+      } catch(_) {}
       return;
     }
   }
