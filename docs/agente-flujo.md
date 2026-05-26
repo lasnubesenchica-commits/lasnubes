@@ -96,7 +96,92 @@ flowchart TD
 
 ---
 
-## 3. Estados — referencia rápida
+## 3. Router granular (todos los handlers como nodos)
+
+Versión detallada: cada handler de info y de menú como nodo propio, más
+el flujo de reserva completo expandido.
+
+```mermaid
+flowchart TD
+  MSG([Mensaje del cliente]) --> P1{Numero de Erika<br/>limpieza?}
+  P1 -->|si| LIMP[🧹 Parte de limpieza de hoy]
+  P1 -->|no| P2{Mensaje del<br/>calendario web?}
+  P2 -->|si| CALPAY[Salta a formas de pago]
+  P2 -->|no| P3{Opener de campana?}
+  P3 -->|con fechas| BOOK
+  P3 -->|sin fechas| PITCH[Pitch de bienvenida]
+  P3 -->|no| P4{Boton o paso del<br/>flujo de reserva?}
+  P4 -->|reserva| BOOK
+  P4 -->|admin| ADMIN[Aprobar / rechazar pre-reserva]
+  P4 -->|checkout| CHKO[Avisa porton + avisa a Erika]
+  P4 -->|consulta| CONS[CTA a Josh con la reserva]
+  P4 -->|menu| MENU
+  P4 -->|no| P6{Pide agente /<br/>cambio / cancela?}
+  P6 -->|si| HANDOFF[🙋 Handoff a Josh]
+  P6 -->|no| P7{Insiste en fecha<br/>ocupada?}
+  P7 -->|si| HANDOFF
+  P7 -->|no| P8{Keyword de menu<br/>o acceso?}
+  P8 -->|si| MENU
+  P8 -->|no| P9{Fecha vaga<br/>para julio?}
+  P9 -->|si| CALWEB[Manda calendario web]
+  P9 -->|no| P10{Info puntual?}
+  P10 -->|si| INFO
+  P10 -->|no| P11{Tiene pinta<br/>de fechas?}
+  P11 -->|si| BOOK
+  P11 -->|no| P12{Contenido real?}
+  P12 -->|si| LLM[🤖 Claude fallback grounded]
+  P12 -->|no| WELCOME[Menu de bienvenida]
+
+  subgraph INFO[Info puntual - handlers]
+    direction TB
+    I1[📸 Fotos por cabana]
+    I2[💰 Precio / tarifas sin fecha]
+    I3[🍳 Cocina / BBQ]
+    I4[⚡ Energia / wifi / solar]
+    I5[🕒 Check-in / Check-out]
+    I6[🛁 Bano / toallas]
+    I7[🌿 Privacidad]
+    I8[👥 Capacidad]
+    I9[🐾 Mascotas]
+    I10[🌤 Clima]
+    I11[🦟 Mosquitos]
+    I12[🎉 Decoracion info]
+    I13[🧒 Ninos / familia]
+    I14[🌊 Jacuzzi/piscina -> cascada propia]
+  end
+
+  subgraph MENU[Menu / keyword]
+    direction TB
+    M1[📍 Como llegar maps/waze]
+    M2[🏞 Actividades]
+    M3[🍽 Gastronomia]
+    M4[🛒 Insumos]
+    M5[🧊 Hielo y carbon]
+    M6[❓ FAQ]
+    M7[📅 Disponibilidad]
+    M8[🚪 He llegado]
+    M9[🚗 Acceso 4x4 / 🚌 sin auto - bus]
+  end
+
+  subgraph BOOK[Flujo de reserva]
+    direction TB
+    B0[Parser fechas regla -> Claude] --> B1[Cotiza disponibilidad]
+    B1 --> B2[Elige cabana pick]
+    B2 -->|senal deco| B3[Con/sin decoracion +40]
+    B2 -->|sin deco| B4[Elige cierre]
+    B3 --> B4
+    B4 -->|autoservicio| B5[Formas de pago]
+    B4 -->|asistido| B6[CTA a Josh + alerta lead]
+    B5 --> B7[Sube voucher - OCR Claude]
+    B7 --> B8[Pide email]
+    B8 --> B9[Pide nombre]
+    B9 --> B10[Pre-reserva - espera aprobacion]
+  end
+```
+
+---
+
+## 4. Estados — referencia rápida
 
 | Estado | Significado | Etapa funnel |
 |---|---|---|
