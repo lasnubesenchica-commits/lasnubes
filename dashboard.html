@@ -2796,6 +2796,17 @@ function showSection(id) {
 let _botConvs = [];
 let _botSelectedPhone = null;
 
+// Conjuntos de estados para el funnel y filtros por stat.
+const BOT_COTIZARON_STEPS  = ['SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES','CHOOSING_DECOR','CHOOSING_CLOSE','OFFERING_PAYMENT','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','ARRIVED','PENDING_HUMAN_BOOKING'];
+const BOT_RESERVARON_STEPS = ['PENDING_REVIEW','ARRIVED'];  // reservas reales (no incluye handoff a Josh)
+let _botStatFilter = null;  // null | 'cotizaron' | 'reservaron'
+
+function setBotStatFilter(which) {
+  _botStatFilter = (_botStatFilter === which) ? null : which;
+  renderBotStats();
+  renderBotList();
+}
+
 async function loadBotData() {
   try {
     const list = document.getElementById('botList');
@@ -2813,10 +2824,17 @@ async function loadBotData() {
 
 function renderBotStats() {
   const total = _botConvs.length;
-  const cotizaron = _botConvs.filter(c => ['SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES','CHOOSING_DECOR','CHOOSING_CLOSE','OFFERING_PAYMENT','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','ARRIVED','PENDING_HUMAN_BOOKING'].includes(c.step)).length;
-  const reservaron = _botConvs.filter(c => ['PENDING_REVIEW','ARRIVED','PENDING_HUMAN_BOOKING'].includes(c.step)).length;
+  const cotizaron  = _botConvs.filter(c => BOT_COTIZARON_STEPS.includes(c.step)).length;
+  const reservaron = _botConvs.filter(c => BOT_RESERVARON_STEPS.includes(c.step)).length;
   const el = document.getElementById('botStats');
-  if (el) el.textContent = total + ' leads · ' + cotizaron + ' cotizaron · ' + reservaron + ' reservaron';
+  if (!el) return;
+  const chip = (label, which, active) =>
+    '<span onclick="setBotStatFilter(' + (which ? "'" + which + "'" : 'null') + ')" style="cursor:pointer;' +
+    (active ? 'font-weight:700;text-decoration:underline;' : '') + '">' + label + '</span>';
+  el.innerHTML =
+    chip(total + ' leads', null, false) + ' · ' +
+    chip(cotizaron + ' cotizaron', 'cotizaron', _botStatFilter === 'cotizaron') + ' · ' +
+    chip(reservaron + ' reservaron', 'reservaron', _botStatFilter === 'reservaron');
 }
 
 function _botStepBadge(step) {
@@ -3039,6 +3057,8 @@ function renderBotList() {
     const phones = dayMap[_botQuoteFilterDay] || [];
     filtered = filtered.filter(c => phones.includes(c.phone));
   }
+  if (_botStatFilter === 'cotizaron')  filtered = filtered.filter(c => BOT_COTIZARON_STEPS.includes(c.step));
+  if (_botStatFilter === 'reservaron') filtered = filtered.filter(c => BOT_RESERVARON_STEPS.includes(c.step));
   const list = document.getElementById('botList');
   if (filtered.length === 0) {
     const extra = _botQuoteFilterDay ? ' para esa fecha' : '';
