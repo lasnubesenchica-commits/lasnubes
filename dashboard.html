@@ -3825,11 +3825,18 @@ function showDispDetail(id) {
   if (linkBtn) {
     const phoneDigitsInit = (r.telefono || '').toString().replace(/\D/g, '');
     const hasPhoneInit    = phoneDigitsInit.length >= 7;
-    const defaultLabel    = hasPhoneInit ? '💬 Enviar a WhatsApp' : '🔗 Link cliente';
+    const autoWAInit      = _agenteConfirmaWA(r.origin, r.telefono);
+    // Directa/Referido + tel → el Agente ya confirma; el botón solo COPIA (no reenvía).
+    // Otros orígenes con tel → envío manual desde tu WhatsApp. Sin tel → copiar link.
+    const defaultLabel = !hasPhoneInit ? '🔗 Link cliente'
+                        : autoWAInit   ? '🔗 Copiar mensaje'
+                        :                '💬 Enviar a WhatsApp';
     linkBtn.textContent = defaultLabel;
-    linkBtn.title       = hasPhoneInit
-      ? 'Abrir WhatsApp del cliente con texto pre-cargado'
-      : 'Copiar link publico para cliente';
+    linkBtn.title       = autoWAInit
+      ? 'El Agente ya envía la confirmación automáticamente. Esto copia el mensaje por si querés reenviarlo.'
+      : hasPhoneInit
+        ? 'Abrir WhatsApp del cliente con texto pre-cargado'
+        : 'Copiar link publico para cliente';
     linkBtn.onclick = async () => {
       linkBtn.disabled = true;
       linkBtn.textContent = '⏳';
@@ -3838,7 +3845,7 @@ function showDispDetail(id) {
         const data = await res.json();
         if (data.ok && data.url) {
           const text = _buildClienteShareText(r, data.url, data.referralCode, data.referralAmount);
-          if (hasPhoneInit) {
+          if (hasPhoneInit && !autoWAInit) {
             const fullPhone = phoneDigitsInit.length === 8 ? '507' + phoneDigitsInit : phoneDigitsInit;
             window.open('https://wa.me/' + fullPhone + '?text=' + encodeURIComponent(text), '_blank');
             linkBtn.textContent = '✓ WhatsApp abierto';
@@ -5763,9 +5770,13 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
   const waBtn = document.getElementById('modalWhatsAppBtn');
   if (waBtn) {
     const phoneDigits = (telefono || '').toString().replace(/\D/g, '');
+    const autoWA = _agenteConfirmaWA(origin, telefono);
     if (phoneDigits.length >= 7 && syncOk) {
       const fullPhone = phoneDigits.length === 8 ? '507' + phoneDigits : phoneDigits;
+      const waLabel = autoWA ? '🔗 Copiar mensaje' : '💬 Enviar a WhatsApp';
       waBtn.style.display = '';
+      waBtn.textContent = waLabel;
+      waBtn.title = autoWA ? 'El Agente ya envió la confirmación. Esto copia el mensaje por si querés reenviarlo.' : '';
       waBtn.onclick = async () => {
         waBtn.disabled = true;
         waBtn.textContent = '⏳';
@@ -5774,13 +5785,18 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
           const data = await res.json();
           if (data.ok && data.url) {
             const text = _buildClienteShareText(reservation, data.url, data.referralCode, data.referralAmount);
-            window.open('https://wa.me/' + fullPhone + '?text=' + encodeURIComponent(text), '_blank');
-            waBtn.textContent = '✓ WhatsApp abierto';
+            if (autoWA) {
+              await navigator.clipboard.writeText(text);
+              waBtn.textContent = '✓ Copiado';
+            } else {
+              window.open('https://wa.me/' + fullPhone + '?text=' + encodeURIComponent(text), '_blank');
+              waBtn.textContent = '✓ WhatsApp abierto';
+            }
           } else {
             waBtn.textContent = '⚠ Error';
           }
         } catch(e) { waBtn.textContent = '⚠ Error'; }
-        setTimeout(() => { waBtn.disabled=false; waBtn.textContent='💬 Enviar a WhatsApp'; }, 3000);
+        setTimeout(() => { waBtn.disabled=false; waBtn.textContent=waLabel; }, 3000);
       };
     } else {
       waBtn.style.display = 'none';
@@ -5870,7 +5886,7 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
       const _waData = await _waRes.json();
       console.log('[wa] sendWAConfirmacion response', _waData);
       if (_waData.ok) {
-        showToast('💬 WhatsApp de confirmación enviado ✓');
+        showToast('💬 Confirmación enviada al cliente por el Agente ✓');
       } else {
         showToast('⚠ No se pudo enviar WhatsApp: ' + (_waData.error || 'error'));
       }
@@ -8156,6 +8172,13 @@ async function _unmarkLoyalty(email, telefono) {
 }
 
 // Texto para copiar al portapapeles al hacer "Link cliente" — listo para pegar en WhatsApp.
+// ¿El Agente envía la confirmación automáticamente para esta reserva?
+// (Directa/Referido con teléfono → el Agente es el canal oficial).
+function _agenteConfirmaWA(origin, telefono) {
+  const ph = (telefono || '').toString().replace(/\D/g, '');
+  return ph.length >= 7 && (origin === 'Directa' || origin === 'Referido');
+}
+
 function _buildClienteShareText(r, url, referralCode, referralAmount) {
   // Reservas Abiertas: sin fechas confirmadas, texto especifico
   if (r.origin === 'Abierta') {
