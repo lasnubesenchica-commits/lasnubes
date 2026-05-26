@@ -280,7 +280,7 @@ function enviarRecordatorioLimpieza() {
 // el boton, el Agente avisa al admin (portón) y a Erika (limpieza).
 //
 // REQUISITO de la plantilla en Meta:
-//   - Nombre: instrucciones_checkout · idioma es_PA
+//   - Nombre: instrucciones_checkout · idioma "English" (en)
 //   - Body con variables posicionales {{1}} (nombre) y {{2}} (cabaña)
 //   - 1 boton de Respuesta rápida (ej. "Ya me retiré")
 function enviarRecordatoriosCheckout() {
@@ -298,7 +298,7 @@ function enviarRecordatoriosCheckout() {
       sendWhatsAppTemplate(
         r.telefono,
         'instrucciones_checkout',
-        'es_PA',
+        'en',                        // la plantilla quedó registrada como "English"
         [firstName, cabinName],      // posicionales: {{1}} nombre, {{2}} cabaña
         null,
         'checkout_' + r.id           // payload del boton quick-reply
