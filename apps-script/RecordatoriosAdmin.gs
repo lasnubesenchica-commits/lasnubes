@@ -357,3 +357,19 @@ function _testRecordatorio11am()  { return enviarRecordatorioAdminReservasHoy();
 function _testRecordatorio9am()   { return enviarRecordatorioServiciosEspeciales(); }
 function _testRecordatorioLimpieza() { return enviarRecordatorioLimpieza(); }
 function _testCheckout()          { return enviarRecordatoriosCheckout(); }
+
+// Test SEGURO: envía la plantilla de checkout a TU número (no a clientes).
+// OJO: si tocas el botón "Ya me retiré", se dispara el aviso real al admin
+// y a Erika (es el flujo normal del botón).
+function _testCheckoutAMiNumero() {
+  const r = sendWhatsAppTemplate(
+    '50769812266',
+    'instrucciones_checkout',
+    'en',
+    ['Josh (PRUEBA)', 'Portal hacia Las Nubes'],
+    null,
+    'checkout_TEST'
+  );
+  Logger.log('Enviado: ' + JSON.stringify(r));
+  return r;
+}
