@@ -1397,7 +1397,8 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
       sendWhatsAppText('50769812266',
         '🔔 Consulta de grupo grande vía Agente:\n👤 ' + (contactName || from) + '\n📱 +' + from + '\n📅 ' + fechas + '\n👥 ' + personas + ' personas');
     } catch(_) {}
-    _saveConv(from, 'PENDING_HUMAN_BOOKING', { dates: dates, personas: personas, freeChildren: freeChildren }, contactName);
+    // Consulta de grupo grande: es un handoff/derivación, NO un cierre.
+    _saveConv(from, 'HUMAN_HANDOFF', { dates: dates, personas: personas, freeChildren: freeChildren }, contactName);
     return;
   }
 
