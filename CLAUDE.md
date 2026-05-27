@@ -7,13 +7,15 @@
 ## Arquitectura
 
 - **Frontend**: `dashboard.html` (single-file SPA), servido vía GitHub Pages desde `main`.
-- **Backend**: Google Apps Script. El código vive en `apps-script/` y se auto-deploya al mergear a `main` (workflow `.github/workflows/deploy-gas.yml`).
+- **Backend**: Google Apps Script. El código vive en `apps-script/`. El deploy es **manual**: el workflow `.github/workflows/deploy-gas.yml` solo corre con `workflow_dispatch` (Actions → "Run workflow"). Es manual a propósito para no agotar el límite de 200 versiones de Apps Script (cada deploy = 1 versión, y las versiones no se borran por API) — se agrupan cambios y se publica a mano.
 - **Bootstrap del Apps Script**: workflow manual `pull-gas.yml` baja el código actual del Apps Script al repo en una rama `bot/pull-gas-<run_id>`.
 - **Web App URL**: hardcodeada en `dashboard.html` como `SHEETS_API_URL`.
 
 ## Despliegue
 
-- Cualquier push a `main` que toque `apps-script/**` dispara `Deploy Google Apps Script`. Sube los archivos, crea versión nueva y actualiza el deployment de producción.
+- **El backend NO se auto-deploya.** Después de mergear cambios en `apps-script/**`, hay que disparar `Deploy Google Apps Script` a mano (Actions → "Run workflow" sobre `main`). Sube los archivos, crea versión nueva y actualiza el deployment de producción. Al completar un PR de backend, recordar al usuario que dispare el deploy.
+- **Límite de 200 versiones**: Apps Script topa en 200 versiones por proyecto y no se borran por API (solo a mano en el editor). Por eso el deploy es manual/batch. Si se vuelve a llenar, borrar versiones viejas desde el editor.
+- El frontend (`dashboard.html`) sí se publica solo vía GitHub Pages al mergear a `main`.
 - Después de cambios de schema (columnas nuevas en Sheets), recordar al usuario ejecutar manualmente la función de migración correspondiente desde el editor de Apps Script.
 
 ## Stack relevante

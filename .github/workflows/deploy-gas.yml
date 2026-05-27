@@ -1,14 +1,9 @@
 name: Deploy Google Apps Script
 
+# Deploy MANUAL (workflow_dispatch) para no quemar el cupo de 200 versiones de
+# Apps Script en cada push. Agrupá los cambios y dispará el deploy a mano desde
+# Actions cuando quieras publicar el backend.
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'apps-script/**'
-      - 'scripts/deploy-gas.js'
-      - 'package.json'
-      - '.github/workflows/deploy-gas.yml'
   workflow_dispatch:
 
 jobs:
