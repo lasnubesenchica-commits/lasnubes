@@ -203,7 +203,7 @@ flowchart TD
 | `PENDING_REVIEW` | Pre-reserva creada (espera aprobación) | G |
 | `CONFIRMED` | Admin aprobó — reserva confirmada ✓ | G |
 | `REJECTED` | Admin rechazó la pre-reserva | X |
-| `PENDING_HUMAN_BOOKING` | Derivado a Josh para cerrar (asistido / grupo) | X |
+| `PENDING_HUMAN_BOOKING` | Cierre asistido con Josh — NO cuenta como venta hasta ingresar la reserva (→ pasa a `CONFIRMED` al guardarla con teléfono coincidente) | E |
 | `HUMAN_HANDOFF` | Derivado a humano (agente / cambio / insistencia) | X |
 | `AWAITING_ARRIVAL_NAME` | "He llegado" — verificando reserva | H |
 | `ARRIVED` | Llegó a la cabaña (portón) | H |

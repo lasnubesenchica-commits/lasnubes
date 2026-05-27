@@ -119,6 +119,44 @@ function fixYavy()      { return corregirEstadoPorNombre('yav', 'CONFIRMED'); }
 // Yessickam: era consulta de grupo → fuera del conteo de reservas.
 function fixYessickam() { return corregirEstadoConversacion('50762879298', 'HUMAN_HANDOFF'); }
 
+// Estados de "intención de reserva": el lead está cerrando pero todavía no
+// hay reserva ingresada en el sistema.
+const _BOT_INTENT_STEPS = [
+  'SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES','CHOOSING_DECOR','CHOOSING_CLOSE',
+  'OFFERING_PAYMENT','AWAITING_VOUCHER_RETRY','AWAITING_EMAIL','AWAITING_NAME',
+  'PENDING_HUMAN_BOOKING','PENDING_REVIEW'
+];
+
+// Cuando se ingresa una reserva en el dashboard, si su teléfono matchea una
+// conversación del bot en estado de intención, la eleva a CONFIRMED. Así el
+// funnel cuenta la venta recién cuando la reserva existe en el sistema
+// (clave para el cierre asistido: el lead no cuenta hasta que reservás).
+// Devuelve el teléfono de la conversación elevada, o null.
+function _botConfirmConversationByPhone(telefono) {
+  try {
+    const digits = (telefono || '').toString().replace(/\D/g, '');
+    if (digits.length < 7) return null;            // teléfono vacío / inválido
+    const tail = digits.slice(-8);                 // últimos 8 = número local PA
+    const sheet = _convSheet();
+    const data  = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      const convPhone = (data[i][0] || '').toString().replace(/\D/g, '');
+      if (!convPhone || convPhone.slice(-8) !== tail) continue;
+      const step = (data[i][1] || '').toString();
+      if (_BOT_INTENT_STEPS.indexOf(step) === -1) continue;
+      const phone = (data[i][0] || '').toString();
+      let ctx = {};
+      try { ctx = data[i][3] ? JSON.parse(data[i][3]) : {}; } catch(_) {}
+      _saveConv(phone, 'CONFIRMED', ctx, data[i][4] || '');
+      logDebugEntry('bot-conv-confirmed-by-reserva', { phone: phone, from: step });
+      return phone;
+    }
+  } catch(e) {
+    logDebugEntry('bot-conv-confirm-FAIL', { error: e.message });
+  }
+  return null;
+}
+
 // ─── Keywords y heuristicas ─────────────────────────────────────────
 function _isHumanRequest(text) {
   const t = (text || '').toLowerCase();

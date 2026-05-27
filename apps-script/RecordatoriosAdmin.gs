@@ -422,7 +422,8 @@ const _SEGUIMIENTO_STEPS = {
   CHOOSING_DECOR:         '🤝 Eligiendo decoración',
   CHOOSING_CLOSE:         '🤝 Eligiendo cierre',
   OFFERING_PAYMENT:       '💳 Pagando (formas de pago)',
-  AWAITING_VOUCHER_RETRY: '💳 Reintentando voucher'
+  AWAITING_VOUCHER_RETRY: '💳 Reintentando voucher',
+  PENDING_HUMAN_BOOKING:  '🙋 Cierre asistido (pendiente de ingresar)'
 };
 
 function enviarSeguimientoDiario() {
