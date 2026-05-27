@@ -2802,9 +2802,24 @@ function sendCheckinReminderEmail(reservation) {
   }
 }
 
+// "vie 5 al dom 7 de junio" (o "vie 5 de junio" si es un solo día).
+// Para el {{3}} de la plantilla recordator_entrada.
+function _fechasRangoCorto(checkinStr, checkoutStr) {
+  const dias  = ['dom','lun','mar','mié','jue','vie','sáb'];
+  const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const parse = s => { const p = s.toString().slice(0,10).split('-'); return new Date(+p[0], +p[1]-1, +p[2]); };
+  const a = parse(checkinStr), b = parse(checkoutStr);
+  const ini = dias[a.getDay()] + ' ' + a.getDate();
+  if (a.getTime() === b.getTime()) return ini + ' de ' + meses[a.getMonth()];
+  const fin = dias[b.getDay()] + ' ' + b.getDate();
+  if (a.getMonth() === b.getMonth()) return ini + ' al ' + fin + ' de ' + meses[b.getMonth()];
+  return ini + ' de ' + meses[a.getMonth()] + ' al ' + fin + ' de ' + meses[b.getMonth()];
+}
+
 // Trigger diario @ 10am Panama. Escanea Reservas y manda recordatorio
 // a quienes hacen check-in REAL (display) mañana.
-// Excluye CANCELADA, origen Abierta, y reservas sin email.
+// Envía por WhatsApp (plantilla recordator_entrada, si hay teléfono y no es
+// Airbnb) y por email (si hay email). Excluye CANCELADA y origen Abierta.
 function enviarRecordatoriosCheckin() {
   const sheet = getOrCreateSheet();
   const data  = sheet.getDataRange().getValues();
@@ -2812,7 +2827,7 @@ function enviarRecordatoriosCheckin() {
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowStr = Utilities.formatDate(tomorrow, 'America/Panama', 'yyyy-MM-dd');
 
-  let sent = 0, skipped = 0, errors = 0;
+  let sent = 0, skipped = 0, errors = 0, waSent = 0, waErrors = 0;
   for (let i = 1; i < data.length; i++) {
     const r = {
       id:         data[i][0],
@@ -2834,6 +2849,23 @@ function enviarRecordatoriosCheckin() {
     if (r.origin === 'Abierta') continue;
     const meta = tipoEmailMeta(r);
     if (meta.displayCheckin !== tomorrowStr) continue;
+
+    // WhatsApp: plantilla recordator_entrada (botón "Envíame ubicación").
+    if (r.telefono && r.origin !== 'Airbnb') {
+      try {
+        const firstName = (r.name || '').toString().trim().split(/\s+/)[0] || 'amigo';
+        const cabinName = BOT_CABIN_NAMES[r.cabin] || r.cabin;
+        const fechas    = _fechasRangoCorto(meta.displayCheckin, meta.displayCheckout);
+        sendWhatsAppTemplate(r.telefono, 'recordator_entrada', 'es_ES',
+          [firstName, cabinName, fechas], null, 'ubicacion_' + r.id);
+        waSent++;
+      } catch(e) {
+        waErrors++;
+        Logger.log('⚠ WA check-in ' + r.name + ': ' + e);
+      }
+    }
+
+    // Email (canal complementario).
     if (!r.email) { skipped++; Logger.log('⊘ Sin email: ' + r.name); continue; }
     try {
       sendCheckinReminderEmail(r);
@@ -2843,7 +2875,7 @@ function enviarRecordatoriosCheckin() {
       Logger.log('⚠ Error con ' + r.name + ' (' + r.email + '): ' + e);
     }
   }
-  Logger.log('✓ Recordatorios: ' + sent + ' enviados, ' + skipped + ' sin email, ' + errors + ' errores');
+  Logger.log('✓ Recordatorios check-in: WhatsApp ' + waSent + ' (' + waErrors + ' err) · email ' + sent + ' (' + skipped + ' sin email, ' + errors + ' err)');
 }
 
 // Ejecutar UNA VEZ desde el editor de Apps Script para activar el envio diario.
