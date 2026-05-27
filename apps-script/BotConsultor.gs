@@ -1137,6 +1137,13 @@ function botHandleMessage(from, text, contactName, kind) {
     return _botHandleConsultaReserva(from, contactName, text.replace('consulta_', ''));
   }
 
+  // Boton "Envíame ubicación" de la plantilla de check-in (recordator_entrada)
+  // → mandar ubicación + cómo llegar. Match por payload o por el texto del
+  //   botón (fallback si la plantilla se envió sin payload dinámico).
+  if (kind === 'button_reply' && (text.indexOf('ubicacion_') === 0 || /env[ií]ame\s+ubicaci[oó]n/i.test(text))) {
+    return _botHandleEnviarUbicacion(from, contactName);
+  }
+
   // Menu list/button reply → handler especifico
   if ((kind === 'list_reply' || kind === 'button_reply') && /^menu_/.test(text)) {
     if (text === 'menu_disponibilidad') {
@@ -1920,6 +1927,15 @@ function _botHandleConsultaReserva(from, contactName, reservaId) {
   }
   _saveConv(from, 'HUMAN_HANDOFF', (reserva && reserva.id) ? { reservaId: reserva.id } : {}, contactName);
   logDebugEntry('consulta-reserva', { from: from, reservaId: reservaId });
+}
+
+// El huésped tocó "Envíame ubicación" en la plantilla de check-in.
+// → le mandamos ubicación (Maps/Waze) e indicaciones de cómo llegar.
+// No tocamos el estado de la conversación para no interferir con el flujo
+// de "He llegado" cuando el huésped escriba al llegar al portón.
+function _botHandleEnviarUbicacion(from, contactName) {
+  _botMenuComoLlegar(from);
+  logDebugEntry('checkin-enviar-ubicacion', { from: from, name: contactName });
 }
 
 // El huesped tocó "Ya me retiré" en la plantilla de check-out.

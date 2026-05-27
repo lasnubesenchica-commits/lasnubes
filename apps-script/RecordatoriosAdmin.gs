@@ -378,7 +378,8 @@ function _testCheckoutAMiNumero() {
 // Datos de prueba. Solo para ver el render. Envían a 50769812266.
 function _testCheckinAMiNumero() {
   const r = sendWhatsAppTemplate('50769812266', 'recordator_entrada', 'es_ES',
-    ['María (PRUEBA)', 'Portal hacia Las Nubes', 'vie 5 al dom 7 de junio']);
+    ['María (PRUEBA)', 'Portal hacia Las Nubes', 'vie 5 al dom 7 de junio'],
+    null, 'ubicacion_TEST');   // payload del botón "Envíame ubicación"
   Logger.log('checkin: ' + JSON.stringify(r));
   return r;
 }
