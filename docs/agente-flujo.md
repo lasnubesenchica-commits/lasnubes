@@ -39,7 +39,10 @@ stateDiagram-v2
   AWAITING_VOUCHER_RETRY --> AWAITING_EMAIL: reintenta voucher OK
   AWAITING_EMAIL --> AWAITING_NAME: da email
   AWAITING_NAME --> PENDING_REVIEW: da nombre (crea pre-reserva)
-  PENDING_REVIEW --> [*]: admin aprueba (confirma + email/WhatsApp)
+  PENDING_REVIEW --> CONFIRMED: admin aprueba (confirma + email/WhatsApp)
+  PENDING_REVIEW --> REJECTED: admin rechaza
+  CONFIRMED --> [*]
+  REJECTED --> [*]
 
   NO_AVAILABILITY --> SHOWING_AVAILABILITY: prueba fecha nueva
   NO_AVAILABILITY --> HUMAN_HANDOFF: insiste en la fecha ocupada
@@ -198,6 +201,8 @@ flowchart TD
 | `AWAITING_EMAIL` | Dando email | F |
 | `AWAITING_NAME` | Dando nombre | F |
 | `PENDING_REVIEW` | Pre-reserva creada (espera aprobación) | G |
+| `CONFIRMED` | Admin aprobó — reserva confirmada ✓ | G |
+| `REJECTED` | Admin rechazó la pre-reserva | X |
 | `PENDING_HUMAN_BOOKING` | Derivado a Josh para cerrar (asistido / grupo) | X |
 | `HUMAN_HANDOFF` | Derivado a humano (agente / cambio / insistencia) | X |
 | `AWAITING_ARRIVAL_NAME` | "He llegado" — verificando reserva | H |

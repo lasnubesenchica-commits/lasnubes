@@ -2436,6 +2436,11 @@ function _botAdminApprove(adminPhone, reservaId) {
           sendWhatsAppText(adminPhone, '⚠️ Reserva ' + reservaId + ' marcada PAGA pero falló envío al cliente: ' + err.message);
         }
       }
+      // Elevar el estado de la conversación: PENDING_REVIEW → CONFIRMED
+      try {
+        const conv = _getConv(reservation.telefono.toString());
+        if (conv) _saveConv(reservation.telefono.toString(), 'CONFIRMED', conv.context, conv.name);
+      } catch(_) {}
       return;
     }
   }
@@ -2457,6 +2462,11 @@ function _botAdminReject(adminPhone, reservaId) {
       sendWhatsAppText(adminPhone, '❌ Reserva ' + reservaId + ' rechazada y cancelada en el sheet.');
       try {
         sendWhatsAppText(clientPhone, '😔 Hubo un inconveniente con tu reserva. En breve te contactamos para resolverlo.');
+      } catch(_) {}
+      // Bajar el estado de la conversación: PENDING_REVIEW → REJECTED
+      try {
+        const conv = _getConv((clientPhone || '').toString());
+        if (conv) _saveConv((clientPhone || '').toString(), 'REJECTED', conv.context, conv.name);
       } catch(_) {}
       return;
     }

@@ -2076,6 +2076,8 @@
           <option value="AWAITING_EMAIL">Email</option>
           <option value="AWAITING_NAME">Nombre</option>
           <option value="PENDING_REVIEW">Pendiente revisión</option>
+          <option value="CONFIRMED">Confirmada ✓</option>
+          <option value="REJECTED">Rechazada</option>
           <option value="ARRIVED">Llegó ✓</option>
           <option value="HUMAN_HANDOFF">Handoff</option>
           <option value="SHOWED_INFO">Vio info</option>
@@ -2808,10 +2810,10 @@ let _botSeenPhones = null;   // null = aún no se hizo la 1ra carga
 let _botNewPhones = new Set();
 
 // Conjuntos de estados para el funnel y filtros por stat.
-const BOT_COTIZARON_STEPS  = ['SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES','CHOOSING_DECOR','CHOOSING_CLOSE','OFFERING_PAYMENT','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','ARRIVED','PENDING_HUMAN_BOOKING'];
+const BOT_COTIZARON_STEPS  = ['SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES','CHOOSING_DECOR','CHOOSING_CLOSE','OFFERING_PAYMENT','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','CONFIRMED','ARRIVED','PENDING_HUMAN_BOOKING'];
 const BOT_CIERRE_STEPS     = ['CHOOSING_DECOR','CHOOSING_CLOSE'];                 // eligiendo cómo cerrar
 const BOT_PAGANDO_STEPS    = ['OFFERING_PAYMENT','AWAITING_VOUCHER_RETRY'];       // en formas de pago / voucher
-const BOT_RESERVARON_STEPS = ['PENDING_REVIEW','PENDING_HUMAN_BOOKING'];          // pre-reserva creada (apruebas) + cierre asistido con Josh
+const BOT_RESERVARON_STEPS = ['PENDING_REVIEW','CONFIRMED','PENDING_HUMAN_BOOKING']; // pre-reserva creada (apruebas) → confirmada + cierre asistido con Josh
 let _botStatFilter = null;  // null | 'cotizaron' | 'cierre' | 'pagando' | 'reservaron'
 
 function setBotStatFilter(which) {
@@ -2902,6 +2904,8 @@ function _botStepBadge(step) {
     'AWAITING_EMAIL':         { color: '#6a4f9d', text: 'Email' },
     'AWAITING_NAME':          { color: '#6a4f9d', text: 'Nombre' },
     'PENDING_REVIEW':         { color: '#d4a017', text: 'Pendiente revisión' },
+    'CONFIRMED':              { color: '#2e7d32', text: 'Confirmada ✓' },
+    'REJECTED':               { color: '#c0392b', text: 'Rechazada' },
     'PENDING_HUMAN_BOOKING':  { color: '#d4a017', text: 'Humano coord.' },
     'AWAITING_ARRIVAL_NAME':  { color: '#a67c52', text: 'He llegado · nombre' },
     'ARRIVED':                { color: '#2e7d32', text: 'Llegó ✓' },
