@@ -154,7 +154,7 @@ function processInboundMessage(msg, contactName) {
         '📱 +' + from + '\n\n' +
         'Ha consultado:\n_"' + firstMsg + '"_\n\n' +
         '👀 Ver conversación:\n' + dashUrl;
-      sendWhatsAppText(BOT_ADMIN_PHONE, adminMsg);
+      _botAdminAlert('nuevoCliente', adminMsg);
       logDebugEntry('admin-new-lead-notif', { from: from, name: name });
     } catch(notifErr) {
       logDebugEntry('admin-new-lead-notif-FAIL', { error: notifErr.message });

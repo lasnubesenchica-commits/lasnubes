@@ -1113,7 +1113,7 @@ function botHandleMessage(from, text, contactName, kind) {
         if (cabinName) adminMsg += '\n🏡 ' + cabinName;
         if (fechas)    adminMsg += '\n📅 ' + fechas;
         if (personas)  adminMsg += '\n👥 ' + personas;
-        sendWhatsAppText('50769812266', adminMsg);
+        _botAdminAlert('handoff', adminMsg);
       } catch(_) {}
       return;
     }
@@ -1270,10 +1270,8 @@ function botHandleMessage(from, text, contactName, kind) {
         'https://wa.me/50769812266?text=' + encodeURIComponent('Hola, quiero coordinar un cambio o cancelación de mi reserva.')
       );
     } catch(_) {}
-    try {
-      sendWhatsAppText('50769812266',
-        '⚠️ Cambio/cancelación pedido vía Agente:\n👤 ' + (contactName || from) + '\n📱 +' + from + '\nMensaje: "' + (text || '').slice(0, 200) + '"');
-    } catch(_) {}
+    _botAdminAlert('handoff',
+      '⚠️ Cambio/cancelación pedido vía Agente:\n👤 ' + (contactName || from) + '\n📱 +' + from + '\nMensaje: "' + (text || '').slice(0, 200) + '"');
     _saveConv(from, 'HUMAN_HANDOFF', conv.context || {}, contactName);
     return;
   }
@@ -1901,6 +1899,90 @@ function _botHandleCheckoutDone(from, contactName, reservaId) {
 
 const BOT_ADMIN_PHONE = '50769812266';
 
+// ─── Config de alertas al admin (toggleable desde el dashboard) ──────
+// Cada categoría puede prenderse/apagarse. Se guarda como JSON en la
+// Script Property BOT_ALERTS_CONFIG. Las alertas críticas (pre-reserva
+// para aprobar, portón de check-out) NO son toggleables y van siempre.
+const BOT_ALERT_DEFAULTS = {
+  nuevoCliente:      true,   // 🔔 el Agente empieza a atender un nuevo lead
+  eligiendoCierre:   true,   // 🤝 el cliente llega a elegir cómo cerrar
+  pagando:           true,   // 💳 el cliente entró a formas de pago
+  handoff:           true,   // 🙋 derivado a humano (agente / asistido / insiste / cambio)
+  seguimientoDiario: true    // 📋 resumen diario 8am de leads para dar seguimiento
+};
+
+function _botGetAlertConfig() {
+  try {
+    const raw   = PropertiesService.getScriptProperties().getProperty('BOT_ALERTS_CONFIG');
+    const saved = raw ? JSON.parse(raw) : {};
+    return Object.assign({}, BOT_ALERT_DEFAULTS, saved);
+  } catch(_) { return Object.assign({}, BOT_ALERT_DEFAULTS); }
+}
+
+function _botSetAlertConfig(partial) {
+  const merged = Object.assign(_botGetAlertConfig(), partial || {});
+  // Solo persistir las claves conocidas (coerce a boolean).
+  const clean = {};
+  Object.keys(BOT_ALERT_DEFAULTS).forEach(k => { clean[k] = merged[k] !== false; });
+  PropertiesService.getScriptProperties().setProperty('BOT_ALERTS_CONFIG', JSON.stringify(clean));
+  return clean;
+}
+
+// Envía una alerta al admin solo si la categoría está activa.
+// categoria: clave de BOT_ALERT_DEFAULTS, o null/'' para alertas siempre-activas.
+function _botAdminAlert(categoria, mensaje, buttons) {
+  if (categoria) {
+    const cfg = _botGetAlertConfig();
+    if (cfg[categoria] === false) return false;   // silenciada por el admin
+  }
+  try {
+    if (buttons && buttons.length) sendWhatsAppButtons(BOT_ADMIN_PHONE, mensaje, buttons);
+    else sendWhatsAppText(BOT_ADMIN_PHONE, mensaje);
+    return true;
+  } catch(e) {
+    logDebugEntry('bot-admin-alert-FAIL', { categoria: categoria || '(siempre)', error: e.message });
+    return false;
+  }
+}
+
+// Alerta: el cliente llegó a elegir cómo cerrar (decoración / autoservicio vs asistido).
+function _botNotifyEligiendoCierre(from, contactName, ctx) {
+  try {
+    const cabinName = BOT_CABIN_NAMES[ctx.cabin] || (ctx.cabin || '?');
+    const dts       = ctx.dates;
+    const fechas    = (dts && dts.checkin) ? (_botFmtFecha(dts.checkin) + ' → ' + _botFmtFecha(dts.checkout)) : '?';
+    const personas  = ctx.personas || '?';
+    const dashUrl   = 'https://lasnubes.cloud/dashboard.html?admin=1#bot:' + from;
+    _botAdminAlert('eligiendoCierre',
+      '🤝 *Cliente eligiendo cómo cerrar*\n\n' +
+      '👤 ' + (contactName || from) + '\n' +
+      '📱 +' + from + '\n' +
+      '🏡 ' + cabinName + '\n' +
+      '📅 ' + fechas + '\n' +
+      '👥 ' + personas + '\n\n' +
+      '_Está a un paso de reservar. 👀 ' + dashUrl + '_');
+  } catch(_) {}
+}
+
+// Alerta: el cliente entró a formas de pago (autoservicio).
+function _botNotifyPagando(from, contactName, ctx) {
+  try {
+    const cabinName = BOT_CABIN_NAMES[ctx.cabin] || (ctx.cabin || '?');
+    const dts       = ctx.dates;
+    const fechas    = (dts && dts.checkin) ? (_botFmtFecha(dts.checkin) + ' → ' + _botFmtFecha(dts.checkout)) : '?';
+    const precioStr = (typeof ctx.precio === 'number') ? ('$' + ctx.precio.toFixed(2)) : '?';
+    const dashUrl   = 'https://lasnubes.cloud/dashboard.html?admin=1#bot:' + from;
+    _botAdminAlert('pagando',
+      '💳 *Cliente en formas de pago*\n\n' +
+      '👤 ' + (contactName || from) + '\n' +
+      '📱 +' + from + '\n' +
+      '🏡 ' + cabinName + '\n' +
+      '📅 ' + fechas + '\n' +
+      '💰 ' + precioStr + '\n\n' +
+      '_Le mostré las formas de pago (autoservicio). 👀 ' + dashUrl + '_');
+  } catch(_) {}
+}
+
 // Camas por cabana (igual que index.html / dashboard)
 const BOT_CABIN_CAMAS = {
   verde: 'La cabaña cuenta con una cama matrimonial queen y un sofá-cama doble.',
@@ -2081,6 +2163,7 @@ function _botAskDecoracion(from, contactName, conv) {
   } catch(_) {
     sendWhatsAppText(from, body + '\n\nEscribe "1" para *con decoración*, "2" para *sin*, o "cancelar".');
   }
+  if (!ctx.cierreAlertSent) { _botNotifyEligiendoCierre(from, contactName, ctx); ctx.cierreAlertSent = true; }
   _saveConv(from, 'CHOOSING_DECOR', ctx, contactName);
 }
 
@@ -2116,7 +2199,9 @@ function _botShowCloseChoice(from, contactName, conv) {
   } catch(_) {
     sendWhatsAppText(from, body + '\n\nEscribe "1" para *Reservar Ahora*, "2" para *Asistido*, o "cancelar".');
   }
-  _saveConv(from, 'CHOOSING_CLOSE', Object.assign({}, ctx, { precio: total }), contactName);
+  const ctxClose = Object.assign({}, ctx, { precio: total });
+  if (!ctxClose.cierreAlertSent) { _botNotifyEligiendoCierre(from, contactName, ctxClose); ctxClose.cierreAlertSent = true; }
+  _saveConv(from, 'CHOOSING_CLOSE', ctxClose, contactName);
 }
 
 // Autoservicio: muestra formas de pago y pide el comprobante.
@@ -2137,7 +2222,9 @@ function _botOfferPayment(from, contactName, conv) {
   } catch(_) {
     sendWhatsAppText(from, body + '\n\nSi quieres cancelar, escribe "cancelar".');
   }
-  _saveConv(from, 'OFFERING_PAYMENT', conv.context, contactName);
+  const ctxPay = conv.context || {};
+  if (!ctxPay.pagandoAlertSent) { _botNotifyPagando(from, contactName, ctxPay); ctxPay.pagandoAlertSent = true; }
+  _saveConv(from, 'OFFERING_PAYMENT', ctxPay, contactName);
 }
 
 // Asistido: conecta con Josh para cerrar + alerta al admin (lead caliente).
@@ -2163,19 +2250,17 @@ function _botCloseWithAsesor(from, contactName, conv) {
   } catch(_) {
     sendWhatsAppText(from, 'Escríbele directo:\nhttps://wa.me/50769812266');
   }
-  try {
-    const precioStr = (typeof ctx.precio === 'number') ? ('$' + ctx.precio.toFixed(2)) : '?';
-    sendWhatsAppText(BOT_ADMIN_PHONE,
-      '🔥 *Lead listo para cerrar (asistido)*\n\n' +
-      '👤 ' + (contactName || from) + '\n' +
-      '📱 +' + from + '\n' +
-      '🏡 ' + (cabinName || '?') + '\n' +
-      '📅 ' + (fechas || '?') + '\n' +
-      '👥 ' + (personas || '?') + '\n' +
-      (deco ? '🎉 Con decoración especial (+$' + BOT_DECOR_FEE + ')\n' : '') +
-      '💰 ' + precioStr + '\n\n' +
-      '_El cliente eligió "Reservar Asistido" tras cotizar._');
-  } catch(_) {}
+  const precioStr = (typeof ctx.precio === 'number') ? ('$' + ctx.precio.toFixed(2)) : '?';
+  _botAdminAlert('handoff',
+    '🔥 *Lead listo para cerrar (asistido)*\n\n' +
+    '👤 ' + (contactName || from) + '\n' +
+    '📱 +' + from + '\n' +
+    '🏡 ' + (cabinName || '?') + '\n' +
+    '📅 ' + (fechas || '?') + '\n' +
+    '👥 ' + (personas || '?') + '\n' +
+    (deco ? '🎉 Con decoración especial (+$' + BOT_DECOR_FEE + ')\n' : '') +
+    '💰 ' + precioStr + '\n\n' +
+    '_El cliente eligió "Reservar Asistido" tras cotizar._');
   _saveConv(from, 'PENDING_HUMAN_BOOKING', ctx, contactName);
 }
 
@@ -2207,15 +2292,13 @@ function _botHandleDateInsistence(from, contactName, conv) {
   } catch(_) {
     sendWhatsAppText(from, 'Escríbele directo:\nhttps://wa.me/50769812266');
   }
-  try {
-    sendWhatsAppText(BOT_ADMIN_PHONE,
-      '⭐ *Cliente insiste en fecha sin disponibilidad*\n\n' +
-      '👤 ' + (contactName || from) + '\n' +
-      '📱 +' + from + '\n' +
-      '📅 ' + (fechas || '?') + '\n' +
-      '👥 ' + (personas || '?') + '\n\n' +
-      '_Quiere esa fecha específica. Ver si se puede acomodar (lista de espera / mover otra reserva)._');
-  } catch(_) {}
+  _botAdminAlert('handoff',
+    '⭐ *Cliente insiste en fecha sin disponibilidad*\n\n' +
+    '👤 ' + (contactName || from) + '\n' +
+    '📱 +' + from + '\n' +
+    '📅 ' + (fechas || '?') + '\n' +
+    '👥 ' + (personas || '?') + '\n\n' +
+    '_Quiere esa fecha específica. Ver si se puede acomodar (lista de espera / mover otra reserva)._');
   _saveConv(from, 'HUMAN_HANDOFF', ctx, contactName);
 }
 

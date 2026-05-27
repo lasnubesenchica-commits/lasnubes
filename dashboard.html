@@ -2063,6 +2063,14 @@
           </button>
           <div id="botQuoteCalBody" style="display:none;padding:0 12px 12px;"></div>
         </div>
+        <!-- Configuración de alertas que el Agente manda al admin por WhatsApp -->
+        <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden;">
+          <button id="botAlertsToggle" onclick="toggleBotAlerts()" style="width:100%;box-sizing:border-box;padding:10px 12px;font-size:13px;font-weight:600;border:none;background:var(--card-bg, #fff);cursor:pointer;display:flex;align-items:center;justify-content:space-between;font-family:inherit;color:var(--text);">
+            <span>⚙️ Alertas del Agente</span>
+            <span id="botAlertsChevron">▾</span>
+          </button>
+          <div id="botAlertsBody" style="display:none;padding:10px 12px 12px;"></div>
+        </div>
         <input id="botSearch" placeholder="🔍 Buscar nombre o teléfono..." style="width:100%;box-sizing:border-box;padding:10px 12px;font-size:14px;border:1px solid var(--border);border-radius:8px;background:var(--bg);margin-bottom:8px;font-family:inherit;" oninput="renderBotList()">
         <select id="botStepFilter" onchange="renderBotList()" style="width:100%;box-sizing:border-box;padding:9px 10px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--bg);margin-bottom:12px;font-family:inherit;">
           <option value="">Todos los estados</option>
@@ -2820,6 +2828,73 @@ function setBotStatFilter(which) {
   _botStatFilter = (_botStatFilter === which) ? null : which;
   renderBotStats();
   renderBotList();
+}
+
+// ─── Config de alertas del Agente (toggles) ────────────────────────
+const BOT_ALERT_META = [
+  { key:'nuevoCliente',      icon:'🔔', label:'Nuevo cliente atendido',  desc:'Cuando el Agente empieza a atender un lead nuevo' },
+  { key:'eligiendoCierre',   icon:'🤝', label:'Eligiendo cierre',        desc:'Cuando el cliente llega a elegir cómo reservar' },
+  { key:'pagando',           icon:'💳', label:'Cliente pagando',         desc:'Cuando entra a formas de pago (autoservicio)' },
+  { key:'handoff',           icon:'🙋', label:'Derivado a humano',       desc:'Pide agente, asistido, insiste o cambio/cancelación' },
+  { key:'seguimientoDiario', icon:'📋', label:'Resumen diario (8am)',    desc:'Lista de leads de ayer que quedaron a un paso de reservar' }
+];
+let _botAlertConfig    = null;   // null = aún no cargado
+let _botAlertsExpanded = false;
+
+function toggleBotAlerts() {
+  _botAlertsExpanded = !_botAlertsExpanded;
+  document.getElementById('botAlertsBody').style.display = _botAlertsExpanded ? 'block' : 'none';
+  document.getElementById('botAlertsChevron').textContent = _botAlertsExpanded ? '▴' : '▾';
+  if (_botAlertsExpanded && _botAlertConfig === null) loadBotAlertConfig();
+}
+
+async function loadBotAlertConfig() {
+  const body = document.getElementById('botAlertsBody');
+  if (!body) return;
+  body.innerHTML = '<div style="padding:8px 0;color:var(--text-muted);font-size:13px;">Cargando…</div>';
+  try {
+    const res  = await fetch(SHEETS_API_URL + '?action=getBotAlertConfig');
+    const data = await res.json();
+    _botAlertConfig = (data && data.config) || {};
+    renderBotAlerts(_botAlertConfig);
+  } catch(e) {
+    body.innerHTML = '<div style="padding:8px 0;color:#c0392b;font-size:13px;">Error cargando alertas: ' + e.message + '</div>';
+  }
+}
+
+function renderBotAlerts(config) {
+  const body = document.getElementById('botAlertsBody');
+  if (!body) return;
+  body.innerHTML =
+    '<p style="font-size:12px;color:var(--text-muted);margin:0 0 8px;">Prende o apaga las notificaciones que el Agente te manda por WhatsApp.</p>' +
+    BOT_ALERT_META.map(m => {
+      const on = config[m.key] !== false;
+      return '<label style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer;">' +
+        '<input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="setBotAlert(\'' + m.key + '\', this.checked)" style="width:20px;height:20px;flex:none;accent-color:#4a7c5f;cursor:pointer;">' +
+        '<span style="flex:1;line-height:1.35;">' +
+          '<span style="font-size:14px;font-weight:600;">' + m.icon + ' ' + m.label + '</span><br>' +
+          '<span style="font-size:12px;color:var(--text-muted);">' + m.desc + '</span>' +
+        '</span></label>';
+    }).join('') +
+    '<div id="botAlertsStatus" style="font-size:12px;color:var(--text-muted);margin-top:8px;min-height:16px;"></div>';
+}
+
+async function setBotAlert(key, value) {
+  if (_botAlertConfig) _botAlertConfig[key] = value;
+  const status = document.getElementById('botAlertsStatus');
+  if (status) status.textContent = 'Guardando…';
+  try {
+    const res  = await fetch(SHEETS_API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'saveBotAlertConfig', config: { [key]: value } })
+    });
+    const data = await res.json();
+    if (data && data.config) _botAlertConfig = data.config;
+    if (status) status.textContent = '✓ Guardado';
+    setTimeout(() => { const s = document.getElementById('botAlertsStatus'); if (s) s.textContent = ''; }, 1800);
+  } catch(e) {
+    if (status) status.textContent = '⚠️ No se pudo guardar: ' + e.message;
+  }
 }
 
 async function loadBotData() {

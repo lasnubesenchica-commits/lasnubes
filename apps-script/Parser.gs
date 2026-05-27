@@ -986,6 +986,10 @@ function doGet(e) {
     if (action === 'getDebugLog')       return handleGetDebugLog(e);
     if (action === 'getConversaciones') return handleGetConversaciones(e);
     if (action === 'getMensajes')       return handleGetMensajes(e);
+    if (action === 'getBotAlertConfig')
+      return ContentService
+        .createTextOutput(JSON.stringify({ ok: true, config: _botGetAlertConfig() }))
+        .setMimeType(ContentService.MimeType.JSON);
 
     // ── GET RESERVATIONS (default) ────────────────────────────
     const sheet = getOrCreateSheet();
@@ -1638,6 +1642,12 @@ function doPost(e) {
 
     // ── BOT CRM ───────────────────────────────────────────────
     if (action === 'deleteConversation') return handleDeleteConversation(payload);
+    if (action === 'saveBotAlertConfig') {
+      const cfg = _botSetAlertConfig(payload.config || {});
+      return ContentService
+        .createTextOutput(JSON.stringify({ ok: true, config: cfg }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
 
     // ── SEND WHATSAPP ─────────────────────────────────────────
     if (action === 'sendWAConfirmacion') {

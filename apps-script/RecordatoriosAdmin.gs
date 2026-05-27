@@ -413,3 +413,79 @@ function _testConfirmacionAMiNumero() {
   Logger.log('confirmacion: ' + JSON.stringify(r));
   return r;
 }
+
+// ─── Seguimiento diario de leads (8am) ───────────────────────────────
+// Resumen de las conversaciones que quedaron en "eligiendo cierre" o
+// "pagando" el día anterior, para que el admin les dé seguimiento personal
+// y trate de cerrar la venta. Se manda como texto de sesión al admin.
+const _SEGUIMIENTO_STEPS = {
+  CHOOSING_DECOR:         '🤝 Eligiendo decoración',
+  CHOOSING_CLOSE:         '🤝 Eligiendo cierre',
+  OFFERING_PAYMENT:       '💳 Pagando (formas de pago)',
+  AWAITING_VOUCHER_RETRY: '💳 Reintentando voucher'
+};
+
+function enviarSeguimientoDiario() {
+  if (_botGetAlertConfig().seguimientoDiario === false) {
+    logDebugEntry('seguimiento-diario', { skip: 'desactivado' });
+    return;
+  }
+  const ss    = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName('Conversaciones');
+  if (!sheet || sheet.getLastRow() < 2) return;
+
+  // "Ayer" en zona horaria de Panamá (yyyy-MM-dd).
+  const ayer    = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const ayerStr = Utilities.formatDate(ayer, BOT_TZ, 'yyyy-MM-dd');
+
+  const data  = sheet.getDataRange().getValues();
+  const leads = [];
+  for (let i = 1; i < data.length; i++) {
+    const phone = (data[i][0] || '').toString();
+    const step  = (data[i][1] || '').toString();
+    if (!phone || !_SEGUIMIENTO_STEPS[step]) continue;
+    const lastUpd = (data[i][2] || '').toString();      // "yyyy-MM-dd HH:mm:ss"
+    if (lastUpd.slice(0, 10) !== ayerStr) continue;     // solo del día anterior
+    let ctx = {};
+    try { ctx = data[i][3] ? JSON.parse(data[i][3]) : {}; } catch(_) {}
+    leads.push({ phone: phone, step: step, name: (data[i][4] || '').toString(), ctx: ctx });
+  }
+
+  if (!leads.length) {
+    logDebugEntry('seguimiento-diario', { ayer: ayerStr, leads: 0 });
+    return;   // nada que reportar → no molestamos al admin
+  }
+
+  let msg = '📋 *Seguimiento de leads — ' + _botFmtFecha(ayerStr) + '*\n' +
+            'Quedaron a un paso de reservar ayer. Escríbeles para cerrar la venta 👇\n';
+  leads.forEach((l, idx) => {
+    const cabin  = BOT_CABIN_NAMES[l.ctx.cabin] || l.ctx.cabin || '';
+    const dts    = l.ctx.dates;
+    const fechas = (dts && dts.checkin) ? (_botFmtFecha(dts.checkin) + ' → ' + _botFmtFecha(dts.checkout)) : '';
+    msg += '\n' + (idx + 1) + '. *' + (l.name || ('+' + l.phone)) + '*\n' +
+           '   ' + _SEGUIMIENTO_STEPS[l.step] + '\n' +
+           (cabin  ? '   🏡 ' + cabin + '\n'  : '') +
+           (fechas ? '   📅 ' + fechas + '\n' : '') +
+           '   💬 https://wa.me/' + l.phone + '\n';
+  });
+  msg += '\n_' + leads.length + ' lead' + (leads.length === 1 ? '' : 's') + ' para seguimiento._';
+
+  try { sendWhatsAppText(BOT_ADMIN_PHONE, msg); }
+  catch(e) { logDebugEntry('seguimiento-diario-FAIL', { error: e.message }); }
+  logDebugEntry('seguimiento-diario', { ayer: ayerStr, leads: leads.length });
+}
+
+// Instala (o reinstala) el trigger diario 8am del resumen de seguimiento.
+// Correr UNA VEZ desde el editor.
+function instalarTriggerSeguimiento() {
+  const triggers = ScriptApp.getProjectTriggers();
+  for (const t of triggers) {
+    if (t.getHandlerFunction() === 'enviarSeguimientoDiario') ScriptApp.deleteTrigger(t);
+  }
+  ScriptApp.newTrigger('enviarSeguimientoDiario')
+    .timeBased().everyDays(1).atHour(8).inTimezone(BOT_TZ).create();
+  Logger.log('✓ Trigger de seguimiento instalado: 8am diario → enviarSeguimientoDiario');
+}
+
+// Test manual desde el editor: arma y envía el resumen de AYER al admin.
+function _testSeguimientoDiario() { return enviarSeguimientoDiario(); }
