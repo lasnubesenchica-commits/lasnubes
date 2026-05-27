@@ -88,6 +88,37 @@ function corregirEstadoConversacion(phone, nuevoStep) {
 // Yessickam era una consulta de grupo (no un cierre) — sacarla del conteo.
 function _fixYessickam() { return corregirEstadoConversacion('50762879298', 'HUMAN_HANDOFF'); }
 
+// Corrige el estado buscando la conversación por nombre (substring, sin
+// distinguir mayúsculas). Si hay 0 o más de 1 coincidencia, NO toca nada y
+// lo registra en el log para que elijas el teléfono manualmente.
+function corregirEstadoPorNombre(nombreParcial, nuevoStep) {
+  const sheet = _convSheet();
+  const data  = sheet.getDataRange().getValues();
+  const q = (nombreParcial || '').toString().toLowerCase().trim();
+  if (!q) { Logger.log('Falta el nombre a buscar.'); return; }
+  const matches = [];
+  for (let i = 1; i < data.length; i++) {
+    const name = (data[i][4] || '').toString().toLowerCase();
+    if (name.indexOf(q) !== -1) {
+      matches.push({ phone: (data[i][0] || '').toString(), name: data[i][4], step: data[i][1] });
+    }
+  }
+  if (matches.length === 0) { Logger.log('Sin coincidencias para "' + nombreParcial + '".'); return; }
+  if (matches.length > 1) {
+    Logger.log('⚠️ ' + matches.length + ' coincidencias para "' + nombreParcial + '": ' +
+      matches.map(m => m.name + ' (' + m.phone + ', ' + m.step + ')').join(' | ') +
+      '. No se tocó nada — corré corregirEstadoConversacion(telefono, estado) con el correcto.');
+    return;
+  }
+  corregirEstadoConversacion(matches[0].phone, nuevoStep);
+}
+
+// ── Wrappers sin parámetros (ejecutables directo desde el editor) ────
+// Yavy: primera venta automática del Agente → confirmada.
+function fixYavy()      { return corregirEstadoPorNombre('yav', 'CONFIRMED'); }
+// Yessickam: era consulta de grupo → fuera del conteo de reservas.
+function fixYessickam() { return corregirEstadoConversacion('50762879298', 'HUMAN_HANDOFF'); }
+
 // ─── Keywords y heuristicas ─────────────────────────────────────────
 function _isHumanRequest(text) {
   const t = (text || '').toLowerCase();
