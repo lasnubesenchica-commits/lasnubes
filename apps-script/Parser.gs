@@ -1237,6 +1237,10 @@ function doPost(e) {
         throw appendErr;
       }
 
+      // Si el teléfono matchea un lead del Agente que estaba cerrando, marcar
+      // su conversación como CONFIRMED (ahora sí existe la reserva → cuenta).
+      try { _botConfirmConversationByPhone(r.telefono); } catch(_) {}
+
       if (payload.fechaAnterior) {
         const fa   = payload.fechaAnterior;
         const nota = '📅 Entrada: ' + fa.checkin + ' → ' + r.checkin
