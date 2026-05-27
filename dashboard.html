@@ -3252,6 +3252,22 @@ function closeBotDetail() {
   renderBotList();
 }
 
+// Refresca estado + mensajes de la conversación abierta. El live-poll se pausa
+// mientras el sheet está abierto, así que este es el refresh manual.
+async function refreshBotDetail(phone) {
+  try {
+    const res = await fetch(SHEETS_API_URL + '?action=getConversaciones');
+    const data = await res.json();
+    if (data && data.conversations) {
+      _botConvs = data.conversations;
+      _botSeenPhones = new Set(_botConvs.map(c => c.phone));
+      renderBotStats();
+      if (_botQuoteCalExpanded) renderBotQuoteCal();
+    }
+  } catch(_) {}
+  selectBotConv(phone);
+}
+
 async function deleteBotConv(phone, name) {
   if (!confirm('¿Borrar conversación con ' + (name || phone) + '?\n\nSe eliminará la fila de Conversaciones y TODOS los mensajes del historial.\nEsta acción no se puede deshacer.')) return;
   try {
@@ -3297,6 +3313,7 @@ function renderBotDetail(conv, messages) {
         '<div style="font-size:11px;color:var(--text-muted);">+' + conv.phone + ' · ' + _botFmtTime(conv.lastUpdated) + '</div>' +
       '</div>' +
       '<div style="display:flex;gap:6px;flex-shrink:0;">' +
+        '<button onclick="refreshBotDetail(\'' + conv.phone + '\')" title="Refrescar conversación" style="padding:7px 10px;font-size:12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-weight:600;font-family:inherit;">↻</button>' +
         '<a href="' + waLink + '" target="_blank" style="padding:7px 10px;font-size:12px;background:#25d366;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">💬</a>' +
         '<button onclick="deleteBotConv(\'' + conv.phone + '\', \'' + (conv.name || '').replace(/[\\\'"]/g, '') + '\')" style="padding:7px 10px;font-size:12px;background:#c0392b;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-family:inherit;">🗑️</button>' +
       '</div>' +
