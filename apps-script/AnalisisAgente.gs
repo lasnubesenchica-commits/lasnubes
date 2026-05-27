@@ -25,6 +25,8 @@ const _FUNNEL_STAGES = {
   AWAITING_EMAIL:         'F. Dando datos (email)',
   AWAITING_NAME:          'F. Dando datos (nombre)',
   PENDING_REVIEW:         'G. Pre-reserva creada',
+  CONFIRMED:              'G. Reserva confirmada ✓',
+  REJECTED:               'X. Pre-reserva rechazada',
   ARRIVED:                'H. Llegó a la cabaña',
   HUMAN_HANDOFF:          'X. Derivado a humano',
   PENDING_HUMAN_BOOKING:  'X. Derivado a humano (grupo)',
@@ -56,10 +58,10 @@ function analizarAgente() {
       stepCount[step] = (stepCount[step] || 0) + 1;
       const stage = _FUNNEL_STAGES[step] || ('? ' + step);
       stageCount[stage] = (stageCount[stage] || 0) + 1;
-      if (['AWAITING_DATES','SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES','NO_AVAILABILITY','CHOOSING_DECOR','CHOOSING_CLOSE','OFFERING_PAYMENT','AWAITING_VOUCHER_RETRY','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','ARRIVED'].indexOf(step) !== -1) conGanasDeFecha++;
-      if (['SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES','NO_AVAILABILITY','CHOOSING_DECOR','CHOOSING_CLOSE','OFFERING_PAYMENT','AWAITING_VOUCHER_RETRY','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','ARRIVED'].indexOf(step) !== -1) cotizaron++;
-      if (['CHOOSING_DECOR','CHOOSING_CLOSE','OFFERING_PAYMENT','AWAITING_VOUCHER_RETRY','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','ARRIVED'].indexOf(step) !== -1) avanzaronPago++;
-      if (['PENDING_REVIEW','ARRIVED'].indexOf(step) !== -1) preReservas++;
+      if (['AWAITING_DATES','SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES','NO_AVAILABILITY','CHOOSING_DECOR','CHOOSING_CLOSE','OFFERING_PAYMENT','AWAITING_VOUCHER_RETRY','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','CONFIRMED','ARRIVED'].indexOf(step) !== -1) conGanasDeFecha++;
+      if (['SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES','NO_AVAILABILITY','CHOOSING_DECOR','CHOOSING_CLOSE','OFFERING_PAYMENT','AWAITING_VOUCHER_RETRY','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','CONFIRMED','ARRIVED'].indexOf(step) !== -1) cotizaron++;
+      if (['CHOOSING_DECOR','CHOOSING_CLOSE','OFFERING_PAYMENT','AWAITING_VOUCHER_RETRY','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','CONFIRMED','ARRIVED'].indexOf(step) !== -1) avanzaronPago++;
+      if (['PENDING_REVIEW','CONFIRMED','ARRIVED'].indexOf(step) !== -1) preReservas++;
       if (['HUMAN_HANDOFF','PENDING_HUMAN_BOOKING'].indexOf(step) !== -1) handoffs++;
     }
   }
