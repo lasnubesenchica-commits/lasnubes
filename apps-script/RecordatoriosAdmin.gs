@@ -275,12 +275,12 @@ function enviarRecordatorioLimpieza() {
 }
 
 // ─── Trigger 9am: instrucciones de check-out al huésped que sale hoy ──
-// Envia la plantilla 'instrucciones_checkout' (con boton quick-reply
+// Envia la plantilla 'instruccion_checkout' (con boton quick-reply
 // "Ya me retiré") a cada reserva que sale hoy y tiene teléfono. Al tocar
 // el boton, el Agente avisa al admin (portón) y a Erika (limpieza).
 //
 // REQUISITO de la plantilla en Meta:
-//   - Nombre: instrucciones_checkout · idioma "English" (en)
+//   - Nombre: instruccion_checkout · idioma "Spanish (SPA)" (es_ES)
 //   - Body con variables posicionales {{1}} (nombre) y {{2}} (cabaña)
 //   - 1 boton de Respuesta rápida (ej. "Ya me retiré")
 function enviarRecordatoriosCheckout() {
@@ -297,8 +297,8 @@ function enviarRecordatoriosCheckout() {
     try {
       sendWhatsAppTemplate(
         r.telefono,
-        'instrucciones_checkout',
-        'en',                        // la plantilla quedó registrada como "English"
+        'instruccion_checkout',
+        'es_ES',                     // plantilla registrada como "Spanish (SPA)"
         [firstName, cabinName],      // posicionales: {{1}} nombre, {{2}} cabaña
         null,
         'checkout_' + r.id           // payload del boton quick-reply
@@ -341,7 +341,7 @@ function instalarTriggerLimpieza() {
 }
 
 // Instala (o reinstala) el trigger diario 9am de check-out al huésped.
-// Correr UNA VEZ tras aprobar la plantilla instrucciones_checkout con boton.
+// Correr UNA VEZ tras aprobar la plantilla instruccion_checkout con boton.
 function instalarTriggerCheckout() {
   const triggers = ScriptApp.getProjectTriggers();
   for (const t of triggers) {
@@ -364,8 +364,8 @@ function _testCheckout()          { return enviarRecordatoriosCheckout(); }
 function _testCheckoutAMiNumero() {
   const r = sendWhatsAppTemplate(
     '50769812266',
-    'instrucciones_checkout',
-    'en',
+    'instruccion_checkout',
+    'es_ES',
     ['Josh (PRUEBA)', 'Portal hacia Las Nubes'],
     null,
     'checkout_TEST'
@@ -375,14 +375,17 @@ function _testCheckoutAMiNumero() {
 }
 
 // ─── Tests SEGUROS a tu número (no escriben a clientes) ──────────────
-// Plantillas en español (es). Datos de prueba. Solo para ver el render.
+// Datos de prueba. Solo para ver el render. Envían a 50769812266.
 function _testCheckinAMiNumero() {
-  const r = sendWhatsAppTemplate('50769812266', 'recordatorio_checkin', 'es',
+  const r = sendWhatsAppTemplate('50769812266', 'recordator_entrada', 'es_ES',
     ['María (PRUEBA)', 'Portal hacia Las Nubes', 'vie 5 al dom 7 de junio']);
   Logger.log('checkin: ' + JSON.stringify(r));
   return r;
 }
 
+// NOTA: las plantillas 'recordatorio_saldo' y 'referido_postestadia' NO están
+// activas en Meta (el usuario se quedó solo con 3). Estos tests fallarán con
+// "template name does not exist" hasta que se aprueben.
 function _testSaldoAMiNumero() {
   const r = sendWhatsAppTemplate('50769812266', 'recordatorio_saldo', 'es',
     ['María (PRUEBA)', 'Portal hacia Las Nubes', 'vie 5 al dom 7 de junio', '90.00']);
