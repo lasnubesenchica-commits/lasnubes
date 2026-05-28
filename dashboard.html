@@ -3015,8 +3015,9 @@ function _botWaUrl(c) {
     if (isNaN(d)) return '';
     return d.getDate() + ' de ' + MESES[d.getMonth()];
   };
-  // Primer nombre, sin emojis ni símbolos.
-  let nombre = (c.name || '').replace(/[^\p{L}\p{M}\s'.-]/gu, '').trim().split(/\s+/)[0] || '';
+  // Primer nombre, sin emojis ni símbolos. Coerce a string por si Sheets
+  // devolvió un nombre numérico como Number (ej. contacto "12345").
+  let nombre = String(c.name || '').replace(/[^\p{L}\p{M}\s'.-]/gu, '').trim().split(/\s+/)[0] || '';
   const saludo = nombre ? 'Hola ' + nombre : 'Hola';
 
   const CABIN_NAMES = { verde: 'Paseo por Las Nubes', azul: 'Portal hacia Las Nubes', lila: 'Puente entre Las Nubes' };
@@ -3177,7 +3178,7 @@ function renderBotList() {
   const stepFilter = document.getElementById('botStepFilter')?.value || '';
   let filtered = _botConvs.slice();
   if (search) {
-    filtered = filtered.filter(c => (c.name || '').toLowerCase().includes(search) || c.phone.includes(search));
+    filtered = filtered.filter(c => String(c.name || '').toLowerCase().includes(search) || String(c.phone || '').includes(search));
   }
   if (stepFilter) {
     filtered = filtered.filter(c => c.step === stepFilter);
