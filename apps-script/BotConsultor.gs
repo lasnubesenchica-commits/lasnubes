@@ -118,6 +118,9 @@ function corregirEstadoPorNombre(nombreParcial, nuevoStep) {
 function fixYavy()      { return corregirEstadoPorNombre('yav', 'CONFIRMED'); }
 // Yessickam: era consulta de grupo → fuera del conteo de reservas.
 function fixYessickam() { return corregirEstadoConversacion('50762879298', 'HUMAN_HANDOFF'); }
+// Yaviletzy: ya tenía reserva confirmada y al tocar "Consultas y cambios"
+// el bot la mandó (incorrectamente) a HUMAN_HANDOFF. Volver a CONFIRMED.
+function fixYaviletzy() { return corregirEstadoConversacion('50766866405', 'CONFIRMED'); }
 
 // Estados de "intención de reserva": el lead está cerrando pero todavía no
 // hay reserva ingresada en el sistema.
@@ -325,8 +328,8 @@ function _botSendCabinPhotos(from, contactName, cabinKey) {
 function _botHandleAccesoQuery(from, contactName, text) {
   const t = (text || '').toLowerCase();
 
-  // Sin auto / transporte público / bus / Albrook
-  if (/\b(sin\s+(auto|carro|veh[ií]culo|movilidad)|no\s+tengo\s+(auto|carro|veh[ií]culo|carro)|transporte\s+p[uú]blic|en\s+bus\b|\bbus\b|autob[uú]s|albrook|terminal)\b/.test(t)) {
+  // Sin auto / transporte / bus / Albrook / traslado / pickup
+  if (/\b(sin\s+(auto|carro|veh[ií]culo|movilidad)|no\s+tengo\s+(auto|carro|veh[ií]culo|carro)|transporte|traslado|shuttle|pickup|en\s+bus\b|\bbus\b|autob[uú]s|albrook|terminal|recogida|nos\s+recog|me\s+recog)\b/.test(t)) {
     sendWhatsAppText(from,
       '🚌 *Cómo llegar sin auto*\n\n' +
       'Desde la terminal de *Albrook* podés tomar cualquier bus hacia el interior y bajarte en el *Pío Pío de Bejuco*. Ahí te recogemos y trasladamos a la cabaña, ida y vuelta, por *$20 adicionales* en tu reserva. 🌿\n\n' +
@@ -1925,8 +1928,15 @@ function _botHandleConsultaReserva(from, contactName, reservaId) {
   } catch(_) {
     sendWhatsAppText(from, 'Escribile directo aquí:\nhttps://wa.me/50769812266');
   }
-  _saveConv(from, 'HUMAN_HANDOFF', (reserva && reserva.id) ? { reservaId: reserva.id } : {}, contactName);
-  logDebugEntry('consulta-reserva', { from: from, reservaId: reservaId });
+  // Mantener CONFIRMED/ARRIVED — la reserva sigue siendo válida y debe seguir
+  // contando como venta aunque el cliente toque "Consultas y cambios". Solo
+  // degradar a HUMAN_HANDOFF si el cliente no tenía reserva confirmada.
+  const conv = _getConv(from);
+  const keep = conv && (conv.step === 'CONFIRMED' || conv.step === 'ARRIVED');
+  if (!keep) {
+    _saveConv(from, 'HUMAN_HANDOFF', (reserva && reserva.id) ? { reservaId: reserva.id } : {}, contactName);
+  }
+  logDebugEntry('consulta-reserva', { from: from, reservaId: reservaId, kept: !!keep });
 }
 
 // El huésped tocó "Envíame ubicación" en la plantilla de check-in.
