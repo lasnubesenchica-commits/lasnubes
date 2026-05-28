@@ -25,7 +25,8 @@ const ADMIN_SPECIAL_KEYWORDS = [
   'servicio especial', 'servicio adicional', 'pedido especial',
   'torta', 'pastel', 'cake',
   'flores', 'globos', 'rosas', 'ramo',
-  'aeropuerto', 'vuelo'
+  'aeropuerto', 'vuelo',
+  'cama auxiliar', 'cama adicional', 'cama extra', 'preparar cama', 'cuna'
 ];
 
 function _adminHasSpecialKw(text) {
