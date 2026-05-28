@@ -2897,13 +2897,23 @@ async function setBotAlert(key, value) {
   }
 }
 
+// Sheets devuelve nombres totalmente numéricos como Number (ej. contacto
+// "12345"); coercimos a string acá para que ningún consumidor pueda
+// reventar al hacer .replace/.toLowerCase sobre un Number.
+function _normalizeBotConv(c) {
+  if (!c) return c;
+  if (c.name  != null && typeof c.name  !== 'string') c.name  = String(c.name);
+  if (c.phone != null && typeof c.phone !== 'string') c.phone = String(c.phone);
+  return c;
+}
+
 async function loadBotData() {
   try {
     const list = document.getElementById('botList');
     list.innerHTML = '<div style="text-align:center;padding:30px 12px;color:var(--text-muted);font-size:13px;">Cargando…</div>';
     const res = await fetch(SHEETS_API_URL + '?action=getConversaciones');
     const data = await res.json();
-    _botConvs = (data && data.conversations) || [];
+    _botConvs = ((data && data.conversations) || []).map(_normalizeBotConv);
     // 1ra carga: marcar todos como "vistos" (sin resaltar).
     _botSeenPhones = new Set(_botConvs.map(c => c.phone));
     renderBotStats();
@@ -2929,7 +2939,7 @@ async function botLivePoll() {
   try {
     const res = await fetch(SHEETS_API_URL + '?action=getConversaciones');
     const data = await res.json();
-    const convs = (data && data.conversations) || [];
+    const convs = ((data && data.conversations) || []).map(_normalizeBotConv);
     if (_botSeenPhones === null) { _botSeenPhones = new Set(convs.map(c => c.phone)); }
     // Detectar teléfonos nuevos (no vistos antes)
     const nuevos = convs.filter(c => !_botSeenPhones.has(c.phone)).map(c => c.phone);
@@ -3260,7 +3270,7 @@ async function refreshBotDetail(phone) {
     const res = await fetch(SHEETS_API_URL + '?action=getConversaciones');
     const data = await res.json();
     if (data && data.conversations) {
-      _botConvs = data.conversations;
+      _botConvs = data.conversations.map(_normalizeBotConv);
       _botSeenPhones = new Set(_botConvs.map(c => c.phone));
       renderBotStats();
       if (_botQuoteCalExpanded) renderBotQuoteCal();
