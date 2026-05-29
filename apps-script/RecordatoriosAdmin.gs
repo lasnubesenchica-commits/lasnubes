@@ -93,6 +93,7 @@ function _adminGetMovimientosDia(targetDate) {
       telefono: r[23] || '',
       comentarios: (r[22] || '').toString().trim(),
       tipo: tipo,
+      checkoutExtendido: !!r[28],
       displayCi: displayCi,
       displayCo: displayCo
     };
@@ -295,14 +296,15 @@ function enviarRecordatoriosCheckout() {
     if (r.origin === 'Airbnb') return;        // Airbnb gestiona su propio canal
     const firstName  = (r.name || '').toString().trim().split(/\s+/)[0] || 'amigo';
     const cabinName  = r.cabinName || BOT_CABIN_NAMES[r.cabin] || r.cabin;
+    const checkoutHr = _horaPlantilla(r.tipo, 'checkout', r.checkoutExtendido);
     try {
       sendWhatsAppTemplate(
         r.telefono,
         'instruccion_checkout',
-        'es_ES',                     // plantilla registrada como "Spanish (SPA)"
-        [firstName, cabinName],      // posicionales: {{1}} nombre, {{2}} cabaña
+        'es_ES',                                 // plantilla registrada como "Spanish (SPA)"
+        [firstName, cabinName, checkoutHr],      // {{1}} nombre, {{2}} cabaña, {{3}} hora
         null,
-        'checkout_' + r.id           // payload del boton quick-reply
+        'checkout_' + r.id                       // payload del boton quick-reply
       );
       enviados++;
     } catch(err) {
@@ -367,7 +369,7 @@ function _testCheckoutAMiNumero() {
     '50769812266',
     'instruccion_checkout',
     'es_ES',
-    ['Josh (PRUEBA)', 'Portal hacia Las Nubes'],
+    ['Josh (PRUEBA)', 'Portal hacia Las Nubes', '11:00 am'],
     null,
     'checkout_TEST'
   );
@@ -379,7 +381,7 @@ function _testCheckoutAMiNumero() {
 // Datos de prueba. Solo para ver el render. Envían a 50769812266.
 function _testCheckinAMiNumero() {
   const r = sendWhatsAppTemplate('50769812266', 'recordator_entrada', 'es_ES',
-    ['María (PRUEBA)', 'Portal hacia Las Nubes', 'vie 5 al dom 7 de junio'],
+    ['María (PRUEBA)', 'Portal hacia Las Nubes', 'vie 5 al dom 7 de junio', '2:00 pm'],
     null, 'ubicacion_TEST');   // payload del botón "Envíame ubicación"
   Logger.log('checkin: ' + JSON.stringify(r));
   return r;
