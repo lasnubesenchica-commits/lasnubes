@@ -421,6 +421,75 @@ function _testConfirmacionAMiNumero() {
   return r;
 }
 
+// ─── Test exhaustivo: las 3 plantillas para los 7 escenarios de tipo ────
+// Envía 21 mensajes a 50769812266 con 2s de delay entre cada uno (~50s).
+// Útil para validar visualmente el render de hora x tipo de reserva tras
+// cambios en las plantillas o en _horaPlantilla.
+function _testAllPlantillasEscenarios() {
+  const SLEEP_MS = 2000;
+  const MY_PHONE = '50769812266';
+  const CABANA   = 'Portal hacia Las Nubes';
+
+  // ci/co son fechas de STORAGE (lo que va en la hoja); tipoEmailMeta calcula
+  // las fechas de display correctas según tipo.
+  const scenarios = [
+    { tipo: 'noche',     ext: false, label: 'NOCHE 2 noches',          ci: '2026-06-05', co: '2026-06-07' },
+    { tipo: 'noche',     ext: true,  label: 'NOCHE c/ cortesía 12:30', ci: '2026-06-05', co: '2026-06-07' },
+    { tipo: 'early',     ext: false, label: 'EARLY (entrada 9am)',     ci: '2026-06-04', co: '2026-06-06' },
+    { tipo: 'early',     ext: true,  label: 'EARLY + cortesía 12:30',  ci: '2026-06-04', co: '2026-06-06' },
+    { tipo: 'late',      ext: false, label: 'LATE (salida 4pm)',       ci: '2026-06-05', co: '2026-06-07' },
+    { tipo: 'pasadia',   ext: false, label: 'PASADÍA 9am–5pm',         ci: '2026-06-04', co: '2026-06-06' },
+    { tipo: 'pasatarde', ext: false, label: 'PASATARDE 12:30–7pm',     ci: '2026-06-05', co: '2026-06-06' }
+  ];
+
+  Logger.log('▶ Iniciando ' + scenarios.length + ' escenarios × 3 plantillas (' + (scenarios.length * 3) + ' mensajes)');
+  scenarios.forEach((s, idx) => {
+    Logger.log('═══ ' + (idx + 1) + '/' + scenarios.length + ' · ' + s.label + ' ═══');
+    const mock = {
+      id:                'TEST-' + Date.now() + '-' + idx,
+      name:              'María (' + s.label + ')',
+      telefono:          MY_PHONE,
+      cabin:             'azul',
+      checkin:           s.ci,
+      checkout:          s.co,
+      persons:           2,
+      amount:            180,
+      tipo:              s.tipo,
+      checkoutExtendido: s.ext
+    };
+    const meta       = tipoEmailMeta(mock);
+    const fechasC    = _fechasRangoCorto(meta.displayCheckin, meta.displayCheckout);
+    const checkinHr  = _horaPlantilla(s.tipo, 'checkin');
+    const checkoutHr = _horaPlantilla(s.tipo, 'checkout', s.ext);
+
+    // 1) confirmacion_reserva
+    try {
+      sendWAReservaConfirmada(mock);
+      Logger.log('  ✓ confirmacion_reserva (' + checkinHr + ' / ' + checkoutHr + ')');
+    } catch(e) { Logger.log('  ✗ confirmacion FAIL: ' + e.message); }
+    Utilities.sleep(SLEEP_MS);
+
+    // 2) recordator_entrada
+    try {
+      sendWhatsAppTemplate(MY_PHONE, 'recordator_entrada', 'es_ES',
+        ['María (' + s.label + ')', CABANA, fechasC, checkinHr],
+        null, 'ubicacion_TEST');
+      Logger.log('  ✓ recordator_entrada (' + checkinHr + ')');
+    } catch(e) { Logger.log('  ✗ recordator FAIL: ' + e.message); }
+    Utilities.sleep(SLEEP_MS);
+
+    // 3) instruccion_checkout
+    try {
+      sendWhatsAppTemplate(MY_PHONE, 'instruccion_checkout', 'es_ES',
+        ['María (' + s.label + ')', CABANA, checkoutHr],
+        null, 'checkout_TEST');
+      Logger.log('  ✓ instruccion_checkout (' + checkoutHr + ')');
+    } catch(e) { Logger.log('  ✗ checkout FAIL: ' + e.message); }
+    Utilities.sleep(SLEEP_MS);
+  });
+  Logger.log('✅ Listo: ' + (scenarios.length * 3) + ' mensajes enviados a +' + MY_PHONE);
+}
+
 // ─── Seguimiento diario de leads (8am) ───────────────────────────────
 // Resumen de las conversaciones que quedaron en "eligiendo cierre" o
 // "pagando" el día anterior, para que el admin les dé seguimiento personal
