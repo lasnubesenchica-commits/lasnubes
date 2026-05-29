@@ -141,6 +141,40 @@ function debugAlertsConfig(forceOn) {
   return cfg;
 }
 
+// Manda un texto al admin para validar entrega de WhatsApp.
+// Si NO llega al WhatsApp del admin: problema de Meta (quality / bloqueo).
+// Si SÍ llega pero las notificaciones de "nuevo cliente" no salen: el
+// problema está aguas arriba (webhook, ruteo). Revisar debugRecentAdminEvents.
+function testAdminMessage() {
+  const stamp = Utilities.formatDate(new Date(), 'America/Panama', 'HH:mm:ss');
+  const msg = '🔧 testAdminMessage @ ' + stamp + ' — si ves esto, la entrega WhatsApp al admin funciona.';
+  try {
+    sendWhatsAppText(BOT_ADMIN_PHONE, msg);
+    Logger.log('✓ Enviado. Verificá si llegó a +' + BOT_ADMIN_PHONE);
+  } catch(e) {
+    Logger.log('✗ Falló el envío: ' + e.message);
+  }
+}
+
+// Lee DebugLog y muestra las últimas N entradas relevantes a notificaciones
+// admin / nuevo cliente / alertas. Útil para entender si el webhook está
+// procesando entrantes y si las alertas se mandan o fallan en Meta.
+function debugRecentAdminEvents(limit) {
+  const max = parseInt(limit, 10) || 20;
+  const ss    = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName('DebugLog');
+  if (!sheet || sheet.getLastRow() < 2) { Logger.log('Sin DebugLog'); return; }
+  const data = sheet.getDataRange().getValues();
+  const matches = [];
+  const re = /(admin-new-lead|bot-admin-alert|WA-inbound|nuevoCliente|handoff)/i;
+  for (let i = data.length - 1; i >= 1 && matches.length < max; i--) {
+    const stage = (data[i][1] || '').toString();
+    if (re.test(stage)) matches.push({ ts: data[i][0], stage: stage, info: (data[i][2] || '').toString().slice(0, 200) });
+  }
+  Logger.log('Últimas ' + matches.length + ' entradas relevantes (más nuevas primero):');
+  matches.forEach(m => Logger.log('  ' + m.ts + ' · ' + m.stage + ' · ' + m.info));
+}
+
 // Estados de "intención de reserva": el lead está cerrando pero todavía no
 // hay reserva ingresada en el sistema.
 const _BOT_INTENT_STEPS = [
