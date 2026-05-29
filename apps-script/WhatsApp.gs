@@ -254,11 +254,13 @@ function sendWAReservaConfirmada(reservation) {
   try { link = getPublicReservaUrl(reservation.id); } catch(e) { link = 'https://lasnubes.cloud'; }
 
   return sendWhatsAppTemplate(reservation.telefono, 'confirmacion_reserva', 'es_PA', {
-    nombre: nombre,
-    cabana: cabin,
-    fechas: fechas,
-    personas: personasStr,
-    link: link
+    nombre:        nombre,
+    cabana:        cabin,
+    fechas:        fechas,
+    personas:      personasStr,
+    checkin_hora:  _horaPlantilla(reservation.tipo, 'checkin'),
+    checkout_hora: _horaPlantilla(reservation.tipo, 'checkout', reservation.checkoutExtendido),
+    link:          link
   }, null, 'consulta_' + reservation.id);   // payload del boton "Consultas y cambios"
 }
 

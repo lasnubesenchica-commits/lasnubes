@@ -2816,6 +2816,25 @@ function _fechasRangoCorto(checkinStr, checkoutStr) {
   return ini + ' de ' + meses[a.getMonth()] + ' al ' + fin + ' de ' + meses[b.getMonth()];
 }
 
+// Hora corta para plantillas de WhatsApp ("2:00 pm", "11:00 am", "9:00 am",
+// "5:00 pm", "12:30 pm (cortesía)", etc.) según el tipo de reserva.
+// kind: 'checkin' | 'checkout'.
+function _horaPlantilla(tipo, kind, checkoutExtendido) {
+  const t = (tipo || 'noche').toString();
+  if (kind === 'checkin') {
+    if (t === 'pasatarde') return '12:30 pm';
+    if (t === 'pasadia' || t === 'early') return '9:00 am';
+    return '2:00 pm';                          // noche, late
+  }
+  // checkout
+  if (t === 'pasatarde') return '7:00 pm';
+  if (t === 'pasadia')   return '5:00 pm';
+  if (t === 'late')      return '4:00 pm';
+  // noche / early: 11am, salvo cortesía 12:30 pm
+  if (checkoutExtendido) return '12:30 pm (cortesía)';
+  return '11:00 am';
+}
+
 // Trigger diario @ 10am Panama. Escanea Reservas y manda recordatorio
 // a quienes hacen check-in REAL (display) mañana.
 // Envía por WhatsApp (plantilla recordator_entrada, si hay teléfono y no es
@@ -2853,11 +2872,12 @@ function enviarRecordatoriosCheckin() {
     // WhatsApp: plantilla recordator_entrada (botón "Envíame ubicación").
     if (r.telefono && r.origin !== 'Airbnb') {
       try {
-        const firstName = (r.name || '').toString().trim().split(/\s+/)[0] || 'amigo';
-        const cabinName = BOT_CABIN_NAMES[r.cabin] || r.cabin;
-        const fechas    = _fechasRangoCorto(meta.displayCheckin, meta.displayCheckout);
+        const firstName  = (r.name || '').toString().trim().split(/\s+/)[0] || 'amigo';
+        const cabinName  = BOT_CABIN_NAMES[r.cabin] || r.cabin;
+        const fechas     = _fechasRangoCorto(meta.displayCheckin, meta.displayCheckout);
+        const checkinHr  = _horaPlantilla(r.tipo, 'checkin');
         sendWhatsAppTemplate(r.telefono, 'recordator_entrada', 'es_ES',
-          [firstName, cabinName, fechas], null, 'ubicacion_' + r.id);
+          [firstName, cabinName, fechas, checkinHr], null, 'ubicacion_' + r.id);
         waSent++;
       } catch(e) {
         waErrors++;
