@@ -122,6 +122,25 @@ function fixYessickam() { return corregirEstadoConversacion('50762879298', 'HUMA
 // el bot la mandó (incorrectamente) a HUMAN_HANDOFF. Volver a CONFIRMED.
 function fixYaviletzy() { return corregirEstadoConversacion('50766866405', 'CONFIRMED'); }
 
+// Diagnóstico rápido del toggle de alertas. Loguea la config actual y
+// (si forceOn===true) la resetea a TODO encendido. Útil cuando el admin
+// dejó de recibir notificaciones del Agente.
+function debugAlertsConfig(forceOn) {
+  const cfg = _botGetAlertConfig();
+  Logger.log('BOT_ALERTS_CONFIG actual: ' + JSON.stringify(cfg, null, 2));
+  if (forceOn === true) {
+    _botSetAlertConfig({
+      nuevoCliente:      true,
+      eligiendoCierre:   true,
+      pagando:           true,
+      handoff:           true,
+      seguimientoDiario: true
+    });
+    Logger.log('✓ Alertas reseteadas a TODO encendido.');
+  }
+  return cfg;
+}
+
 // Estados de "intención de reserva": el lead está cerrando pero todavía no
 // hay reserva ingresada en el sistema.
 const _BOT_INTENT_STEPS = [
