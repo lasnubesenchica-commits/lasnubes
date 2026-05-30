@@ -143,7 +143,9 @@ function processInboundMessage(msg, contactName) {
   }
 
   // Notificar al admin si es primer contacto (no spam de notificaciones por cada msg)
-  if (isFirstContact && from !== BOT_ADMIN_PHONE) {
+  // Excluye button_reply: tocar un botón de una plantilla (ej. "Ya me retiré"
+  // en checkout) no es un nuevo lead, es un huésped existente respondiendo.
+  if (isFirstContact && from !== BOT_ADMIN_PHONE && kind !== 'button_reply') {
     try {
       const name = contactName || from;
       const firstMsg = (text || '').slice(0, 200) || '(mensaje sin texto)';
