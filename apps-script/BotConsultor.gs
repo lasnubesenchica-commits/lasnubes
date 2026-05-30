@@ -2031,6 +2031,23 @@ function _botHandleCheckoutDone(from, contactName, reservaId) {
     );
   } catch(_) {}
 
+  // Email backup: WhatsApp puede devolver 200 OK pero no entregar (ventana
+  // 24h cerrada, throttle de Meta). El email siempre llega.
+  try {
+    GmailApp.sendEmail(REPLY_TO_EMAIL,
+      '🚪 ABRE EL PORTÓN — ' + cabinName + ' (' + guestName + ')',
+      'El huésped tocó "Ya me retiré" en el check-out.\n\n' +
+      '👤 ' + guestName + '\n' +
+      '📱 +' + from + '\n' +
+      '🏡 ' + cabinName + '\n' +
+      '📞 Portón: ' + gatePhone + '\n\n' +
+      '— Agente Las Nubes',
+      { name: 'Las Nubes Agente' }
+    );
+  } catch(e) {
+    logDebugEntry('email-portón-FAIL', { from: from, error: e.message });
+  }
+
   // Aviso a Erika (limpieza): cabaña libre para limpiar
   try {
     const limpiezaPhone = PropertiesService.getScriptProperties().getProperty('LIMPIEZA_PHONE');
