@@ -2027,7 +2027,7 @@ function _botHandleCheckoutDone(from, contactName, reservaId) {
       '👤 ' + guestName + '\n' +
       '📱 +' + from + '\n' +
       '🏡 ' + cabinName + '\n\n' +
-      '_El huésped tocó "Ya me retiré" en el check-out._'
+      '_El huésped llegó al portón y pidió que le abran._'
     );
   } catch(_) {}
 
@@ -2036,7 +2036,7 @@ function _botHandleCheckoutDone(from, contactName, reservaId) {
   try {
     GmailApp.sendEmail(REPLY_TO_EMAIL,
       '🚪 ABRE EL PORTÓN — ' + cabinName + ' (' + guestName + ')',
-      'El huésped tocó "Ya me retiré" en el check-out.\n\n' +
+      'El huésped llegó al portón y pidió que le abran (botón de la plantilla de check-out).\n\n' +
       '👤 ' + guestName + '\n' +
       '📱 +' + from + '\n' +
       '🏡 ' + cabinName + '\n' +
