@@ -1673,11 +1673,27 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
 function _botSendMainMenu(from, contactName, firstTime, customBody) {
   const firstName = ((contactName || '').toString().trim().split(/\s+/)[0]) || '';
   const greeting  = firstName ? '¡Hola ' + firstName + '! 🌿' : '¡Hola! 🌿';
-  let body;
+
+  // Detectar contexto de reserva (hoy / mañana) para personalizar el saludo
+  // y reordenar el menú según relevancia. Si hay customBody, respetar.
+  let arrival = null;
+  if (!customBody) {
+    try { arrival = _botArrivalStatus(from); } catch(_) {}
+  }
+
+  let body, sections;
   if (customBody) {
     body = customBody;
+    sections = _botMenuSectionsDefault();
+  } else if (arrival && arrival.status === 'hoy') {
+    body = _botBuildBodyHoy(arrival.reserva, firstName, firstTime !== false);
+    sections = _botMenuSectionsHoy();
+  } else if (arrival && arrival.status === 'manana') {
+    body = _botBuildBodyManana(arrival.reserva, firstName, firstTime !== false);
+    sections = _botMenuSectionsManana();
   } else if (firstTime === false) {
     body = '¿Necesitás algo más? Tocá *Ver opciones* abajo 👇';
+    sections = _botMenuSectionsDefault();
   } else {
     body = greeting + '\n\n' +
       'Bienvenido a *Las Nubes* — un refugio de tres cabañas en las faldas del Cerro Chicá, a 1h 15min de la ciudad.\n\n' +
@@ -1685,8 +1701,19 @@ function _botSendMainMenu(from, contactName, firstTime, customBody) {
       '   _"del 5 al 8 de junio, 2 personas"_\n\n' +
       'Te envío disponibilidad y precio al instante, y cerramos la reserva por aquí mismo. 🤝\n\n' +
       '¿Quieres explorar antes — cómo llegar, actividades, fotos o hablar con un agente? Toca *Ver opciones* ⬇';
+    sections = _botMenuSectionsDefault();
   }
-  const sections = [
+  try {
+    sendWhatsAppList(from, body, sections, 'Ver opciones', null, 'Buenos Aires, Chamé · Panamá');
+  } catch(err) {
+    logDebugEntry('bot-menu-FAIL', { error: err.message });
+    sendWhatsAppText(from, body + '\n\nEscribime qué te interesa:\n📅 Disponibilidad · 📍 Cómo llegar · 🏞 Actividades · 🍽 Gastronomía · 🛒 Insumos · 🧊 Hielo y carbón · ❓ FAQ · 🙋 Agente');
+  }
+}
+
+// ─── Builders del menú principal por contexto ──────────────────────
+function _botMenuSectionsDefault() {
+  return [
     {
       title: 'Reservas',
       rows: [
@@ -1712,12 +1739,84 @@ function _botSendMainMenu(from, contactName, firstTime, customBody) {
       ]
     }
   ];
-  try {
-    sendWhatsAppList(from, body, sections, 'Ver opciones', null, 'Buenos Aires, Chamé · Panamá');
-  } catch(err) {
-    logDebugEntry('bot-menu-FAIL', { error: err.message });
-    sendWhatsAppText(from, body + '\n\nEscribime qué te interesa:\n📅 Disponibilidad · 📍 Cómo llegar · 🏞 Actividades · 🍽 Gastronomía · 🛒 Insumos · 🧊 Hielo y carbón · ❓ FAQ · 🙋 Agente');
+}
+
+function _botMenuSectionsHoy() {
+  return [
+    {
+      title: 'Tu llegada',
+      rows: [
+        { id: 'menu_he_llegado',  title: '🚪 He llegado',    description: 'Estoy en el portón de entrada' },
+        { id: 'menu_como_llegar', title: '📍 Cómo llegar',   description: 'Maps, Waze, indicaciones' }
+      ]
+    },
+    {
+      title: 'En la cabaña',
+      rows: [
+        { id: 'menu_insumos', title: '🛒 Insumos',        description: 'Tiendas para abastecerse' },
+        { id: 'menu_tienda',  title: '🧊 Hielo y carbón', description: 'Tienda a 5 min de la cabaña' }
+      ]
+    },
+    {
+      title: 'Información',
+      rows: [
+        { id: 'menu_actividades', title: '🏞 Actividades',          description: 'Cascadas, playas, cerros' },
+        { id: 'menu_gastronomia', title: '🍽 Gastronomía',           description: 'Restaurantes cerca' },
+        { id: 'menu_faq',         title: '❓ Preguntas frecuentes',  description: 'Cocina, energía, check-out' },
+        { id: 'menu_agente',      title: '🙋 Hablar con un agente',  description: 'Abrir WhatsApp del equipo' }
+      ]
+    }
+  ];
+}
+
+function _botMenuSectionsManana() {
+  return [
+    {
+      title: 'Para tu llegada',
+      rows: [
+        { id: 'menu_como_llegar', title: '📍 Cómo llegar',   description: 'Dirección, Waze, Maps' },
+        { id: 'menu_insumos',     title: '🛒 Insumos',        description: 'Tiendita y supermercados' },
+        { id: 'menu_tienda',      title: '🧊 Hielo y carbón', description: 'Tienda a 5 min de la cabaña' }
+      ]
+    },
+    {
+      title: 'Para planear',
+      rows: [
+        { id: 'menu_actividades', title: '🏞 Actividades',  description: 'Cascadas, playas, cerros' },
+        { id: 'menu_gastronomia', title: '🍽 Gastronomía',  description: 'Restaurantes cerca' }
+      ]
+    },
+    {
+      title: 'Soporte',
+      rows: [
+        { id: 'menu_faq',    title: '❓ Preguntas frecuentes', description: 'Acceso, cocina, key box' },
+        { id: 'menu_agente', title: '🙋 Hablar con un agente', description: 'Abrir WhatsApp del equipo' }
+      ]
+    }
+  ];
+}
+
+function _botBuildBodyHoy(reserva, firstName, isFirstTime) {
+  const greeting = firstName ? '¡Hola ' + firstName + '! 🌿' : '¡Hola! 🌿';
+  const fechas   = _fechasRangoCorto(reserva.displayCheckin, reserva.displayCheckout);
+  if (!isFirstTime) {
+    return '¿Necesitás algo para tu llegada de hoy a *' + reserva.cabinName + '*? Tocá *Ver opciones* abajo 👇';
   }
+  return greeting + '\n\n' +
+    'Hoy te recibimos en *' + reserva.cabinName + '* para tu reserva del ' + fechas + '.\n\n' +
+    'Cuando llegues al portón, tocá *🚪 He llegado* abajo y te abrimos al instante. 🚪';
+}
+
+function _botBuildBodyManana(reserva, firstName, isFirstTime) {
+  const greeting = firstName ? '¡Hola ' + firstName + '! 🌿' : '¡Hola! 🌿';
+  const fechas   = _fechasRangoCorto(reserva.displayCheckin, reserva.displayCheckout);
+  if (!isFirstTime) {
+    return '¿Necesitás info para tu llegada de mañana a *' + reserva.cabinName + '*? Tocá *Ver opciones* abajo 👇';
+  }
+  return greeting + '\n\n' +
+    'Mañana te recibimos en *' + reserva.cabinName + '* para tu reserva del ' + fechas + '.\n\n' +
+    '¿Necesitás info para tu llegada? Tocá *Ver opciones* abajo 👇 (cómo llegar, qué llevar, actividades, etc.)\n\n' +
+    '_Mañana a las 10am te enviamos también un recordatorio con todo lo necesario._';
 }
 
 function _botMenuComoLlegar(from) {
@@ -1838,6 +1937,58 @@ function _botFindReservaByPhone(phone) {
     }
   }
   return best;
+}
+
+// Detecta si el cliente (`phone`) tiene una reserva activa con check-in HOY
+// o MAÑANA (display dates, ya con offsets por tipo). Devuelve el contexto
+// para personalizar el saludo y el menú del bot. null si no aplica.
+function _botArrivalStatus(phone) {
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+  const today    = _botToday();
+  const tomorrow = _botAddDaysISO(today, 1);
+  const normalize = (t) => {
+    let d = String(t || '').replace(/\D/g, '');
+    if (d.indexOf('507') === 0 && d.length > 8) d = d.substring(3);
+    return d;
+  };
+  const target = normalize(phone);
+  if (!target) return null;
+  let hoy = null, manana = null;
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    if (!r[0]) continue;
+    if ((r[20] || '').toString().toUpperCase() === 'CANCELADA') continue;
+    if (r[9] === 'Abierta') continue;
+    if (normalize(r[23]) !== target) continue;
+    const ci = r[4] instanceof Date ? Utilities.formatDate(r[4], BOT_TZ, 'yyyy-MM-dd') : (r[4] || '').toString().slice(0,10);
+    const co = r[5] instanceof Date ? Utilities.formatDate(r[5], BOT_TZ, 'yyyy-MM-dd') : (r[5] || '').toString().slice(0,10);
+    if (!ci || !co) continue;
+    const tipo = (r[24] || 'noche').toString();
+    // Mismo mapeo storage→display que tipoEmailMeta / _formFromStored.
+    let displayCi = ci, displayCo = co;
+    if (tipo === 'pasadia')        { displayCi = _botAddDaysISO(ci, 1); displayCo = displayCi; }
+    else if (tipo === 'pasatarde') { displayCo = ci; }
+    else if (tipo === 'early')     { displayCi = _botAddDaysISO(ci, 1); }
+    else if (tipo === 'late')      { displayCo = _botAddDaysISO(co, -1); }
+    let status = null;
+    if (displayCi === today)         status = 'hoy';
+    else if (displayCi === tomorrow) status = 'manana';
+    if (!status) continue;
+    const reserva = {
+      id: r[0], name: r[1], cabin: r[3],
+      checkin: ci, checkout: co,
+      persons: r[6], origin: r[9],
+      tipo: tipo,
+      displayCheckin: displayCi, displayCheckout: displayCo,
+      cabinName: BOT_CABIN_NAMES[r[3]] || r[3]
+    };
+    if (status === 'hoy')         hoy = reserva;
+    else if (status === 'manana') manana = reserva;
+  }
+  if (hoy)    return { status: 'hoy',    reserva: hoy };
+  if (manana) return { status: 'manana', reserva: manana };
+  return null;
 }
 
 function _botMenuHeLlegado(from, contactName, conv) {
