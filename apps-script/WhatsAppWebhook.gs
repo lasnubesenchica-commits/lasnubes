@@ -108,6 +108,16 @@ function processInboundMessage(msg, contactName) {
   logDebugEntry('WA-inbound', { from: from, type: type, kind: kind, text: text.slice(0, 200), name: contactName, msgId: msg.id });
   try { logMensaje(from, 'in', kind || type, text || '', msg.id || ''); } catch(_) {}
 
+  // Trackear el último inbound del admin para avisarle 1h antes de que se
+  // cierre su ventana de 24h. Sin esto, las alertas de sesión (portón, nuevo
+  // cliente, etc.) dejan de entregarse silenciosamente. Verificación en
+  // verificarVentanaAdmin (trigger horario).
+  if (String(from).replace(/\D/g, '') === '50769812266') {
+    try {
+      PropertiesService.getScriptProperties().setProperty('ADMIN_LAST_INBOUND_TS', new Date().toISOString());
+    } catch(_) {}
+  }
+
   // Erika (limpieza): cualquier mensaje que mande abre la ventana de 24h y le
   // respondemos con el parte de limpieza de hoy. No entra al flujo del Agente
   // ni dispara la notificacion de "nuevo cliente".

@@ -1193,6 +1193,14 @@ function botHandleMessage(from, text, contactName, kind) {
     return _botHandleConsultaReserva(from, contactName, text.replace('consulta_', ''));
   }
 
+  // Boton "Mantener abierta" del recordatorio de ventana 24h al admin.
+  // El tap solo sirve para registrar el inbound (que renueva la ventana en
+  // ADMIN_LAST_INBOUND_TS). Acá solo confirmamos al admin.
+  if (kind === 'button_reply' && text === 'admin_keep_window') {
+    try { sendWhatsAppText(from, '✓ Ventana renovada por 24h. Las alertas operativas siguen llegando.'); } catch(_) {}
+    return;
+  }
+
   // Boton "Envíame ubicación" de la plantilla de check-in (recordator_entrada)
   // → mandar ubicación + cómo llegar. Match por payload o por el texto del
   //   botón (fallback si la plantilla se envió sin payload dinámico).
