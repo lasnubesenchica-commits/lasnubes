@@ -1682,17 +1682,27 @@ function _botSendMainMenu(from, contactName, firstTime, customBody) {
   }
 
   let body, sections;
+  const isFirst = firstTime !== false;
   if (customBody) {
     body = customBody;
     sections = _botMenuSectionsDefault();
   } else if (arrival && arrival.status === 'hoy') {
-    body = _botBuildBodyHoy(arrival.reserva, firstName, firstTime !== false);
+    body = _botBuildBodyHoy(arrival.reserva, firstName, isFirst);
     sections = _botMenuSectionsHoy();
+  } else if (arrival && arrival.status === 'estadia') {
+    body = _botBuildBodyEstadia(arrival.reserva, firstName, isFirst);
+    sections = _botMenuSectionsEstadia();
   } else if (arrival && arrival.status === 'manana') {
-    body = _botBuildBodyManana(arrival.reserva, firstName, firstTime !== false);
+    body = _botBuildBodyManana(arrival.reserva, firstName, isFirst);
     sections = _botMenuSectionsManana();
-  } else if (firstTime === false) {
-    body = '¿Necesitás algo más? Tocá *Ver opciones* abajo 👇';
+  } else if (arrival && arrival.status === 'futura') {
+    body = _botBuildBodyFutura(arrival.reserva, firstName, isFirst);
+    sections = _botMenuSectionsFutura();
+  } else if (arrival && arrival.status === 'pasada') {
+    body = _botBuildBodyPasada(arrival.reserva, firstName, isFirst);
+    sections = _botMenuSectionsPasada();
+  } else if (!isFirst) {
+    body = '¿Necesitas algo más? Toca *Ver opciones* abajo 👇';
     sections = _botMenuSectionsDefault();
   } else {
     body = greeting + '\n\n' +
@@ -1796,27 +1806,136 @@ function _botMenuSectionsManana() {
   ];
 }
 
+function _botMenuSectionsEstadia() {
+  return [
+    {
+      title: 'En la cabaña',
+      rows: [
+        { id: 'menu_tienda',  title: '🧊 Hielo y carbón', description: 'Tienda a 5 min de la cabaña' },
+        { id: 'menu_insumos', title: '🛒 Insumos',        description: 'Supermercados cercanos' }
+      ]
+    },
+    {
+      title: 'Actividades',
+      rows: [
+        { id: 'menu_actividades', title: '🏞 Actividades',  description: 'Cascadas, playas, cerros' },
+        { id: 'menu_gastronomia', title: '🍽 Gastronomía',  description: 'Restaurantes cerca' }
+      ]
+    },
+    {
+      title: 'Soporte',
+      rows: [
+        { id: 'menu_faq',    title: '❓ Preguntas frecuentes', description: 'Cocina, energía, key box, check-out' },
+        { id: 'menu_agente', title: '🙋 Hablar con un agente', description: 'Abrir WhatsApp del equipo' }
+      ]
+    }
+  ];
+}
+
+function _botMenuSectionsFutura() {
+  return [
+    {
+      title: 'Para tu llegada',
+      rows: [
+        { id: 'menu_como_llegar', title: '📍 Cómo llegar',   description: 'Dirección, Waze, Maps' },
+        { id: 'menu_insumos',     title: '🛒 Insumos',        description: 'Tiendita y supermercados' },
+        { id: 'menu_tienda',      title: '🧊 Hielo y carbón', description: 'Tienda a 5 min de la cabaña' }
+      ]
+    },
+    {
+      title: 'Para planear',
+      rows: [
+        { id: 'menu_actividades', title: '🏞 Actividades',  description: 'Cascadas, playas, cerros' },
+        { id: 'menu_gastronomia', title: '🍽 Gastronomía',  description: 'Restaurantes cerca' }
+      ]
+    },
+    {
+      title: 'Cambios y soporte',
+      rows: [
+        { id: 'menu_faq',    title: '❓ Preguntas frecuentes', description: 'Acceso, cocina, key box' },
+        { id: 'menu_agente', title: '🙋 Hablar con un agente', description: 'Para cambios o consultas' }
+      ]
+    }
+  ];
+}
+
+function _botMenuSectionsPasada() {
+  return [
+    {
+      title: 'Próxima reserva',
+      rows: [
+        { id: 'menu_disponibilidad', title: '📅 Disponibilidad', description: 'Ver fechas libres y precios' }
+      ]
+    },
+    {
+      title: 'Información',
+      rows: [
+        { id: 'menu_actividades', title: '🏞 Actividades',  description: 'Cascadas, playas, cerros' },
+        { id: 'menu_gastronomia', title: '🍽 Gastronomía',  description: 'Restaurantes cerca' }
+      ]
+    },
+    {
+      title: 'Soporte',
+      rows: [
+        { id: 'menu_faq',    title: '❓ Preguntas frecuentes', description: '' },
+        { id: 'menu_agente', title: '🙋 Hablar con un agente', description: 'Abrir WhatsApp del equipo' }
+      ]
+    }
+  ];
+}
+
 function _botBuildBodyHoy(reserva, firstName, isFirstTime) {
   const greeting = firstName ? '¡Hola ' + firstName + '! 🌿' : '¡Hola! 🌿';
   const fechas   = _fechasRangoCorto(reserva.displayCheckin, reserva.displayCheckout);
   if (!isFirstTime) {
-    return '¿Necesitás algo para tu llegada de hoy a *' + reserva.cabinName + '*? Tocá *Ver opciones* abajo 👇';
+    return '¿Necesitas algo para tu llegada de hoy a *' + reserva.cabinName + '*? Toca *Ver opciones* abajo 👇';
   }
   return greeting + '\n\n' +
     'Hoy te recibimos en *' + reserva.cabinName + '* para tu reserva del ' + fechas + '.\n\n' +
-    'Cuando llegues al portón, tocá *🚪 He llegado* abajo y te abrimos al instante. 🚪';
+    'Cuando llegues al portón, toca *🚪 He llegado* abajo y te abrimos al instante. 🚪';
 }
 
 function _botBuildBodyManana(reserva, firstName, isFirstTime) {
   const greeting = firstName ? '¡Hola ' + firstName + '! 🌿' : '¡Hola! 🌿';
   const fechas   = _fechasRangoCorto(reserva.displayCheckin, reserva.displayCheckout);
   if (!isFirstTime) {
-    return '¿Necesitás info para tu llegada de mañana a *' + reserva.cabinName + '*? Tocá *Ver opciones* abajo 👇';
+    return '¿Necesitas info para tu llegada de mañana a *' + reserva.cabinName + '*? Toca *Ver opciones* abajo 👇';
   }
   return greeting + '\n\n' +
     'Mañana te recibimos en *' + reserva.cabinName + '* para tu reserva del ' + fechas + '.\n\n' +
-    '¿Necesitás info para tu llegada? Tocá *Ver opciones* abajo 👇 (cómo llegar, qué llevar, actividades, etc.)\n\n' +
+    '¿Necesitas info para tu llegada? Toca *Ver opciones* abajo 👇 (cómo llegar, qué llevar, actividades, etc.)\n\n' +
     '_Mañana a las 10am te enviamos también un recordatorio con todo lo necesario._';
+}
+
+function _botBuildBodyEstadia(reserva, firstName, isFirstTime) {
+  const greeting = firstName ? '¡Hola ' + firstName + '! 🌿' : '¡Hola! 🌿';
+  if (!isFirstTime) {
+    return '¿Necesitas algo durante tu estadía en *' + reserva.cabinName + '*? Toca *Ver opciones* abajo 👇';
+  }
+  return greeting + '\n\n' +
+    '¡Esperamos que estés disfrutando tu estadía en *' + reserva.cabinName + '*!\n\n' +
+    '¿En qué te puedo ayudar? Toca *Ver opciones* abajo 👇';
+}
+
+function _botBuildBodyFutura(reserva, firstName, isFirstTime) {
+  const greeting = firstName ? '¡Hola ' + firstName + '! 🌿' : '¡Hola! 🌿';
+  const fechas   = _fechasRangoCorto(reserva.displayCheckin, reserva.displayCheckout);
+  if (!isFirstTime) {
+    return '¿Necesitas info sobre tu reserva en *' + reserva.cabinName + '* (' + fechas + ')? Toca *Ver opciones* abajo 👇';
+  }
+  return greeting + '\n\n' +
+    'Tienes reserva con nosotros para el *' + fechas + '* en *' + reserva.cabinName + '*. 🌿\n\n' +
+    '¿Quieres info para tu llegada o ajustar algo? Toca *Ver opciones* abajo 👇';
+}
+
+function _botBuildBodyPasada(reserva, firstName, isFirstTime) {
+  const greeting = firstName ? '¡Hola ' + firstName + '! 🌿' : '¡Hola! 🌿';
+  if (!isFirstTime) {
+    return '¿Quieres hacer otra escapada a Las Nubes? Toca *Ver opciones* abajo 👇';
+  }
+  return greeting + '\n\n' +
+    '¡Esperamos que hayas disfrutado tu estadía en *' + reserva.cabinName + '*! 🙌\n\n' +
+    '¿Quieres agendar tu próxima escapada? Dime *fechas* y *personas* y te cotizo al instante. 🤝';
 }
 
 function _botMenuComoLlegar(from) {
@@ -1939,9 +2058,21 @@ function _botFindReservaByPhone(phone) {
   return best;
 }
 
-// Detecta si el cliente (`phone`) tiene una reserva activa con check-in HOY
-// o MAÑANA (display dates, ya con offsets por tipo). Devuelve el contexto
-// para personalizar el saludo y el menú del bot. null si no aplica.
+// Días entre dos fechas ISO yyyy-MM-dd. Positivo si isoB > isoA.
+function _botDaysBetween(isoA, isoB) {
+  const a = new Date(isoA + 'T12:00:00');
+  const b = new Date(isoB + 'T12:00:00');
+  return Math.round((b - a) / 86400000);
+}
+
+// Detecta el contexto de reserva del cliente para personalizar el saludo y
+// el menú. Devuelve { status, reserva } o null. Status:
+//   - 'hoy'     : check-in es hoy (display).
+//   - 'manana'  : check-in es mañana (display).
+//   - 'estadia' : hoy entre check-in y check-out (ya está alojado).
+//   - 'futura'  : check-in en >2 días (cualquier fecha futura más allá de mañana).
+//   - 'pasada'  : check-out fue hace ≤7 días (estadía recién terminada).
+// Si hay varias reservas, prioriza: hoy > estadia > manana > futura > pasada.
 function _botArrivalStatus(phone) {
   const sheet = getOrCreateSheet();
   const data  = sheet.getDataRange().getValues();
@@ -1954,7 +2085,7 @@ function _botArrivalStatus(phone) {
   };
   const target = normalize(phone);
   if (!target) return null;
-  let hoy = null, manana = null;
+  const found = { hoy: null, estadia: null, manana: null, futura: null, pasada: null };
   for (let i = 1; i < data.length; i++) {
     const r = data[i];
     if (!r[0]) continue;
@@ -1972,8 +2103,11 @@ function _botArrivalStatus(phone) {
     else if (tipo === 'early')     { displayCi = _botAddDaysISO(ci, 1); }
     else if (tipo === 'late')      { displayCo = _botAddDaysISO(co, -1); }
     let status = null;
-    if (displayCi === today)         status = 'hoy';
-    else if (displayCi === tomorrow) status = 'manana';
+    if (displayCi === today)                              status = 'hoy';
+    else if (displayCi === tomorrow)                      status = 'manana';
+    else if (today > displayCi && today <= displayCo)     status = 'estadia';
+    else if (displayCi > tomorrow)                        status = 'futura';
+    else if (displayCo < today && _botDaysBetween(displayCo, today) <= 7) status = 'pasada';
     if (!status) continue;
     const reserva = {
       id: r[0], name: r[1], cabin: r[3],
@@ -1983,11 +2117,16 @@ function _botArrivalStatus(phone) {
       displayCheckin: displayCi, displayCheckout: displayCo,
       cabinName: BOT_CABIN_NAMES[r[3]] || r[3]
     };
-    if (status === 'hoy')         hoy = reserva;
-    else if (status === 'manana') manana = reserva;
+    if (!found[status]) {
+      found[status] = reserva;
+    } else if (status === 'futura' && displayCi < found.futura.displayCheckin) {
+      found.futura = reserva;   // próxima futura más cercana
+    } else if (status === 'pasada' && displayCo > found.pasada.displayCheckout) {
+      found.pasada = reserva;   // estadía pasada más reciente
+    }
   }
-  if (hoy)    return { status: 'hoy',    reserva: hoy };
-  if (manana) return { status: 'manana', reserva: manana };
+  const priority = ['hoy', 'estadia', 'manana', 'futura', 'pasada'];
+  for (const s of priority) if (found[s]) return { status: s, reserva: found[s] };
   return null;
 }
 

@@ -3,6 +3,7 @@
 ## Preferencias del usuario
 
 - **Auto-merge de PRs**: cuando completes un PR (after push + create), mergéalo directamente sin pedir confirmación. El usuario quiere flujo continuo. Para cambios destructivos o riesgosos (force push, drop tablas, etc.) sigue confirmando.
+- **Español neutral latinoamericano** en todos los textos visibles al cliente final (Agente de WhatsApp, plantillas, emails, dashboard). NADA de voseo rioplatense: usar `tú`/`tienes`/`puedes`/`dime`/`toca`/`escríbeme` — NO `vos`/`tenés`/`podés`/`decime`/`tocá`/`escribime`. Aplica a código nuevo y a strings que se reescriban; código viejo con voseo se va migrando a medida que se toque.
 
 ## Arquitectura
 
