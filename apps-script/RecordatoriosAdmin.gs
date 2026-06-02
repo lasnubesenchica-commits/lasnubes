@@ -502,6 +502,50 @@ const _SEGUIMIENTO_STEPS = {
   PENDING_HUMAN_BOOKING:  '🙋 Cierre asistido (pendiente de ingresar)'
 };
 
+// ─── Aviso de cierre de ventana 24h al admin ──────────────────────
+// El bot envía mensajes de sesión (alertas de portón, nuevo cliente, etc.)
+// que requieren que el admin haya escrito al bot en las últimas 24h. Cuando
+// la ventana se cierra, Meta acepta los envíos (200 OK) pero NO los entrega.
+// Esta función corre cada hora y, ~1h antes de que se cierre la ventana,
+// avisa al admin para que responda y la renueve.
+function verificarVentanaAdmin() {
+  const props  = PropertiesService.getScriptProperties();
+  const lastTs = props.getProperty('ADMIN_LAST_INBOUND_TS');
+  if (!lastTs) return;   // nunca escribió → no hay ventana que renovar todavía
+  const last  = new Date(lastTs);
+  const now   = new Date();
+  const hours = (now - last) / 3600000;
+  if (hours < 23 || hours >= 24) return;   // solo dentro de la última hora
+
+  // Dedupe: si ya avisamos para este timestamp, no re-mandar.
+  if (props.getProperty('ADMIN_REMINDER_SENT_FOR_TS') === lastTs) return;
+
+  try {
+    sendWhatsAppButtons(BOT_ADMIN_PHONE,
+      '⏰ Tu ventana de WhatsApp con el bot se cierra en menos de 1 hora.\n\n' +
+      'Toca el botón abajo (o responde cualquier cosa) para mantenerla abierta y que las alertas operativas sigan llegándote (portón, nuevo cliente, pre-reservas).\n\n' +
+      '_Las plantillas siguen llegando siempre — esto solo afecta a los textos de sesión._',
+      [{ id: 'admin_keep_window', title: '🔄 Mantener abierta' }]
+    );
+    props.setProperty('ADMIN_REMINDER_SENT_FOR_TS', lastTs);
+    logDebugEntry('ventana-admin-reminder', { lastInbound: lastTs, hoursSince: Math.round(hours * 10) / 10 });
+  } catch(e) {
+    logDebugEntry('ventana-admin-reminder-FAIL', { error: e.message });
+  }
+}
+
+// Instalador del trigger horario. Correr UNA VEZ desde el editor.
+function instalarTriggerVentanaAdmin() {
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'verificarVentanaAdmin') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('verificarVentanaAdmin')
+    .timeBased()
+    .everyHours(1)
+    .create();
+  Logger.log('✓ Trigger creado: verificarVentanaAdmin cada hora');
+}
+
 function enviarSeguimientoDiario() {
   if (_botGetAlertConfig().seguimientoDiario === false) {
     logDebugEntry('seguimiento-diario', { skip: 'desactivado' });
