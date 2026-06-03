@@ -230,8 +230,25 @@ function _buildLimpiezaMessage(greeting) {
     const ci = r[4] instanceof Date ? Utilities.formatDate(r[4], BOT_TZ, 'yyyy-MM-dd') : (r[4] || '').toString().slice(0,10);
     const co = r[5] instanceof Date ? Utilities.formatDate(r[5], BOT_TZ, 'yyyy-MM-dd') : (r[5] || '').toString().slice(0,10);
     if (!ci || !co) continue;
-    byCabin[cabin].push({ name: r[1] || '?', ci: ci, co: co });
+    byCabin[cabin].push({
+      id: r[0], name: r[1] || '?', ci: ci, co: co,
+      persons: parseInt(r[6], 10) || 0,
+      comentarios: (r[22] || '').toString()
+    });
   }
+
+  // Línea con personas + alerta de cama auxiliar si aplica. Se inserta
+  // bajo cualquier "llega" para que Erika tenga la misma info que en la
+  // plantilla alerta_limpieza.
+  const guestInfoLine = (persons, comentarios) => {
+    const p = parseInt(persons, 10) || 0;
+    if (!p) return '';
+    let s = '\n👥 ' + p + (p === 1 ? ' huésped' : ' huéspedes') + '.';
+    if (_botNeedsCamaAuxiliar({ persons: p, comentarios: comentarios })) {
+      s += '\n🛏 *Preparar cama auxiliar.*';
+    }
+    return s;
+  };
 
   let limpiar = 0;
   const lines = CABINS.map(cab => {
@@ -247,12 +264,21 @@ function _buildLimpiezaMessage(greeting) {
       line += '🧹 *LIMPIAR* — salió ' + checkoutToday.name + '. Cambiar sábanas y dejar la cabaña lista.';
       if (checkinToday) {
         line += '\n⚠️ ¡Hoy mismo llega ' + checkinToday.name + '! Dejarla lista a tiempo.';
+        line += guestInfoLine(checkinToday.persons, checkinToday.comentarios);
+      } else {
+        // Sin llegada hoy → mirar próxima reserva en esa cabaña.
+        const next = _botFindNextReservationForCabin(cab.key, checkoutToday.id);
+        if (next) {
+          line += '\n🛬 Próxima reserva: ' + _botFmtFecha(next.displayCheckin) + '.';
+          line += guestInfoLine(next.persons, next.comentarios);
+        }
       }
     } else if (occTonight && occLastNight) {
       line += '✅ *No limpiar* — ' + occTonight.name + ' sigue hospedado (estadía de varias noches).';
     } else if (checkinToday && !occLastNight) {
       limpiar++;
-      line += '👀 Llega ' + checkinToday.name + ' hoy. Anoche estuvo vacía: no hace falta cambiar sábanas, solo pasá a verificar que todo esté en orden.';
+      line += '👀 Llega ' + checkinToday.name + ' hoy. Anoche estuvo vacía: no hace falta cambiar sábanas, solo pasa a verificar que todo esté en orden.';
+      line += guestInfoLine(checkinToday.persons, checkinToday.comentarios);
     } else if (occTonight) {
       line += '✅ *No limpiar* — ocupada.';
     } else {
