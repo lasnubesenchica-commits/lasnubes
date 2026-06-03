@@ -2392,19 +2392,27 @@ function _botHandleCheckoutDone(from, contactName, reservaId) {
   _sendAlertaPorton('salida', guestName, from, cabinName);
 
   // Email backup: red de seguridad para el portón. El email siempre llega
-  // aunque WhatsApp falle por algún motivo.
+  // aunque WhatsApp falle por algún motivo. Se envía como HTML para que iOS
+  // renderice los emojis correctamente en la notificación (en texto plano
+  // los muestra como "?????" en la preview del lockscreen).
   const gatePhone = PropertiesService.getScriptProperties().getProperty('WA_GATE_PHONE') || '+507 6777-5630';
   try {
-    GmailApp.sendEmail(REPLY_TO_EMAIL,
-      '🚪 ABRE EL PORTÓN — ' + cabinName + ' (' + guestName + ')',
-      'El huésped llegó al portón y pidió que le abran (botón de la plantilla de check-out).\n\n' +
-      '👤 ' + guestName + '\n' +
-      '📱 +' + from + '\n' +
-      '🏡 ' + cabinName + '\n' +
-      '📞 Portón: ' + gatePhone + '\n\n' +
-      '— Agente Las Nubes',
-      { name: 'Las Nubes Agente' }
-    );
+    const escape = (s) => String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const subject = '🚪 ABRE EL PORTÓN — ' + cabinName + ' (' + guestName + ')';
+    const htmlBody =
+      '<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;font-size:15px;color:#222;line-height:1.5;">' +
+        '<p style="margin:0 0 12px;">El huésped llegó al portón y pidió que le abran (botón de la plantilla de check-out).</p>' +
+        '<p style="margin:0 0 4px;">👤 <b>Huésped:</b> ' + escape(guestName) + '</p>' +
+        '<p style="margin:0 0 4px;">📱 <b>Teléfono:</b> +' + escape(from) + '</p>' +
+        '<p style="margin:0 0 4px;">🏡 <b>Cabaña:</b> ' + escape(cabinName) + '</p>' +
+        '<p style="margin:0 0 12px;">📞 <b>Portón:</b> ' + escape(gatePhone) + '</p>' +
+        '<p style="margin:0;color:#888;font-size:13px;">— Agente Las Nubes</p>' +
+      '</div>';
+    GmailApp.sendEmail(REPLY_TO_EMAIL, subject, '', {
+      htmlBody: htmlBody,
+      name: 'Las Nubes Agente'
+    });
   } catch(e) {
     logDebugEntry('email-portón-FAIL', { from: from, error: e.message });
   }
