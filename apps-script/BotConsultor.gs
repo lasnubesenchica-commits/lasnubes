@@ -2209,11 +2209,23 @@ function _botSendArrivalInstructions(from, contactName, conv, reserva) {
             'Quedo atento. 🌿';
   }
 
+  // Recordatorio del link público con instrucciones completas y código de
+  // acceso (key box, etc.). El cliente lo recibió en confirmacion_reserva
+  // pero es fácil de perder al llegar.
+  let publicUrl = '';
+  try { publicUrl = getPublicReservaUrl(reserva.id); } catch(_) {}
+  if (publicUrl) {
+    body += '\n\n🔗 *Instrucciones completas y código de acceso:*\n' + publicUrl;
+  }
+
+  // Botón "Llamar a Josh" con tel: para abrir el dialer del teléfono al
+  // tocar. Si Meta rechaza tel: en CTA URL, el catch hace fallback a texto
+  // plano (el número del cuerpo queda auto-detectado por WhatsApp).
   try {
-    sendWhatsAppCTAUrl(from, body, '💬 Escribir al equipo',
-      'https://wa.me/50769812266?text=' + encodeURIComponent('Hola, recién llegué a Las Nubes 🌿'));
+    sendWhatsAppCTAUrl(from, body, '📞 Llamar a Josh', 'tel:+50769812266');
   } catch(err) {
-    sendWhatsAppText(from, body + '\n\n💬 WhatsApp: https://wa.me/50769812266');
+    logDebugEntry('arrival-cta-call-FAIL', { error: err.message });
+    sendWhatsAppText(from, body);
   }
 
   // Notificar al admin via plantilla HSM (alerta_porton) — pasa siempre,
