@@ -2214,21 +2214,78 @@ function _botSendArrivalInstructions(from, contactName, conv, reserva) {
     sendWhatsAppText(from, body + '\n\n💬 WhatsApp: https://wa.me/50769812266');
   }
 
-  // Notificar al admin para que abra el porton
-  const datesStr = _botFmtFecha(reserva.checkin) + ' → ' + _botFmtFecha(reserva.checkout);
-  const gatePhone = PropertiesService.getScriptProperties().getProperty('WA_GATE_PHONE') || '+507 6777-5630';
-  const adminMsg =
-    '🚪 *ABRE EL PORTÓN* — llegó un cliente\n\n' +
-    '📞 Llamar: ' + gatePhone + '\n\n' +
-    '👤 ' + (reserva.name || contactName || '?') + '\n' +
-    '📱 +' + from + '\n' +
-    '🏡 ' + cabinName + '\n' +
-    '📅 ' + datesStr + '\n' +
-    '👥 ' + (reserva.persons || '?') + (reserva.persons === 1 ? ' persona' : ' personas') + '\n\n' +
-    '_Notificación automática: el cliente tocó "He llegado" en el Agente._';
-  try { sendWhatsAppText('50769812266', adminMsg); } catch(_) {}
+  // Notificar al admin via plantilla HSM (alerta_porton) — pasa siempre,
+  // sin depender de la ventana de 24h.
+  _sendAlertaPorton('entrada', reserva.name || contactName, from, cabinName);
 
   _saveConv(from, 'ARRIVED', Object.assign({}, conv.context || {}, { reservaId: reserva.id }), contactName);
+}
+
+// Busca la próxima reserva no cancelada en una cabaña, con check-in (display)
+// hoy o después. Útil para que el alert a Erika anticipe si la próxima reserva
+// requiere cama auxiliar.
+function _botFindNextReservationForCabin(cabinKey, excludeReservaId) {
+  if (!cabinKey) return null;
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+  const today = _botToday();
+  let best = null;
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    if (!r[0]) continue;
+    if (excludeReservaId && r[0] === excludeReservaId) continue;
+    if (r[3] !== cabinKey) continue;
+    if ((r[20] || '').toString().toUpperCase() === 'CANCELADA') continue;
+    if (r[9] === 'Abierta') continue;
+    const ci = r[4] instanceof Date ? Utilities.formatDate(r[4], BOT_TZ, 'yyyy-MM-dd') : (r[4] || '').toString().slice(0,10);
+    if (!ci) continue;
+    const tipo = (r[24] || 'noche').toString();
+    let displayCi = ci;
+    if (tipo === 'pasadia' || tipo === 'early') displayCi = _botAddDaysISO(ci, 1);
+    if (displayCi < today) continue;   // ya pasó
+    const next = {
+      persons: parseInt(r[6], 10) || 0,
+      comentarios: (r[22] || '').toString(),
+      displayCheckin: displayCi
+    };
+    if (!best || displayCi < best.displayCheckin) best = next;
+  }
+  return best;
+}
+
+// Necesita cama auxiliar la próxima reserva? Personas >= 3 (primario) o los
+// comentarios mencionan cama auxiliar/cuna (fallback si el campo de personas
+// no refleja la realidad).
+function _botNeedsCamaAuxiliar(reserva) {
+  if (!reserva) return false;
+  if ((reserva.persons || 0) >= 3) return true;
+  const lower = String(reserva.comentarios || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return /cama auxiliar|cama adicional|cama extra|preparar cama|cuna/.test(lower);
+}
+
+// Texto del {{3}} de la plantilla alerta_limpieza. Siempre devuelve algo
+// (Meta no acepta variables vacías).
+function _botBuildLimpiezaContextLine(nextReserva) {
+  if (!nextReserva) return '📅 Sin próxima reserva agendada por ahora.';
+  if (_botNeedsCamaAuxiliar(nextReserva)) {
+    return '🛏 Preparar cama auxiliar para la próxima reserva (' + nextReserva.persons + ' huéspedes).';
+  }
+  return '📅 Próxima reserva: ' + nextReserva.persons + ' huéspedes (cama normal).';
+}
+
+// Envía la plantilla HSM alerta_porton al admin. Llega siempre, sin importar
+// el estado de la ventana de 24h.
+function _sendAlertaPorton(direction, guestName, guestPhone, cabinName) {
+  try {
+    sendWhatsAppTemplate(BOT_ADMIN_PHONE, 'alerta_porton', 'es_ES', [
+      String(direction || ''),
+      String(guestName || '?'),
+      String(guestPhone || '').replace(/\D/g, ''),
+      String(cabinName || '?')
+    ], null, null);
+  } catch(e) {
+    logDebugEntry('alerta-porton-FAIL', { direction: direction, error: e.message });
+  }
 }
 
 // Busca una reserva por su id en la hoja. Devuelve datos basicos o null.
@@ -2316,21 +2373,13 @@ function _botHandleCheckoutDone(from, contactName, reservaId) {
     '¡Buen viaje y esperamos verte pronto de nuevo en Las Nubes! 🙌'
   );
 
-  // Aviso al admin: abrir portón
-  const gatePhone = PropertiesService.getScriptProperties().getProperty('WA_GATE_PHONE') || '+507 6777-5630';
-  try {
-    sendWhatsAppText(BOT_ADMIN_PHONE,
-      '🚪 *ABRE EL PORTÓN — salida*\n\n' +
-      '📞 Llamar: ' + gatePhone + '\n\n' +
-      '👤 ' + guestName + '\n' +
-      '📱 +' + from + '\n' +
-      '🏡 ' + cabinName + '\n\n' +
-      '_El huésped llegó al portón y pidió que le abran._'
-    );
-  } catch(_) {}
+  // Aviso al admin via plantilla HSM (alerta_porton) — pasa siempre,
+  // sin depender de la ventana de 24h.
+  _sendAlertaPorton('salida', guestName, from, cabinName);
 
-  // Email backup: WhatsApp puede devolver 200 OK pero no entregar (ventana
-  // 24h cerrada, throttle de Meta). El email siempre llega.
+  // Email backup: red de seguridad para el portón. El email siempre llega
+  // aunque WhatsApp falle por algún motivo.
+  const gatePhone = PropertiesService.getScriptProperties().getProperty('WA_GATE_PHONE') || '+507 6777-5630';
   try {
     GmailApp.sendEmail(REPLY_TO_EMAIL,
       '🚪 ABRE EL PORTÓN — ' + cabinName + ' (' + guestName + ')',
@@ -2346,16 +2395,23 @@ function _botHandleCheckoutDone(from, contactName, reservaId) {
     logDebugEntry('email-portón-FAIL', { from: from, error: e.message });
   }
 
-  // Aviso a Erika (limpieza): cabaña libre para limpiar
+  // Aviso a Erika via plantilla HSM (alerta_limpieza). {{3}} indica si la
+  // próxima reserva requiere cama auxiliar (personas >= 3 o keywords en
+  // comentarios).
   try {
     const limpiezaPhone = PropertiesService.getScriptProperties().getProperty('LIMPIEZA_PHONE');
     if (limpiezaPhone) {
-      sendWhatsAppText(limpiezaPhone,
-        '🧹 *' + cabinName + '* ya está libre\n\n' +
-        guestName + ' acaba de retirarse. Podés proceder con la limpieza cuando puedas. 🌿'
-      );
+      const next = _botFindNextReservationForCabin(reserva && reserva.cabin, reserva && reserva.id);
+      const ctxLine = _botBuildLimpiezaContextLine(next);
+      sendWhatsAppTemplate(limpiezaPhone, 'alerta_limpieza', 'es_ES', [
+        cabinName,
+        guestName,
+        ctxLine
+      ], null, null);
     }
-  } catch(_) {}
+  } catch(e) {
+    logDebugEntry('alerta-limpieza-FAIL', { error: e.message });
+  }
 
   logDebugEntry('checkout-done', { from: from, reservaId: reservaId, cabin: (reserva && reserva.cabin) || '?' });
 }
