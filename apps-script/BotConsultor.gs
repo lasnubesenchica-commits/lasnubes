@@ -2196,16 +2196,18 @@ function _botSendArrivalInstructions(from, contactName, conv, reserva) {
 
   let body = '🎉 ¡Bienvenidos a *Las Nubes*';
   if (firstName) body += ', ' + firstName;
-  body += '!\n\nYa les abro el portón. Conducen recto y más adelante se van a encontrar con una *calle huella de concreto* — la suben y, cuando termine, toman la siguiente *calle a mano izquierda*.\n\n';
+  body += '!\n\nYa les abro el portón.\n\n' +
+          'Luego conducen recto y más adelante se encontrarán con una *huella calle de concreto*. Van a subirla y, cuando termine, van a tomar la siguiente *calle a mano izquierda*.\n\n';
 
   if (cabin === 'azul') {
-    body += 'Unos *25 metros más adelante* van a ver un *tanque de reserva de agua azul*. Estacionan *antes del tanque*, a los laterales de la calle.\n\n' +
-            'Al lado del tanque está la *escalera para bajar a la cabaña*. Tiene *techo blanco* y la van a reconocer por los portales con puertas antiguas y la silla colgante.\n\n' +
-            'Cualquier dificultad me escriben o llaman. ¡Quedo atento!';
+    body += 'Unos *25 metros más adelante* verán un *tanque de reserva de agua azul*. Se van a estacionar *antes del tanque*, en los laterales de la calle.\n\n' +
+            'Allí mismo, al lado del tanque, está la *escalera para bajar a la cabaña*. Tiene un *techo blanco* y la reconocerán por los portales con las puertas antiguas y la silla colgante.\n\n' +
+            'Cualquier dificultad me llaman al WhatsApp +507 6981-2266.\n\n' +
+            'Quedo atento. 🌿';
   } else {
-    body += 'Apenas doblen, *deténganse y me llaman* para indicarles dónde está la cabaña.\n\nQuedo atento.';
+    body += 'Apenas doblan, detienen el auto y me llaman al +507 6981-2266 para indicarles cuál es su cabaña.\n\n' +
+            'Quedo atento. 🌿';
   }
-  body += '\n\n📞 +507 6981-2266';
 
   try {
     sendWhatsAppCTAUrl(from, body, '💬 Escribir al equipo',
