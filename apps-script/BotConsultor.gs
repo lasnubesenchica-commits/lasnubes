@@ -2202,11 +2202,9 @@ function _botSendArrivalInstructions(from, contactName, conv, reserva) {
   if (cabin === 'azul') {
     body += 'Unos *25 metros más adelante* verán un *tanque de reserva de agua azul*. Se van a estacionar *antes del tanque*, en los laterales de la calle.\n\n' +
             'Allí mismo, al lado del tanque, está la *escalera para bajar a la cabaña*. Tiene un *techo blanco* y la reconocerán por los portales con las puertas antiguas y la silla colgante.\n\n' +
-            'Cualquier dificultad me llaman al WhatsApp +507 6981-2266.\n\n' +
-            'Quedo atento. 🌿';
+            'Cualquier dificultad llama a Josh.';
   } else {
-    body += 'Apenas doblan, detienen el auto y me llaman al +507 6981-2266 para indicarles cuál es su cabaña.\n\n' +
-            'Quedo atento. 🌿';
+    body += 'Apenas doblan, detienen el auto y llaman a Josh al +507 6981-2266 para indicarles cuál es su cabaña.';
   }
 
   // Recordatorio del link público con instrucciones completas y código de
@@ -2217,6 +2215,8 @@ function _botSendArrivalInstructions(from, contactName, conv, reserva) {
   if (publicUrl) {
     body += '\n\n🔗 *Instrucciones completas y código de acceso:*\n' + publicUrl;
   }
+
+  body += '\n\nQuedamos atentos. 🌿';
 
   // Botón "Llamar a Josh" con tel: para abrir el dialer del teléfono al
   // tocar. Si Meta rechaza tel: en CTA URL, el catch hace fallback a texto
