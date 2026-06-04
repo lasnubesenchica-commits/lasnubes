@@ -1445,6 +1445,38 @@ function botHandleMessage(from, text, contactName, kind) {
     return botHandleMessage(from, 'menu_faq', contactName, 'list_reply');
   }
 
+  // Cliente con reserva activa (hoy / mañana / estadía / futura / pasada):
+  // si su conversación no está en mitad de un flujo (booking, He llegado,
+  // handoff), mostrar el menú contextual personalizado en vez de seguir al
+  // parser de fechas o al smart-fallback de Claude. Resuelve casos confusos
+  // como "Buenas días joven" o "Tengo una reserva para hoy" → terminaban
+  // en "No entendí las fechas" o en respuesta genérica de Claude.
+  // Flag once-per-day en context para no re-mandar el menú en cada mensaje.
+  const _midFlowSteps = [
+    'SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES',
+    'CHOOSING_DECOR','CHOOSING_CLOSE',
+    'OFFERING_PAYMENT','AWAITING_VOUCHER_RETRY',
+    'AWAITING_EMAIL','AWAITING_NAME',
+    'PENDING_REVIEW','PENDING_HUMAN_BOOKING',
+    'AWAITING_ARRIVAL_NAME','HUMAN_HANDOFF'
+  ];
+  if (kind === 'text' && _midFlowSteps.indexOf(conv.step) === -1) {
+    const _ctxAM = conv.context || {};
+    const _todayAM = _botToday();
+    if (_ctxAM._arrivalMenuShown !== _todayAM) {
+      try {
+        const arrival = _botArrivalStatus(from);
+        if (arrival) {
+          _ctxAM._arrivalMenuShown = _todayAM;
+          _saveConv(from, 'SHOWED_INFO', _ctxAM, contactName);
+          _botSendMainMenu(from, contactName, true);
+          logDebugEntry('arrival-context-menu', { from: from, status: arrival.status, step: conv.step });
+          return;
+        }
+      } catch(_) {}
+    }
+  }
+
   // Consultas vagas tipo "para julio", "segunda semana de agosto", "el mes
   // que viene" → mandamos al calendario publico en vez de intentar cotizar.
   if (_looksLikeVagueDateQuery(text)) {
@@ -1485,7 +1517,7 @@ function botHandleMessage(from, text, contactName, kind) {
       _botSendPricingInfo(from, contactName, conv);
       return;
     }
-    sendWhatsAppText(from, '🤔 No logré entender las fechas. ¿Podés escribirlas más claras?\n\nEjemplo: "del 5 al 8 de junio, 4 personas".');
+    sendWhatsAppText(from, '🤔 No logré entender las fechas. ¿Puedes escribirlas más claras?\n\nEjemplo: "del 5 al 8 de junio, 4 personas".');
     return;
   }
 
