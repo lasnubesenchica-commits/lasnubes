@@ -2821,7 +2821,7 @@ let _botNewPhones = new Set();
 const BOT_COTIZARON_STEPS  = ['SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES','CHOOSING_DECOR','CHOOSING_CLOSE','OFFERING_PAYMENT','AWAITING_EMAIL','AWAITING_NAME','PENDING_REVIEW','CONFIRMED','ARRIVED','PENDING_HUMAN_BOOKING'];
 const BOT_CIERRE_STEPS     = ['CHOOSING_DECOR','CHOOSING_CLOSE'];                 // eligiendo cómo cerrar
 const BOT_PAGANDO_STEPS    = ['OFFERING_PAYMENT','AWAITING_VOUCHER_RETRY'];       // en formas de pago / voucher
-const BOT_RESERVARON_STEPS = ['PENDING_REVIEW','CONFIRMED']; // venta real: pre-reserva creada (apruebas) + confirmada. El cierre asistido (PENDING_HUMAN_BOOKING) NO cuenta hasta que ingreses la reserva (→ pasa a CONFIRMED)
+const BOT_RESERVARON_STEPS = ['PENDING_REVIEW','CONFIRMED','ARRIVED']; // venta real: pre-reserva creada + confirmada + ya llegó a la cabaña. El cierre asistido (PENDING_HUMAN_BOOKING) NO cuenta hasta que ingreses la reserva (→ pasa a CONFIRMED y luego ARRIVED si llega).
 let _botStatFilter = null;  // null | 'cotizaron' | 'cierre' | 'pagando' | 'reservaron'
 
 function setBotStatFilter(which) {
