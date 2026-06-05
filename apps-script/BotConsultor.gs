@@ -1218,6 +1218,12 @@ function botHandleMessage(from, text, contactName, kind) {
       return;
     }
     if (text === 'menu_he_llegado')   { _botMenuHeLlegado(from, contactName, conv); return; }
+    if (text === 'menu_abrir_porton') {
+      // Misma lógica que tocar "Abrir el portón" en la plantilla
+      // instruccion_checkout. _botHandleCheckoutDone resuelve la reserva
+      // por teléfono si no se pasa id.
+      return _botHandleCheckoutDone(from, contactName, '');
+    }
     if (text === 'menu_como_llegar')  { _botMenuComoLlegar(from);  _botSendMainMenu(from, contactName, false); _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
     if (text === 'menu_actividades')  { _botMenuActividades(from); _botSendMainMenu(from, contactName, false); _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
     if (text === 'menu_gastronomia')  { _botMenuGastronomia(from); _botSendMainMenu(from, contactName, false); _saveConv(from, 'SHOWED_INFO', conv.context, contactName); return; }
@@ -1729,6 +1735,9 @@ function _botSendMainMenu(from, contactName, firstTime, customBody) {
   } else if (arrival && arrival.status === 'hoy') {
     body = _botBuildBodyHoy(arrival.reserva, firstName, isFirst);
     sections = _botMenuSectionsHoy();
+  } else if (arrival && arrival.status === 'saliendo') {
+    body = _botBuildBodySaliendo(arrival.reserva, firstName, isFirst);
+    sections = _botMenuSectionsSaliendo();
   } else if (arrival && arrival.status === 'estadia') {
     body = _botBuildBodyEstadia(arrival.reserva, firstName, isFirst);
     sections = _botMenuSectionsEstadia();
@@ -1846,6 +1855,24 @@ function _botMenuSectionsManana() {
   ];
 }
 
+function _botMenuSectionsSaliendo() {
+  return [
+    {
+      title: 'Tu salida',
+      rows: [
+        { id: 'menu_abrir_porton', title: '🚪 Abrir el portón',     description: 'Estoy en el portón de salida' },
+        { id: 'menu_faq',          title: '❓ Preguntas frecuentes', description: 'Cocina, basura, key box, check-out' }
+      ]
+    },
+    {
+      title: 'Soporte',
+      rows: [
+        { id: 'menu_agente', title: '🙋 Hablar con un agente', description: 'Abrir WhatsApp del equipo' }
+      ]
+    }
+  ];
+}
+
 function _botMenuSectionsEstadia() {
   return [
     {
@@ -1945,6 +1972,18 @@ function _botBuildBodyManana(reserva, firstName, isFirstTime) {
     'Mañana te recibimos en *' + reserva.cabinName + '* para tu reserva del ' + fechas + '.\n\n' +
     '¿Necesitas info para tu llegada? Toca *Ver opciones* abajo 👇 (cómo llegar, qué llevar, actividades, etc.)\n\n' +
     '_Mañana a las 10am te enviamos también un recordatorio con todo lo necesario._';
+}
+
+function _botBuildBodySaliendo(reserva, firstName, isFirstTime) {
+  const greeting = firstName ? '¡Hola ' + firstName + '! 🌿' : '¡Hola! 🌿';
+  const checkoutHr = _horaPlantilla(reserva.tipo, 'checkout', reserva.checkoutExtendido);
+  if (!isFirstTime) {
+    return '¿Necesitas algo para tu salida hoy de *' + reserva.cabinName + '*? Toca *Ver opciones* abajo 👇';
+  }
+  return greeting + '\n\n' +
+    'Hoy es tu check-out de *' + reserva.cabinName + '* a las *' + checkoutHr + '*.\n\n' +
+    'Antes de salir de la cabaña: deja la cocina ordenada, llévate la basura y deja la llave en el key box. 🔑\n\n' +
+    'Cuando estén en el portón de salida, toca *🚪 Abrir el portón* abajo y te abrimos al instante.';
 }
 
 function _botBuildBodyEstadia(reserva, firstName, isFirstTime) {
@@ -2107,12 +2146,14 @@ function _botDaysBetween(isoA, isoB) {
 
 // Detecta el contexto de reserva del cliente para personalizar el saludo y
 // el menú. Devuelve { status, reserva } o null. Status:
-//   - 'hoy'     : check-in es hoy (display).
-//   - 'manana'  : check-in es mañana (display).
-//   - 'estadia' : hoy entre check-in y check-out (ya está alojado).
-//   - 'futura'  : check-in en >2 días (cualquier fecha futura más allá de mañana).
-//   - 'pasada'  : check-out fue hace ≤7 días (estadía recién terminada).
-// Si hay varias reservas, prioriza: hoy > estadia > manana > futura > pasada.
+//   - 'hoy'      : check-in es hoy (display).
+//   - 'manana'   : check-in es mañana (display).
+//   - 'saliendo' : check-out es hoy (estadía multi-día que termina hoy).
+//   - 'estadia'  : hoy entre check-in y check-out (sin incluir el día de salida).
+//   - 'futura'   : check-in en >2 días.
+//   - 'pasada'   : check-out fue hace ≤7 días.
+// Si hay varias reservas, prioriza: hoy > saliendo > estadia > manana >
+// futura > pasada.
 function _botArrivalStatus(phone) {
   const sheet = getOrCreateSheet();
   const data  = sheet.getDataRange().getValues();
@@ -2125,7 +2166,7 @@ function _botArrivalStatus(phone) {
   };
   const target = normalize(phone);
   if (!target) return null;
-  const found = { hoy: null, estadia: null, manana: null, futura: null, pasada: null };
+  const found = { hoy: null, saliendo: null, estadia: null, manana: null, futura: null, pasada: null };
   for (let i = 1; i < data.length; i++) {
     const r = data[i];
     if (!r[0]) continue;
@@ -2143,10 +2184,11 @@ function _botArrivalStatus(phone) {
     else if (tipo === 'early')     { displayCi = _botAddDaysISO(ci, 1); }
     else if (tipo === 'late')      { displayCo = _botAddDaysISO(co, -1); }
     let status = null;
-    if (displayCi === today)                              status = 'hoy';
-    else if (displayCi === tomorrow)                      status = 'manana';
-    else if (today > displayCi && today <= displayCo)     status = 'estadia';
-    else if (displayCi > tomorrow)                        status = 'futura';
+    if (displayCi === today)                                  status = 'hoy';
+    else if (displayCi === tomorrow)                          status = 'manana';
+    else if (today === displayCo && today > displayCi)        status = 'saliendo';
+    else if (today > displayCi && today < displayCo)          status = 'estadia';
+    else if (displayCi > tomorrow)                            status = 'futura';
     else if (displayCo < today && _botDaysBetween(displayCo, today) <= 7) status = 'pasada';
     if (!status) continue;
     const reserva = {
@@ -2154,6 +2196,7 @@ function _botArrivalStatus(phone) {
       checkin: ci, checkout: co,
       persons: r[6], origin: r[9],
       tipo: tipo,
+      checkoutExtendido: !!r[28],
       displayCheckin: displayCi, displayCheckout: displayCo,
       cabinName: BOT_CABIN_NAMES[r[3]] || r[3]
     };
@@ -2165,7 +2208,7 @@ function _botArrivalStatus(phone) {
       found.pasada = reserva;   // estadía pasada más reciente
     }
   }
-  const priority = ['hoy', 'estadia', 'manana', 'futura', 'pasada'];
+  const priority = ['hoy', 'saliendo', 'estadia', 'manana', 'futura', 'pasada'];
   for (const s of priority) if (found[s]) return { status: s, reserva: found[s] };
   return null;
 }
