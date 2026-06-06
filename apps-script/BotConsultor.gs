@@ -280,7 +280,7 @@ function _looksLikeVagueDateQuery(text) {
 // "Para hacer el pago?", "Cómo pago?", "Aceptan tarjeta?", "Por yappi", etc.
 function _botLooksLikePaymentQuery(text) {
   const t = (text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-  return /\b(como\s+(pago|paga|se\s+paga|pagar|hago\s+el\s+pago)|para\s+(hacer\s+el\s+)?pag(o|ar)|metodos?\s+de\s+pago|forma[s]?\s+de\s+pago|yappy|yappi|\bach\b|sinpe|transferencia(\s+bancaria)?|deposito(\s+bancario)?|pago\s+contra|tarjeta(\s+de\s+credito)?|paypal|aceptan\s+(tarjeta|efectivo|paypal))\b/.test(t);
+  return /\b(como\s+(pago|paga|se\s+paga|pagar|hago\s+el\s+pago)|para\s+(hacer\s+el\s+)?pag(o|ar)|metodos?\s+de\s+pago|forma[s]?\s+de\s+pago|yappy|yappi|\bach\b|sinpe|transferencia(\s+bancaria)?|deposito(\s+bancario)?|pago\s+contra|tarjeta(\s+de\s+credito)?|paypal|aceptan\s+(tarjeta|efectivo|paypal)|abon(o|ar|ando|amos)|adelanto|adelantar|reservar\s+abon|pagar\s+(completo|todo|el\s+total|en\s+total)|pago\s+(completo|total))\b/.test(t);
 }
 
 // Respuesta breve a preguntas de pago sin romper el flujo activo de booking.
@@ -293,15 +293,22 @@ function _botHandlePaymentInfo(from, contactName, conv, text) {
     'CHOOSING_DECOR','CHOOSING_CLOSE'
   ].indexOf(conv.step) !== -1;
 
-  // Detecta si pregunta específicamente por el NÚMERO de Yappy (no solo
-  // "manejan Yappy?"). Caso real: Malu preguntó "cuál es el Yappy?" y
-  // Claude alucinó "es el mismo al que estás escribiendo por WhatsApp"
-  // (falso: WA es 6018-8278, Yappy es 6981-2266). Casi pierde la venta.
   const t = (text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  // Pregunta específica por el NÚMERO de Yappy. Caso Malu: Claude alucinó
+  // "es el mismo al que escribes por WhatsApp" (falso). Damos el número real.
   const askingYappyNumber = /\b(cual\s+es|cu[aá]l\s+es|numero\s+(de|del|de\s+tu)?|num\s+(de|del)?|pasame|mandame|env[ií]ame|cual\s+el|me\s+das?|tu)\b[^?]{0,30}\byapp[yi]\b|^\s*yapp[yi]\s*\?|\byapp[yi]\s*\?/.test(t);
+  // Pregunta sobre abono parcial / pago completo / descuento.
+  const askingAbono = /\b(abon(o|ar|ando|amos)|adelanto|adelantar|reservar\s+abon|pagar\s+(completo|todo|el\s+total|en\s+total)|pago\s+(completo|total)|descuento)\b/.test(t);
 
   let body;
-  if (askingYappyNumber) {
+  if (askingAbono) {
+    body =
+      '💳 *Opciones de pago para tu reserva:*\n\n' +
+      '• *Abono del 50%* para apartar la cabaña — el resto antes del día de tu llegada.\n' +
+      '• *Pago completo con descuento*: *-$10* si reservas *dom–jue*, *-$20* si reservas *vie–sáb*.\n\n' +
+      '*Métodos:* Yappy +507 6981-2266 (Joslyn Lopez) o ACH (Banco General).\n\n' +
+      'No aceptamos tarjeta de crédito ni pago contra entrega.';
+  } else if (askingYappyNumber) {
     body =
       '💳 *Yappy:* +507 6981-2266 a nombre de *Joslyn Lopez*.\n\n' +
       'También aceptamos *ACH* (Banco General — te paso los datos completos cuando confirmes la reserva).\n\n' +
@@ -311,7 +318,7 @@ function _botHandlePaymentInfo(from, contactName, conv, text) {
       '💳 *Manejamos dos métodos de pago:*\n\n' +
       '• *Yappy* — +507 6981-2266 (Joslyn Lopez)\n' +
       '• *ACH* (transferencia bancaria — Banco General)\n\n' +
-      'No aceptamos tarjeta de crédito ni pago contra entrega. Una vez confirmes la reserva te paso los datos completos. 🤝';
+      'Puedes reservar con *50% de abono* (resto antes del día) o pagar completo con descuento *(-$10 dom–jue / -$20 vie–sáb)*. No aceptamos tarjeta de crédito ni pago contra entrega. 🤝';
   }
 
   if (inBookingFlow) {
@@ -321,7 +328,7 @@ function _botHandlePaymentInfo(from, contactName, conv, text) {
   }
 
   sendWhatsAppText(from, body);
-  logDebugEntry('payment-info', { from: from, step: conv.step, inBookingFlow: inBookingFlow, askingYappyNumber: askingYappyNumber });
+  logDebugEntry('payment-info', { from: from, step: conv.step, inBookingFlow: inBookingFlow, askingYappyNumber: askingYappyNumber, askingAbono: askingAbono });
 }
 
 // Envia link al calendario publico para consultas de fechas vagas.
@@ -1848,8 +1855,7 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
 // firstTime=true → muestra bienvenida elaborada. firstTime=false → solo "¿Necesitas algo más?"
 // customBody (opcional) → reemplaza el cuerpo (uso desde flujos especiales como campaign).
 function _botSendMainMenu(from, contactName, firstTime, customBody) {
-  const firstName = ((contactName || '').toString().trim().split(/\s+/)[0]) || '';
-  const greeting  = firstName ? '¡Hola ' + firstName + '! 🌿' : '¡Hola! 🌿';
+  let firstName = ((contactName || '').toString().trim().split(/\s+/)[0]) || '';
 
   // Detectar contexto de reserva (hoy / mañana) para personalizar el saludo
   // y reordenar el menú según relevancia. Si hay customBody, respetar.
@@ -1857,6 +1863,15 @@ function _botSendMainMenu(from, contactName, firstTime, customBody) {
   if (!customBody) {
     try { arrival = _botArrivalStatus(from); } catch(_) {}
   }
+
+  // Si hay reserva activa con nombre real, preferirlo sobre el alias de
+  // WhatsApp (que puede ser emojis o un display name raro como "💜🥳").
+  if (arrival && arrival.reserva && arrival.reserva.name) {
+    const reservaFirst = String(arrival.reserva.name).trim().split(/\s+/)[0];
+    if (reservaFirst) firstName = reservaFirst;
+  }
+
+  const greeting = firstName ? '¡Hola ' + firstName + '! 🌿' : '¡Hola! 🌿';
 
   let body, sections;
   const isFirst = firstTime !== false;
