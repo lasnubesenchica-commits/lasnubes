@@ -3265,6 +3265,48 @@ function closeBotDetail() {
 
 // Refresca estado + mensajes de la conversación abierta. El live-poll se pausa
 // mientras el sheet está abierto, así que este es el refresh manual.
+// Copia el hilo entero (conv + mensajes) al portapapeles como texto plano.
+// Útil cuando el admin está en iPhone y quiere pegar todo el contexto en otra app.
+async function copyBotThread(phone) {
+  try {
+    const res  = await fetch(SHEETS_API_URL + '?action=getMensajes&phone=' + encodeURIComponent(phone) + '&limit=500');
+    const data = await res.json();
+    const messages = (data && data.messages) || [];
+    const conv     = _botConvs.find(c => c.phone === phone) || {};
+    const lines = [];
+    lines.push('=== Conversación con ' + (conv.name || '+' + phone) + ' (' + messages.length + ' mensajes) ===');
+    lines.push('Teléfono: +' + phone + ' · Estado: ' + (conv.step || '?'));
+    if (conv.context) {
+      const ctx = conv.context || {};
+      if (ctx.dates && ctx.dates.checkin) lines.push('Fechas: ' + ctx.dates.checkin + ' → ' + ctx.dates.checkout);
+      if (ctx.personas) lines.push('Personas: ' + ctx.personas);
+      if (ctx.cabin)    lines.push('Cabaña: ' + ctx.cabin);
+    }
+    lines.push('');
+    messages.forEach(m => {
+      const arrow   = m.direction === 'in' ? '◀' : '▶';
+      const ts      = m.timestamp || m.ts || '';
+      const content = String(m.content || '').slice(0, 600);
+      lines.push(ts + ' ' + arrow + ' [' + (m.type || '') + '] ' + content);
+    });
+    const text = lines.join('\n');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      showToast('📋 Hilo copiado (' + messages.length + ' mensajes)');
+    } else {
+      // Fallback iOS antiguos: textarea temporal + execCommand.
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showToast('📋 Hilo copiado (' + messages.length + ' mensajes)');
+    }
+  } catch(e) {
+    alert('No se pudo copiar: ' + e.message);
+  }
+}
+
 async function refreshBotDetail(phone) {
   try {
     const res = await fetch(SHEETS_API_URL + '?action=getConversaciones');
@@ -3325,6 +3367,7 @@ function renderBotDetail(conv, messages) {
       '</div>' +
       '<div style="display:flex;gap:6px;flex-shrink:0;">' +
         '<button onclick="refreshBotDetail(\'' + conv.phone + '\')" title="Refrescar conversación" style="padding:7px 10px;font-size:12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-weight:600;font-family:inherit;">↻</button>' +
+        '<button onclick="copyBotThread(\'' + conv.phone + '\')" title="Copiar hilo como texto" style="padding:7px 10px;font-size:12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-weight:600;font-family:inherit;">📋</button>' +
         '<a href="' + waLink + '" target="_blank" style="padding:7px 10px;font-size:12px;background:#25d366;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">💬</a>' +
         '<button onclick="deleteBotConv(\'' + conv.phone + '\', \'' + (conv.name || '').replace(/[\\\'"]/g, '') + '\')" style="padding:7px 10px;font-size:12px;background:#c0392b;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-family:inherit;">🗑️</button>' +
       '</div>' +
