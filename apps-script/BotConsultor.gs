@@ -318,7 +318,7 @@ function _botHandlePaymentInfo(from, contactName, conv, text) {
       '💳 *Manejamos dos métodos de pago:*\n\n' +
       '• *Yappy* — +507 6981-2266 (Joslyn Lopez)\n' +
       '• *ACH* (transferencia bancaria — Banco General)\n\n' +
-      'Puedes reservar con *50% de abono* (resto antes del día) o pagar completo con descuento *(-$10 dom–jue / -$20 vie–sáb)*. No aceptamos tarjeta de crédito ni pago contra entrega. 🤝';
+      'No aceptamos tarjeta de crédito ni pago contra entrega. Una vez confirmes la reserva te paso los datos completos. 🤝';
   }
 
   if (inBookingFlow) {
