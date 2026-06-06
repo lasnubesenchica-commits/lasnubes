@@ -245,11 +245,44 @@ function _looksLikeVagueDateQuery(text) {
   return false;
 }
 
+// Detecta preguntas sobre métodos de pago / Yappy / ACH / transferencia.
+// "Para hacer el pago?", "Cómo pago?", "Aceptan tarjeta?", "Por yappi", etc.
+function _botLooksLikePaymentQuery(text) {
+  const t = (text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return /\b(como\s+(pago|paga|se\s+paga|pagar|hago\s+el\s+pago)|para\s+(hacer\s+el\s+)?pag(o|ar)|metodos?\s+de\s+pago|forma[s]?\s+de\s+pago|yappy|yappi|\bach\b|sinpe|transferencia(\s+bancaria)?|deposito(\s+bancario)?|pago\s+contra|tarjeta(\s+de\s+credito)?|paypal|aceptan\s+(tarjeta|efectivo|paypal))\b/.test(t);
+}
+
+// Respuesta breve a preguntas de pago sin romper el flujo activo de booking.
+// Mantiene el estado: si está en SHOWING_AVAILABILITY / CHOOSING_DECOR /
+// CHOOSING_CLOSE, le recordamos que tiene opciones arriba y no le pedimos
+// fechas/personas otra vez.
+function _botHandlePaymentInfo(from, contactName, conv) {
+  const inBookingFlow = [
+    'SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES',
+    'CHOOSING_DECOR','CHOOSING_CLOSE'
+  ].indexOf(conv.step) !== -1;
+
+  let body =
+    '💳 *Manejamos dos métodos de pago:*\n\n' +
+    '• *Yappy*\n' +
+    '• *ACH* (transferencia bancaria)\n\n' +
+    'No aceptamos tarjeta de crédito ni pago contra entrega. Una vez confirmes la reserva te paso los datos para que hagas el abono. 🤝';
+
+  if (inBookingFlow) {
+    body += '\n\n¿Listo para avanzar? Toca una opción arriba ⬆ y seguimos.';
+  } else {
+    body += '\n\n¿Tienes fechas en mente? Dime *fechas* y *personas* (ej: _"del 5 al 8 de junio, 2 personas"_) y te cotizo al instante.';
+  }
+
+  sendWhatsAppText(from, body);
+  logDebugEntry('payment-info', { from: from, step: conv.step, inBookingFlow: inBookingFlow });
+}
+
 // Envia link al calendario publico para consultas de fechas vagas.
 function _botSendCalendarLink(from, contactName) {
   const body =
-    '🗓 Para fechas amplias o flexibles, podés explorar todo el calendario de disponibilidad en nuestra página.\n\n' +
-    'Tocá el botón abajo, mirá los días libres y cuando tengas fechas concretas decímelas por aquí (ej: _"del 5 al 8 de julio, 2 personas"_) para cotizar al instante. 🤝';
+    '🗓 Para fechas amplias o flexibles, puedes explorar todo el calendario de disponibilidad en nuestra página.\n\n' +
+    'Toca el botón abajo, mira los días libres y cuando tengas fechas concretas dímelas por aquí (ej: _"del 5 al 8 de julio, 2 personas"_) para cotizar al instante. 🤝';
   try {
     sendWhatsAppCTAUrl(from, body, '📅 Ver calendario', 'https://lasnubes.cloud');
   } catch(_) {
@@ -291,7 +324,7 @@ function _botSendCampaignWelcome(from, contactName) {
     'Te envío disponibilidad y precio al instante. 🤝';
 
   sendWhatsAppText(from, info);
-  _botSendMainMenu(from, contactName, false, '¿Querés explorar más? Tocá *Ver opciones* abajo 👇');
+  _botSendMainMenu(from, contactName, false, '¿Quieres explorar más? Toca *Ver opciones* abajo 👇');
   _saveConv(from, 'AWAITING_DATES', {}, contactName);
 }
 
@@ -304,7 +337,7 @@ function _botSendPricingInfo(from, contactName, conv) {
     '• Domingo a jueves: *$' + BOT_RATE_WEEKDAY + '/noche*\n' +
     '• Viernes y sábado: *$' + BOT_RATE_WEEKEND + '/noche*\n\n' +
     '_Para 3 o 4 personas hay un pequeño recargo por persona adicional._\n\n' +
-    '¿Querés verificar disponibilidad para alguna fecha? Decime *fechas* y *personas* (ej: _"del 5 al 8 de junio, 2 personas"_) y te cotizo al instante. 🤝';
+    '¿Quieres verificar disponibilidad para alguna fecha? Dime *fechas* y *personas* (ej: _"del 5 al 8 de junio, 2 personas"_) y te cotizo al instante. 🤝';
   sendWhatsAppText(from, msg);
   _saveConv(from, 'AWAITING_DATES', (conv && conv.context) || {}, contactName);
 }
@@ -359,7 +392,7 @@ function _botSendCabinPhotos(from, contactName, cabinKey) {
     sendWhatsAppText(from,
       'Estas son algunas fotos de *' + BOT_CABIN_NAMES[cabinKey] + '* 🌿\n\n' +
       'Galería completa: https://lasnubes.cloud/#cabanas-' + cabinKey + '\n\n' +
-      '¿Querés cotizar para alguna fecha? Decime *fechas* y *personas* 📅'
+      '¿Quieres cotizar para alguna fecha? Dime *fechas* y *personas* 📅'
     );
     logDebugEntry('bot-fotos', { from: from, cabin: cabinKey });
     return;
@@ -369,9 +402,9 @@ function _botSendCabinPhotos(from, contactName, cabinKey) {
     try { sendWhatsAppImage(from, BOT_CABIN_PHOTOS[c][0], '🏡 ' + BOT_CABIN_NAMES[c]); } catch(_) {}
   });
   sendWhatsAppText(from,
-    '🌿 Estas son nuestras tres cabañas. Decime de cuál querés ver *más fotos* (Paseo, Portal o Puente) ' +
-    'o mirá la galería completa en https://lasnubes.cloud/#cabanas\n\n' +
-    'Y si ya tenés fechas en mente, te cotizo al instante 📅'
+    '🌿 Estas son nuestras tres cabañas. Dime de cuál quieres ver *más fotos* (Paseo, Portal o Puente) ' +
+    'o mira la galería completa en https://lasnubes.cloud/#cabanas\n\n' +
+    'Y si ya tienes fechas en mente, te cotizo al instante 📅'
   );
   logDebugEntry('bot-fotos', { from: from, cabin: 'all' });
 }
@@ -385,8 +418,8 @@ function _botHandleAccesoQuery(from, contactName, text) {
   if (/\b(sin\s+(auto|carro|veh[ií]culo|movilidad)|no\s+tengo\s+(auto|carro|veh[ií]culo|carro)|transporte|traslado|shuttle|pickup|en\s+bus\b|\bbus\b|autob[uú]s|albrook|terminal|recogida|nos\s+recog|me\s+recog)\b/.test(t)) {
     sendWhatsAppText(from,
       '🚌 *Cómo llegar sin auto*\n\n' +
-      'Desde la terminal de *Albrook* podés tomar cualquier bus hacia el interior y bajarte en el *Pío Pío de Bejuco*. Ahí te recogemos y trasladamos a la cabaña, ida y vuelta, por *$20 adicionales* en tu reserva. 🌿\n\n' +
-      '¿Querés cotizar para alguna fecha? Decime *fechas* y *personas* 📅'
+      'Desde la terminal de *Albrook* puedes tomar cualquier bus hacia el interior y bajarte en el *Pío Pío de Bejuco*. Ahí te recogemos y trasladamos a la cabaña, ida y vuelta, por *$20 adicionales* en tu reserva. 🌿\n\n' +
+      '¿Quieres cotizar para alguna fecha? Dime *fechas* y *personas* 📅'
     );
     logDebugEntry('bot-acceso', { from: from, tipo: 'sin-auto' });
     return true;
@@ -397,7 +430,7 @@ function _botHandleAccesoQuery(from, contactName, text) {
     sendWhatsAppText(from,
       '🚗 *Acceso a Las Nubes*\n\n' +
       'La carretera es de asfalto y en muy buen estado hasta la entrada del proyecto. Luego son unos *5 minutos en camino de tosca fina*. Recibimos *sedanes y todo tipo de autos* sin problema. 🌿\n\n' +
-      '¿Querés cotizar para alguna fecha? Decime *fechas* y *personas* 📅'
+      '¿Quieres cotizar para alguna fecha? Dime *fechas* y *personas* 📅'
     );
     logDebugEntry('bot-acceso', { from: from, tipo: 'vehiculo' });
     return true;
@@ -433,7 +466,7 @@ function _botHandleInfoQuery(from, contactName, conv, text) {
   }
 
   // 2) FAQ topics — respuesta puntual + invitacion a cotizar
-  const tail = '\n\n¿Querés cotizar para alguna fecha? Decime *fechas* y *personas* 📅';
+  const tail = '\n\n¿Quieres cotizar para alguna fecha? Dime *fechas* y *personas* 📅';
   if (/\b(cocina|bbq|cocinar|parrilla|cooler|nevera|comida|alimentos|equipada)\b/i.test(t)) {
     sendWhatsAppText(from,
       '🍳 *Cocina & alimentación*\n\n' +
@@ -455,7 +488,7 @@ function _botHandleInfoQuery(from, contactName, conv, text) {
       '🕒 *Horarios*\n\n' +
       '• Check-in: *2:00 pm*\n' +
       '• Check-out: *11:00 am*\n\n' +
-      'Si necesitás entrar más temprano o salir más tarde lo coordinamos según disponibilidad.' + tail
+      'Si necesitas entrar más temprano o salir más tarde lo coordinamos según disponibilidad.' + tail
     );
     return true;
   }
@@ -485,7 +518,7 @@ function _botHandleInfoQuery(from, contactName, conv, text) {
   if (/\b(mascot|pet|llevar\s+(mi\s+)?perr|mi\s+gat)\b/i.test(t)) {
     sendWhatsAppText(from,
       '🐾 *Mascotas*\n\n' +
-      'Por el momento no recibimos mascotas. Para coordinaciones puntuales podés escribir al equipo y vemos. 🙏'
+      'Por el momento no recibimos mascotas. Para coordinaciones puntuales puedes escribir al equipo y vemos. 🙏'
     );
     return true;
   }
@@ -522,7 +555,7 @@ function _botHandleInfoQuery(from, contactName, conv, text) {
       '💰 *Política de niños*\n' +
       '• Menores de *5 años* no pagan.\n' +
       '• De la 3ra persona en adelante (5 años o más): $' + BOT_RECARGO_PERSONA_GRANDE + ' por persona/noche en Paseo y Puente, $' + BOT_RECARGO_PERSONA_PORTAL + ' en Portal.\n\n' +
-      'Decime *fechas* y *cuántas personas* (incluí la edad de los niños) y te cotizo al instante 📅'
+      'Dime *fechas* y *cuántas personas* (incluye la edad de los niños) y te cotizo al instante 📅'
     );
     return true;
   }
@@ -533,7 +566,7 @@ function _botHandleInfoQuery(from, contactName, conv, text) {
       '🌤 *Clima*\n\n' +
       'Las Nubes está en zona de montaña, con clima fresco — unos 4°C por debajo de la temperatura de la ciudad y brisa constante todo el día.\n\n' +
       'Cada cabaña tiene un ventilador pequeño, pero rara vez se usa. Te recomendamos traer una chaqueta liviana para las noches 🧥.\n\n' +
-      '¿Querés cotizar para alguna fecha? Decime *fechas* y *personas* 📅'
+      '¿Quieres cotizar para alguna fecha? Dime *fechas* y *personas* 📅'
     );
     return true;
   }
@@ -557,7 +590,7 @@ function _botHandleInfoQuery(from, contactName, conv, text) {
       '• *Cascadas Filipinas* (Sorá, ~20 min) — 7 cascadas encadenadas\n' +
       '• *Cascada Manglarito* (Sorá, ~20 min) — 35m de caída\n' +
       '• *Playas* Coronado y Gorgona (~15-20 min)\n\n' +
-      '¿Querés cotizar para alguna fecha? Decime *fechas* y *personas* 📅'
+      '¿Quieres cotizar para alguna fecha? Dime *fechas* y *personas* 📅'
     );
     return true;
   }
@@ -686,7 +719,7 @@ function _botKnowledgeBase() {
 '- Cálido, breve, conversacional. Español neutral latinoamericano (usá "tú", no "vos")\n' +
 '- Usa *negritas* de WhatsApp para énfasis y emojis con moderación (🌿 🏡 ☕ 🛏 📍)\n' +
 '- Máximo 4-5 líneas. Directo al punto\n' +
-'- Si la consulta es sobre disponibilidad/precios, terminá con: "Decime *fechas* y *personas* (ej: _\'del 5 al 8 de junio, 2 personas\'_) y te cotizo al instante 🤝"\n' +
+'- Si la consulta es sobre disponibilidad/precios, termina con: "Dime *fechas* y *personas* (ej: _\'del 5 al 8 de junio, 2 personas\'_) y te cotizo al instante 🤝"\n' +
 '- Si pueden ver fotos: invitá a ver el catálogo en https://lasnubes.cloud\n\n' +
 'Respondé directo al mensaje del cliente, sin saludos largos.'
   );
@@ -1064,7 +1097,7 @@ function _botHandleClientReservaMessage(from, contactName, conv, parsed) {
   if (parsed.isCombo || parsed.isPasadia || parsed.personas >= 5) {
     sendWhatsAppText(from,
       '🌿 ¡Recibí tu solicitud! Para este tipo de reserva coordinamos directo con vos. ' +
-      'Tocá el botón abajo para escribir al equipo.'
+      'Toca el botón abajo para escribir al equipo.'
     );
     try {
       sendWhatsAppCTAUrl(from,
@@ -1147,7 +1180,7 @@ function botHandleMessage(from, text, contactName, kind) {
 
   // Boton "Ver otras fechas" → vuelve a AWAITING_DATES
   if (kind === 'button_reply' && text === 'try_dates') {
-    sendWhatsAppText(from, '🌿 Decime las nuevas fechas:\n\n• "del 5 al 8 de junio, 2 personas"\n• "viernes a domingo, 4 personas"');
+    sendWhatsAppText(from, '🌿 Dime las nuevas fechas:\n\n• "del 5 al 8 de junio, 2 personas"\n• "viernes a domingo, 4 personas"');
     _saveConv(from, 'AWAITING_DATES', conv.context, contactName);
     return;
   }
@@ -1157,7 +1190,7 @@ function botHandleMessage(from, text, contactName, kind) {
     const n = parseInt(text.replace('persons_', ''), 10);
     const dates = conv.context && conv.context.dates;
     if (!dates || !dates.checkin || !dates.checkout) {
-      sendWhatsAppText(from, '🤔 Perdí el contexto. Decime las fechas otra vez (ej: "del 5 al 8 de junio").');
+      sendWhatsAppText(from, '🤔 Perdí el contexto. Dime las fechas otra vez (ej: "del 5 al 8 de junio").');
       _saveConv(from, 'AWAITING_DATES', {}, contactName);
       return;
     }
@@ -1212,7 +1245,7 @@ function botHandleMessage(from, text, contactName, kind) {
   if ((kind === 'list_reply' || kind === 'button_reply') && /^menu_/.test(text)) {
     if (text === 'menu_disponibilidad') {
       sendWhatsAppText(from,
-        '¡Genial! 🌿 Decime *fechas* y *personas* (ej: _"del 5 al 8 de junio, 2 personas"_).'
+        '¡Genial! 🌿 Dime *fechas* y *personas* (ej: _"del 5 al 8 de junio, 2 personas"_).'
       );
       _saveConv(from, 'AWAITING_DATES', conv.context, contactName);
       return;
@@ -1246,7 +1279,7 @@ function botHandleMessage(from, text, contactName, kind) {
 
       try {
         sendWhatsAppCTAUrl(from,
-          '🙋 ¡Claro! Tocá el botón abajo para escribirle directo a una persona de nuestro equipo por WhatsApp.',
+          '🙋 ¡Claro! Toca el botón abajo para escribirle directo a una persona de nuestro equipo por WhatsApp.',
           'Abrir WhatsApp',
           'https://wa.me/50769812266?text=' + encodeURIComponent(prefill)
         );
@@ -1329,14 +1362,14 @@ function botHandleMessage(from, text, contactName, kind) {
   if (conv.step === 'AWAITING_ARRIVAL_NAME') {
     const tName = (text || '').trim();
     if (tName.length < 3) {
-      sendWhatsAppText(from, '🤔 Necesito el nombre completo para ubicar la reserva. Probá de nuevo o escribime "agente" para hablar con una persona.');
+      sendWhatsAppText(from, '🤔 Necesito el nombre completo para ubicar la reserva. Prueba de nuevo o escríbeme "agente" para hablar con una persona.');
       return;
     }
     const reservaByName = _botFindReservaByName(tName);
     if (!reservaByName) {
       sendWhatsAppText(from,
         '😔 No encuentro una reserva activa a nombre de *' + tName + '* para hoy.\n\n' +
-        'Te derivo con una persona del equipo para resolverlo. Escribime "agente" si querés contactarla directo.'
+        'Te derivo con una persona del equipo para resolverlo. Escribime "agente" si quieres contactarla directo.'
       );
       try {
         sendWhatsAppText('50769812266',
@@ -1407,7 +1440,7 @@ function botHandleMessage(from, text, contactName, kind) {
   if (_isReservaChangeRequest(text)) {
     sendWhatsAppText(from,
       '🙏 Entiendo, te derivo con una persona del equipo para coordinar el cambio o cancelación.\n\n' +
-      'Tocá el botón abajo para escribirle directo.'
+      'Toca el botón abajo para escribirle directo.'
     );
     try {
       sendWhatsAppCTAUrl(from,
@@ -1483,6 +1516,15 @@ function botHandleMessage(from, text, contactName, kind) {
     }
   }
 
+  // Preguntas sobre métodos de pago durante el flujo de booking. Caso real:
+  // cliente en SHOWING_AVAILABILITY preguntó "Para hacer el pago?" y el bot
+  // dumpeaba "Dime fechas y personas" rompiendo todo el contexto. Ahora
+  // respondemos breve y mantenemos el estado.
+  if (kind === 'text' && conv.step !== 'OFFERING_PAYMENT' && _botLooksLikePaymentQuery(text)) {
+    _botHandlePaymentInfo(from, contactName, conv);
+    return;
+  }
+
   // Consultas vagas tipo "para julio", "segunda semana de agosto", "el mes
   // que viene" → mandamos al calendario publico en vez de intentar cotizar.
   if (_looksLikeVagueDateQuery(text)) {
@@ -1511,7 +1553,7 @@ function botHandleMessage(from, text, contactName, kind) {
       const personas     = parsed.persons || 2;
       const freeChildren = parsed.freeChildren || 0;
       if (midBooking) {
-        sendWhatsAppText(from, '🔄 Veo que querés cambiar las fechas. Verifico disponibilidad para las nuevas...');
+        sendWhatsAppText(from, '🔄 Veo que quieres cambiar las fechas. Verifico disponibilidad para las nuevas...');
       }
       return _replyAvailability(from, contactName, { step: 'AWAITING_DATES', context: {}, name: contactName }, parsed.checkin, parsed.checkout, personas, freeChildren, parsed.ambiguousNights, _botMentionsDecoracion(text));
     }
@@ -1572,7 +1614,7 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
     const fechas = _botFmtFecha(checkin) + ' → ' + _botFmtFecha(checkout);
     sendWhatsAppText(from,
       '👥 Para grupos de *' + personas + ' personas* coordinamos directo con vos para ajustar combo de cabañas y detalles.\n\n' +
-      'Tocá el botón abajo para escribir al equipo y resolverlo en un mensaje.'
+      'Toca el botón abajo para escribir al equipo y resolverlo en un mensaje.'
     );
     try {
       sendWhatsAppCTAUrl(from,
@@ -1644,7 +1686,7 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
         'Pero sí tenemos para estas fechas cercanas:';
       const buttons = alts.slice(0, 3).map(a => ({ id: 'alt_' + a.checkin, title: _botFmtFecha(a.checkin) }));
       try {
-        sendWhatsAppButtons(from, body, buttons, null, 'Tocá una opción o escribime "agente"');
+        sendWhatsAppButtons(from, body, buttons, null, 'Toca una opción o escríbeme "agente"');
       } catch(_) {
         sendWhatsAppText(from, body + '\n\n' + alts.map(a => '• ' + _botFmtFecha(a.checkin) + ' → ' + _botFmtFecha(a.checkout)).join('\n') + '\n\nEscribime las fechas que prefieras.');
       }
@@ -1653,8 +1695,8 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
     }
     sendWhatsAppText(from,
       '😔 No tenemos disponibilidad para *' + fechasStr + '* con ' + personas + (personas === 1 ? ' persona' : ' personas') + '.\n\n' +
-      'Podés ver el calendario público:\nhttps://lasnubes.cloud\n\n' +
-      '¿O preferís hablar con un agente? Tocá *Hablar con un agente* en el menú.'
+      'Puedes ver el calendario público:\nhttps://lasnubes.cloud\n\n' +
+      '¿O prefieres hablar con un agente? Toca *Hablar con un agente* en el menú.'
     );
     _saveConv(from, 'NO_AVAILABILITY', { dates: dates, personas: personas, freeChildren: freeChildren }, contactName);
     return;
@@ -1707,14 +1749,14 @@ function _replyAvailability(from, contactName, conv, checkin, checkout, personas
     ]
   });
   try {
-    sendWhatsAppList(from, '¿Querés cambiar algo? Tocá ⬇', sections, '📋 Ver opciones');
+    sendWhatsAppList(from, '¿Quieres cambiar algo? Toca ⬇', sections, '📋 Ver opciones');
   } catch(_) { /* ignorable: ya tiene los botones de cabaña */ }
 
   _saveConv(from, 'SHOWING_AVAILABILITY', { dates: dates, personas: personas, freeChildren: freeChildren, opciones: opciones.length, wantsDecoracion: !!wantsDecoracion }, contactName);
 }
 
 // ─── Menu principal interactivo (lista) ──────────────────────────
-// firstTime=true → muestra bienvenida elaborada. firstTime=false → solo "¿Necesitás algo más?"
+// firstTime=true → muestra bienvenida elaborada. firstTime=false → solo "¿Necesitas algo más?"
 // customBody (opcional) → reemplaza el cuerpo (uso desde flujos especiales como campaign).
 function _botSendMainMenu(from, contactName, firstTime, customBody) {
   const firstName = ((contactName || '').toString().trim().split(/\s+/)[0]) || '';
@@ -2020,10 +2062,10 @@ function _botBuildBodyPasada(reserva, firstName, isFirstTime) {
 function _botMenuComoLlegar(from) {
   sendWhatsAppText(from,
     '📍 *Cómo llegar a Las Nubes*\n\n' +
-    'Por la carretera Interamericana, entrá por el *Pío Pío de Bejuco* a la carretera Bejuco–Sorá. ' +
-    'Al llegar al pueblo de *Buenos Aires*, doblá a la derecha hacia *Chicá*. La cabaña queda a 100 metros.\n\n' +
-    '🚗 Lo más fácil: poné en *Waze "Aires de Chicá"* — te lleva directo al portón verde. ' +
-    'Cuando llegues, escribime o llamame para abrir y guiarte a la cabaña.\n\n' +
+    'Por la carretera Interamericana, entra por el *Pío Pío de Bejuco* a la carretera Bejuco–Sorá. ' +
+    'Al llegar al pueblo de *Buenos Aires*, dobla a la derecha hacia *Chicá*. La cabaña queda a 100 metros.\n\n' +
+    '🚗 Lo más fácil: pon en *Waze "Aires de Chicá"* — te lleva directo al portón verde. ' +
+    'Cuando llegues, escríbeme o llámame para abrir y guiarte a la cabaña.\n\n' +
     '🗺 Google Maps:\nhttps://maps.google.com/?q=8.639400,-79.945900\n\n' +
     '🚦 Waze (abre con navegación):\nhttps://waze.com/ul?ll=8.639400,-79.945900&navigate=yes'
   );
@@ -2032,7 +2074,7 @@ function _botMenuComoLlegar(from) {
 function _botMenuTienda(from) {
   sendWhatsAppText(from,
     '🧊 *Tienda de conveniencia cercana*\n\n' +
-    'Contamos con una tienda a tan solo *5 minutos* de la cabaña. En ella podés encontrar:\n\n' +
+    'Contamos con una tienda a tan solo *5 minutos* de la cabaña. En ella puedes encontrar:\n\n' +
     '• Hielo\n• Carbón\n• Especias\n• Bebidas\n• Insumos básicos\n\n' +
     '📍 Ubicación:\nhttps://maps.google.com/?q=8.631809,-79.944489'
   );
@@ -2097,7 +2139,7 @@ function _botMenuFAQ(from) {
     'Sí, toda la cabaña es de uso exclusivo de quienes reservan.\n\n' +
     '*¿Capacidad?*\n' +
     'Portal hasta 2 personas. Paseo y Puente hasta 4 (camas matrimoniales + auxiliar).\n\n' +
-    '¿Otra duda? Tocá *Hablar con persona* o escribime "3".'
+    '¿Otra duda? Toca *Hablar con persona* o escríbeme "3".'
   );
 }
 
@@ -2221,8 +2263,8 @@ function _botMenuHeLlegado(from, contactName, conv) {
   // No match por telefono → preguntar nombre del titular
   sendWhatsAppText(from,
     '🌿 Recibí tu mensaje.\n\n' +
-    'No encuentro una reserva activa con este número para hoy. Decime el *nombre completo del titular* de la reserva para ubicarla en el sistema.\n\n' +
-    'Si preferís hablar directo con una persona, escribime "agente".'
+    'No encuentro una reserva activa con este número para hoy. Dime el *nombre completo del titular* de la reserva para ubicarla en el sistema.\n\n' +
+    'Si prefieres hablar directo con una persona, escríbeme "agente".'
   );
   _saveConv(from, 'AWAITING_ARRIVAL_NAME', conv.context || {}, contactName);
 }
@@ -2418,7 +2460,7 @@ function _botHandleConsultaReserva(from, contactName, reservaId) {
   sendWhatsAppText(from, 'Josh te va a asistir con cualquier duda o consulta relacionada a tu reserva. 🌿');
   try {
     sendWhatsAppCTAUrl(from,
-      'Tocá el botón para escribirle directo 👇',
+      'Toca el botón para escribirle directo 👇',
       'Escribirle a Josh',
       'https://wa.me/50769812266?text=' + encodeURIComponent(prefill)
     );
@@ -2824,7 +2866,7 @@ function _botShowCloseChoice(from, contactName, conv) {
 function _botOfferPayment(from, contactName, conv) {
   const cabin = conv.context && conv.context.cabin;
   if (!cabin) {
-    sendWhatsAppText(from, '🤔 Perdí el contexto de la reserva. Decime de nuevo las fechas y personas, por favor.');
+    sendWhatsAppText(from, '🤔 Perdí el contexto de la reserva. Dime de nuevo las fechas y personas, por favor.');
     _saveConv(from, 'AWAITING_DATES', {}, contactName);
     return;
   }
@@ -2921,13 +2963,13 @@ function _botHandleDateInsistence(from, contactName, conv) {
 
 function _botHandleVoucherImage(from, imageId, contactName, conv) {
   if (conv.step !== 'OFFERING_PAYMENT' && conv.step !== 'AWAITING_VOUCHER_RETRY') {
-    sendWhatsAppText(from, '📷 Recibí tu imagen, pero no estamos en una reserva activa. Si querés reservar, escribime "1" o "disponibilidad".');
+    sendWhatsAppText(from, '📷 Recibí tu imagen, pero no estamos en una reserva activa. Si quieres reservar, escríbeme "1" o "disponibilidad".');
     return;
   }
   sendWhatsAppText(from, '⏳ Procesando tu comprobante...');
   const img = fetchWhatsAppImage(imageId);
   if (!img) {
-    sendWhatsAppText(from, '⚠️ No pude descargar tu imagen. Probá enviarla de nuevo o escribime "3" para hablar con una persona.');
+    sendWhatsAppText(from, '⚠️ No pude descargar tu imagen. Prueba enviarla de nuevo o escríbeme "3" para hablar con una persona.');
     return;
   }
   let voucher;
@@ -2936,13 +2978,13 @@ function _botHandleVoucherImage(from, imageId, contactName, conv) {
     voucher = JSON.parse(out.getContent());
   } catch(err) {
     logDebugEntry('bot-voucher-OCR-CRASH', { error: err.message });
-    sendWhatsAppText(from, '⚠️ No pude leer el voucher. ¿Podés enviarlo más claro o escribime "3" para una persona?');
+    sendWhatsAppText(from, '⚠️ No pude leer el voucher. ¿Puedes enviarlo más claro o escríbeme "3" para una persona?');
     return;
   }
   if (!voucher || !voucher.ok || !voucher.codTransferencia) {
     sendWhatsAppText(from,
       '⚠️ No pude leer los datos del voucher. Asegurate que la imagen sea clara y tenga:\n\n' +
-      '• Monto\n• Código/referencia\n• Fecha\n\nReenviame la imagen o escribime "3" para una persona.'
+      '• Monto\n• Código/referencia\n• Fecha\n\nReenviame la imagen o escríbeme "3" para una persona.'
     );
     _saveConv(from, 'AWAITING_VOUCHER_RETRY', conv.context, contactName);
     return;
@@ -2977,7 +3019,7 @@ function _botHandleVoucherImage(from, imageId, contactName, conv) {
     return _botCreatePreReservation(from, contactName, newCtx);
   }
   if (!newCtx.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newCtx.email)) {
-    sendWhatsAppText(from, confirmMsg + '\n\nPara finalizar, ¿me podés enviar tu *email*?');
+    sendWhatsAppText(from, confirmMsg + '\n\nPara finalizar, ¿me puedes enviar tu *email*?');
     _saveConv(from, 'AWAITING_EMAIL', newCtx, contactName);
     return;
   }
