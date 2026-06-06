@@ -287,17 +287,32 @@ function _botLooksLikePaymentQuery(text) {
 // Mantiene el estado: si está en SHOWING_AVAILABILITY / CHOOSING_DECOR /
 // CHOOSING_CLOSE, le recordamos que tiene opciones arriba y no le pedimos
 // fechas/personas otra vez.
-function _botHandlePaymentInfo(from, contactName, conv) {
+function _botHandlePaymentInfo(from, contactName, conv, text) {
   const inBookingFlow = [
     'SHOWING_AVAILABILITY','SHOWING_ALTERNATIVES',
     'CHOOSING_DECOR','CHOOSING_CLOSE'
   ].indexOf(conv.step) !== -1;
 
-  let body =
-    '💳 *Manejamos dos métodos de pago:*\n\n' +
-    '• *Yappy*\n' +
-    '• *ACH* (transferencia bancaria)\n\n' +
-    'No aceptamos tarjeta de crédito ni pago contra entrega. Una vez confirmes la reserva te paso los datos para que hagas el abono. 🤝';
+  // Detecta si pregunta específicamente por el NÚMERO de Yappy (no solo
+  // "manejan Yappy?"). Caso real: Malu preguntó "cuál es el Yappy?" y
+  // Claude alucinó "es el mismo al que estás escribiendo por WhatsApp"
+  // (falso: WA es 6018-8278, Yappy es 6981-2266). Casi pierde la venta.
+  const t = (text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const askingYappyNumber = /\b(cual\s+es|cu[aá]l\s+es|numero\s+(de|del|de\s+tu)?|num\s+(de|del)?|pasame|mandame|env[ií]ame|cual\s+el|me\s+das?|tu)\b[^?]{0,30}\byapp[yi]\b|^\s*yapp[yi]\s*\?|\byapp[yi]\s*\?/.test(t);
+
+  let body;
+  if (askingYappyNumber) {
+    body =
+      '💳 *Yappy:* +507 6981-2266 a nombre de *Joslyn Lopez*.\n\n' +
+      'También aceptamos *ACH* (Banco General — te paso los datos completos cuando confirmes la reserva).\n\n' +
+      'No aceptamos tarjeta de crédito ni pago contra entrega.';
+  } else {
+    body =
+      '💳 *Manejamos dos métodos de pago:*\n\n' +
+      '• *Yappy* — +507 6981-2266 (Joslyn Lopez)\n' +
+      '• *ACH* (transferencia bancaria — Banco General)\n\n' +
+      'No aceptamos tarjeta de crédito ni pago contra entrega. Una vez confirmes la reserva te paso los datos completos. 🤝';
+  }
 
   if (inBookingFlow) {
     body += '\n\n¿Listo para avanzar? Toca una opción arriba ⬆ y seguimos.';
@@ -306,7 +321,7 @@ function _botHandlePaymentInfo(from, contactName, conv) {
   }
 
   sendWhatsAppText(from, body);
-  logDebugEntry('payment-info', { from: from, step: conv.step, inBookingFlow: inBookingFlow });
+  logDebugEntry('payment-info', { from: from, step: conv.step, inBookingFlow: inBookingFlow, askingYappyNumber: askingYappyNumber });
 }
 
 // Envia link al calendario publico para consultas de fechas vagas.
@@ -842,6 +857,45 @@ function _isReservaChangeRequest(text) {
   return /cambiar fecha|cambio de fecha|cambio de reserva|cambiar reserva|reagenda|reprograma|cancelar reserva|cancelaci[oó]n|cancelar mi|no podr[eé] ir|no voy a poder|no podemos ir|no vamos a poder|posponer|adelantar mi/.test(t);
 }
 
+// Resuelve patrones de día-semana + día-mes SIN nombre de mes ("sábado 13 al
+// domingo 14", "viernes 6 a sábado 7"). Caso real Malu: el parser no entendía
+// "me cotiza desde sábado 13 a domingo 14?" porque le faltaba el mes.
+// Asumimos el mes/año que produzca el match exacto día-semana + día-mes a
+// partir de hoy. Devuelve {checkin, checkout, confidence} o null.
+function _parseDatesWeekdayNoMonth(text, today) {
+  const t = (text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const re = /\b(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\s+(\d{1,2})\s*(?:a|al|hasta)\s*(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\s+(\d{1,2})\b/;
+  const m = re.exec(t);
+  if (!m) return null;
+  const DOW = ['domingo','lunes','martes','miercoles','jueves','viernes','sabado'];
+  const dow1 = DOW.indexOf(m[1]);
+  const dom1 = parseInt(m[2], 10);
+  const dow2 = DOW.indexOf(m[3]);
+  const dom2 = parseInt(m[4], 10);
+  if (dow1 < 0 || dow2 < 0 || !dom1 || !dom2 || dom1 > 31 || dom2 > 31) return null;
+  const baseDate = new Date(today + 'T12:00:00');
+  // Busca primera fecha futura donde dayOfMonth=dom1 y dayOfWeek=dow1 (próx 90 días).
+  for (let offset = 0; offset < 90; offset++) {
+    const d = new Date(baseDate);
+    d.setDate(d.getDate() + offset);
+    if (d.getDate() !== dom1 || d.getDay() !== dow1) continue;
+    // Encontramos checkin. Busca checkout (próximos 30 días) con dom2/dow2.
+    for (let k = 1; k <= 30; k++) {
+      const co = new Date(d);
+      co.setDate(co.getDate() + k);
+      if (co.getDate() === dom2 && co.getDay() === dow2) {
+        return {
+          checkin:  Utilities.formatDate(d,  BOT_TZ, 'yyyy-MM-dd'),
+          checkout: Utilities.formatDate(co, BOT_TZ, 'yyyy-MM-dd'),
+          confidence: 0.9
+        };
+      }
+    }
+    return null;   // checkin OK pero checkout no calza → no asumir
+  }
+  return null;
+}
+
 // ─── Parser determinista de fechas explícitas ─────────────────────
 // Resuelve formatos numéricos con mes ("del 5 al 8 de junio", "2 de junio",
 // "martes 02 junio") sin depender del LLM. Devuelve null si no aplica
@@ -850,6 +904,10 @@ function _parseDatesDeterministic(text, today) {
   const t = (text || '').toLowerCase();
   // Niños → dejar a Claude (maneja descuento de menores de 5)
   if (/\b(ni[ñn]o|ni[ñn]a|beb[eé]|hijo|hija|menor(es)?\s+de)\b/.test(t)) return null;
+
+  // Pattern especial: día-semana + día-mes sin mes ("sábado 13 al domingo 14").
+  const weekdayResult = _parseDatesWeekdayNoMonth(text, today);
+  if (weekdayResult) return weekdayResult;
 
   const MESES = {
     enero:0, febrero:1, marzo:2, abril:3, mayo:4, junio:5,
@@ -1552,7 +1610,7 @@ function botHandleMessage(from, text, contactName, kind) {
   // dumpeaba "Dime fechas y personas" rompiendo todo el contexto. Ahora
   // respondemos breve y mantenemos el estado.
   if (kind === 'text' && conv.step !== 'OFFERING_PAYMENT' && _botLooksLikePaymentQuery(text)) {
-    _botHandlePaymentInfo(from, contactName, conv);
+    _botHandlePaymentInfo(from, contactName, conv, text);
     return;
   }
 

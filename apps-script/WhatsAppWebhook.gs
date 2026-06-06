@@ -145,8 +145,20 @@ function processInboundMessage(msg, contactName) {
     return;
   }
 
+  // Debounce de mensajes de TEXTO consecutivos del mismo cliente. Caso real
+  // Malu: escribió "me cotiza sábado 13 a domingo 14?" + "para 2 personas" a
+  // 5s de distancia, el bot respondió cada uno por separado (no entendí +
+  // tarifas) generando ruido y confusión. Buttons / lists / images se
+  // procesan al instante (acciones decisivas).
+  let combinedText = text;
+  if (kind === 'text' && type === 'text') {
+    const debouncedText = _debounceInbound(from, text);
+    if (debouncedText === null) return;   // otro webhook concurrente toma el control
+    combinedText = debouncedText;
+  }
+
   try {
-    botHandleMessage(from, text, contactName, kind);
+    botHandleMessage(from, combinedText, contactName, kind);
   } catch(err) {
     logDebugEntry('bot-CRASH', { from: from, error: err.message, stack: err.stack ? String(err.stack).slice(0, 400) : '' });
     try { sendWhatsAppText(from, 'Algo salió mal de mi lado. Te derivo con una persona del equipo 🙏'); } catch(_) {}
@@ -172,4 +184,44 @@ function processInboundMessage(msg, contactName) {
       logDebugEntry('admin-new-lead-notif-FAIL', { error: notifErr.message });
     }
   }
+}
+
+// Debounce de mensajes de texto consecutivos. Cada webhook:
+//   1. Agrega su texto a un buffer compartido por teléfono (CacheService).
+//   2. Marca su timestamp como "el último arribo".
+//   3. Duerme DEBOUNCE_MS y luego compara: si su TS sigue siendo el último,
+//      procesa el buffer completo concatenado; si llegó otro mensaje en el
+//      ínterin (que sobrescribió el último-TS), retorna null y sale sin
+//      procesar — el webhook más reciente se encarga de todo.
+// Resultado: ráfagas de mensajes en <2s se concatenan en una sola
+// interacción, evitando respuestas duplicadas/contradictorias.
+function _debounceInbound(from, text) {
+  const DEBOUNCE_MS = 2000;
+  const cache       = CacheService.getScriptCache();
+  const latestKey   = 'wa-debounce-latest-' + from;
+  const bufferKey   = 'wa-debounce-buffer-' + from;
+  const ts          = String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8);
+
+  let buffer = [];
+  try { buffer = JSON.parse(cache.get(bufferKey) || '[]'); } catch(_) {}
+  buffer.push(text || '');
+  cache.put(bufferKey, JSON.stringify(buffer), 60);
+  cache.put(latestKey, ts, 60);
+
+  Utilities.sleep(DEBOUNCE_MS);
+
+  if (cache.get(latestKey) !== ts) {
+    logDebugEntry('debounce-yield', { from: from });
+    return null;
+  }
+
+  try { buffer = JSON.parse(cache.get(bufferKey) || '[]'); } catch(_) {}
+  cache.remove(bufferKey);
+  cache.remove(latestKey);
+
+  const combined = buffer.filter(Boolean).join(' ').trim();
+  if (buffer.length > 1) {
+    logDebugEntry('debounce-merge', { from: from, count: buffer.length, combined: combined.slice(0, 200) });
+  }
+  return combined;
 }
