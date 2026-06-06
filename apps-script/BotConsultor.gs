@@ -175,6 +175,37 @@ function debugRecentAdminEvents(limit) {
   matches.forEach(m => Logger.log('  ' + m.ts + ' · ' + m.stage + ' · ' + m.info));
 }
 
+// Dumpea la conversación completa de un teléfono al log del editor para
+// poder revisarla offline. Normaliza dígitos (últimos 8 = número local PA).
+function dumpConversacion(phone) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName('Mensajes');
+  if (!sheet || sheet.getLastRow() < 2) { Logger.log('Sin hoja Mensajes / vacía'); return; }
+  const data = sheet.getDataRange().getValues();
+  const target = String(phone || '').replace(/\D/g, '').slice(-8);
+  if (!target) { Logger.log('Teléfono inválido'); return; }
+  const rows = [];
+  for (let i = 1; i < data.length; i++) {
+    const p = String(data[i][1] || '').replace(/\D/g, '').slice(-8);
+    if (p !== target) continue;
+    rows.push({
+      ts: data[i][0],
+      direction: data[i][2],
+      type: data[i][3],
+      content: String(data[i][4] || '').slice(0, 500)
+    });
+  }
+  if (!rows.length) { Logger.log('Sin mensajes para +' + phone); return; }
+  Logger.log('=== Conversación con +' + phone + ' (' + rows.length + ' mensajes) ===');
+  rows.forEach(r => {
+    const arrow = r.direction === 'in' ? '◀ ' : '▶ ';
+    Logger.log(r.ts + ' ' + arrow + '[' + r.type + '] ' + r.content);
+  });
+}
+
+// Wrapper de un toque para el hilo de Malu (+507 6532-9566)
+function dumpMalu() { return dumpConversacion('50765329566'); }
+
 // Estados de "intención de reserva": el lead está cerrando pero todavía no
 // hay reserva ingresada en el sistema.
 const _BOT_INTENT_STEPS = [
