@@ -1175,11 +1175,47 @@ function doPost(e) {
       const key = r.confirmCode || r.id;
       Logger.log('  dedup key=' + key + ' existing.size=' + existing.size + ' has?=' + existing.has(String(key)));
       if (key && existing.has(key.toString())) {
-        Logger.log('  → DUPLICATE skip');
+        Logger.log('  → DUPLICATE skip (id/confirmCode match)');
         logDebugEntry('saveReservation-DUPE', { id: r.id, key: key });
         return ContentService
           .createTextOutput(JSON.stringify({ ok: true, status: 'duplicate' }))
           .setMimeType(ContentService.MimeType.JSON);
+      }
+
+      // Dedup semántico: el front genera un id nuevo con Date.now() en cada
+      // submit; si el form se reabre y se vuelve a guardar, el id es distinto
+      // y el check por id no atrapa el duplicado. Acá buscamos en TODA la
+      // hoja si ya existe una reserva con mismo cliente (name normalizado) +
+      // cabaña + checkin + checkout. No es esperable que un mismo cliente
+      // reserve dos veces la misma cabaña en los mismos días.
+      try {
+        const data = sheet.getDataRange().getValues();
+        const normName = String(r.name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+        const ciNew = String(r.checkin || '').slice(0, 10);
+        const coNew = String(r.checkout || '').slice(0, 10);
+        const cabinKey = (r.cabin || '').toString();
+        if (normName && ciNew && coNew && cabinKey) {
+          for (let i = 1; i < data.length; i++) {
+            const rr = data[i];
+            if (!rr[0]) continue;
+            // Skip canceladas — esa fila quedó "muerta", una nueva con misma
+            // info es legítima.
+            if ((rr[20] || '').toString().toUpperCase() === 'CANCELADA') continue;
+            const rowName = String(rr[1] || '').toLowerCase().replace(/\s+/g, ' ').trim();
+            if (rowName !== normName) continue;
+            if (String(rr[3] || '') !== cabinKey) continue;
+            const rowCi = rr[4] instanceof Date ? Utilities.formatDate(rr[4], 'America/Panama', 'yyyy-MM-dd') : String(rr[4] || '').slice(0,10);
+            const rowCo = rr[5] instanceof Date ? Utilities.formatDate(rr[5], 'America/Panama', 'yyyy-MM-dd') : String(rr[5] || '').slice(0,10);
+            if (rowCi !== ciNew || rowCo !== coNew) continue;
+            Logger.log('  → DUPLICATE skip (semántico: name+cabin+fechas)');
+            logDebugEntry('saveReservation-DUPE-SEM', { id: r.id, matchedId: rr[0], name: r.name, cabin: cabinKey });
+            return ContentService
+              .createTextOutput(JSON.stringify({ ok: true, status: 'duplicate', matchedId: rr[0] }))
+              .setMimeType(ContentService.MimeType.JSON);
+          }
+        }
+      } catch(dupErr) {
+        Logger.log('  dedup semántico fallo: ' + dupErr.message);
       }
 
       const CABIN_NAMES = {
