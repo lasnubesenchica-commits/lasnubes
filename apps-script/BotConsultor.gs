@@ -206,6 +206,33 @@ function dumpConversacion(phone) {
 // Wrapper de un toque para el hilo de Malu (+507 6532-9566)
 function dumpMalu() { return dumpConversacion('50765329566'); }
 
+// Diagnóstico: prueba el envío de alerta_limpieza a LIMPIEZA_PHONE.
+// Loguea el valor del Script Property, el resultado del send y cualquier
+// error de Meta (típico: nombre/idioma/variables de la plantilla no calzan).
+function testAlertaLimpieza() {
+  const phone = PropertiesService.getScriptProperties().getProperty('LIMPIEZA_PHONE');
+  Logger.log('LIMPIEZA_PHONE = ' + (phone || '(no seteado)'));
+  if (!phone) {
+    Logger.log('✗ No hay LIMPIEZA_PHONE en Script Properties. Setealo y reintenta.');
+    return;
+  }
+  try {
+    const res = sendWhatsAppTemplate(phone, 'alerta_limpieza', 'es_ES', [
+      'Portal hacia Las Nubes (PRUEBA)',
+      'María Pérez (PRUEBA)',
+      '🛏 Preparar cama auxiliar para la próxima reserva (3 huéspedes).'
+    ], null, null);
+    Logger.log('✓ Enviado · respuesta Meta: ' + JSON.stringify(res));
+  } catch(e) {
+    Logger.log('✗ FALLÓ envío: ' + e.message);
+    Logger.log('Posibles causas:');
+    Logger.log('  - Idioma incorrecto (revisar en Meta: alerta_limpieza puede estar en es / es_PA, no es_ES).');
+    Logger.log('  - Nombre de plantilla mal escrito.');
+    Logger.log('  - Plantilla aún no aprobada (status "Pending review").');
+    Logger.log('  - Número de Erika bloqueado por Meta (calidad).');
+  }
+}
+
 // Estados de "intención de reserva": el lead está cerrando pero todavía no
 // hay reserva ingresada en el sistema.
 const _BOT_INTENT_STEPS = [
