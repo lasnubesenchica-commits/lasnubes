@@ -206,6 +206,29 @@ function dumpConversacion(phone) {
 // Wrapper de un toque para el hilo de Malu (+507 6532-9566)
 function dumpMalu() { return dumpConversacion('50765329566'); }
 
+// Prueba alerta_limpieza con varios códigos de idioma para encontrar cuál
+// fue aprobado en Meta. El primero que funcione es el correcto para producción.
+// Solo Erika recibe el que funciona (los fallidos no entregan nada).
+function testAlertaLimpiezaAllLangs() {
+  const phone = PropertiesService.getScriptProperties().getProperty('LIMPIEZA_PHONE');
+  if (!phone) { Logger.log('✗ LIMPIEZA_PHONE no seteado.'); return; }
+  Logger.log('LIMPIEZA_PHONE = ' + phone);
+  const params = ['Portal hacia Las Nubes (PRUEBA)', 'María Pérez (PRUEBA)', '🛏 Preparar cama auxiliar para la próxima reserva (3 huéspedes).'];
+  const langs  = ['es_ES', 'es_PA', 'es', 'es_MX', 'es_AR'];
+  for (const lang of langs) {
+    try {
+      const res = sendWhatsAppTemplate(phone, 'alerta_limpieza', lang, params, null, null);
+      Logger.log('✅ FUNCIONA en idioma: ' + lang);
+      Logger.log('  → Usar lang="' + lang + '" en _botHandleCheckoutDone.');
+      return lang;
+    } catch(e) {
+      const short = e.message.length > 140 ? e.message.slice(0, 140) + '…' : e.message;
+      Logger.log('✗ ' + lang + ': ' + short);
+    }
+  }
+  Logger.log('✗ Ningún idioma funcionó. ¿Plantilla pendiente de aprobación o nombre mal escrito?');
+}
+
 // Diagnóstico: prueba el envío de alerta_limpieza a LIMPIEZA_PHONE.
 // Loguea el valor del Script Property, el resultado del send y cualquier
 // error de Meta (típico: nombre/idioma/variables de la plantilla no calzan).
