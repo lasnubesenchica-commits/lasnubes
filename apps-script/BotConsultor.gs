@@ -217,7 +217,7 @@ function testAlertaLimpiezaAllLangs() {
   const langs  = ['es_ES', 'es_PA', 'es', 'es_MX', 'es_AR'];
   for (const lang of langs) {
     try {
-      const res = sendWhatsAppTemplate(phone, 'alerta_limpieza', lang, params, null, null);
+      const res = sendWhatsAppTemplate(phone, 'alerta_limpieza_', lang, params, null, null);
       Logger.log('✅ FUNCIONA en idioma: ' + lang);
       Logger.log('  → Usar lang="' + lang + '" en _botHandleCheckoutDone.');
       return lang;
@@ -240,7 +240,7 @@ function testAlertaLimpieza() {
     return;
   }
   try {
-    const res = sendWhatsAppTemplate(phone, 'alerta_limpieza', 'es_ES', [
+    const res = sendWhatsAppTemplate(phone, 'alerta_limpieza_', 'es_ES', [
       'Portal hacia Las Nubes (PRUEBA)',
       'María Pérez (PRUEBA)',
       '🛏 Preparar cama auxiliar para la próxima reserva (3 huéspedes).'
@@ -2696,7 +2696,7 @@ function _botHandleCheckoutDone(from, contactName, reservaId) {
     if (limpiezaPhone) {
       const next = _botFindNextReservationForCabin(reserva && reserva.cabin, reserva && reserva.id);
       const ctxLine = _botBuildLimpiezaContextLine(next);
-      sendWhatsAppTemplate(limpiezaPhone, 'alerta_limpieza', 'es_ES', [
+      sendWhatsAppTemplate(limpiezaPhone, 'alerta_limpieza_', 'es_ES', [
         cabinName,
         guestName,
         ctxLine
