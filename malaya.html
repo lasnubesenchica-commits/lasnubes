@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Malaya Lodge — Refugio romántico en Chicá, Panamá</title>
+<meta name="description" content="Malaya Lodge — refugio romántico en las montañas de Aires de Chicá, Panamá. Diseñado para desconectar y reconectar con la naturaleza.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --verde:        #6b8e5a;
+    --verde-dark:   #4a6b3e;
+    --bg:           #faf8f4;
+    --surface:      #ffffff;
+    --text:         #2c2a26;
+    --text-muted:   #7b756c;
+    --border:       #e8e4de;
+    --occupied-bg:  #f0ede8;
+    --occupied-fg:  #b0a8a0;
+    --selected-bg:  #d6e3cd;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); line-height: 1.55; }
+  h1, h2, h3 { font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 500; letter-spacing: -0.01em; line-height: 1.1; }
+  h1 { font-size: 42px; margin: 0 0 12px; }
+  h2 { font-size: 30px; margin: 0 0 16px; }
+  h3 { font-size: 22px; margin: 0 0 10px; }
+  p  { margin: 0 0 12px; color: var(--text); }
+  a  { color: var(--verde-dark); }
+
+  .container { max-width: 920px; margin: 0 auto; padding: 0 18px; }
+
+  /* Hero */
+  .hero {
+    padding: 56px 18px 24px;
+    text-align: center;
+  }
+  .hero .tag {
+    display: inline-block; font-size: 11px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--verde-dark); margin-bottom: 14px;
+    font-weight: 600;
+  }
+  .hero p.lead { font-size: 17px; color: var(--text-muted); max-width: 600px; margin: 0 auto; }
+
+  /* Galería */
+  .gallery {
+    display: grid; gap: 10px; padding: 18px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+  .gallery img {
+    width: 100%; aspect-ratio: 4/3; object-fit: cover;
+    border-radius: 12px; background: var(--occupied-bg);
+  }
+  .gallery .ph {
+    width: 100%; aspect-ratio: 4/3; border-radius: 12px;
+    background: linear-gradient(135deg, #e9ecdf 0%, #d6dec5 100%);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--verde-dark); font-size: 13px; font-style: italic; text-align: center; padding: 12px;
+  }
+
+  /* Sections */
+  section { padding: 36px 0; }
+  .section-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    margin: 0 auto 18px;
+  }
+
+  /* Tarifas */
+  .pricing {
+    display: grid; gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    margin-top: 14px;
+  }
+  .pricing .card {
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px; text-align: center; background: var(--bg);
+  }
+  .pricing .card .lbl { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
+  .pricing .card .val { font-size: 26px; font-family: 'Cormorant Garamond', serif; color: var(--verde-dark); margin-top: 4px; font-weight: 600; }
+  .pricing .card .desc { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+  /* Calendario */
+  .cal-controls {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 14px; gap: 12px;
+  }
+  .cal-controls button {
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 6px 14px; border-radius: 8px; cursor: pointer;
+    font-family: inherit; font-size: 13px; color: var(--text);
+  }
+  .cal-controls button:hover { background: var(--bg); }
+  .cal-month {
+    margin-bottom: 24px;
+  }
+  .cal-month-title {
+    font-family: 'Cormorant Garamond', serif; font-size: 22px;
+    text-align: center; margin: 0 0 10px; color: var(--text);
+  }
+  .cal-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+  }
+  .cal-dow {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+    text-align: center; color: var(--text-muted); padding: 4px 0; font-weight: 600;
+  }
+  .cal-day {
+    aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+    font-size: 13px; border-radius: 8px; cursor: pointer; user-select: none;
+    background: var(--surface); border: 1px solid var(--border);
+    transition: background 0.15s, color 0.15s;
+  }
+  .cal-day:hover { background: var(--bg); }
+  .cal-day.empty { visibility: hidden; }
+  .cal-day.past  { color: var(--occupied-fg); cursor: default; background: transparent; border-color: transparent; }
+  .cal-day.past:hover { background: transparent; }
+  .cal-day.occupied {
+    background: var(--occupied-bg); color: var(--occupied-fg);
+    cursor: not-allowed; text-decoration: line-through;
+  }
+  .cal-day.selected {
+    background: var(--verde) !important; color: #fff !important; font-weight: 600;
+  }
+  .cal-day.in-range {
+    background: var(--selected-bg);
+  }
+
+  /* Reservar (público) */
+  .reserve-cta {
+    text-align: center; padding: 28px 0;
+  }
+  .btn {
+    display: inline-block; padding: 12px 28px; border-radius: 10px;
+    background: var(--verde); color: #fff; border: none;
+    font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+    text-decoration: none;
+  }
+  .btn:hover { background: var(--verde-dark); }
+  .btn:disabled { background: var(--occupied-fg); cursor: not-allowed; }
+  .btn-secondary {
+    background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { background: var(--bg); }
+
+  /* Admin panel */
+  .admin-panel {
+    display: none;
+    background: #fef9f0;
+    border: 1px solid #e8d4a0;
+    border-radius: 16px;
+    padding: 20px;
+    margin: 0 auto 18px;
+  }
+  body.admin .admin-panel { display: block; }
+  .admin-panel h3 { margin-top: 0; color: #8a6f1c; }
+  .admin-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
+  .admin-row .field { flex: 1; min-width: 180px; }
+  .admin-row label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 4px; }
+  .admin-row input, .admin-row textarea {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: 8px; font-family: inherit; font-size: 14px; background: var(--surface);
+  }
+  .admin-row input[type=file] { padding: 6px; font-size: 12px; }
+  .voucher-info {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px; font-size: 13px; margin: 10px 0;
+    white-space: pre-wrap;
+  }
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--text); color: var(--bg); padding: 12px 20px;
+    border-radius: 10px; font-size: 14px; z-index: 9999;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    opacity: 0; transition: opacity 0.3s;
+  }
+  .toast.show { opacity: 1; }
+
+  /* Lista features */
+  .features { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .features .feat { padding: 14px; background: var(--bg); border-radius: 12px; }
+  .features .feat .h { font-weight: 600; margin-bottom: 4px; color: var(--verde-dark); }
+  .features .feat .d { font-size: 13px; color: var(--text-muted); }
+
+  /* Footer */
+  footer { padding: 36px 18px; text-align: center; color: var(--text-muted); font-size: 13px; border-top: 1px solid var(--border); margin-top: 36px; }
+  footer a { color: var(--verde-dark); }
+
+  @media (max-width: 600px) {
+    h1 { font-size: 32px; }
+    h2 { font-size: 24px; }
+    .section-card { padding: 20px; }
+    .hero { padding: 36px 18px 12px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero container">
+  <div class="tag">Aires de Chicá · Panamá</div>
+  <h1>Malaya Lodge</h1>
+  <p class="lead">Refugio romántico en las montañas de Chicá. Diseñado para desconectar y reconectar con la naturaleza, contigo y con quien amas.</p>
+</header>
+
+<div class="container">
+
+  <!-- Galería -->
+  <div class="gallery" id="gallery">
+    <!-- Placeholder hasta que se carguen URLs. El JS reemplaza esto si MALAYA_GALLERY tiene entradas. -->
+    <div class="ph">Foto de la cabaña<br><small>(próximamente)</small></div>
+    <div class="ph">Baño sensorial<br><small>(próximamente)</small></div>
+    <div class="ph">Pérgola con columpio<br><small>(próximamente)</small></div>
+    <div class="ph">Cocina al aire libre<br><small>(próximamente)</small></div>
+  </div>
+
+  <!-- Sobre Malaya -->
+  <section>
+    <div class="section-card">
+      <h2>Sobre Malaya</h2>
+      <p>Aquí, cada detalle está pensado para ofrecerte una experiencia única: el sonido relajante del riachuelo, un baño sensorial rodeado de plantas, y un espacio acogedor que combina el interior con el exterior.</p>
+      <p>Malaya es más que una cabaña; es un lugar donde la paz y la privacidad te envuelven, permitiéndote soltar, fluir y recargar tu alma.</p>
+
+      <h3 style="margin-top:24px;">Lo que vas a encontrar</h3>
+      <div class="features">
+        <div class="feat">
+          <div class="h">🛏 Cama queen</div>
+          <div class="d">Cómoda y acogedora, con sábanas y almohadas suaves para un descanso reparador.</div>
+        </div>
+        <div class="feat">
+          <div class="h">🌿 Baño sensorial</div>
+          <div class="d">Rodeado de plantas, con una ducha diseñada para una experiencia relajante y única.</div>
+        </div>
+        <div class="feat">
+          <div class="h">🍳 Cocina al aire libre</div>
+          <div class="d">Equipada con utensilios básicos. Áreas para disfrutar tus comidas rodeado de naturaleza.</div>
+        </div>
+        <div class="feat">
+          <div class="h">🪵 Pérgola con columpio</div>
+          <div class="d">Espacio perfecto para relajarte, leer un libro o disfrutar del entorno natural.</div>
+        </div>
+        <div class="feat">
+          <div class="h">☀ Energía solar</div>
+          <div class="d">La cabaña funciona con energía renovable, impacto mínimo al ambiente.</div>
+        </div>
+        <div class="feat">
+          <div class="h">📵 Sin Wi-Fi, sin TV</div>
+          <div class="d">Pensado para desconectar. Las señales de Tigo y Más Móvil funcionan bien si necesitas datos.</div>
+        </div>
+      </div>
+
+      <p style="margin-top:18px; font-size:13px; color:var(--text-muted);">
+        <em>Diseñada para 2 personas. Hasta 4 huéspedes con un cargo adicional de $30/noche por persona extra. La cabaña no cuenta con camas adicionales; los huéspedes extra deben traer colchoneta, saco de dormir y toalla.</em>
+      </p>
+    </div>
+  </section>
+
+  <!-- Tarifas -->
+  <section>
+    <div class="section-card">
+      <h2>Tarifas</h2>
+      <div class="pricing">
+        <div class="card">
+          <div class="lbl">Dom – Jue</div>
+          <div class="val">$75</div>
+          <div class="desc">por noche</div>
+        </div>
+        <div class="card">
+          <div class="lbl">Vie – Sáb</div>
+          <div class="val">$100</div>
+          <div class="desc">por noche</div>
+        </div>
+        <div class="card">
+          <div class="lbl">Persona extra</div>
+          <div class="val">+$30</div>
+          <div class="desc">por noche (3 o 4)</div>
+        </div>
+      </div>
+      <p style="font-size:13px; color:var(--text-muted); margin-top:14px;">
+        Check-in 2:00 pm · Check-out 11:00 am. Reservas con 50% de abono o pago completo.
+      </p>
+    </div>
+  </section>
+
+  <!-- Calendario -->
+  <section>
+    <div class="section-card">
+      <h2>Disponibilidad</h2>
+      <p style="color:var(--text-muted);">Selecciona tus fechas. Las celdas en gris ya están reservadas.</p>
+
+      <div class="cal-controls">
+        <button onclick="shiftMonths(-1)">← Anterior</button>
+        <div id="calRangeInfo" style="font-size:13px; color:var(--text-muted);">Cargando…</div>
+        <button onclick="shiftMonths(1)">Siguiente →</button>
+      </div>
+
+      <div id="cal"></div>
+
+      <div class="reserve-cta">
+        <a href="#" id="reserveBtn" class="btn">Reservar por WhatsApp</a>
+        <div style="margin-top:8px; font-size:12px; color:var(--text-muted);">
+          Te respondo personalmente para coordinar.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Admin panel (solo con ?admin=1) -->
+  <section class="admin-panel" id="adminPanel">
+    <h3>🔧 Admin · Bloquear reserva directa</h3>
+    <p style="font-size:13px; color:var(--text-muted);">
+      Selecciona el rango arriba, subí el voucher y completá el WhatsApp del huésped. El sistema parsea el voucher con Claude y crea la fila en la hoja <strong>Malaya</strong>.
+    </p>
+
+    <div class="admin-row">
+      <div class="field">
+        <label>Check-in seleccionado</label>
+        <input type="text" id="adminCheckin" readonly>
+      </div>
+      <div class="field">
+        <label>Check-out seleccionado</label>
+        <input type="text" id="adminCheckout" readonly>
+      </div>
+      <div class="field" style="flex:0 0 100px;">
+        <label>Personas</label>
+        <input type="number" id="adminPersonas" value="2" min="1" max="4">
+      </div>
+    </div>
+
+    <div class="admin-row">
+      <div class="field">
+        <label>Voucher de pago</label>
+        <input type="file" id="adminVoucher" accept="image/*" onchange="parseAdminVoucher()">
+      </div>
+    </div>
+
+    <div id="voucherInfo" class="voucher-info" style="display:none;"></div>
+
+    <div class="admin-row">
+      <div class="field">
+        <label>WhatsApp del huésped *</label>
+        <input type="text" id="adminGuestPhone" placeholder="+507 6XXX-XXXX">
+      </div>
+      <div class="field">
+        <label>Nombre del huésped (auto del voucher)</label>
+        <input type="text" id="adminGuestName" placeholder="Nombre">
+      </div>
+    </div>
+
+    <div class="admin-row">
+      <div class="field">
+        <label>Notas (opcional)</label>
+        <textarea id="adminNotas" rows="2"></textarea>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
+      <button class="btn" onclick="adminSubmitReserva()">Bloquear reserva</button>
+      <button class="btn btn-secondary" onclick="adminCopyCotizacion()">📋 Copiar cotización</button>
+      <button class="btn btn-secondary" onclick="clearSelection()">Limpiar selección</button>
+    </div>
+    <div style="margin-top:10px; font-size:12px; color:var(--text-muted);">
+      Tras crear la reserva: notifica a Celestino (+507 6542-9927) para que la bloquee en Airbnb. El sistema verifica vía iCal cada 30 min.
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  <p>Malaya Lodge · Aires de Chicá, Panamá · <a href="https://malayalodge.com" target="_blank" rel="noopener">malayalodge.com</a></p>
+  <p style="font-size:12px;">Reservas directas: WhatsApp <a href="https://wa.me/50769812266">+507 6981-2266</a></p>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SHEETS_API_URL  = 'https://script.google.com/macros/s/AKfycbwDHyfGSyHZvmgiOenw_mm84pMKIs1aMixkyLxAXrjw8uNBcjvPYdIX0HFv_LkDesr0/exec';
+const WHATSAPP_NUMBER = '50769812266';
+
+// Galería: pegá acá URLs de las fotos cuando estén disponibles (Drive público
+// o malayalodge.com directos). El landing reemplaza los placeholders.
+const MALAYA_GALLERY = [
+  // 'https://lh3.googleusercontent.com/d/XXXXXXXX',
+  // 'https://malayalodge.com/img1.jpg',
+];
+
+const ADMIN_MODE = new URLSearchParams(location.search).get('admin') === '1';
+if (ADMIN_MODE) document.body.classList.add('admin');
+
+const TODAY = new Date(); TODAY.setHours(0,0,0,0);
+let viewMonth = TODAY.getMonth();
+let viewYear  = TODAY.getFullYear();
+let blocked = [];   // [{ checkin, checkout, source }]
+let selStart = null, selEnd = null;   // ISO yyyy-MM-dd
+
+// ─── Galería ───
+(function renderGallery() {
+  if (!MALAYA_GALLERY.length) return;
+  const g = document.getElementById('gallery');
+  g.innerHTML = MALAYA_GALLERY.map(url =>
+    '<img src="' + url + '" alt="Malaya Lodge" loading="lazy">'
+  ).join('');
+})();
+
+// ─── Calendario ───
+function shiftMonths(delta) {
+  viewMonth += delta;
+  while (viewMonth < 0)  { viewMonth += 12; viewYear--; }
+  while (viewMonth > 11) { viewMonth -= 12; viewYear++; }
+  renderCalendar();
+}
+
+function isoFromYMD(y, m, d) {
+  return y + '-' + String(m+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+}
+
+function isDateBlocked(iso) {
+  // Para el calendario público: un día está "ocupado" si CUALQUIER rango
+  // bloqueado lo incluye como noche (checkin <= iso < checkout).
+  return blocked.some(b => b.checkin <= iso && iso < b.checkout);
+}
+
+function isInRange(iso) {
+  if (!selStart || !selEnd) return false;
+  return iso > selStart && iso < selEnd;
+}
+
+function renderCalendar() {
+  const container = document.getElementById('cal');
+  const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const DOW = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  let html = '';
+  // Mostramos 3 meses consecutivos
+  for (let off = 0; off < 3; off++) {
+    let y = viewYear, m = viewMonth + off;
+    while (m > 11) { m -= 12; y++; }
+    const first = new Date(y, m, 1);
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    html += '<div class="cal-month">';
+    html += '<div class="cal-month-title">' + MESES[m] + ' ' + y + '</div>';
+    html += '<div class="cal-grid">';
+    DOW.forEach(d => { html += '<div class="cal-dow">' + d + '</div>'; });
+    for (let i = 0; i < first.getDay(); i++) html += '<div class="cal-day empty"></div>';
+    for (let d = 1; d <= lastDay; d++) {
+      const iso = isoFromYMD(y, m, d);
+      const dayDate = new Date(y, m, d); dayDate.setHours(0,0,0,0);
+      const past = dayDate < TODAY;
+      const occ  = isDateBlocked(iso);
+      const sel  = (iso === selStart) || (iso === selEnd);
+      const inRng = isInRange(iso);
+      let cls = 'cal-day';
+      if (past) cls += ' past';
+      else if (occ) cls += ' occupied';
+      else if (sel) cls += ' selected';
+      else if (inRng) cls += ' in-range';
+      const click = (past || occ) ? '' : 'onclick="pickDay(\'' + iso + '\')"';
+      html += '<div class="' + cls + '" ' + click + '>' + d + '</div>';
+    }
+    html += '</div></div>';
+  }
+  container.innerHTML = html;
+
+  const fromIso = isoFromYMD(viewYear, viewMonth, 1);
+  document.getElementById('calRangeInfo').textContent = '3 meses desde ' + fromIso.slice(0,7);
+  updateReserveBtn();
+  if (ADMIN_MODE) {
+    document.getElementById('adminCheckin').value  = selStart || '';
+    document.getElementById('adminCheckout').value = selEnd || '';
+  }
+}
+
+function pickDay(iso) {
+  // Lógica: primer click = checkin. Segundo click = checkout (debe ser > checkin).
+  // Si ya hay ambos seteados, resetea y empieza de nuevo.
+  if (!selStart || (selStart && selEnd)) {
+    selStart = iso; selEnd = null;
+  } else if (iso <= selStart) {
+    selStart = iso; selEnd = null;
+  } else {
+    // Validar: no debe haber ningún día ocupado entre selStart (incl) y iso (excl)
+    let cur = new Date(selStart + 'T12:00:00');
+    const tgt = new Date(iso + 'T12:00:00');
+    while (cur < tgt) {
+      const curIso = cur.toISOString().slice(0,10);
+      if (isDateBlocked(curIso)) {
+        showToast('⚠ El rango incluye una fecha ya reservada. Elige otro.');
+        selStart = iso; selEnd = null;
+        renderCalendar();
+        return;
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+    selEnd = iso;
+  }
+  renderCalendar();
+}
+
+function clearSelection() {
+  selStart = null; selEnd = null;
+  renderCalendar();
+}
+
+function updateReserveBtn() {
+  const btn = document.getElementById('reserveBtn');
+  let msg = 'Hola, quiero reservar *Malaya Lodge*';
+  if (selStart && selEnd) {
+    msg += ' del ' + selStart + ' al ' + selEnd + '.';
+  } else {
+    msg += '. ¿Qué fechas tienen disponibles?';
+  }
+  btn.href = 'https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg);
+}
+
+// ─── Tarifas helpers ───
+function calcTarifa(ci, co, personas) {
+  if (!ci || !co || co <= ci) return null;
+  let total = 0, noches = 0;
+  const cur = new Date(ci + 'T12:00:00');
+  const end = new Date(co + 'T12:00:00');
+  const extra = Math.max(0, (parseInt(personas, 10) || 2) - 2);
+  while (cur < end) {
+    const dow = cur.getDay();
+    const tarifa = (dow === 5 || dow === 6) ? 100 : 75;
+    total += tarifa + extra * 30;
+    noches++;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return { total: total, noches: noches };
+}
+
+// ─── Admin: parse voucher ───
+async function parseAdminVoucher() {
+  const file = document.getElementById('adminVoucher').files[0];
+  if (!file) return;
+  const info = document.getElementById('voucherInfo');
+  info.style.display = 'block';
+  info.textContent = '⏳ Procesando voucher con Claude…';
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const base64 = reader.result.split(',')[1];
+    try {
+      const res = await fetch(SHEETS_API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'parseVoucher', imageBase64: base64, mimeType: file.type })
+      });
+      const data = await res.json();
+      if (!data.ok) { info.textContent = '✗ Error: ' + (data.error || 'no se pudo leer el voucher'); return; }
+      let summary = '✅ Voucher procesado:\n';
+      if (data.sender)           summary += '👤 Remitente: ' + data.sender + '\n';
+      if (data.monto != null)    summary += '💰 Monto: $' + data.monto + '\n';
+      if (data.codTransferencia) summary += '🔢 Código: ' + data.codTransferencia + '\n';
+      if (data.fechaPago)        summary += '📅 Fecha pago: ' + data.fechaPago + '\n';
+      if (data.nombreCompleto)   summary += '📝 Nombre extraído: ' + data.nombreCompleto + '\n';
+      if (data.telefono)         summary += '📱 Teléfono extraído: ' + data.telefono;
+      info.textContent = summary;
+      // Pre-llenar campos
+      if (data.nombreCompleto || data.sender) {
+        const nameField = document.getElementById('adminGuestName');
+        if (!nameField.value) nameField.value = data.nombreCompleto || data.sender;
+      }
+      if (data.telefono) {
+        const phField = document.getElementById('adminGuestPhone');
+        if (!phField.value) phField.value = data.telefono;
+      }
+      // Guardar datos del voucher para incluir en la reserva.
+      window._lastVoucher = data;
+    } catch(e) {
+      info.textContent = '✗ Error de red: ' + e.message;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+// ─── Admin: submit reserva ───
+async function adminSubmitReserva() {
+  if (!selStart || !selEnd) { showToast('⚠ Selecciona check-in y check-out en el calendario.'); return; }
+  const phone = document.getElementById('adminGuestPhone').value.trim();
+  if (!phone) { showToast('⚠ Falta el WhatsApp del huésped.'); return; }
+  const name = document.getElementById('adminGuestName').value.trim();
+  const personas = parseInt(document.getElementById('adminPersonas').value, 10) || 2;
+  const notas = document.getElementById('adminNotas').value.trim();
+  const v = window._lastVoucher || {};
+  const monto = v.monto || null;
+
+  const payload = {
+    action: 'saveMalayaReserva',
+    guestPhone: phone,
+    guestName: name,
+    checkin: selStart,
+    checkout: selEnd,
+    personas: personas,
+    monto: monto,
+    notas: notas + (v.codTransferencia ? ' · cod ' + v.codTransferencia : '') + (v.sender ? ' · pagó ' + v.sender : '')
+  };
+
+  try {
+    const res = await fetch(SHEETS_API_URL, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!data.ok) { showToast('✗ ' + (data.error || 'error')); return; }
+    showToast('✅ Reserva bloqueada (' + data.noches + ' noches · $' + data.montoTotal + ' total · $' + data.comision + ' comisión).');
+    // Reset
+    document.getElementById('adminGuestPhone').value = '';
+    document.getElementById('adminGuestName').value  = '';
+    document.getElementById('adminVoucher').value    = '';
+    document.getElementById('adminNotas').value      = '';
+    document.getElementById('voucherInfo').style.display = 'none';
+    window._lastVoucher = null;
+    clearSelection();
+    setTimeout(loadCalendar, 800);
+  } catch(e) {
+    showToast('✗ Red: ' + e.message);
+  }
+}
+
+// ─── Admin: copiar cotización ───
+function adminCopyCotizacion() {
+  if (!selStart || !selEnd) { showToast('⚠ Selecciona fechas primero.'); return; }
+  const personas = parseInt(document.getElementById('adminPersonas').value, 10) || 2;
+  const t = calcTarifa(selStart, selEnd, personas);
+  if (!t) { showToast('⚠ Fechas inválidas.'); return; }
+  const fmt = iso => {
+    const d = new Date(iso + 'T12:00:00');
+    const M = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    return d.getDate() + ' ' + M[d.getMonth()];
+  };
+  const text =
+    '🌿 *Malaya Lodge*\n\n' +
+    '📅 ' + fmt(selStart) + ' → ' + fmt(selEnd) + ' (' + t.noches + ' ' + (t.noches === 1 ? 'noche' : 'noches') + ')\n' +
+    '👥 ' + personas + ' ' + (personas === 1 ? 'persona' : 'personas') + '\n' +
+    '💰 Total: $' + t.total + '\n\n' +
+    '• Check-in 2:00 pm · Check-out 11:00 am\n' +
+    '• Reserva con 50% de abono o pago completo\n' +
+    '• Yappy: +507 6981-2266 (Joslyn Lopez)\n' +
+    '• ACH: Banco General · disponible al confirmar';
+
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('📋 Cotización copiada');
+  }).catch(() => {
+    // Fallback iOS antiguos
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('📋 Cotización copiada');
+  });
+}
+
+// ─── Cargar calendario ───
+async function loadCalendar() {
+  try {
+    const res = await fetch(SHEETS_API_URL + '?action=getMalayaCalendar');
+    const data = await res.json();
+    blocked = (data && data.blocked) || [];
+  } catch(e) {
+    blocked = [];
+  }
+  renderCalendar();
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+loadCalendar();
+</script>
+
+</body>
+</html>

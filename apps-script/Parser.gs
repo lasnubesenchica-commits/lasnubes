@@ -986,6 +986,10 @@ function doGet(e) {
     if (action === 'getDebugLog')       return handleGetDebugLog(e);
     if (action === 'getConversaciones') return handleGetConversaciones(e);
     if (action === 'getMensajes')       return handleGetMensajes(e);
+    if (action === 'getMalayaCalendar') {
+      const data = getMalayaCalendarData();
+      return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
+    }
     if (action === 'getBotAlertConfig')
       return ContentService
         .createTextOutput(JSON.stringify({ ok: true, config: _botGetAlertConfig() }))
@@ -1659,6 +1663,27 @@ function doPost(e) {
     // ── SAVE VOUCHER TO DRIVE ─────────────────────────────────
     if (action === 'saveVoucherToDrive') {
       return saveVoucherToDrive(payload.reservation, payload.imageBase64, payload.mimeType, payload.fileName);
+    }
+
+    // ── MALAYA: SAVE RESERVA ─────────────────────────────────
+    // Reserva directa de Malaya Lodge (cabaña referida). Detalles en Malaya.gs.
+    if (action === 'saveMalayaReserva') {
+      try {
+        const result = saveMalayaReserva(payload);
+        return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
+      } catch(e) {
+        return ContentService.createTextOutput(JSON.stringify({ ok: false, error: e.message })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
+    // ── MALAYA: CANCEL RESERVA ─────────────────────────────────
+    if (action === 'cancelMalayaReserva') {
+      try {
+        const result = cancelMalayaReserva(payload.reservaId);
+        return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
+      } catch(e) {
+        return ContentService.createTextOutput(JSON.stringify({ ok: false, error: e.message })).setMimeType(ContentService.MimeType.JSON);
+      }
     }
 
     // ── UPLOAD HUESPED ID (publico, gating del key box) ───────

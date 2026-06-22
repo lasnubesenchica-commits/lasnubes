@@ -18,6 +18,15 @@
 - **Límite de 200 versiones**: Apps Script topa en 200 versiones por proyecto y no se borran por API (solo a mano en el editor). Si se llena, el deploy falla con `RESOURCE_EXHAUSTED`; el usuario limpia versiones viejas desde el editor y re-corre el deploy.
 - Después de cambios de schema (columnas nuevas en Sheets), recordar al usuario ejecutar manualmente la función de migración correspondiente desde el editor de Apps Script.
 
+## Malaya Lodge (cabaña referida)
+
+- **No es parte del inventario de Las Nubes**: es una cabaña del cliente Celestino (+507 6542-9927 / malayalodge@gmail.com). Yo cierro reservas como referido y cobro comisión ($10 dom-jue / $20 vie-sáb por noche).
+- **Landing público**: `malaya.html` (servido por GitHub Pages como `/malaya.html`). Calendario standalone, no se conecta al sistema de Las Nubes.
+- **Sync iCal**: trigger `syncMalayaAirbnb` cada 30 min lee el `.ics` público de Airbnb (URL en Script Property `MALAYA_AIRBNB_ICAL`) y refleja los bloqueos en una hoja interna `MalayaIcal`. Cross-checkea las reservas directas pendientes: si pasaron > `MALAYA_GRACE_MINUTES` (default 60) sin que Celestino bloquee en Airbnb → estado `no_bloqueada` y alerta WhatsApp/email al admin.
+- **Hoja `Malaya`**: 14 columnas (id, huésped, teléfono, checkin, checkout, noches, personas, monto total, comisión, origen, estado, airbnb_blocked, fecha_reserva, notas). Estados: `pendiente | confirmada | no_bloqueada | cancelada | completada`.
+- **Setup inicial** (correr una vez en el editor): setear Script Properties `MALAYA_AIRBNB_ICAL`, `MALAYA_CELESTINO_PHONE`, `MALAYA_GRACE_MINUTES`, después correr `instalarTriggersMalaya()`.
+- **Flujo operacional**: admin entra a `malaya.html?admin=1`, selecciona rango en calendario, sube voucher (parseado con Claude, mismo que Las Nubes), ingresa WhatsApp del huésped, click "Bloquear reserva". Tras eso, avisa manualmente por WhatsApp a Celestino y al huésped. Celestino bloquea en Airbnb. Sync verifica. Si Celestino no bloquea → alerta automática.
+
 ## Stack relevante
 
 - Hoja `Reservas`: 29 columnas. La #25 es `Tipo` (noche/pasadia/pasadia-largo/early/late, agregada en `migrarColumnasV4`). La #26 es `VoucherURL` (link al voucher en Drive, persistido por `saveVoucherToDrive`). La #27 es `IdHuespedURL`. La #28 es `FechaNacimiento`. La #29 es `CheckoutExtendido` (boolean, cortesía 12:30pm). `getOrCreateSheet` auto-asegura todas las columnas en cada llamada.
