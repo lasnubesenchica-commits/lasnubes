@@ -772,25 +772,32 @@ function _buildQuoteText(personas) {
   const fechaIn  = fmt(selStart);
   const fechaOut = fmt(selEnd);
 
+  // Tarifa promocional del primer día (vie/sáb = $100, resto = $75) + persona extra.
+  const dow0     = new Date(selStart + 'T12:00:00').getDay();
+  const baseRate = (dow0 === 5 || dow0 === 6) ? 100 : 75;
+  const nightRate = baseRate + Math.max(0, personas - 2) * 30;
+
   const intro = (t.noches === 1)
-    ? 'Tengo la noche del *' + fechaIn + '* disponible para reserva para ' + personasLbl + '.'
-    : 'Tengo las noches del *' + fechaIn + ' al ' + fechaOut + '* disponibles para reserva para ' + personasLbl + '.';
+    ? 'Tengo la noche del *' + fechaIn + '* disponible para reserva en cabaña Malaya Lodge en tarifa promocional de $' + nightRate + ' para ' + personasLbl + '.'
+    : 'Tengo las noches del *' + fechaIn + ' al ' + fechaOut + '* disponibles para reserva en cabaña Malaya Lodge para ' + personasLbl + '.';
 
   const text =
     intro + '\n\n' +
     '🏡 *Malaya Lodge*\n' +
-    '💰 *Total:* $' + t.total + '\n\n' +
-    'Check in ' + fechaIn + ': 2:00 pm\n' +
-    'Check out ' + fechaOut + ': 11:00 am\n' +
-    (t.noches > 1 ? (t.noches + 1) + ' días, ' + t.noches + ' noches\n' : '') +
-    '\n*Incluye:*\n' +
+    '💰 *Total:* $' + t.total + '\n' +
+    '🕑 Check in ' + fechaIn + ': 2:00 pm\n' +
+    '🕚 Check out ' + fechaOut + ': 11:00 am\n\n' +
+    'Malaya Lodge es un refugio romántico en las montañas de Aires de Chicá en Panamá. Diseñado para desconectar de la rutina y reconectar con la naturaleza, contigo mismo y con quien amas.\n\n' +
+    '*Incluye:*\n' +
     '🛏 Cama queen con ropa de cama\n' +
     '🌿 Baño sensorial entre plantas\n' +
     '🍳 Cocina al aire libre equipada\n' +
     '🪵 Pérgola con columpio\n' +
-    '☀ Energía solar · 📵 sin Wi-Fi (para desconectar)\n\n' +
+    '☀ Iluminación con paneles solares\n' +
+    '🔋 Powerbank para carga de celulares\n' +
+    '📶 Señal excelente de todas las telefónicas\n\n' +
     '*Para Reservar*\n' +
-    'Quedo atento si deseas proceder y te comparto las formas de pago.';
+    'Quedo atento si deseas proceder y le comparto las formas de pago.';
   return { text: text, noches: t.noches, total: t.total };
 }
 
