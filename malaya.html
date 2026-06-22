@@ -203,6 +203,18 @@
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
 
+  /* Collapsible section (Tarifas) */
+  details.collapsible > summary {
+    cursor: pointer; list-style: none; display: flex; align-items: center;
+    justify-content: space-between; padding: 0; margin: 0;
+  }
+  details.collapsible > summary::-webkit-details-marker { display: none; }
+  details.collapsible > summary::after {
+    content: '▾'; color: var(--text-muted); font-size: 18px; transition: transform 0.2s;
+  }
+  details.collapsible[open] > summary::after { transform: rotate(180deg); }
+  details.collapsible > summary h2 { margin: 0; }
+
   /* Admin panel */
   .admin-panel {
     display: none;
@@ -328,30 +340,32 @@
   <!-- ─────────────── TAB: Reservar ─────────────── -->
   <div class="tab-panel active" id="tab-reservar">
 
-  <!-- Tarifas -->
+  <!-- Tarifas (colapsable; abierto por default, cerrado en admin) -->
   <section>
     <div class="section-card">
-      <h2>Tarifas</h2>
-      <div class="pricing">
-        <div class="card">
-          <div class="lbl">Dom – Jue</div>
-          <div class="val">$75</div>
-          <div class="desc">por noche</div>
+      <details class="collapsible" id="tarifasDetails" open>
+        <summary><h2>Tarifas</h2></summary>
+        <div class="pricing" style="margin-top:14px;">
+          <div class="card">
+            <div class="lbl">Dom – Jue</div>
+            <div class="val">$75</div>
+            <div class="desc">por noche</div>
+          </div>
+          <div class="card">
+            <div class="lbl">Vie – Sáb</div>
+            <div class="val">$100</div>
+            <div class="desc">por noche</div>
+          </div>
+          <div class="card">
+            <div class="lbl">Persona extra</div>
+            <div class="val">+$30</div>
+            <div class="desc">por noche (3 o 4)</div>
+          </div>
         </div>
-        <div class="card">
-          <div class="lbl">Vie – Sáb</div>
-          <div class="val">$100</div>
-          <div class="desc">por noche</div>
-        </div>
-        <div class="card">
-          <div class="lbl">Persona extra</div>
-          <div class="val">+$30</div>
-          <div class="desc">por noche (3 o 4)</div>
-        </div>
-      </div>
-      <p style="font-size:13px; color:var(--text-muted); margin-top:14px;">
-        Check-in 2:00 pm · Check-out 11:00 am. Reservas con 50% de abono o pago completo.
-      </p>
+        <p style="font-size:13px; color:var(--text-muted); margin-top:14px;">
+          Check-in 2:00 pm · Check-out 11:00 am. Reservas con 50% de abono o pago completo.
+        </p>
+      </details>
     </div>
   </section>
 
@@ -524,7 +538,14 @@ function _resolveImageUrl(url) {
 }
 
 const ADMIN_MODE = new URLSearchParams(location.search).get('admin') === '1';
-if (ADMIN_MODE) document.body.classList.add('admin');
+if (ADMIN_MODE) {
+  document.body.classList.add('admin');
+  // Tarifas colapsado por default en admin: priorizar calendario.
+  document.addEventListener('DOMContentLoaded', () => {
+    const td = document.getElementById('tarifasDetails');
+    if (td) td.open = false;
+  });
+}
 
 const TODAY = new Date(); TODAY.setHours(0,0,0,0);
 let viewMonth = TODAY.getMonth();
