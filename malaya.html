@@ -361,7 +361,9 @@
       <button class="btn" onclick="adminSubmitReserva()">Bloquear reserva</button>
       <button class="btn btn-secondary" onclick="adminCopyCotizacion()">📋 Copiar cotización</button>
       <button class="btn btn-secondary" onclick="clearSelection()">Limpiar selección</button>
+      <button class="btn btn-secondary" onclick="adminForceSync()">🔄 Forzar sync Airbnb</button>
     </div>
+    <div id="syncResult" style="display:none; margin-top:10px; padding:10px; background:var(--surface); border:1px solid var(--border); border-radius:8px; font-size:12px; white-space:pre-wrap;"></div>
     <div style="margin-top:10px; font-size:12px; color:var(--text-muted);">
       Tras crear la reserva: notifica a Celestino (+507 6542-9927) para que la bloquee en Airbnb. El sistema verifica vía iCal cada 30 min.
     </div>
@@ -672,6 +674,36 @@ function adminCopyCotizacion() {
     document.body.removeChild(ta);
     showToast('📋 Cotización copiada');
   });
+}
+
+// ─── Admin: forzar sync con Airbnb ───
+async function adminForceSync() {
+  const out = document.getElementById('syncResult');
+  out.style.display = 'block';
+  out.textContent = '⏳ Sincronizando con Airbnb…';
+  try {
+    const res = await fetch(SHEETS_API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'syncMalayaNow' })
+    });
+    const data = await res.json();
+    if (!data.ok) { out.textContent = '✗ Error: ' + (data.error || 'falló'); return; }
+    let summary = '✅ Sync completado.\n\n';
+    summary += '🔗 iCal configurado: ' + (data.icalUrlConfigured ? 'sí' : '✗ NO — falta MALAYA_AIRBNB_ICAL en Script Properties') + '\n';
+    summary += '📅 Eventos en iCal: ' + data.eventCount + '\n\n';
+    if (data.events && data.events.length) {
+      summary += 'Bloqueos actuales:\n';
+      data.events.forEach(e => {
+        summary += '  ' + e.checkin + ' → ' + e.checkout + ' · ' + e.summary + '\n';
+      });
+    } else {
+      summary += '_No hay eventos. Si esperabas ver fechas bloqueadas, revisa: (a) MALAYA_AIRBNB_ICAL apunta al iCal correcto del listing, (b) Airbnb está sirviendo el .ics actualizado._';
+    }
+    out.textContent = summary;
+    setTimeout(loadCalendar, 500);
+  } catch(e) {
+    out.textContent = '✗ Red: ' + e.message;
+  }
 }
 
 // ─── Cargar calendario ───
