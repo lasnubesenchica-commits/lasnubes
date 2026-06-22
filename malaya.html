@@ -147,6 +147,24 @@
   }
   .btn-secondary:hover { background: var(--bg); }
 
+  /* Quote modal */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+    z-index: 1000; align-items: center; justify-content: center; padding: 16px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal-card {
+    background: var(--surface); border-radius: 16px; max-width: 460px; width: 100%;
+    padding: 22px; box-shadow: 0 12px 40px rgba(0,0,0,0.25); max-height: 90vh; overflow-y: auto;
+  }
+  .modal-card h3 { margin: 0 0 12px; color: var(--verde-dark); }
+  .modal-card .quote-text {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px;
+    white-space: pre-wrap; word-break: break-word; margin: 10px 0 14px;
+  }
+  .modal-card .modal-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+
   /* Admin panel */
   .admin-panel {
     display: none;
@@ -378,6 +396,23 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- Modal de cotización (admin) -->
+<div class="modal-overlay" id="quoteModal" onclick="if(event.target===this) closeQuoteModal()">
+  <div class="modal-card">
+    <h3>Cotización Malaya Lodge</h3>
+    <div style="display:flex; gap:10px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
+      <label style="font-size:12px; color:var(--text-muted);">Personas:</label>
+      <input id="quotePersonas" type="number" min="1" max="6" value="2" style="width:70px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit;" oninput="rebuildQuoteText()">
+      <span id="quoteSummary" style="font-size:12px; color:var(--text-muted);"></span>
+    </div>
+    <div class="quote-text" id="quoteText"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeQuoteModal()">Cerrar</button>
+      <button class="btn" onclick="copyQuoteFromModal()">📋 Copiar texto</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const SHEETS_API_URL  = 'https://script.google.com/macros/s/AKfycbwDHyfGSyHZvmgiOenw_mm84pMKIs1aMixkyLxAXrjw8uNBcjvPYdIX0HFv_LkDesr0/exec';
 const WHATSAPP_NUMBER = '50769812266';
@@ -520,6 +555,7 @@ function pickDay(iso) {
     selEnd = iso;
   }
   renderCalendar();
+  if (ADMIN_MODE && selStart && selEnd) openQuoteModal();
 }
 
 function clearSelection() {
@@ -642,12 +678,10 @@ async function adminSubmitReserva() {
   }
 }
 
-// ─── Admin: copiar cotización ───
-function adminCopyCotizacion() {
-  if (!selStart || !selEnd) { showToast('⚠ Selecciona fechas primero.'); return; }
-  const personas = parseInt(document.getElementById('adminPersonas').value, 10) || 2;
+// ─── Admin: cotización (modal) ───
+function _buildQuoteText(personas) {
   const t = calcTarifa(selStart, selEnd, personas);
-  if (!t) { showToast('⚠ Fechas inválidas.'); return; }
+  if (!t) return null;
   const fmt = iso => {
     const d = new Date(iso + 'T12:00:00');
     const M = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
@@ -662,11 +696,39 @@ function adminCopyCotizacion() {
     '• Reserva con 50% de abono o pago completo\n' +
     '• Yappy: +507 6981-2266 (Joslyn Lopez)\n' +
     '• ACH: Banco General · disponible al confirmar';
+  return { text: text, noches: t.noches, total: t.total };
+}
 
+function rebuildQuoteText() {
+  const personas = parseInt(document.getElementById('quotePersonas').value, 10) || 2;
+  const q = _buildQuoteText(personas);
+  if (!q) return;
+  document.getElementById('quoteText').textContent = q.text;
+  document.getElementById('quoteSummary').textContent = q.noches + (q.noches === 1 ? ' noche · $' : ' noches · $') + q.total + ' total';
+  // Espejar al input del panel admin para que "Bloquear reserva" use el mismo dato.
+  const ap = document.getElementById('adminPersonas');
+  if (ap) ap.value = personas;
+}
+
+function openQuoteModal() {
+  if (!selStart || !selEnd) return;
+  const ap = document.getElementById('adminPersonas');
+  const personas = parseInt(ap && ap.value, 10) || 2;
+  document.getElementById('quotePersonas').value = personas;
+  rebuildQuoteText();
+  document.getElementById('quoteModal').classList.add('open');
+}
+
+function closeQuoteModal() {
+  document.getElementById('quoteModal').classList.remove('open');
+}
+
+function copyQuoteFromModal() {
+  const text = document.getElementById('quoteText').textContent;
+  if (!text) return;
   navigator.clipboard.writeText(text).then(() => {
     showToast('📋 Cotización copiada');
   }).catch(() => {
-    // Fallback iOS antiguos
     const ta = document.createElement('textarea');
     ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px';
     document.body.appendChild(ta); ta.select();
@@ -674,6 +736,12 @@ function adminCopyCotizacion() {
     document.body.removeChild(ta);
     showToast('📋 Cotización copiada');
   });
+}
+
+// Wrapper para el botón del panel admin (reabre el modal).
+function adminCopyCotizacion() {
+  if (!selStart || !selEnd) { showToast('⚠ Selecciona fechas primero.'); return; }
+  openQuoteModal();
 }
 
 // ─── Admin: forzar sync con Airbnb ───
