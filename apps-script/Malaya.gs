@@ -330,9 +330,52 @@ function saveMalayaReserva(payload) {
     notas: notas
   });
 
+  // WhatsApp al admin con texto listo para reenviar a Celestino (su ventana
+  // de 24h suele estar cerrada, así que el admin reenvía con un long-press).
+  _whatsappAdminForwardCelestino({
+    huesped: huesped, phone: guestPhone,
+    checkin: checkin, checkout: checkout, noches: noches, personas: personas
+  });
+
   return {
     ok: true, id: id, noches: noches, montoTotal: montoTotal, comision: comision
   };
+}
+
+// ─── WhatsApp al admin con mensaje listo para reenviar ────────
+
+function _whatsappAdminForwardCelestino(d) {
+  const fmt = iso => {
+    const dt = new Date(iso + 'T12:00:00');
+    const M   = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    const DOW = ['dom','lun','mar','mié','jue','vie','sáb'];
+    return DOW[dt.getDay()] + ' ' + dt.getDate() + ' ' + M[dt.getMonth()];
+  };
+  const ciFmt  = fmt(d.checkin);
+  const coFmt  = fmt(d.checkout);
+  const nochesLbl = d.noches + ' ' + (d.noches === 1 ? 'noche' : 'noches');
+  const personasLbl = d.personas + ' ' + (d.personas === 1 ? 'persona' : 'personas');
+
+  // Mensaje redactado como si fuera para Celestino — el admin lo reenvía
+  // tal cual con un long-press en WhatsApp.
+  const forwardable =
+    'Hola Celestino! 👋\n\n' +
+    'Cerré una reserva directa en Malaya. Por favor bloquéala en Airbnb:\n\n' +
+    '📅 ' + ciFmt + ' → ' + coFmt + ' (' + nochesLbl + ')\n' +
+    '🕑 Check-in 2pm · Check-out 11am\n' +
+    '👤 ' + d.huesped + '\n' +
+    '📱 +' + d.phone + '\n' +
+    '👥 ' + personasLbl + '\n\n' +
+    'Gracias!';
+
+  // Header para el admin + el mensaje forward-able debajo.
+  const msg =
+    '✅ *Reserva Malaya guardada*\n' +
+    '_Reenvíale este mensaje a Celestino (long-press → reenviar):_\n\n' +
+    '────────────\n' +
+    forwardable;
+
+  try { sendWhatsAppText(BOT_ADMIN_PHONE, msg); } catch(_) {}
 }
 
 // ─── Email a Celestino al crear reserva directa ─────────────────
