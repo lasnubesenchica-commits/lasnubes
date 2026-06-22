@@ -719,6 +719,31 @@ async function parseAdminVoucher() {
       }
       // Guardar datos del voucher para incluir en la reserva.
       window._lastVoucher = data;
+
+      // Subir voucher a Drive en segundo plano para incluir el link en
+      // los avisos a Celestino. El parse ya tiene el OCR; esto solo persiste.
+      info.textContent = summary + '\n\n⏳ Guardando comprobante en Drive…';
+      try {
+        const up = await fetch(SHEETS_API_URL, {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'saveMalayaVoucher',
+            imageBase64: base64, mimeType: file.type,
+            guestName: document.getElementById('adminGuestName').value,
+            checkin: selStart, checkout: selEnd,
+            monto: data.monto
+          })
+        });
+        const upRes = await up.json();
+        if (upRes.ok && upRes.url) {
+          window._lastVoucherURL = upRes.url;
+          info.textContent = summary + '\n\n📎 Voucher en Drive: ' + upRes.url;
+        } else {
+          info.textContent = summary + '\n\n⚠ No se pudo guardar en Drive: ' + (upRes.error || 'desconocido');
+        }
+      } catch(e) {
+        info.textContent = summary + '\n\n⚠ Error guardando en Drive: ' + e.message;
+      }
     } catch(e) {
       info.textContent = '✗ Error de red: ' + e.message;
     }
@@ -745,6 +770,7 @@ async function adminSubmitReserva() {
     checkout: selEnd,
     personas: personas,
     monto: monto,
+    voucherURL: window._lastVoucherURL || '',
     notas: notas + (v.codTransferencia ? ' · cod ' + v.codTransferencia : '') + (v.sender ? ' · pagó ' + v.sender : '')
   };
 
@@ -763,6 +789,7 @@ async function adminSubmitReserva() {
     document.getElementById('adminNotas').value      = '';
     document.getElementById('voucherInfo').style.display = 'none';
     window._lastVoucher = null;
+    window._lastVoucherURL = null;
     clearSelection();
     setTimeout(loadCalendar, 800);
   } catch(e) {
