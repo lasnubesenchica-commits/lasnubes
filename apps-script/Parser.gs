@@ -1676,6 +1676,30 @@ function doPost(e) {
       }
     }
 
+    // ── MALAYA: FORZAR SYNC AHORA ──────────────────────────────
+    // Dispara syncMalayaAirbnb on-demand y devuelve el snapshot del iCal
+    // resultante. Útil para diagnosticar desde el admin panel sin tener
+    // que abrir el editor.
+    if (action === 'syncMalayaNow') {
+      try {
+        syncMalayaAirbnb();
+        const sheet = _malayaIcalSheet();
+        const data  = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues() : [];
+        const events = data.map(r => ({
+          checkin:  r[0] instanceof Date ? Utilities.formatDate(r[0], 'America/Panama', 'yyyy-MM-dd') : String(r[0]).slice(0,10),
+          checkout: r[1] instanceof Date ? Utilities.formatDate(r[1], 'America/Panama', 'yyyy-MM-dd') : String(r[1]).slice(0,10),
+          summary:  String(r[2] || '')
+        }));
+        const url = PropertiesService.getScriptProperties().getProperty('MALAYA_AIRBNB_ICAL') || null;
+        return ContentService.createTextOutput(JSON.stringify({
+          ok: true, eventCount: events.length, events: events,
+          icalUrlConfigured: !!url
+        })).setMimeType(ContentService.MimeType.JSON);
+      } catch(e) {
+        return ContentService.createTextOutput(JSON.stringify({ ok: false, error: e.message })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
     // ── MALAYA: CANCEL RESERVA ─────────────────────────────────
     if (action === 'cancelMalayaReserva') {
       try {
