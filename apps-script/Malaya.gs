@@ -39,13 +39,17 @@ function _malayaSheet() {
   let sheet = ss.getSheetByName(MALAYA_SHEET_NAME);
   if (!sheet) {
     sheet = ss.insertSheet(MALAYA_SHEET_NAME);
-    sheet.getRange(1, 1, 1, 14).setValues([[
+    sheet.getRange(1, 1, 1, 15).setValues([[
       'ID', 'Huésped', 'Teléfono', 'Check-in', 'Check-out', 'Noches',
       'Personas', 'Monto total', 'Comisión', 'Origen', 'Estado',
-      'Airbnb bloqueado', 'Fecha reserva', 'Notas'
+      'Airbnb bloqueado', 'Fecha reserva', 'Notas', 'Voucher URL'
     ]]);
     sheet.setFrozenRows(1);
-    sheet.getRange(1, 1, 1, 14).setFontWeight('bold');
+    sheet.getRange(1, 1, 1, 15).setFontWeight('bold');
+  }
+  // Auto-migración: añade col 15 si falta (hojas creadas pre-voucher).
+  if (sheet.getLastColumn() < 15) {
+    sheet.getRange(1, 15).setValue('Voucher URL').setFontWeight('bold');
   }
   return sheet;
 }
@@ -315,26 +319,29 @@ function saveMalayaReserva(payload) {
   const notas     = String(payload.notas || '');
   const huesped   = String(payload.guestName || '').trim() || '(sin nombre)';
 
+  const voucherURL = String(payload.voucherURL || '').trim();
+
   sheet.appendRow([
     id, huesped, guestPhone, checkin, checkout, noches,
     personas, montoTotal, comision, 'Directa', 'pendiente',
-    false, fechaReserva, notas
+    false, fechaReserva, notas, voucherURL
   ]);
-  logDebugEntry('malaya-reserva-OK', { id: id, guest: huesped, ci: checkin, co: checkout, monto: montoTotal, comision: comision });
+  logDebugEntry('malaya-reserva-OK', { id: id, guest: huesped, ci: checkin, co: checkout, monto: montoTotal, comision: comision, voucher: !!voucherURL });
 
   // Notificación automática a Celestino (sin ventana de 24h de WhatsApp).
   _emailCelestinoNuevaReserva({
     id: id, huesped: huesped, phone: guestPhone,
     checkin: checkin, checkout: checkout, noches: noches,
     personas: personas, montoTotal: montoTotal, comision: comision,
-    notas: notas
+    notas: notas, voucherURL: voucherURL
   });
 
   // WhatsApp al admin con texto listo para reenviar a Celestino (su ventana
   // de 24h suele estar cerrada, así que el admin reenvía con un long-press).
   _whatsappAdminForwardCelestino({
     huesped: huesped, phone: guestPhone,
-    checkin: checkin, checkout: checkout, noches: noches, personas: personas
+    checkin: checkin, checkout: checkout, noches: noches, personas: personas,
+    voucherURL: voucherURL
   });
 
   return {
@@ -358,6 +365,7 @@ function _whatsappAdminForwardCelestino(d) {
 
   // Mensaje redactado como si fuera para Celestino — el admin lo reenvía
   // tal cual con un long-press en WhatsApp.
+  const voucherLine = d.voucherURL ? '🧾 Voucher: ' + d.voucherURL + '\n' : '';
   const forwardable =
     'Hola Celestino! 👋\n\n' +
     'Cerré una reserva directa en Malaya. Por favor bloquéala en Airbnb:\n\n' +
@@ -365,7 +373,8 @@ function _whatsappAdminForwardCelestino(d) {
     '🕑 Check-in 2pm · Check-out 11am\n' +
     '👤 ' + d.huesped + '\n' +
     '📱 +' + d.phone + '\n' +
-    '👥 ' + personasLbl + '\n\n' +
+    '👥 ' + personasLbl + '\n' +
+    voucherLine + '\n' +
     'Recuerda enviarle al cliente todos los detalles de la reserva e indicaciones de llegada, junto con tu información de contacto para cualquier duda o coordinación el día del check-in.\n\n' +
     'Gracias!';
 
@@ -378,6 +387,42 @@ function _whatsappAdminForwardCelestino(d) {
 
   try { sendWhatsAppText(BOT_ADMIN_PHONE, header); }      catch(_) {}
   try { sendWhatsAppText(BOT_ADMIN_PHONE, forwardable); } catch(_) {}
+}
+
+// ─── Voucher: subir a Drive y devolver URL ─────────────────────
+
+function saveMalayaVoucherToDrive(payload) {
+  const FOLDER_NAME = 'Malaya Lodge - Pagos';
+  try {
+    const folders = DriveApp.getFoldersByName(FOLDER_NAME);
+    const folder  = folders.hasNext() ? folders.next() : DriveApp.createFolder(FOLDER_NAME);
+
+    const mimeType = String(payload.mimeType || 'image/jpeg');
+    const ext      = mimeType.includes('png') ? '.png'
+                   : mimeType.includes('pdf') ? '.pdf'
+                   : mimeType.includes('gif') ? '.gif' : '.jpg';
+    const nombre   = String(payload.guestName || 'huesped').replace(/\s+/g, '_').slice(0, 20);
+    const checkin  = String(payload.checkin || '').slice(0, 10);
+    const stamp    = Utilities.formatDate(new Date(), 'America/Panama', 'yyyyMMdd_HHmmss');
+    const fileName = 'malaya_' + nombre + '_' + checkin + '_' + stamp + ext;
+
+    const blob = Utilities.newBlob(Utilities.base64Decode(payload.imageBase64), mimeType, fileName);
+    const file = folder.createFile(blob);
+    file.setDescription([
+      'Huésped: '  + (payload.guestName || ''),
+      'Entrada: '  + checkin,
+      'Salida: '   + (payload.checkout || '').slice(0,10),
+      'Monto: $'   + (payload.monto || ''),
+      'Registrado: ' + Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd HH:mm')
+    ].join('\n'));
+    // Cualquiera con el link puede ver (Celestino no tiene cuenta del workspace).
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+    return { ok: true, url: file.getUrl(), id: file.getId() };
+  } catch(e) {
+    logDebugEntry('malaya-voucher-drive-ERR', { error: e.message });
+    return { ok: false, error: e.message };
+  }
 }
 
 // ─── Email a Celestino al crear reserva directa ─────────────────
@@ -407,6 +452,7 @@ function _emailCelestinoNuevaReserva(d) {
         '<tr><td style="padding:6px 10px; color:#666;">Personas</td><td style="padding:6px 10px;">' + d.personas + '</td></tr>' +
         '<tr><td style="padding:6px 10px; color:#666;">Total cobrado</td><td style="padding:6px 10px;">$' + Number(d.montoTotal).toFixed(2) + '</td></tr>' +
         '<tr><td style="padding:6px 10px; color:#666;">Comisión</td><td style="padding:6px 10px;">$' + Number(d.comision).toFixed(2) + '</td></tr>' +
+        (d.voucherURL ? '<tr><td style="padding:6px 10px; color:#666;">Voucher</td><td style="padding:6px 10px;"><a href="' + d.voucherURL + '">Ver comprobante de pago</a></td></tr>' : '') +
       '</table>' +
       (d.notas ? '<p style="font-size:13px; color:#666;"><strong>Notas:</strong> ' + d.notas + '</p>' : '') +
       '<p style="font-size:13px; color:#888; margin-top:24px;">El sistema verifica cada 30 min si la fecha aparece bloqueada en tu iCal de Airbnb. Si pasan más de 60 min sin bloqueo, recibo una alerta para coordinar contigo.</p>' +

@@ -1676,6 +1676,16 @@ function doPost(e) {
       }
     }
 
+    // ── MALAYA: SUBIR VOUCHER A DRIVE ──────────────────────────
+    if (action === 'saveMalayaVoucher') {
+      try {
+        const result = saveMalayaVoucherToDrive(payload);
+        return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
+      } catch(e) {
+        return ContentService.createTextOutput(JSON.stringify({ ok: false, error: e.message })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
     // ── MALAYA: FORZAR SYNC AHORA ──────────────────────────────
     // Dispara syncMalayaAirbnb on-demand y devuelve el snapshot del iCal
     // resultante. Útil para diagnosticar desde el admin panel sin tener
