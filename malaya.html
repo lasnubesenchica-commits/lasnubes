@@ -164,6 +164,28 @@
     white-space: pre-wrap; word-break: break-word; margin: 10px 0 14px;
   }
   .modal-card .modal-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+  .modal-row {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    padding: 10px 0; border-bottom: 1px dashed var(--border);
+  }
+  .modal-row:last-of-type { border-bottom: 0; }
+  .modal-row .lbl { color: var(--text-muted); font-size: 14px; }
+  .modal-row .val { font-weight: 600; font-size: 16px; }
+  .modal-row.total { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 14px; border-bottom: 0; }
+  .modal-row.total .lbl { color: var(--text); font-size: 16px; font-weight: 600; }
+  .modal-row.total .val { font-size: 22px; color: var(--verde-dark); }
+  .stepper {
+    display: inline-flex; align-items: stretch; border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; background: var(--surface);
+  }
+  .stepper button {
+    background: transparent; border: 0; width: 38px; height: 38px;
+    font-size: 18px; font-weight: 600; font-family: inherit; cursor: pointer;
+    color: var(--verde-dark);
+  }
+  .stepper button:hover { background: var(--bg); }
+  .stepper button:disabled { color: var(--occupied-fg); cursor: not-allowed; }
+  .stepper .val { min-width: 44px; text-align: center; line-height: 38px; font-weight: 600; }
 
   /* Admin panel */
   .admin-panel {
@@ -396,19 +418,42 @@
 
 <div class="toast" id="toast"></div>
 
-<!-- Modal de cotización (admin) -->
+<!-- Modal de cotización -->
 <div class="modal-overlay" id="quoteModal" onclick="if(event.target===this) closeQuoteModal()">
   <div class="modal-card">
-    <h3>Cotización Malaya Lodge</h3>
-    <div style="display:flex; gap:10px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
-      <label style="font-size:12px; color:var(--text-muted);">Personas:</label>
-      <input id="quotePersonas" type="number" min="1" max="6" value="2" style="width:70px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit;" oninput="rebuildQuoteText()">
-      <span id="quoteSummary" style="font-size:12px; color:var(--text-muted);"></span>
+    <h3 style="margin-bottom:14px;">🌿 Reservar Malaya Lodge</h3>
+    <div class="modal-row">
+      <span class="lbl">Check-in</span>
+      <span class="val" id="modalCheckin">—</span>
     </div>
-    <div class="quote-text" id="quoteText"></div>
-    <div class="modal-actions">
+    <div class="modal-row">
+      <span class="lbl">Noches</span>
+      <div class="stepper">
+        <button id="nochesMinus" onclick="adjustNoches(-1)">−</button>
+        <span class="val" id="modalNoches">1</span>
+        <button id="nochesPlus" onclick="adjustNoches(1)">+</button>
+      </div>
+    </div>
+    <div class="modal-row">
+      <span class="lbl">Check-out</span>
+      <span class="val" id="modalCheckout">—</span>
+    </div>
+    <div class="modal-row">
+      <span class="lbl">Personas</span>
+      <div class="stepper">
+        <button id="personasMinus" onclick="adjustPersonas(-1)">−</button>
+        <span class="val" id="modalPersonas">2</span>
+        <button id="personasPlus" onclick="adjustPersonas(1)">+</button>
+      </div>
+    </div>
+    <div class="modal-row total">
+      <span class="lbl">Total</span>
+      <span class="val" id="modalTotal">$0</span>
+    </div>
+    <div class="modal-actions" style="margin-top:14px;">
       <button class="btn btn-secondary" onclick="closeQuoteModal()">Cerrar</button>
-      <button class="btn" onclick="copyQuoteFromModal()">📋 Copiar texto</button>
+      <button class="btn btn-secondary" onclick="copyQuoteFromModal()">📋 Copiar</button>
+      <a class="btn" id="modalWA" target="_blank" rel="noopener">💬 Reservar por WhatsApp</a>
     </div>
   </div>
 </div>
@@ -532,30 +577,24 @@ function renderCalendar() {
 }
 
 function pickDay(iso) {
-  // Lógica: primer click = checkin. Segundo click = checkout (debe ser > checkin).
-  // Si ya hay ambos seteados, resetea y empieza de nuevo.
-  if (!selStart || (selStart && selEnd)) {
-    selStart = iso; selEnd = null;
-  } else if (iso <= selStart) {
-    selStart = iso; selEnd = null;
-  } else {
-    // Validar: no debe haber ningún día ocupado entre selStart (incl) y iso (excl)
-    let cur = new Date(selStart + 'T12:00:00');
-    const tgt = new Date(iso + 'T12:00:00');
-    while (cur < tgt) {
-      const curIso = cur.toISOString().slice(0,10);
-      if (isDateBlocked(curIso)) {
-        showToast('⚠ El rango incluye una fecha ya reservada. Elige otro.');
-        selStart = iso; selEnd = null;
-        renderCalendar();
-        return;
-      }
-      cur.setDate(cur.getDate() + 1);
-    }
-    selEnd = iso;
+  // Single-click flow: el día clickeado es el checkin. El modal se abre y
+  // permite ajustar noches con steppers (+/-). El rango se mantiene
+  // sincronizado con el calendario al cambiar noches.
+  selStart = iso;
+  openQuoteModal();
+}
+
+// Cuántas noches consecutivas no bloqueadas hay a partir de iso (máx 30).
+function _maxNochesFrom(iso) {
+  let n = 0;
+  const cur = new Date(iso + 'T12:00:00');
+  for (let i = 0; i < 30; i++) {
+    const curIso = isoFromYMD(cur.getFullYear(), cur.getMonth(), cur.getDate());
+    if (isDateBlocked(curIso)) break;
+    n++;
+    cur.setDate(cur.getDate() + 1);
   }
-  renderCalendar();
-  if (ADMIN_MODE && selStart && selEnd) openQuoteModal();
+  return Math.max(1, n);
 }
 
 function clearSelection() {
@@ -678,7 +717,17 @@ async function adminSubmitReserva() {
   }
 }
 
-// ─── Admin: cotización (modal) ───
+// ─── Cotización modal (steppers) ───
+let modalNoches = 1;
+let modalPersonas = 2;
+
+function _fmtDateLong(iso) {
+  const d = new Date(iso + 'T12:00:00');
+  const M   = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const DOW = ['dom','lun','mar','mié','jue','vie','sáb'];
+  return DOW[d.getDay()] + ' ' + d.getDate() + ' ' + M[d.getMonth()];
+}
+
 function _buildQuoteText(personas) {
   const t = calcTarifa(selStart, selEnd, personas);
   if (!t) return null;
@@ -699,23 +748,50 @@ function _buildQuoteText(personas) {
   return { text: text, noches: t.noches, total: t.total };
 }
 
-function rebuildQuoteText() {
-  const personas = parseInt(document.getElementById('quotePersonas').value, 10) || 2;
-  const q = _buildQuoteText(personas);
-  if (!q) return;
-  document.getElementById('quoteText').textContent = q.text;
-  document.getElementById('quoteSummary').textContent = q.noches + (q.noches === 1 ? ' noche · $' : ' noches · $') + q.total + ' total';
-  // Espejar al input del panel admin para que "Bloquear reserva" use el mismo dato.
+function refreshModal() {
+  if (!selStart) return;
+  const maxN = _maxNochesFrom(selStart);
+  if (modalNoches > maxN)  modalNoches = maxN;
+  if (modalNoches < 1)     modalNoches = 1;
+  if (modalPersonas < 1)   modalPersonas = 1;
+  if (modalPersonas > 6)   modalPersonas = 6;
+
+  // Calcular checkout = checkin + noches y actualizar selEnd para que el
+  // calendario debajo del modal refleje el rango.
+  const ci = new Date(selStart + 'T12:00:00');
+  const co = new Date(ci); co.setDate(co.getDate() + modalNoches);
+  selEnd = isoFromYMD(co.getFullYear(), co.getMonth(), co.getDate());
+  renderCalendar();
+
+  document.getElementById('modalCheckin').textContent  = _fmtDateLong(selStart);
+  document.getElementById('modalCheckout').textContent = _fmtDateLong(selEnd);
+  document.getElementById('modalNoches').textContent   = modalNoches;
+  document.getElementById('modalPersonas').textContent = modalPersonas;
+  document.getElementById('nochesMinus').disabled   = (modalNoches <= 1);
+  document.getElementById('nochesPlus').disabled    = (modalNoches >= maxN);
+  document.getElementById('personasMinus').disabled = (modalPersonas <= 1);
+  document.getElementById('personasPlus').disabled  = (modalPersonas >= 6);
+
+  const q = _buildQuoteText(modalPersonas);
+  document.getElementById('modalTotal').textContent = q ? '$' + q.total : '—';
+  document.getElementById('modalWA').href = q
+    ? 'https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(q.text)
+    : '#';
+
+  // Sincronizar al input del panel admin si existe.
   const ap = document.getElementById('adminPersonas');
-  if (ap) ap.value = personas;
+  if (ap) ap.value = modalPersonas;
 }
 
+function adjustNoches(delta)   { modalNoches += delta;   refreshModal(); }
+function adjustPersonas(delta) { modalPersonas += delta; refreshModal(); }
+
 function openQuoteModal() {
-  if (!selStart || !selEnd) return;
+  if (!selStart) return;
+  modalNoches = 1;
   const ap = document.getElementById('adminPersonas');
-  const personas = parseInt(ap && ap.value, 10) || 2;
-  document.getElementById('quotePersonas').value = personas;
-  rebuildQuoteText();
+  modalPersonas = (ap && parseInt(ap.value, 10)) || modalPersonas || 2;
+  refreshModal();
   document.getElementById('quoteModal').classList.add('open');
 }
 
@@ -724,13 +800,13 @@ function closeQuoteModal() {
 }
 
 function copyQuoteFromModal() {
-  const text = document.getElementById('quoteText').textContent;
-  if (!text) return;
-  navigator.clipboard.writeText(text).then(() => {
+  const q = _buildQuoteText(modalPersonas);
+  if (!q) return;
+  navigator.clipboard.writeText(q.text).then(() => {
     showToast('📋 Cotización copiada');
   }).catch(() => {
     const ta = document.createElement('textarea');
-    ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+    ta.value = q.text; ta.style.position = 'fixed'; ta.style.left = '-9999px';
     document.body.appendChild(ta); ta.select();
     document.execCommand('copy');
     document.body.removeChild(ta);
@@ -738,9 +814,8 @@ function copyQuoteFromModal() {
   });
 }
 
-// Wrapper para el botón del panel admin (reabre el modal).
 function adminCopyCotizacion() {
-  if (!selStart || !selEnd) { showToast('⚠ Selecciona fechas primero.'); return; }
+  if (!selStart) { showToast('⚠ Selecciona una fecha primero.'); return; }
   openQuoteModal();
 }
 
