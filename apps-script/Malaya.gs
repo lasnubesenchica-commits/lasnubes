@@ -366,16 +366,18 @@ function _whatsappAdminForwardCelestino(d) {
     '👤 ' + d.huesped + '\n' +
     '📱 +' + d.phone + '\n' +
     '👥 ' + personasLbl + '\n\n' +
+    'Recuerda enviarle al cliente todos los detalles de la reserva e indicaciones de llegada, junto con tu información de contacto para cualquier duda o coordinación el día del check-in.\n\n' +
     'Gracias!';
 
-  // Header para el admin + el mensaje forward-able debajo.
-  const msg =
+  // Dos mensajes separados: (1) aviso al admin con instrucción, (2) el
+  // mensaje forward-able limpio para que el admin haga long-press → reenviar
+  // sin tener que editar nada.
+  const header =
     '✅ *Reserva Malaya guardada*\n' +
-    '_Reenvíale este mensaje a Celestino (long-press → reenviar):_\n\n' +
-    '────────────\n' +
-    forwardable;
+    'Te mando abajo el mensaje listo para reenviarle a Celestino (long-press → reenviar).';
 
-  try { sendWhatsAppText(BOT_ADMIN_PHONE, msg); } catch(_) {}
+  try { sendWhatsAppText(BOT_ADMIN_PHONE, header); }      catch(_) {}
+  try { sendWhatsAppText(BOT_ADMIN_PHONE, forwardable); } catch(_) {}
 }
 
 // ─── Email a Celestino al crear reserva directa ─────────────────
