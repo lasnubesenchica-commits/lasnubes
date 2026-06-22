@@ -321,9 +321,63 @@ function saveMalayaReserva(payload) {
     false, fechaReserva, notas
   ]);
   logDebugEntry('malaya-reserva-OK', { id: id, guest: huesped, ci: checkin, co: checkout, monto: montoTotal, comision: comision });
+
+  // Notificación automática a Celestino (sin ventana de 24h de WhatsApp).
+  _emailCelestinoNuevaReserva({
+    id: id, huesped: huesped, phone: guestPhone,
+    checkin: checkin, checkout: checkout, noches: noches,
+    personas: personas, montoTotal: montoTotal, comision: comision,
+    notas: notas
+  });
+
   return {
     ok: true, id: id, noches: noches, montoTotal: montoTotal, comision: comision
   };
+}
+
+// ─── Email a Celestino al crear reserva directa ─────────────────
+
+function _emailCelestinoNuevaReserva(d) {
+  const to = PropertiesService.getScriptProperties().getProperty('MALAYA_CELESTINO_EMAIL') || 'malayalodge@gmail.com';
+  const fmt = iso => {
+    const dt = new Date(iso + 'T12:00:00');
+    const M   = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    const DOW = ['dom','lun','mar','mié','jue','vie','sáb'];
+    return DOW[dt.getDay()] + ' ' + dt.getDate() + ' ' + M[dt.getMonth()];
+  };
+  const ciFmt = fmt(d.checkin);
+  const coFmt = fmt(d.checkout);
+  const noches = d.noches + ' ' + (d.noches === 1 ? 'noche' : 'noches');
+
+  const html =
+    '<div style="font-family:-apple-system,Segoe UI,Arial,sans-serif; max-width:560px; color:#1a1a1a; line-height:1.5;">' +
+      '<h2 style="color:#5a7a4a; margin:0 0 14px;">🌿 Nueva reserva directa en Malaya</h2>' +
+      '<p>Hola Celestino, cerré una reserva directa. Por favor <strong>bloquéala en Airbnb</strong> para evitar doble booking.</p>' +
+      '<table style="border-collapse:collapse; margin:18px 0; width:100%; font-size:14px;">' +
+        '<tr><td style="padding:6px 10px; color:#666; width:130px;">Fechas</td><td style="padding:6px 10px;"><strong>' + ciFmt + ' → ' + coFmt + '</strong> · ' + noches + '</td></tr>' +
+        '<tr><td style="padding:6px 10px; color:#666;">Check-in</td><td style="padding:6px 10px;">2:00 pm</td></tr>' +
+        '<tr><td style="padding:6px 10px; color:#666;">Check-out</td><td style="padding:6px 10px;">11:00 am</td></tr>' +
+        '<tr><td style="padding:6px 10px; color:#666;">Huésped</td><td style="padding:6px 10px;">' + d.huesped + '</td></tr>' +
+        '<tr><td style="padding:6px 10px; color:#666;">WhatsApp</td><td style="padding:6px 10px;"><a href="https://wa.me/' + d.phone + '">+' + d.phone + '</a></td></tr>' +
+        '<tr><td style="padding:6px 10px; color:#666;">Personas</td><td style="padding:6px 10px;">' + d.personas + '</td></tr>' +
+        '<tr><td style="padding:6px 10px; color:#666;">Total cobrado</td><td style="padding:6px 10px;">$' + Number(d.montoTotal).toFixed(2) + '</td></tr>' +
+        '<tr><td style="padding:6px 10px; color:#666;">Comisión</td><td style="padding:6px 10px;">$' + Number(d.comision).toFixed(2) + '</td></tr>' +
+      '</table>' +
+      (d.notas ? '<p style="font-size:13px; color:#666;"><strong>Notas:</strong> ' + d.notas + '</p>' : '') +
+      '<p style="font-size:13px; color:#888; margin-top:24px;">El sistema verifica cada 30 min si la fecha aparece bloqueada en tu iCal de Airbnb. Si pasan más de 60 min sin bloqueo, recibo una alerta para coordinar contigo.</p>' +
+    '</div>';
+
+  const subject = '🌿 Reserva Malaya: ' + ciFmt + ' → ' + coFmt + ' · ' + d.huesped;
+
+  try {
+    GmailApp.sendEmail(to, subject, '', {
+      htmlBody: html,
+      name: 'Las Nubes — Reservas Malaya'
+    });
+    logDebugEntry('malaya-email-celestino-OK', { to: to, id: d.id });
+  } catch(e) {
+    logDebugEntry('malaya-email-celestino-ERR', { to: to, id: d.id, error: e.message });
+  }
 }
 
 // ─── Cancelar reserva ──────────────────────────────────────────
