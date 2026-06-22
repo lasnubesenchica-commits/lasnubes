@@ -380,12 +380,28 @@
 const SHEETS_API_URL  = 'https://script.google.com/macros/s/AKfycbwDHyfGSyHZvmgiOenw_mm84pMKIs1aMixkyLxAXrjw8uNBcjvPYdIX0HFv_LkDesr0/exec';
 const WHATSAPP_NUMBER = '50769812266';
 
-// Galería: pegá acá URLs de las fotos cuando estén disponibles (Drive público
-// o malayalodge.com directos). El landing reemplaza los placeholders.
+// Galería: pegá acá los links públicos de Drive (formato share normal) o
+// URLs directas. El JS detecta automáticamente Drive y convierte al
+// formato visualizable. Ejemplos válidos:
+//   'https://drive.google.com/file/d/FILE_ID/view?usp=sharing'
+//   'https://lh3.googleusercontent.com/d/FILE_ID'
+//   'https://malayalodge.com/foto.jpg'
 const MALAYA_GALLERY = [
-  // 'https://lh3.googleusercontent.com/d/XXXXXXXX',
-  // 'https://malayalodge.com/img1.jpg',
+  // pegá los links del folder https://drive.google.com/drive/folders/1WlU8benHqjJwAs5XjyUwv-E8srAWYw3G
 ];
+
+// Helper: convierte un link de Drive (share o id) a una URL visualizable.
+function _resolveImageUrl(url) {
+  if (!url) return '';
+  // Patrón 1: drive.google.com/file/d/FILE_ID/view
+  let m = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (m) return 'https://lh3.googleusercontent.com/d/' + m[1] + '=w1200';
+  // Patrón 2: drive.google.com/open?id=FILE_ID
+  m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m && url.includes('drive.google.com')) return 'https://lh3.googleusercontent.com/d/' + m[1] + '=w1200';
+  // Patrón 3: ya es una URL lh3 / directa
+  return url;
+}
 
 const ADMIN_MODE = new URLSearchParams(location.search).get('admin') === '1';
 if (ADMIN_MODE) document.body.classList.add('admin');
@@ -401,7 +417,7 @@ let selStart = null, selEnd = null;   // ISO yyyy-MM-dd
   if (!MALAYA_GALLERY.length) return;
   const g = document.getElementById('gallery');
   g.innerHTML = MALAYA_GALLERY.map(url =>
-    '<img src="' + url + '" alt="Malaya Lodge" loading="lazy">'
+    '<img src="' + _resolveImageUrl(url) + '" alt="Malaya Lodge" loading="lazy" onerror="this.style.display=\'none\'">'
   ).join('');
 })();
 
