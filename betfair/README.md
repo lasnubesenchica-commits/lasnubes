@@ -75,6 +75,27 @@ python3 -m betfair.capture.capture_masters settle
 
 Salida incremental en `capture/masters_capture.csv` (ignorado por git).
 
+## Prueba de conexión (smoke test)
+
+Verifica credenciales y conexión (sólo lectura): loguea, muestra el saldo y lista
+los próximos partidos de tennis marcando Masters y favoritos en banda.
+
+```bash
+python3 -m betfair.tools.check_connection
+```
+
+## Captura automática en GitHub Actions
+
+`.github/workflows/betfair-capture.yml` corre el capturador cada 15 min en los
+meses de Masters 1000 (mar, abr, may, ago, oct, nov) y guarda el CSV como
+artifact. **No coloca apuestas.**
+
+- Para que el cron dispare, el workflow debe estar en `main`. En una rama de
+  feature, úsalo con **Run workflow** (manual).
+- Secrets requeridos: `BETFAIR_APP_KEY`, `BETFAIR_USERNAME`, `BETFAIR_PASSWORD`.
+  Opcionales (cert): `BETFAIR_CERT_B64`, `BETFAIR_KEY_B64` (el `.crt`/`.key` en
+  base64, p.ej. `base64 -w0 client-2048.crt`).
+
 ## Tests
 
 ```bash
