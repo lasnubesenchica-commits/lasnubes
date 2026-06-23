@@ -1,0 +1,87 @@
+name: Betfair Masters capture
+
+# Captura cuotas de cierre del Betfair Exchange para validar (paper trading) la
+# estrategia "lay al favorito en Masters 1000" y PUBLICA el resultado como JSON
+# para el dashboard (betfair.html). SOLO LEE de Betfair; nunca coloca apuestas.
+#
+# IMPORTANTE:
+#   1. Para que el `schedule` (cron) dispare, este archivo debe estar en la rama
+#      por defecto (main). En una rama de feature usa "Run workflow" (manual).
+#   2. Secrets requeridos: BETFAIR_APP_KEY, BETFAIR_USERNAME, BETFAIR_PASSWORD.
+#      Opcionales (cert): BETFAIR_CERT_B64, BETFAIR_KEY_B64 (el .crt/.key en base64).
+#   3. El cron se limita a los meses con Masters 1000 (mar, abr, may, ago, oct, nov).
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/15 * * 3,4,5,8,10,11 *"
+
+concurrency:
+  group: betfair-capture
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: pip install -r betfair/requirements.txt
+
+      - name: Preparar certificado (si está configurado)
+        env:
+          BETFAIR_CERT_B64: ${{ secrets.BETFAIR_CERT_B64 }}
+          BETFAIR_KEY_B64: ${{ secrets.BETFAIR_KEY_B64 }}
+        run: |
+          if [ -n "$BETFAIR_CERT_B64" ] && [ -n "$BETFAIR_KEY_B64" ]; then
+            echo "$BETFAIR_CERT_B64" | base64 -d > "$RUNNER_TEMP/bf.crt"
+            echo "$BETFAIR_KEY_B64"  | base64 -d > "$RUNNER_TEMP/bf.key"
+            echo "BETFAIR_CERT_FILE=$RUNNER_TEMP/bf.crt" >> "$GITHUB_ENV"
+            echo "BETFAIR_KEY_FILE=$RUNNER_TEMP/bf.key"  >> "$GITHUB_ENV"
+            echo "Login por certificado habilitado."
+          else
+            echo "Sin certificado; se usará login interactivo (usuario/clave)."
+          fi
+
+      - name: Capturar, liquidar y exportar JSON
+        env:
+          BETFAIR_APP_KEY: ${{ secrets.BETFAIR_APP_KEY }}
+          BETFAIR_USERNAME: ${{ secrets.BETFAIR_USERNAME }}
+          BETFAIR_PASSWORD: ${{ secrets.BETFAIR_PASSWORD }}
+        run: |
+          python3 -m betfair.capture.capture_masters record --within-min 20 \
+            --out betfair/data/masters_capture.csv
+          python3 -m betfair.capture.capture_masters settle \
+            --out betfair/data/masters_capture.csv
+          python3 -m betfair.capture.export_json \
+            --in betfair/data/masters_capture.csv --out betfair/data/masters.json
+
+      - name: Publicar datos para el dashboard
+        run: |
+          git config user.name "betfair-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add betfair/data
+          if git diff --cached --quiet; then
+            echo "sin cambios que publicar"
+          else
+            git commit -m "betfair: actualizar capturas y JSON [skip ci]"
+            git pull --rebase origin "${GITHUB_REF_NAME}" || true
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
+      - name: Subir CSV como artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: masters-capture
+          path: betfair/data/masters_capture.csv
+          if-no-files-found: ignore
+          retention-days: 90

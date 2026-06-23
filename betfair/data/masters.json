@@ -1,0 +1,22 @@
+{
+  "updated_at": "2026-06-23T00:55:33Z",
+  "source": "live",
+  "config": {
+    "min_fav_odds": 1.2,
+    "max_fav_odds": 1.5,
+    "backer_stake": 2.0,
+    "commission": 0.05
+  },
+  "captures": [],
+  "summary": {
+    "settled_bets": 0,
+    "pnl": 0,
+    "liability": 0,
+    "roi": null,
+    "wins": 0,
+    "losses": 0,
+    "win_rate": null,
+    "by_day": [],
+    "equity": []
+  }
+}
