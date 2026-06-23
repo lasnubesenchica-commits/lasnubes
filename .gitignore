@@ -3,3 +3,13 @@ node_modules/
 *.log
 .env
 .env.local
+
+# Betfair: credenciales/datos que no deben subirse
+*.crt
+*.key
+*.pem
+betfair/capture/masters_capture.csv
+
+# Python
+__pycache__/
+*.pyc

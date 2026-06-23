@@ -1,61 +1,82 @@
-# Betfair — Bot semanal "Lay the Draw"
+# Betfair — bot de apuestas (investigación + automatización)
 
-Sistema para automatizar una estrategia de apuestas semanal sobre la cuenta de
-Betfair vía la API oficial. En construcción por etapas.
+Sistema para automatizar estrategias de apuestas sobre la cuenta de Betfair vía
+la API oficial. Construcción por etapas, con backtesting riguroso antes de
+arriesgar capital.
 
 ## Estado
 
-- [x] **Backtest** de la estrategia con datos históricos reales (`backtest/`).
-- [ ] Esqueleto del bot (login por certificado, lectura de mercados) — simulación.
-- [ ] Motor de reglas compartido (mismo que el backtest).
-- [ ] Flujo semi-automático con aprobación en GitHub Actions.
-- [ ] Integración live (cuota real + colocación de apuestas).
-- [ ] Etapa 2: research previo + automatización total.
+- [x] **Backtest fútbol** (`backtest/lay_the_draw.py`, `explore_strategies.py`) —
+      conclusión: sin edge atractivo robusto. Ver `RESULTS.md`, `STRATEGIES.md`.
+- [x] **Backtest tennis** (`backtest/tennis_explore.py`) — **hallazgo robusto**:
+      lay al favorito corto en Masters 1000. Ver `TENNIS.md`.
+- [x] **Cliente Betfair** (login + lecturas) y **capturador de cuotas del exchange**.
+- [ ] Validación con cuotas reales del exchange (paper trading una tanda de Masters).
+- [ ] Bot dirigido por eventos (modo live, con gestión de bankroll).
 
-## Estrategia (definición acordada)
+## Estrategia activa: LAY al favorito en Masters 1000
 
-**Lay the Draw puro** (dejar correr hasta el final):
+Pasiva, pre-partido (automatizable; sin in-play ni delay):
 
-- Mercado: Match Odds, selección **Empate (The Draw)**.
-- Acción: **LAY** (apostamos a que NO hay empate).
-- Filtro: cuota del empate en **[3.00, 3.70]**.
-- Sin cierre in-play: se deja correr hasta el resultado final.
-- Stake: configurable (por defecto 1 unidad de backer stake por apuesta).
-- Comisión Betfair: configurable (por defecto 5%).
-- Cadencia: semanal.
+- **Mercado:** Match Odds de tennis ATP, torneos **Masters 1000**.
+- **Acción:** **LAY** al jugador favorito (menor cuota).
+- **Filtro:** cuota del favorito en **[1.20, 1.50]**.
+- **Backtest (Pinnacle, 2023-25):** ~+10.6% ROI (5% comisión), consistente las 3
+  temporadas. Específica de Masters 1000 (no Grand Slam ni ATP 250/500).
+- **Caveats:** validar con cuotas reales del exchange; ~75% de apuestas pierden
+  poco / ~25% ganan más (alta varianza, exige bankroll). Detalle en `TENNIS.md`.
 
-## Backtest
+## Estructura
 
-`backtest/lay_the_draw.py` descarga los CSV de
-[football-data.co.uk](https://www.football-data.co.uk/) (resultado final + cuotas
-de cierre) y simula la regla exacta, reportando por liga y temporada: nº de
-apuestas que pasan el filtro, % de empates, cuota promedio, P&L y ROI.
-
-```bash
-# Descarga directa (requiere acceso de red a football-data.co.uk)
-python3 betfair/backtest/lay_the_draw.py
-
-# Con CSVs locales (si la red está restringida): bajar los CSV a una carpeta
-# y nombrarlos <LIGA>_<TEMP>.csv, p.ej. E0_2425.csv
-python3 betfair/backtest/lay_the_draw.py --data-dir ./csv
-
-# Parametrizable
-python3 betfair/backtest/lay_the_draw.py --min 3.0 --max 3.7 \
-    --commission 0.05 --leagues E0,SP1,F1 --seasons 2324,2425,2526
+```
+betfair/
+  backtest/        # análisis histórico (fútbol y tennis) + resultados (.md)
+  bot/
+    config.py          # endpoints + config desde variables de entorno
+    betfair_client.py  # login (cert/interactivo) + Betting/Account JSON-RPC
+    parsing.py         # interpreta respuestas de la API (testeable offline)
+    strategy.py        # regla lay-favorito-Masters (compartida)
+  capture/
+    capture_masters.py # captura cuotas de cierre del exchange + paper P&L
+  tests/
+    test_strategy.py   # tests offline (sin red)
 ```
 
-Ligas (códigos football-data.co.uk): `E0` Premier League, `SP1` La Liga,
-`D1` Bundesliga, `F1` Ligue 1, `I1` Serie A, `N1` Eredivisie, `E1` Championship,
-`P1` Primeira Liga. Temporadas: `2425` = 2024-25, etc.
+## Configuración
 
-> **Nota sobre el % de la liga vs. el filtro:** el % de empates *dentro del
-> filtro 3.0–3.7* es más alto que el promedio de la liga, porque el filtro
-> selecciona partidos donde el empate es más probable. El backtest mide
-> justamente la tasa dentro del filtro, que es lo que determina la rentabilidad.
+1. Instala dependencias: `pip install -r betfair/requirements.txt`
+2. Copia `betfair/.env.example` a `.env` y rellena credenciales (ver abajo).
+3. **(Opcional, recomendado) certificado** para login desatendido:
+   ```bash
+   openssl req -newkey rsa:2048 -nodes -keyout client-2048.key \
+       -x509 -days 3650 -out client-2048.crt
+   ```
+   Sube el `.crt` en tu cuenta Betfair (My Account → Security → Automated betting)
+   y apunta `BETFAIR_CERT_FILE` / `BETFAIR_KEY_FILE` al `.crt`/`.key`.
+   Sin certificado, el cliente usa login interactivo (usuario+clave).
 
-## API de Betfair (notas)
+> Las credenciales y el `.key` NUNCA se commitean (`.gitignore` los excluye) y en
+> GitHub Actions/VPS van como **Secrets**. La **delayed key** basta para CAPTURAR
+> datos; para apostar real hace falta la **live key**.
 
-- App Key delayed (gratis) ya creada — para desarrollo y simulación.
-- Login no interactivo con certificado SSL para que el bot opere solo.
-- Credenciales (key, certificado, password) van como **GitHub Secrets**, nunca en
-  el código ni en el cliente.
+## Capturar cuotas reales del exchange (validación)
+
+Corre `record` periódicamente durante un torneo Masters (p.ej. cada 5 min vía
+cron) para guardar la cuota de cierre del favorito; luego `settle` para liquidar
+contra el resultado y ver el P&L del paper trading. **Sólo lee; no apuesta.**
+
+```bash
+# Captura partidos que arrancan en los próximos 15 min
+python3 -m betfair.capture.capture_masters record --within-min 15
+
+# Liquida los ya jugados y muestra el P&L acumulado
+python3 -m betfair.capture.capture_masters settle
+```
+
+Salida incremental en `capture/masters_capture.csv` (ignorado por git).
+
+## Tests
+
+```bash
+python3 -m betfair.tests.test_strategy      # lógica de estrategia + parsing (offline)
+```
