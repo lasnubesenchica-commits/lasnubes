@@ -28,6 +28,11 @@ class BetfairClient:
         self.cfg = cfg
         self.session_token: str | None = None
         self._http = requests.Session()
+        # Betfair (Akamai) puede devolver 403 al User-Agent por defecto de
+        # requests; usamos uno de navegador para todas las llamadas.
+        self._http.headers.update({
+            "User-Agent": ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                           "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")})
 
     # ----------------------------- Login -----------------------------------
     def login(self) -> str:
