@@ -84,6 +84,23 @@ los próximos partidos de tennis marcando Masters y favoritos en banda.
 python3 -m betfair.tools.check_connection
 ```
 
+## Dashboard (`betfair.html`)
+
+Página estática servida por GitHub Pages (`lasnubes.cloud/betfair.html`). **Solo
+lectura**: lee el JSON que publica el workflow y muestra capturas en vivo,
+resultados jornada a jornada, curva de equity y el resumen del backtest. Nunca
+coloca apuestas ni maneja credenciales.
+
+- Datos en vivo: `betfair/data/masters.json` (lo regenera el workflow).
+- Demo: `betfair/data/masters_demo.json` (Masters 1000 de 2025 del backtest, para
+  ver el dashboard funcionando antes del primer Masters real). Regenerar con:
+  ```bash
+  python3 -m betfair.capture.make_demo --tennis-dir <dir_tennis> --season 2025
+  ```
+
+El JSON lo genera `export_json.py` a partir del CSV de capturas (P&L, ROI sobre
+liability, desglose por día, equity).
+
 ## Captura automática en GitHub Actions
 
 `.github/workflows/betfair-capture.yml` corre el capturador cada 15 min en los
