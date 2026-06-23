@@ -14,17 +14,18 @@ arriesgar capital.
 - [ ] Validación con cuotas reales del exchange (paper trading una tanda de Masters).
 - [ ] Bot dirigido por eventos (modo live, con gestión de bankroll).
 
-## Estrategia activa: LAY al favorito en Masters 1000
+## Estrategias capturadas (paper trading con cuotas reales)
 
-Pasiva, pre-partido (automatizable; sin in-play ni delay):
+Pasivas, pre-partido (automatizables; sin in-play ni delay):
 
-- **Mercado:** Match Odds de tennis ATP, torneos **Masters 1000**.
-- **Acción:** **LAY** al jugador favorito (menor cuota).
-- **Filtro:** cuota del favorito en **[1.20, 1.50]**.
-- **Backtest (Pinnacle, 2023-25):** ~+10.6% ROI (5% comisión), consistente las 3
-  temporadas. Específica de Masters 1000 (no Grand Slam ni ATP 250/500).
-- **Caveats:** validar con cuotas reales del exchange; ~75% de apuestas pierden
-  poco / ~25% ganan más (alta varianza, exige bankroll). Detalle en `TENNIS.md`.
+- **🎾 Tennis — Lay al favorito en Masters 1000.** Banda de cuota **[1.20, 1.50]**.
+  Backtest (Pinnacle 2023-25): ~+10.6% ROI, consistente. Detalle en `TENNIS.md`.
+- **⚽ Fútbol — Lay the Draw.** Banda de cuota del empate **[3.00, 3.70]**.
+  Mundial 2026 ahora + ligas top al reiniciar. El backtest histórico no fue
+  rentable de media; capturamos datos reales para reevaluar al cabo de la temporada.
+
+El capturador registra ambos con el mismo motor y un esquema común. ~75% de los
+lays individuales pierden poco / ~25% ganan más (alta varianza, exige bankroll).
 
 ## Estructura
 
@@ -35,11 +36,14 @@ betfair/
     config.py          # endpoints + config desde variables de entorno
     betfair_client.py  # login (cert/interactivo) + Betting/Account JSON-RPC
     parsing.py         # interpreta respuestas de la API (testeable offline)
-    strategy.py        # regla lay-favorito-Masters (compartida)
+    strategy.py        # selector compartido: make_pick(sport, ...) tennis/fútbol
   capture/
-    capture_masters.py # captura cuotas de cierre del exchange + paper P&L
+    capture.py         # captura genérica (--sport tennis|football) + paper P&L
+    export_json.py     # CSV -> JSON para el dashboard (agregados, equity)
+    make_demo.py       # genera datasets demo desde los backtests
   tests/
     test_strategy.py   # tests offline (sin red)
+data/                  # JSON publicado que lee el dashboard (vivo + demo)
 ```
 
 ## Configuración
@@ -61,19 +65,17 @@ betfair/
 
 ## Capturar cuotas reales del exchange (validación)
 
-Corre `record` periódicamente durante un torneo Masters (p.ej. cada 5 min vía
-cron) para guardar la cuota de cierre del favorito; luego `settle` para liquidar
-contra el resultado y ver el P&L del paper trading. **Sólo lee; no apuesta.**
+`record` guarda la cuota de LAY de la selección (favorito en tennis, empate en
+fútbol) de los partidos que arrancan pronto; `settle` liquida contra el resultado
+y calcula el P&L del paper trading. **Sólo lee; no apuesta.**
 
 ```bash
-# Captura partidos que arrancan en los próximos 15 min
-python3 -m betfair.capture.capture_masters record --within-min 15
-
-# Liquida los ya jugados y muestra el P&L acumulado
-python3 -m betfair.capture.capture_masters settle
+python3 -m betfair.capture.capture record --sport tennis     # Masters 1000
+python3 -m betfair.capture.capture record --sport football   # Mundial + ligas
+python3 -m betfair.capture.capture settle --sport football
 ```
 
-Salida incremental en `capture/masters_capture.csv` (ignorado por git).
+Salida en `betfair/data/<deporte>_capture.csv` (se publica para el dashboard).
 
 ## Prueba de conexión (smoke test)
 
@@ -87,25 +89,24 @@ python3 -m betfair.tools.check_connection
 ## Dashboard (`betfair.html`)
 
 Página estática servida por GitHub Pages (`lasnubes.cloud/betfair.html`). **Solo
-lectura**: lee el JSON que publica el workflow y muestra capturas en vivo,
-resultados jornada a jornada, curva de equity y el resumen del backtest. Nunca
-coloca apuestas ni maneja credenciales.
+lectura**: selector de deporte (🎾 Tennis / ⚽ Football), KPIs, curva de equity,
+resultados jornada a jornada, capturas y resumen del backtest. Nunca coloca
+apuestas ni maneja credenciales.
 
-- Datos en vivo: `betfair/data/masters.json` (lo regenera el workflow).
-- Demo: `betfair/data/masters_demo.json` (Masters 1000 de 2025 del backtest, para
-  ver el dashboard funcionando antes del primer Masters real). Regenerar con:
+- En vivo: `data/masters.json` (tennis), `data/football.json` (fútbol).
+- Demo: `data/masters_demo.json`, `data/football_demo.json` — para ver el
+  dashboard funcionando ya. Regenerar:
   ```bash
-  python3 -m betfair.capture.make_demo --tennis-dir <dir_tennis> --season 2025
+  python3 -m betfair.capture.make_demo --sport tennis   --src <dir_tennis> --season 2025
+  python3 -m betfair.capture.make_demo --sport football --src <dir_fd>     --season 2425
   ```
 
-El JSON lo genera `export_json.py` a partir del CSV de capturas (P&L, ROI sobre
-liability, desglose por día, equity).
+El JSON lo genera `export_json.py` (P&L, ROI sobre liability, por día, equity).
 
 ## Captura automática en GitHub Actions
 
-`.github/workflows/betfair-capture.yml` corre el capturador cada 15 min en los
-meses de Masters 1000 (mar, abr, may, ago, oct, nov) y guarda el CSV como
-artifact. **No coloca apuestas.**
+`.github/workflows/betfair-capture.yml` corre cada 20 min, captura tennis y fútbol,
+y publica `betfair/data/*.json` en el repo para que Pages los sirva. **No apuesta.**
 
 - Para que el cron dispare, el workflow debe estar en `main`. En una rama de
   feature, úsalo con **Run workflow** (manual).

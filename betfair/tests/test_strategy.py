@@ -7,8 +7,9 @@ listMarketBook. Correr:  python3 -m betfair.tests.test_strategy
 from __future__ import annotations
 
 from ..bot import parsing
-from ..bot.strategy import (LayFavConfig, RunnerPrice, select_lay_favorite,
-                            settle_lay_pnl, liability, is_masters_competition)
+from ..bot.strategy import (LayDrawConfig, LayFavConfig, RunnerPrice, make_pick,
+                            select_lay_favorite, settle_lay_pnl, liability,
+                            is_masters_competition)
 
 # --- Muestras con la forma real de la API ------------------------------------
 CATALOGUE_ITEM = {
@@ -81,6 +82,25 @@ def main():
     # fav GANÓ -> perdemos el liability: -0.60
     check("P&L cuando el favorito gana (perdemos)",
           settle_lay_pnl(1.30, 2.0, fav_won=True, commission=0.05) == -0.60)
+
+    print("selector genérico make_pick:")
+    tcfg, fcfg = LayFavConfig(), LayDrawConfig()
+    # tennis: lay al favorito
+    tp = make_pick("tennis", prices, tcfg, fcfg)
+    check("tennis: laia al favorito Alcaraz", tp and tp.selection == "Carlos Alcaraz")
+    check("tennis: favorito 1.30 en banda", tp.in_band and tp.lay_price == 1.30)
+    # football: lay al empate
+    fb = [RunnerPrice(47984, "Real Madrid", 1.90),
+          RunnerPrice(58805, "The Draw", 3.40),
+          RunnerPrice(47999, "Barcelona", 4.20)]
+    fp = make_pick("football", fb, tcfg, fcfg)
+    check("football: laia el Empate", fp and fp.selection == "Empate")
+    check("football: empate 3.40 en banda 3.0-3.7", fp.in_band and fp.lay_price == 3.40)
+    # empate fuera de banda
+    fb2 = [RunnerPrice(1, "A", 1.40), RunnerPrice(58805, "The Draw", 5.0),
+           RunnerPrice(2, "B", 1.90)]
+    fp2 = make_pick("football", fb2, tcfg, fcfg)
+    check("football: empate 5.0 fuera de banda", fp2 and not fp2.in_band)
 
     print("\nTODOS LOS TESTS PASARON ✔")
 

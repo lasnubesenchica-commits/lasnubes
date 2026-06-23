@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Convierte el CSV de capturas en el JSON que consume el dashboard betfair.html.
+"""Convierte el CSV de capturas (genérico) en el JSON que consume betfair.html.
 
-Calcula agregados: P&L total, ROI, win rate, desglose jornada a jornada y curva de
-equity. Reutilizable por el generador de demo.
+Esquema de captura (común a tennis y fútbol):
+  start_time, competition, event, selection, lay_price, detail, in_band,
+  won (1=el lay ganó), pnl_units.
 
-    python3 -m betfair.capture.export_json --in betfair/data/masters_capture.csv \
-        --out betfair/data/masters.json
+Calcula agregados: P&L, ROI sobre el capital en riesgo (liability), win rate,
+desglose jornada a jornada y curva de equity. Reutilizable por los generadores
+de demo.
+
+    python3 -m betfair.capture.export_json --sport football \
+        --in betfair/data/football_capture.csv --out betfair/data/football.json
 """
 from __future__ import annotations
 
@@ -15,7 +20,12 @@ import datetime as dt
 import json
 import os
 
-from ..bot.strategy import LayFavConfig
+STRATEGY_META = {
+    "tennis": {"label": "Lay al favorito · Masters 1000", "band": [1.2, 1.5]},
+    "football": {"label": "Lay the Draw", "band": [3.0, 3.7]},
+}
+BACKER_STAKE = 2.0
+COMMISSION = 0.05
 
 
 def _num(v):
@@ -26,7 +36,6 @@ def _num(v):
 
 
 def parse_csv_rows(path: str) -> list[dict]:
-    """Lee el CSV de capturas y lo normaliza a dicts de captura."""
     if not os.path.exists(path):
         return []
     with open(path, newline="") as fh:
@@ -34,26 +43,21 @@ def parse_csv_rows(path: str) -> list[dict]:
     out = []
     for r in raw:
         out.append({
-            "captured_at": r.get("captured_at", ""),
+            "start_time": r.get("start_time", ""),
             "competition": r.get("competition", ""),
             "event": r.get("event", ""),
-            "start_time": r.get("start_time", ""),
-            "is_masters": int(r.get("is_masters") or 0),
-            "fav_name": r.get("fav_name", ""),
-            "fav_lay_price": _num(r.get("fav_lay_price")),
-            "dog_name": r.get("dog_name", ""),
-            "dog_lay_price": _num(r.get("dog_lay_price")),
+            "selection": r.get("selection", ""),
+            "lay_price": _num(r.get("lay_price")),
+            "detail": r.get("detail", ""),
             "in_band": int(r.get("in_band") or 0),
-            "fav_won": (int(r["fav_won"]) if r.get("fav_won") not in (None, "") else None),
+            "won": (int(r["won"]) if r.get("won") not in (None, "") else None),
             "pnl_units": _num(r.get("pnl_units")),
         })
     return out
 
 
-def summarize(captures: list[dict], cfg: LayFavConfig) -> dict:
-    """Agregados para el dashboard a partir de las apuestas liquidadas."""
-    bets = [c for c in captures
-            if c["is_masters"] and c["in_band"] and c["pnl_units"] is not None]
+def summarize(captures: list[dict], backer_stake: float = BACKER_STAKE) -> dict:
+    bets = [c for c in captures if c["in_band"] and c["pnl_units"] is not None]
     bets.sort(key=lambda c: (c["start_time"] or ""))
 
     by_day: dict[str, dict] = {}
@@ -73,12 +77,9 @@ def summarize(captures: list[dict], cfg: LayFavConfig) -> dict:
 
     nbets = len(bets)
     total_pnl = round(sum(b["pnl_units"] for b in bets), 2)
-    # ROI sobre el CAPITAL EN RIESGO (liability), igual que el backtest:
-    # liability de cada lay = backer_stake * (cuota - 1).
-    total_liability = sum(cfg.backer_stake * ((b["fav_lay_price"] or 1) - 1)
-                          for b in bets)
-    wins = sum(1 for b in bets if b["fav_won"] == 0)    # lay gana si el fav PIERDE
-    losses = sum(1 for b in bets if b["fav_won"] == 1)
+    total_liability = sum(backer_stake * ((b["lay_price"] or 1) - 1) for b in bets)
+    wins = sum(1 for b in bets if b["won"] == 1)
+    losses = sum(1 for b in bets if b["won"] == 0)
     return {
         "settled_bets": nbets,
         "pnl": total_pnl,
@@ -90,30 +91,35 @@ def summarize(captures: list[dict], cfg: LayFavConfig) -> dict:
     }
 
 
-def assemble(captures: list[dict], cfg: LayFavConfig, *, source: str = "live") -> dict:
-    return {
+def assemble(captures, sport, *, source="live", note=None) -> dict:
+    meta = STRATEGY_META[sport]
+    data = {
         "updated_at": dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "source": source,
-        "config": {"min_fav_odds": cfg.min_fav_odds, "max_fav_odds": cfg.max_fav_odds,
-                   "backer_stake": cfg.backer_stake, "commission": cfg.commission},
+        "sport": sport, "source": source,
+        "strategy": meta["label"],
+        "config": {"band": meta["band"], "backer_stake": BACKER_STAKE,
+                   "commission": COMMISSION},
         "captures": captures,
-        "summary": summarize(captures, cfg),
+        "summary": summarize(captures),
     }
+    if note:
+        data["demo_note"] = note
+    return data
 
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--in", dest="inp", default="betfair/data/masters_capture.csv")
-    p.add_argument("--out", default="betfair/data/masters.json")
+    p.add_argument("--sport", choices=["tennis", "football"], required=True)
+    p.add_argument("--in", dest="inp", required=True)
+    p.add_argument("--out", required=True)
     args = p.parse_args()
-    cfg = LayFavConfig()
-    data = assemble(parse_csv_rows(args.inp), cfg, source="live")
+    data = assemble(parse_csv_rows(args.inp), args.sport, source="live")
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w") as fh:
         json.dump(data, fh, indent=2, ensure_ascii=False)
     s = data["summary"]
-    print(f"escrito {args.out}: {len(data['captures'])} capturas, "
-          f"{s['settled_bets']} apuestas liquidadas, P&L {s['pnl']}")
+    print(f"[{args.sport}] {args.out}: {len(data['captures'])} capturas, "
+          f"{s['settled_bets']} apuestas, P&L {s['pnl']}, ROI {s['roi']}")
 
 
 if __name__ == "__main__":

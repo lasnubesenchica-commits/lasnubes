@@ -14,25 +14,27 @@
   body{margin:0;background:var(--bg);color:var(--txt);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     font-size:15px;line-height:1.5}
-  header{padding:20px 18px 8px;max-width:1080px;margin:0 auto}
+  header{padding:20px 18px 4px;max-width:1080px;margin:0 auto}
   h1{font-size:21px;margin:0 0 2px;display:flex;align-items:center;gap:10px}
   .sub{color:var(--mut);font-size:13px}
-  .wrap{max-width:1080px;margin:0 auto;padding:10px 18px 60px}
+  .wrap{max-width:1080px;margin:0 auto;padding:6px 18px 60px}
   .badge{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;letter-spacing:.3px}
   .badge.live{background:rgba(54,192,143,.15);color:var(--good);border:1px solid rgba(54,192,143,.35)}
   .badge.demo{background:rgba(224,179,65,.15);color:var(--warn);border:1px solid rgba(224,179,65,.35)}
-  .toggle{display:inline-flex;background:var(--card);border:1px solid var(--line);
-    border-radius:10px;overflow:hidden;margin:12px 0}
-  .toggle button{background:transparent;color:var(--mut);border:0;padding:8px 16px;
+  .switch{display:flex;gap:8px;margin:14px 0 6px;flex-wrap:wrap}
+  .switch .seg{display:inline-flex;background:var(--card);border:1px solid var(--line);
+    border-radius:10px;overflow:hidden}
+  .switch button{background:transparent;color:var(--mut);border:0;padding:8px 16px;
     cursor:pointer;font-size:13px;font-weight:600}
-  .toggle button.on{background:var(--accent);color:#fff}
+  .switch .sport button.on{background:#2b3550;color:#fff}
+  .switch .src button.on{background:var(--accent);color:#fff}
   .grid{display:grid;gap:12px}
   .kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
   .kpi .label{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.4px}
   .kpi .val{font-size:26px;font-weight:700;margin-top:6px}
   .pos{color:var(--good)} .neg{color:var(--bad)}
-  h2{font-size:15px;margin:26px 0 10px;color:var(--txt)}
+  h2{font-size:15px;margin:26px 0 10px}
   h2 .hint{color:var(--mut);font-weight:400;font-size:12px;margin-left:8px}
   table{width:100%;border-collapse:collapse;font-size:13.5px}
   th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line)}
@@ -60,15 +62,20 @@
 </head>
 <body>
 <header>
-  <h1>🎾 Betfair <span id="srcBadge" class="badge demo">DEMO</span></h1>
-  <div class="sub">Estrategia activa: <b>lay al favorito (cuota <span id="band">1.2–1.5</span>) en Masters 1000</b>
-     · actualizado <span id="updated">—</span></div>
+  <h1>🎰 Betfair <span id="srcBadge" class="badge demo">DEMO</span></h1>
+  <div class="sub" id="stratLine">—</div>
 </header>
 
 <div class="wrap">
-  <div class="toggle" id="toggle">
-    <button data-src="live" class="on">En vivo</button>
-    <button data-src="demo">Demo 2025</button>
+  <div class="switch">
+    <div class="seg sport" id="sportSeg">
+      <button data-sport="tennis" class="on">🎾 Tennis</button>
+      <button data-sport="football">⚽ Football</button>
+    </div>
+    <div class="seg src" id="srcSeg">
+      <button data-src="live" class="on">En vivo</button>
+      <button data-src="demo">Demo</button>
+    </div>
   </div>
   <div id="demoNote" class="note" style="display:none"></div>
 
@@ -77,66 +84,72 @@
   <h2>Resumen del backtest <span class="hint">contexto histórico (cuotas de cierre, no es dinero real)</span></h2>
   <div class="grid bt">
     <div class="card"><h3>🎾 Tennis · Masters 1000 <span class="roi pos">+10.6%</span></h3>
-      <p>Lay al favorito 1.2–1.5. Consistente en 2023-2025 y estable ante comisión. <b>La estrategia elegida.</b></p></div>
+      <p>Lay al favorito 1.2–1.5. Consistente 2023-2025 y estable ante comisión. <b>La mejor señal.</b></p></div>
     <div class="card"><h3>🎾 Tennis · Grand Slam <span class="roi neg">−6.8%</span></h3>
-      <p>Best-of-5: el favorito es fiable → layearlo pierde. ATP 250/500 tampoco sirven.</p></div>
+      <p>Best-of-5: el favorito es fiable → layearlo pierde. ATP 250/500 tampoco.</p></div>
     <div class="card"><h3>⚽ Fútbol · Lay the Draw <span class="roi neg">−4.4%</span></h3>
-      <p>En 5 ligas pierde. Solo Ligue 1 daba +5%, pero sin margen suficiente. Descartado.</p></div>
+      <p>En 5 ligas pierde de media. Por eso capturamos datos reales para reevaluar.</p></div>
     <div class="card"><h3>⚽ Fútbol · exploración <span class="roi" style="color:var(--mut)">~0%</span></h3>
-      <p>Ninguna regla simple sobre cuotas de cierre del exchange sostiene 8-10%.</p></div>
+      <p>Ninguna regla simple sobre cuotas de cierre sostuvo 8-10% en el histórico.</p></div>
   </div>
 
   <div class="foot">
-    Solo lectura · los datos los captura GitHub Actions durante los Masters · nunca se colocan apuestas desde aquí.
+    Solo lectura · los datos los captura GitHub Actions con cuotas reales de Betfair · nunca se colocan apuestas desde aquí.
     <br>Las Nubes — sistema Betfair.
   </div>
 </div>
 
 <script>
-const SOURCES = { live:"./betfair/data/masters.json", demo:"./betfair/data/masters_demo.json" };
-let current = "live";
+const SOURCES = {
+  tennis:   { live:"./betfair/data/masters.json",  demo:"./betfair/data/masters_demo.json" },
+  football: { live:"./betfair/data/football.json", demo:"./betfair/data/football_demo.json" },
+};
+const EMPTY = {
+  tennis:   "Aún no hay capturas reales. El próximo Masters 1000 es en <b>agosto</b> (Canadá).",
+  football: "Aún no hay capturas reales liquidadas. Capturando el <b>Mundial 2026</b> en vivo; los partidos aparecerán al jugarse.",
+};
+let sport = "tennis", src = "live";
 
 const fmtU = n => (n>=0?"+":"") + Number(n).toFixed(2) + "u";
 const cls = n => n>0?"pos":(n<0?"neg":"");
 const esc = s => (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 
-async function load(src){
-  current = src;
-  document.querySelectorAll("#toggle button").forEach(b=>b.classList.toggle("on", b.dataset.src===src));
+async function load(){
+  document.querySelectorAll("#sportSeg button").forEach(b=>b.classList.toggle("on", b.dataset.sport===sport));
+  document.querySelectorAll("#srcSeg button").forEach(b=>b.classList.toggle("on", b.dataset.src===src));
   let data;
-  try{ data = await (await fetch(SOURCES[src]+"?t="+Date.now())).json(); }
+  try{ data = await (await fetch(SOURCES[sport][src]+"?t="+Date.now())).json(); }
   catch(e){ document.getElementById("content").innerHTML =
     `<div class="card empty">No se pudo cargar la fuente de datos.</div>`; return; }
   render(data);
 }
 
 function render(d){
-  const s = d.summary || {};
-  const isDemo = d.source==="demo";
+  const s = d.summary || {}, isDemo = d.source==="demo";
   const badge = document.getElementById("srcBadge");
   badge.textContent = isDemo?"DEMO":"EN VIVO";
   badge.className = "badge " + (isDemo?"demo":"live");
-  document.getElementById("updated").textContent = (d.updated_at||"").replace("T"," ").replace("Z"," UTC");
-  if(d.config) document.getElementById("band").textContent =
-    d.config.min_fav_odds.toFixed(1)+"–"+d.config.max_fav_odds.toFixed(1);
+  const band = (d.config&&d.config.band)||[];
+  document.getElementById("stratLine").innerHTML =
+    `Estrategia: <b>${esc(d.strategy||"")}</b>` +
+    (band.length?` · cuota ${band[0]}–${band[1]}`:"") +
+    ` · actualizado ${(d.updated_at||"").replace("T"," ").replace("Z"," UTC")}`;
   const dn = document.getElementById("demoNote");
   if(isDemo && d.demo_note){ dn.style.display="block"; dn.textContent="ℹ️ "+d.demo_note; }
   else dn.style.display="none";
 
   const C = document.getElementById("content");
   if(!s.settled_bets){
-    C.innerHTML = `<div class="card empty">
-      Aún no hay capturas reales liquidadas.<br>El próximo Masters 1000 es en <b>agosto</b> (Canadá).
-      Mientras tanto, mira cómo se vería con los Masters de 2025.
-      <br><button onclick="load('demo')">Ver demo 2025</button></div>`;
+    C.innerHTML = `<div class="card empty">${EMPTY[sport]}
+      <br>Mientras tanto, mira la demo.
+      <br><button onclick="src='demo';load()">Ver demo</button></div>`;
     return;
   }
 
-  const roiCls = cls(s.roi), pnlCls = cls(s.pnl);
   let html = `<div class="grid kpis">
     ${kpi("Apuestas", s.settled_bets)}
-    ${kpi("P&L", fmtU(s.pnl), pnlCls)}
-    ${kpi("ROI (s/ riesgo)", (s.roi>=0?"+":"")+s.roi+"%", roiCls)}
+    ${kpi("P&L", fmtU(s.pnl), cls(s.pnl))}
+    ${kpi("ROI (s/ riesgo)", (s.roi>=0?"+":"")+s.roi+"%", cls(s.roi))}
     ${kpi("Aciertos", s.win_rate+"%", "", `${s.wins} de ${s.settled_bets}`)}
   </div>`;
 
@@ -152,18 +165,19 @@ function render(d){
   });
   html += `</tbody></table></div>`;
 
-  const caps = (d.captures||[]).filter(c=>c.is_masters).slice().reverse().slice(0,40);
-  html += `<h2>Capturas <span class="hint">partidos Masters detectados</span></h2>
+  const caps = (d.captures||[]).slice().reverse().slice(0,50);
+  html += `<h2>Capturas <span class="hint">partidos detectados con cuotas reales</span></h2>
     <div class="card" style="padding:4px 4px"><table>
-    <thead><tr><th>Inicio</th><th>Partido</th><th>Favorito</th><th class="num">Cuota</th><th>Filtro</th><th>Resultado</th></tr></thead><tbody>`;
+    <thead><tr><th>Inicio</th><th>Partido</th><th>Lay</th><th>Detalle</th><th>Filtro</th><th>Resultado</th></tr></thead><tbody>`;
   caps.forEach(c=>{
     let res;
-    if(c.pnl_units===null||c.pnl_units===undefined) res = `<span class="pill wait">pendiente</span>`;
-    else if(c.fav_won===0) res = `<span class="pill win">ganada ${fmtU(c.pnl_units)}</span>`;
+    if(c.pnl_units===null||c.pnl_units===undefined)
+      res = `<span class="pill wait">${c.won===null||c.won===undefined?"pendiente":"fuera de banda"}</span>`;
+    else if(c.won===1) res = `<span class="pill win">ganada ${fmtU(c.pnl_units)}</span>`;
     else res = `<span class="pill lose">perdida ${fmtU(c.pnl_units)}</span>`;
     const band = c.in_band ? `<span class="pill in">en banda</span>` : `<span class="pill wait">fuera</span>`;
     html += `<tr><td>${esc((c.start_time||"").slice(0,10))}</td><td>${esc(c.event)}</td>
-      <td>${esc(c.fav_name)}</td><td class="num">${c.fav_lay_price??"—"}</td>
+      <td>${esc(c.selection)} @ ${c.lay_price??"—"}</td><td style="color:var(--mut)">${esc(c.detail)}</td>
       <td>${band}</td><td>${res}</td></tr>`;
   });
   html += `</tbody></table></div>`;
@@ -195,10 +209,13 @@ function equitySVG(eq){
   </svg>`;
 }
 
-document.getElementById("toggle").addEventListener("click",e=>{
-  if(e.target.dataset.src) load(e.target.dataset.src);
+document.getElementById("sportSeg").addEventListener("click",e=>{
+  if(e.target.dataset.sport){ sport=e.target.dataset.sport; load(); }
 });
-load("live");
+document.getElementById("srcSeg").addEventListener("click",e=>{
+  if(e.target.dataset.src){ src=e.target.dataset.src; load(); }
+});
+load();
 </script>
 </body>
 </html>

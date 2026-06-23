@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Genera un dataset DEMO para el dashboard a partir del backtest de tennis.
+"""Genera datasets DEMO para el dashboard a partir de los backtests.
 
-Toma los Masters 1000 de una temporada (datos tennis-data.co.uk, cuotas Pinnacle),
-aplica la regla lay-favorito-1.2-1.5 y produce el MISMO JSON que consume el
-dashboard, marcado como source="demo". Sirve para ver el dashboard funcionando
-antes del primer Masters real, claramente etiquetado como demostración.
+  - tennis  : Masters 1000 de una temporada (tennis-data.co.uk, cuotas Pinnacle).
+  - football: Lay the Draw en ligas de una temporada (football-data.co.uk, cuotas
+              de cierre del exchange BFE si están, si no promedio de mercado).
 
-    python3 -m betfair.capture.make_demo --tennis-dir <dir> --season 2025 \
-        --out betfair/data/masters_demo.json
+Producen el MISMO esquema genérico que consume el dashboard, marcado source="demo"
+y claramente etiquetado como ilustrativo (no es dinero real).
+
+    python3 -m betfair.capture.make_demo --sport tennis   --src <dir> --season 2025
+    python3 -m betfair.capture.make_demo --sport football --src <dir> --season 2425
 """
 from __future__ import annotations
 
@@ -18,13 +20,16 @@ import io
 import json
 import os
 
-from ..bot.strategy import LayFavConfig, settle_lay_pnl
-from .export_json import assemble
+from ..bot.strategy import LayDrawConfig, LayFavConfig, settle_lay_pnl
+from .export_json import BACKER_STAKE, COMMISSION, assemble
+
+TENNIS_LEAGUES = None
+FOOTBALL_LEAGUES = ["E0", "SP1", "D1", "F1", "I1"]
 
 
-def _parse_date(s: str) -> str:
+def _date(s, fmts):
     s = (s or "").strip()
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d/%m/%y"):
+    for fmt in fmts:
         try:
             return dt.datetime.strptime(s[:10], fmt).strftime("%Y-%m-%dT12:00:00Z")
         except ValueError:
@@ -32,16 +37,20 @@ def _parse_date(s: str) -> str:
     return ""
 
 
-def _num(r, c):
-    v = (r.get(c) or "").strip()
-    try:
-        x = float(v)
-        return x if x > 1 else None
-    except ValueError:
-        return None
+def _num(r, *cols):
+    for c in cols:
+        v = (r.get(c) or "").strip()
+        if v:
+            try:
+                x = float(v)
+                if x > 1:
+                    return x
+            except ValueError:
+                pass
+    return None
 
 
-def build_demo_captures(path: str, cfg: LayFavConfig) -> list[dict]:
+def tennis_captures(path, cfg: LayFavConfig):
     rows = list(csv.DictReader(io.StringIO(open(path, encoding="latin-1").read())))
     caps = []
     for r in rows:
@@ -53,41 +62,73 @@ def build_demo_captures(path: str, cfg: LayFavConfig) -> list[dict]:
         fav_won = psw < psl
         fav_odds, dog_odds = min(psw, psl), max(psw, psl)
         winner, loser = r.get("Winner", "").strip(), r.get("Loser", "").strip()
-        fav_name, dog_name = (winner, loser) if fav_won else (loser, winner)
+        fav, dog = (winner, loser) if fav_won else (loser, winner)
         in_band = cfg.min_fav_odds <= fav_odds <= cfg.max_fav_odds
-        pnl = (settle_lay_pnl(fav_odds, cfg.backer_stake, fav_won, cfg.commission)
-               if in_band else None)
+        when = _date(r.get("Date"), ("%Y-%m-%d", "%d/%m/%Y"))
         caps.append({
-            "captured_at": _parse_date(r.get("Date", "")),
-            "competition": r.get("Tournament", "Masters 1000"),
-            "event": f"{fav_name} v {dog_name}",
-            "start_time": _parse_date(r.get("Date", "")),
-            "is_masters": 1,
-            "fav_name": fav_name, "fav_lay_price": round(fav_odds, 2),
-            "dog_name": dog_name, "dog_lay_price": round(dog_odds, 2),
+            "start_time": when, "competition": r.get("Tournament", "Masters 1000"),
+            "event": f"{fav} v {dog}", "selection": fav,
+            "lay_price": round(fav_odds, 2), "detail": f"vs {dog} @ {round(dog_odds,2)}",
             "in_band": int(in_band),
-            "fav_won": int(fav_won), "pnl_units": pnl,
-        })
+            "won": int(not fav_won),
+            "pnl_units": (settle_lay_pnl(fav_odds, BACKER_STAKE, fav_won, COMMISSION)
+                          if in_band else None)})
+    return caps
+
+
+def football_captures(src_dir, season, cfg: LayDrawConfig):
+    caps = []
+    for lg in FOOTBALL_LEAGUES:
+        path = os.path.join(src_dir, f"{lg}_{season}.csv")
+        if not os.path.exists(path):
+            continue
+        for r in csv.DictReader(io.StringIO(open(path, encoding="latin-1").read())):
+            if (r.get("FTR") or "").strip() not in ("H", "D", "A"):
+                continue
+            draw = _num(r, "BFECD", "AvgCD", "B365CD")
+            if draw is None:
+                continue
+            drew = r["FTR"].strip() == "D"
+            in_band = cfg.min_draw_odds <= draw <= cfg.max_draw_odds
+            home = _num(r, "BFECH", "AvgCH", "B365CH")
+            away = _num(r, "BFECA", "AvgCA", "B365CA")
+            when = _date(r.get("Date"), ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d"))
+            caps.append({
+                "start_time": when, "competition": r.get("Div", lg),
+                "event": f"{r.get('HomeTeam','')} v {r.get('AwayTeam','')}",
+                "selection": "Empate", "lay_price": round(draw, 2),
+                "detail": f"casa {home} · fuera {away}",
+                "in_band": int(in_band),
+                "won": int(not drew),
+                "pnl_units": (settle_lay_pnl(draw, BACKER_STAKE, drew, COMMISSION)
+                              if in_band else None)})
     return caps
 
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--tennis-dir", required=True)
-    p.add_argument("--season", default="2025")
-    p.add_argument("--out", default="betfair/data/masters_demo.json")
+    p.add_argument("--sport", choices=["tennis", "football"], required=True)
+    p.add_argument("--src", required=True, help="carpeta con los CSV del backtest")
+    p.add_argument("--season", required=True, help="tennis: 2025 | football: 2425")
+    p.add_argument("--out", required=True)
     args = p.parse_args()
-    cfg = LayFavConfig()
-    caps = build_demo_captures(os.path.join(args.tennis_dir, f"{args.season}.csv"), cfg)
-    data = assemble(caps, cfg, source="demo")
-    data["demo_note"] = (f"DEMO: backtest Masters 1000 {args.season} con cuotas de "
-                         f"cierre de Pinnacle (no Betfair exchange). Solo ilustrativo.")
+
+    if args.sport == "tennis":
+        caps = tennis_captures(os.path.join(args.src, f"{args.season}.csv"), LayFavConfig())
+        note = (f"DEMO: backtest Masters 1000 {args.season} (cuotas Pinnacle, no "
+                f"Betfair exchange). Solo ilustrativo.")
+    else:
+        caps = football_captures(args.src, args.season, LayDrawConfig())
+        note = (f"DEMO: Lay the Draw en ligas top {args.season} (cuotas de cierre). "
+                f"Estrategia de referencia, no necesariamente rentable. Ilustrativo.")
+
+    data = assemble(caps, args.sport, source="demo", note=note)
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w") as fh:
         json.dump(data, fh, indent=2, ensure_ascii=False)
     s = data["summary"]
-    print(f"demo {args.out}: {len(caps)} partidos Masters, {s['settled_bets']} "
-          f"apuestas in-band, P&L {s['pnl']}u, ROI {s['roi']}%")
+    print(f"[{args.sport}] demo {args.out}: {len(caps)} partidos, "
+          f"{s['settled_bets']} apuestas, P&L {s['pnl']}u, ROI {s['roi']}%")
 
 
 if __name__ == "__main__":
