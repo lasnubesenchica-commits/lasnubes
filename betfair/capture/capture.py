@@ -132,10 +132,37 @@ def cmd_settle(client, sport, tcfg, fcfg, args):
     log.info("[%s] liquidados %d mercados", sport, settled)
 
 
+def cmd_diagnose(client, sport, tcfg, fcfg, args):
+    """Lista los próximos mercados (incl. en juego) y qué se capturaría. No escribe."""
+    now = dt.datetime.utcnow()
+    frm = now - dt.timedelta(hours=2)   # incluir partidos ya en curso
+    markets = client.list_market_catalogue(
+        event_type_id=SPORT_EVENT_TYPE[sport], market_type_codes=["MATCH_ODDS"],
+        from_iso=_iso(frm), to_iso=_iso(now + dt.timedelta(minutes=args.within_min)),
+        max_results=args.max_markets)
+    log.info("[%s] %d mercados en ventana (-2h .. +%dmin)", sport, len(markets), args.within_min)
+    if not markets:
+        return
+    books = {b["marketId"]: b for b in
+             client.list_market_book([m["marketId"] for m in markets])}
+    for m in sorted(markets, key=lambda x: x.get("marketStartTime", "")):
+        comp = (m.get("competition") or {}).get("name", "")
+        names = parsing.runner_names(m)
+        prices = parsing.best_lay_prices(books.get(m["marketId"], {}), names)
+        pick = make_pick(sport, prices, tcfg, fcfg)
+        kw = _keep_competition(sport, comp, tcfg, fcfg)
+        tag = "CAPTURA" if (kw and pick) else ("comp-ok" if kw else "-")
+        sel = (f"{pick.selection}@{pick.lay_price} "
+               f"{'EN-BANDA' if pick.in_band else 'fuera-banda'}") if pick else "(sin pick)"
+        log.info("  [%-7s] %s | %-30s | %-28s | %s", tag,
+                 (m.get("marketStartTime", "") or "")[:16], comp[:30],
+                 ((m.get("event") or {}).get("name", "") or "")[:28], sel)
+
+
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     p = argparse.ArgumentParser()
-    p.add_argument("mode", choices=["record", "settle"])
+    p.add_argument("mode", choices=["record", "settle", "diagnose"])
     p.add_argument("--sport", choices=["tennis", "football"], default="tennis")
     p.add_argument("--within-min", type=int, default=20)
     p.add_argument("--max-markets", type=int, default=200)
@@ -149,8 +176,10 @@ def main():
     client.login()
     if args.mode == "record":
         cmd_record(client, args.sport, tcfg, fcfg, args)
-    else:
+    elif args.mode == "settle":
         cmd_settle(client, args.sport, tcfg, fcfg, args)
+    else:
+        cmd_diagnose(client, args.sport, tcfg, fcfg, args)
 
 
 if __name__ == "__main__":

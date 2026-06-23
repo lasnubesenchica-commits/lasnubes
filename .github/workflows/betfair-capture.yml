@@ -15,6 +15,20 @@ name: Betfair capture
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "diagnose (solo loguea lo que ve) o capture (guarda y publica)"
+        type: choice
+        options: [diagnose, capture]
+        default: diagnose
+      sport:
+        description: "deporte a procesar"
+        type: choice
+        options: [both, football, tennis]
+        default: football
+      within_min:
+        description: "ventana hacia adelante en minutos (para tests amplía, p.ej. 180)"
+        default: "180"
   schedule:
     - cron: "*/20 * * * *"
 
@@ -53,22 +67,35 @@ jobs:
             echo "Sin certificado; se usará login interactivo (usuario/clave)."
           fi
 
-      - name: Capturar, liquidar y exportar JSON (tennis + fútbol)
+      - name: Capturar / diagnosticar
         env:
           BETFAIR_APP_KEY: ${{ secrets.BETFAIR_APP_KEY }}
           BETFAIR_USERNAME: ${{ secrets.BETFAIR_USERNAME }}
           BETFAIR_PASSWORD: ${{ secrets.BETFAIR_PASSWORD }}
+          # En schedule los inputs vienen vacíos -> capture, ambos deportes, 20 min.
+          MODE: ${{ github.event.inputs.mode || 'capture' }}
+          SPORT: ${{ github.event.inputs.sport || 'both' }}
+          WITHIN: ${{ github.event.inputs.within_min || '20' }}
         run: |
-          for sport in tennis football; do
-            python3 -m betfair.capture.capture record --sport $sport
-            python3 -m betfair.capture.capture settle --sport $sport
-          done
-          python3 -m betfair.capture.export_json --sport tennis \
-            --in betfair/data/masters_capture.csv --out betfair/data/masters.json
-          python3 -m betfair.capture.export_json --sport football \
-            --in betfair/data/football_capture.csv --out betfair/data/football.json
+          case "$SPORT" in both) sports="tennis football";; *) sports="$SPORT";; esac
+          echo "modo=$MODE deportes=[$sports] ventana=${WITHIN}min"
+          if [ "$MODE" = "diagnose" ]; then
+            for s in $sports; do
+              python3 -m betfair.capture.capture diagnose --sport "$s" --within-min "$WITHIN"
+            done
+          else
+            for s in $sports; do
+              python3 -m betfair.capture.capture record --sport "$s" --within-min "$WITHIN"
+              python3 -m betfair.capture.capture settle --sport "$s"
+            done
+            python3 -m betfair.capture.export_json --sport tennis \
+              --in betfair/data/masters_capture.csv --out betfair/data/masters.json
+            python3 -m betfair.capture.export_json --sport football \
+              --in betfair/data/football_capture.csv --out betfair/data/football.json
+          fi
 
       - name: Publicar datos para el dashboard
+        if: ${{ (github.event.inputs.mode || 'capture') != 'diagnose' }}
         run: |
           git config user.name "betfair-bot"
           git config user.email "actions@users.noreply.github.com"
