@@ -1,12 +1,12 @@
 {
   "updated_at": "2026-06-23T01:23:34Z",
-  "sport": "tennis",
+  "sport": "football",
   "source": "live",
-  "strategy": "Lay al favorito · Masters 1000",
+  "strategy": "Lay the Draw",
   "config": {
     "band": [
-      1.2,
-      1.5
+      3.0,
+      3.7
     ],
     "backer_stake": 2.0,
     "commission": 0.05

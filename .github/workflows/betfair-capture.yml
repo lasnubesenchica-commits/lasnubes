@@ -1,20 +1,22 @@
-name: Betfair Masters capture
+name: Betfair capture
 
-# Captura cuotas de cierre del Betfair Exchange para validar (paper trading) la
-# estrategia "lay al favorito en Masters 1000" y PUBLICA el resultado como JSON
-# para el dashboard (betfair.html). SOLO LEE de Betfair; nunca coloca apuestas.
+# Captura cuotas reales del Betfair Exchange para validar (paper trading) las
+# estrategias de tennis (lay favorito en Masters 1000) y fútbol (Lay the Draw:
+# Mundial ahora + ligas al reiniciar) y PUBLICA el resultado como JSON para el
+# dashboard (betfair.html). SOLO LEE de Betfair; nunca coloca apuestas.
 #
 # IMPORTANTE:
 #   1. Para que el `schedule` (cron) dispare, este archivo debe estar en la rama
 #      por defecto (main). En una rama de feature usa "Run workflow" (manual).
 #   2. Secrets requeridos: BETFAIR_APP_KEY, BETFAIR_USERNAME, BETFAIR_PASSWORD.
 #      Opcionales (cert): BETFAIR_CERT_B64, BETFAIR_KEY_B64 (el .crt/.key en base64).
-#   3. El cron se limita a los meses con Masters 1000 (mar, abr, may, ago, oct, nov).
+#   3. Corre cada 20 min todo el año; cada captura no hace nada si no hay partidos
+#      de su filtro (tennis = Masters; fútbol = Mundial + ligas top).
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/15 * * 3,4,5,8,10,11 *"
+    - cron: "*/20 * * * *"
 
 concurrency:
   group: betfair-capture
@@ -51,18 +53,20 @@ jobs:
             echo "Sin certificado; se usará login interactivo (usuario/clave)."
           fi
 
-      - name: Capturar, liquidar y exportar JSON
+      - name: Capturar, liquidar y exportar JSON (tennis + fútbol)
         env:
           BETFAIR_APP_KEY: ${{ secrets.BETFAIR_APP_KEY }}
           BETFAIR_USERNAME: ${{ secrets.BETFAIR_USERNAME }}
           BETFAIR_PASSWORD: ${{ secrets.BETFAIR_PASSWORD }}
         run: |
-          python3 -m betfair.capture.capture_masters record --within-min 20 \
-            --out betfair/data/masters_capture.csv
-          python3 -m betfair.capture.capture_masters settle \
-            --out betfair/data/masters_capture.csv
-          python3 -m betfair.capture.export_json \
+          for sport in tennis football; do
+            python3 -m betfair.capture.capture record --sport $sport
+            python3 -m betfair.capture.capture settle --sport $sport
+          done
+          python3 -m betfair.capture.export_json --sport tennis \
             --in betfair/data/masters_capture.csv --out betfair/data/masters.json
+          python3 -m betfair.capture.export_json --sport football \
+            --in betfair/data/football_capture.csv --out betfair/data/football.json
 
       - name: Publicar datos para el dashboard
         run: |
@@ -77,11 +81,11 @@ jobs:
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
 
-      - name: Subir CSV como artifact
+      - name: Subir CSVs como artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: masters-capture
-          path: betfair/data/masters_capture.csv
+          name: betfair-capture
+          path: betfair/data/*_capture.csv
           if-no-files-found: ignore
           retention-days: 90

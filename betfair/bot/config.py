@@ -21,6 +21,17 @@ ACCOUNT_URL = "https://api.betfair.com/exchange/account/json-rpc/v1"
 TENNIS_EVENT_TYPE_ID = "2"
 SOCCER_EVENT_TYPE_ID = "1"
 
+# En el Match Odds de fútbol de Betfair, "The Draw" tiene este selectionId fijo.
+DRAW_SELECTION_ID = 58805
+
+# Competiciones de fútbol a capturar (keywords, case-insensitive). El Mundial
+# está activo ahora; las ligas se suman al reiniciar. Editar para ampliar/filtrar.
+FOOTBALL_COMPETITION_KEYWORDS = (
+    "World Cup", "FIFA World Cup", "Premier League", "La Liga", "Primera",
+    "Bundesliga", "Serie A", "Ligue 1", "Champions League", "Europa League",
+    "Eredivisie", "Primeira", "Championship",
+)
+
 # Torneos Masters 1000 (ATP). Patrones de nombre para reconocerlos en la API;
 # el naming de Betfair varía, por eso usamos contains (case-insensitive).
 MASTERS_1000_KEYWORDS = (

@@ -21,15 +21,71 @@ class LayFavConfig:
 
 
 @dataclass(frozen=True)
+class LayDrawConfig:
+    min_draw_odds: float = 3.0     # banda de cuota del empate (Lay the Draw)
+    max_draw_odds: float = 3.7
+    backer_stake: float = 2.0
+    commission: float = 0.05
+    competition_keywords: tuple = field(default=C.FOOTBALL_COMPETITION_KEYWORDS)
+
+
+@dataclass(frozen=True)
 class RunnerPrice:
     selection_id: int
     name: str
     lay_price: float | None        # mejor cuota disponible para LAY
 
 
+@dataclass(frozen=True)
+class Pick:
+    """Selección que el bot laiaría en un mercado, ya evaluada contra la banda."""
+    selection_id: int
+    selection: str                 # etiqueta (jugador favorito / "Empate")
+    lay_price: float
+    detail: str                    # contexto para mostrar (rival/cuotas casa-fuera)
+    in_band: bool                  # True si la cuota cae en la banda de la estrategia
+
+
 def is_masters_competition(competition_name: str, cfg: LayFavConfig) -> bool:
     name = (competition_name or "").lower()
     return any(kw.lower() in name for kw in cfg.masters_keywords)
+
+
+def matches_keywords(competition_name: str, keywords) -> bool:
+    name = (competition_name or "").lower()
+    return any(kw.lower() in name for kw in keywords)
+
+
+def make_pick(sport: str, prices: list[RunnerPrice],
+              tennis_cfg: "LayFavConfig", football_cfg: "LayDrawConfig") -> Pick | None:
+    """Devuelve la selección a layear según el deporte, o None si no se puede.
+
+    - tennis: lay al favorito (menor cuota) de un partido a 2 jugadores.
+    - football: lay al empate ("The Draw") del Match Odds.
+    El `in_band` indica si la cuota entra en la banda de la estrategia (igual se
+    devuelve la Pick fuera de banda, para registrar el partido).
+    """
+    if sport == "tennis":
+        priced = [p for p in prices if p.lay_price and p.lay_price > 1.0]
+        if len(priced) != 2:
+            return None
+        fav, dog = sorted(priced, key=lambda p: p.lay_price)
+        return Pick(fav.selection_id, fav.name, fav.lay_price,
+                    f"vs {dog.name} @ {dog.lay_price}",
+                    tennis_cfg.min_fav_odds <= fav.lay_price <= tennis_cfg.max_fav_odds)
+
+    if sport == "football":
+        draw = next((p for p in prices
+                     if (p.name or "").strip().lower() == "the draw"
+                     or p.selection_id == C.DRAW_SELECTION_ID), None)
+        if not draw or not draw.lay_price or draw.lay_price <= 1.0:
+            return None
+        others = [p for p in prices if p.selection_id != draw.selection_id]
+        detail = " · ".join(f"{o.name} {o.lay_price}" for o in others if o.lay_price)
+        return Pick(draw.selection_id, "Empate", draw.lay_price, detail,
+                    football_cfg.min_draw_odds <= draw.lay_price <= football_cfg.max_draw_odds)
+
+    raise ValueError(f"deporte no soportado: {sport}")
 
 
 def select_lay_favorite(runners: list[RunnerPrice], cfg: LayFavConfig) -> RunnerPrice | None:
