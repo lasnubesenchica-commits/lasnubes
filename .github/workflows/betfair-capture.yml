@@ -52,6 +52,22 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r betfair/requirements.txt
 
+      - name: Verificar Secrets
+        env:
+          BETFAIR_APP_KEY: ${{ secrets.BETFAIR_APP_KEY }}
+          BETFAIR_USERNAME: ${{ secrets.BETFAIR_USERNAME }}
+          BETFAIR_PASSWORD: ${{ secrets.BETFAIR_PASSWORD }}
+        run: |
+          missing=""
+          [ -z "$BETFAIR_APP_KEY" ]  && missing="$missing BETFAIR_APP_KEY"
+          [ -z "$BETFAIR_USERNAME" ] && missing="$missing BETFAIR_USERNAME"
+          [ -z "$BETFAIR_PASSWORD" ] && missing="$missing BETFAIR_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Faltan Secrets:$missing . Agrégalos en Settings → Secrets and variables → Actions → New repository secret (tipo Secret, no Variable)."
+            exit 1
+          fi
+          echo "Secrets presentes ✓"
+
       - name: Preparar certificado (si está configurado)
         env:
           BETFAIR_CERT_B64: ${{ secrets.BETFAIR_CERT_B64 }}
