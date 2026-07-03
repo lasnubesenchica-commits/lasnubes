@@ -340,9 +340,10 @@ function saveMalayaReserva(payload) {
     notas: notas, voucherURL: voucherURL
   });
 
-  // WhatsApp al admin con texto listo para reenviar a Celestino (su ventana
-  // de 24h suele estar cerrada, así que el admin reenvía con un long-press).
-  _whatsappAdminForwardCelestino({
+  // Notificación WhatsApp: si hay plantilla aprobada por Meta, la mando
+  // DIRECTA a Celestino (rompe la ventana de 24h). Si no, mando al admin
+  // el mensaje listo para reenviar (fallback pre-aprobación).
+  _notifyCelestinoWA({
     huesped: huesped, phone: guestPhone, email: guestEmail,
     checkin: checkin, checkout: checkout, noches: noches, personas: personas,
     voucherURL: voucherURL
@@ -351,6 +352,77 @@ function saveMalayaReserva(payload) {
   return {
     ok: true, id: id, noches: noches, montoTotal: montoTotal, comision: comision
   };
+}
+
+// ─── WhatsApp: dispatcher plantilla-o-forward ─────────────────
+
+// Decide cómo entregar la notificación a Celestino:
+//   1) Si MALAYA_CELESTINO_TEMPLATE_NAME está seteado en Script Properties
+//      → envía la plantilla HSM directo al WhatsApp de Celestino.
+//      Además, un aviso corto al admin ("✅ Reserva guardada + notificación
+//      enviada a Celestino").
+//   2) Si no hay plantilla configurada (aún esperando aprobación de Meta)
+//      → cae al flujo actual: mensaje forward-able al admin.
+//   3) Si el envío de la plantilla falla (rechazo, cuota, etc.) → también
+//      cae al forward-able para no perder la notificación.
+function _notifyCelestinoWA(d) {
+  const props = PropertiesService.getScriptProperties();
+  const templateName   = props.getProperty('MALAYA_CELESTINO_TEMPLATE_NAME');
+  const templateLang   = props.getProperty('MALAYA_CELESTINO_TEMPLATE_LANG') || 'es_PA';
+  const celestinoPhone = (props.getProperty('MALAYA_CELESTINO_PHONE') || '50765429927').replace(/\D/g, '');
+
+  if (!templateName || !celestinoPhone) {
+    _whatsappAdminForwardCelestino(d);
+    return;
+  }
+
+  try {
+    sendWhatsAppTemplate(celestinoPhone, templateName, templateLang, _buildCelestinoTemplateVars(d));
+    logDebugEntry('malaya-celestino-template-OK', { to: celestinoPhone, template: templateName });
+    _whatsappAdminTemplateAck(d);
+  } catch(e) {
+    logDebugEntry('malaya-celestino-template-FAIL', { to: celestinoPhone, template: templateName, error: e.message });
+    _whatsappAdminForwardCelestino(d);
+  }
+}
+
+// Variables (nombradas) que rellenan la plantilla malaya_reserva_celestino.
+// Meta NO permite variables vacías → cada campo tiene un fallback textual.
+function _buildCelestinoTemplateVars(d) {
+  const fmt = iso => {
+    const dt = new Date(iso + 'T12:00:00');
+    const M   = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    const DOW = ['dom','lun','mar','mié','jue','vie','sáb'];
+    return DOW[dt.getDay()] + ' ' + dt.getDate() + ' ' + M[dt.getMonth()];
+  };
+  const ciFmt = fmt(d.checkin);
+  const coFmt = fmt(d.checkout);
+  const nochesLbl   = d.noches   + ' ' + (d.noches   === 1 ? 'noche'   : 'noches');
+  const personasLbl = d.personas + ' ' + (d.personas === 1 ? 'persona' : 'personas');
+  return {
+    fechas:   ciFmt + ' → ' + coFmt + ' (' + nochesLbl + ')',
+    huesped:  d.huesped || '(sin nombre)',
+    telefono: '+' + d.phone,
+    email:    d.email     || 'no proporcionado',
+    personas: personasLbl,
+    voucher:  d.voucherURL || 'no disponible'
+  };
+}
+
+// Aviso corto al admin cuando la plantilla se entregó ok. Corto porque el
+// admin ya no necesita reenviar nada — solo confirmar que quedó fuera.
+function _whatsappAdminTemplateAck(d) {
+  const fmt = iso => {
+    const dt = new Date(iso + 'T12:00:00');
+    const M = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    return dt.getDate() + ' ' + M[dt.getMonth()];
+  };
+  const msg =
+    '✅ *Reserva Malaya guardada*\n' +
+    'Notificación enviada a Celestino via plantilla WhatsApp.\n\n' +
+    '👤 ' + d.huesped + '\n' +
+    '📅 ' + fmt(d.checkin) + ' → ' + fmt(d.checkout);
+  try { sendWhatsAppText(BOT_ADMIN_PHONE, msg); } catch(_) {}
 }
 
 // ─── WhatsApp al admin con mensaje listo para reenviar ────────
