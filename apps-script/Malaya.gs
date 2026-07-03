@@ -386,8 +386,11 @@ function _notifyCelestinoWA(d) {
   }
 }
 
-// Variables (nombradas) que rellenan la plantilla malaya_reserva_celestino.
+// Variables POSICIONALES {{1}}..{{6}} que rellenan malaya_reserva_celestino.
+// Meta NO acepta variables nombradas — devolvemos array ordenado.
 // Meta NO permite variables vacías → cada campo tiene un fallback textual.
+// Orden: {{1}}=fechas, {{2}}=huesped, {{3}}=telefono, {{4}}=email,
+//         {{5}}=personas, {{6}}=voucher.
 function _buildCelestinoTemplateVars(d) {
   const fmt = iso => {
     const dt = new Date(iso + 'T12:00:00');
@@ -399,14 +402,14 @@ function _buildCelestinoTemplateVars(d) {
   const coFmt = fmt(d.checkout);
   const nochesLbl   = d.noches   + ' ' + (d.noches   === 1 ? 'noche'   : 'noches');
   const personasLbl = d.personas + ' ' + (d.personas === 1 ? 'persona' : 'personas');
-  return {
-    fechas:   ciFmt + ' → ' + coFmt + ' (' + nochesLbl + ')',
-    huesped:  d.huesped || '(sin nombre)',
-    telefono: '+' + d.phone,
-    email:    d.email     || 'no proporcionado',
-    personas: personasLbl,
-    voucher:  d.voucherURL || 'no disponible'
-  };
+  return [
+    ciFmt + ' → ' + coFmt + ' (' + nochesLbl + ')',   // {{1}} fechas
+    d.huesped || '(sin nombre)',                       // {{2}} huésped
+    '+' + d.phone,                                     // {{3}} teléfono
+    d.email     || 'no proporcionado',                 // {{4}} email
+    personasLbl,                                       // {{5}} personas
+    d.voucherURL || 'no disponible'                    // {{6}} voucher
+  ];
 }
 
 // Aviso corto al admin cuando la plantilla se entregó ok. Corto porque el
