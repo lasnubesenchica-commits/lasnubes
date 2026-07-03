@@ -489,9 +489,11 @@
     </div>
 
     <div class="modal-actions" style="margin-top:14px;">
-      <button class="btn btn-secondary" onclick="closeQuoteModal()">Cerrar</button>
-      <button class="btn btn-secondary" onclick="copyQuoteFromModal()">📋 Copiar</button>
-      <a class="btn" id="modalWA" target="_blank" rel="noopener">💬 WhatsApp</a>
+      <!-- Público: único CTA = WhatsApp al host con texto pre-llenado.
+           Admin: Copiar (para pegar en chat con huésped) + Bloquear reserva.
+           Cerrar se resuelve tocando fuera del modal (backdrop). -->
+      <a class="btn" id="modalWA" target="_blank" rel="noopener">💬 Reservar por WhatsApp</a>
+      <button class="btn btn-secondary" id="modalCopy" onclick="copyQuoteFromModal()" style="display:none;">📋 Copiar cotización</button>
       <button class="btn" id="modalReservar" onclick="adminSubmitReserva()" style="display:none;">🔒 Bloquear reserva</button>
     </div>
   </div>
@@ -882,10 +884,18 @@ function openQuoteModal() {
   if (!selStart) return;
   modalNoches = 1;
   modalPersonas = modalPersonas || 2;
-  // Bloque admin visible solo con ?admin=1.
+  // Botones: público → solo WhatsApp; admin → Copiar + Bloquear (sin WA
+  // porque en admin abriría chat con uno mismo).
   if (ADMIN_MODE) {
     document.getElementById('modalAdminBlock').style.display = 'block';
     document.getElementById('modalReservar').style.display   = 'inline-block';
+    document.getElementById('modalCopy').style.display       = 'inline-block';
+    document.getElementById('modalWA').style.display         = 'none';
+  } else {
+    document.getElementById('modalAdminBlock').style.display = 'none';
+    document.getElementById('modalReservar').style.display   = 'none';
+    document.getElementById('modalCopy').style.display       = 'none';
+    document.getElementById('modalWA').style.display         = 'inline-block';
   }
   refreshModal();
   document.getElementById('quoteModal').classList.add('open');
