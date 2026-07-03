@@ -225,6 +225,7 @@
     margin: 0 auto 18px;
   }
   body.admin .admin-panel { display: block; }
+  .admin-panel { padding: 12px 16px; }
   .admin-panel h3 { margin-top: 0; color: #8a6f1c; }
   .admin-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
   .admin-row .field { flex: 1; min-width: 180px; }
@@ -392,65 +393,16 @@
     </div>
   </section>
 
-  <!-- Admin panel (solo con ?admin=1) -->
+  <!-- Admin toolbar compacto: sync + limpiar (solo con ?admin=1). El
+       form de reserva vive dentro del modal. -->
   <section class="admin-panel" id="adminPanel">
-    <h3>🔧 Admin · Bloquear reserva directa</h3>
-    <p style="font-size:13px; color:var(--text-muted);">
-      Selecciona el rango arriba, subí el voucher y completá el WhatsApp del huésped. El sistema parsea el voucher con Claude y crea la fila en la hoja <strong>Malaya</strong>.
-    </p>
-
-    <div class="admin-row">
-      <div class="field">
-        <label>Check-in seleccionado</label>
-        <input type="text" id="adminCheckin" readonly>
-      </div>
-      <div class="field">
-        <label>Check-out seleccionado</label>
-        <input type="text" id="adminCheckout" readonly>
-      </div>
-      <div class="field" style="flex:0 0 100px;">
-        <label>Personas</label>
-        <input type="number" id="adminPersonas" value="2" min="1" max="4">
-      </div>
-    </div>
-
-    <div class="admin-row">
-      <div class="field">
-        <label>Voucher de pago</label>
-        <input type="file" id="adminVoucher" accept="image/*" onchange="parseAdminVoucher()">
-      </div>
-    </div>
-
-    <div id="voucherInfo" class="voucher-info" style="display:none;"></div>
-
-    <div class="admin-row">
-      <div class="field">
-        <label>WhatsApp del huésped *</label>
-        <input type="text" id="adminGuestPhone" placeholder="+507 6XXX-XXXX">
-      </div>
-      <div class="field">
-        <label>Nombre del huésped (auto del voucher)</label>
-        <input type="text" id="adminGuestName" placeholder="Nombre">
-      </div>
-    </div>
-
-    <div class="admin-row">
-      <div class="field">
-        <label>Notas (opcional)</label>
-        <textarea id="adminNotas" rows="2"></textarea>
-      </div>
-    </div>
-
-    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
-      <button class="btn" onclick="adminSubmitReserva()">Bloquear reserva</button>
-      <button class="btn btn-secondary" onclick="adminCopyCotizacion()">📋 Copiar cotización</button>
-      <button class="btn btn-secondary" onclick="clearSelection()">Limpiar selección</button>
-      <button class="btn btn-secondary" onclick="adminForceSync()">🔄 Forzar sync Airbnb</button>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+      <span style="font-size:12px; color:#8a6f1c; font-weight:600;">🔧 Admin</span>
+      <button class="btn btn-secondary" style="font-size:13px; padding:8px 12px;" onclick="clearSelection()">Limpiar selección</button>
+      <button class="btn btn-secondary" style="font-size:13px; padding:8px 12px;" onclick="adminForceSync()">🔄 Sync Airbnb</button>
+      <span style="font-size:11px; color:var(--text-muted);">Tocá una fecha libre para abrir el form de reserva.</span>
     </div>
     <div id="syncResult" style="display:none; margin-top:10px; padding:10px; background:var(--surface); border:1px solid var(--border); border-radius:8px; font-size:12px; white-space:pre-wrap;"></div>
-    <div style="margin-top:10px; font-size:12px; color:var(--text-muted);">
-      Tras crear la reserva: notifica a Celestino (+507 6542-9927) para que la bloquee en Airbnb. El sistema verifica vía iCal cada 30 min.
-    </div>
   </section>
 
   </div><!-- /tab-reservar -->
@@ -496,10 +448,51 @@
       <span class="lbl">Total</span>
       <span class="val" id="modalTotal">$0</span>
     </div>
+
+    <!-- Bloque admin: form de reserva integrado (solo con ?admin=1) -->
+    <div id="modalAdminBlock" style="display:none; margin-top:16px; padding-top:14px; border-top:2px solid var(--verde-dark);">
+      <div style="font-size:13px; font-weight:600; color:var(--verde-dark); margin-bottom:10px;">🔧 Bloquear reserva directa</div>
+
+      <div class="admin-row" style="margin-bottom:10px;">
+        <div class="field">
+          <label>Voucher de pago (imagen)</label>
+          <input type="file" id="adminVoucher" accept="image/*" onchange="parseAdminVoucher()">
+        </div>
+      </div>
+      <div id="voucherInfo" class="voucher-info" style="display:none;"></div>
+
+      <div class="admin-row" style="margin-bottom:10px;">
+        <div class="field">
+          <label>Nombre del huésped</label>
+          <input type="text" id="adminGuestName" placeholder="Nombre">
+        </div>
+        <div class="field">
+          <label>WhatsApp *</label>
+          <input type="text" id="adminGuestPhone" placeholder="+507 6XXX-XXXX">
+        </div>
+      </div>
+      <div class="admin-row" style="margin-bottom:10px;">
+        <div class="field">
+          <label>Email</label>
+          <input type="email" id="adminGuestEmail" placeholder="huesped@correo.com">
+        </div>
+      </div>
+      <div class="admin-row" style="margin-bottom:10px;">
+        <div class="field">
+          <label>Notas (opcional)</label>
+          <textarea id="adminNotas" rows="2"></textarea>
+        </div>
+      </div>
+      <div style="font-size:11px; color:var(--text-muted); margin-bottom:8px;">
+        Al guardar: email + WhatsApp automático con datos de la reserva y link al voucher.
+      </div>
+    </div>
+
     <div class="modal-actions" style="margin-top:14px;">
       <button class="btn btn-secondary" onclick="closeQuoteModal()">Cerrar</button>
       <button class="btn btn-secondary" onclick="copyQuoteFromModal()">📋 Copiar</button>
-      <a class="btn" id="modalWA" target="_blank" rel="noopener">💬 Reservar por WhatsApp</a>
+      <a class="btn" id="modalWA" target="_blank" rel="noopener">💬 WhatsApp</a>
+      <button class="btn" id="modalReservar" onclick="adminSubmitReserva()" style="display:none;">🔒 Bloquear reserva</button>
     </div>
   </div>
 </div>
@@ -623,10 +616,6 @@ function renderCalendar() {
   const fromIso = isoFromYMD(viewYear, viewMonth, 1);
   document.getElementById('calRangeInfo').textContent = '3 meses desde ' + fromIso.slice(0,7);
   updateReserveBtn();
-  if (ADMIN_MODE) {
-    document.getElementById('adminCheckin').value  = selStart || '';
-    document.getElementById('adminCheckout').value = selEnd || '';
-  }
 }
 
 function pickDay(iso) {
@@ -756,44 +745,49 @@ async function adminSubmitReserva() {
   if (!selStart || !selEnd) { showToast('⚠ Selecciona check-in y check-out en el calendario.'); return; }
   const phone = document.getElementById('adminGuestPhone').value.trim();
   if (!phone) { showToast('⚠ Falta el WhatsApp del huésped.'); return; }
-  const name = document.getElementById('adminGuestName').value.trim();
-  const personas = parseInt(document.getElementById('adminPersonas').value, 10) || 2;
+  const name  = document.getElementById('adminGuestName').value.trim();
+  const email = document.getElementById('adminGuestEmail').value.trim();
   const notas = document.getElementById('adminNotas').value.trim();
   const v = window._lastVoucher || {};
   const monto = v.monto || null;
 
+  const btn = document.getElementById('modalReservar');
+  btn.disabled = true; btn.textContent = '⏳ Guardando…';
+
   const payload = {
     action: 'saveMalayaReserva',
     guestPhone: phone,
-    guestName: name,
-    checkin: selStart,
-    checkout: selEnd,
-    personas: personas,
-    monto: monto,
+    guestName:  name,
+    guestEmail: email,
+    checkin:    selStart,
+    checkout:   selEnd,
+    personas:   modalPersonas,
+    monto:      monto,
     voucherURL: window._lastVoucherURL || '',
     notas: notas + (v.codTransferencia ? ' · cod ' + v.codTransferencia : '') + (v.sender ? ' · pagó ' + v.sender : '')
   };
 
   try {
-    const res = await fetch(SHEETS_API_URL, {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    });
+    const res  = await fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify(payload) });
     const data = await res.json();
     if (!data.ok) { showToast('✗ ' + (data.error || 'error')); return; }
     showToast('✅ Reserva bloqueada (' + data.noches + ' noches · $' + data.montoTotal + ' total · $' + data.comision + ' comisión).');
     // Reset
     document.getElementById('adminGuestPhone').value = '';
     document.getElementById('adminGuestName').value  = '';
+    document.getElementById('adminGuestEmail').value = '';
     document.getElementById('adminVoucher').value    = '';
     document.getElementById('adminNotas').value      = '';
     document.getElementById('voucherInfo').style.display = 'none';
     window._lastVoucher = null;
     window._lastVoucherURL = null;
+    closeQuoteModal();
     clearSelection();
     setTimeout(loadCalendar, 800);
   } catch(e) {
     showToast('✗ Red: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '🔒 Bloquear reserva';
   }
 }
 
@@ -879,9 +873,6 @@ function refreshModal() {
     ? 'https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(q.text)
     : '#';
 
-  // Sincronizar al input del panel admin si existe.
-  const ap = document.getElementById('adminPersonas');
-  if (ap) ap.value = modalPersonas;
 }
 
 function adjustNoches(delta)   { modalNoches += delta;   refreshModal(); }
@@ -890,8 +881,12 @@ function adjustPersonas(delta) { modalPersonas += delta; refreshModal(); }
 function openQuoteModal() {
   if (!selStart) return;
   modalNoches = 1;
-  const ap = document.getElementById('adminPersonas');
-  modalPersonas = (ap && parseInt(ap.value, 10)) || modalPersonas || 2;
+  modalPersonas = modalPersonas || 2;
+  // Bloque admin visible solo con ?admin=1.
+  if (ADMIN_MODE) {
+    document.getElementById('modalAdminBlock').style.display = 'block';
+    document.getElementById('modalReservar').style.display   = 'inline-block';
+  }
   refreshModal();
   document.getElementById('quoteModal').classList.add('open');
 }

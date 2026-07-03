@@ -39,17 +39,20 @@ function _malayaSheet() {
   let sheet = ss.getSheetByName(MALAYA_SHEET_NAME);
   if (!sheet) {
     sheet = ss.insertSheet(MALAYA_SHEET_NAME);
-    sheet.getRange(1, 1, 1, 15).setValues([[
+    sheet.getRange(1, 1, 1, 16).setValues([[
       'ID', 'Huésped', 'Teléfono', 'Check-in', 'Check-out', 'Noches',
       'Personas', 'Monto total', 'Comisión', 'Origen', 'Estado',
-      'Airbnb bloqueado', 'Fecha reserva', 'Notas', 'Voucher URL'
+      'Airbnb bloqueado', 'Fecha reserva', 'Notas', 'Voucher URL', 'Email'
     ]]);
     sheet.setFrozenRows(1);
-    sheet.getRange(1, 1, 1, 15).setFontWeight('bold');
+    sheet.getRange(1, 1, 1, 16).setFontWeight('bold');
   }
-  // Auto-migración: añade col 15 si falta (hojas creadas pre-voucher).
+  // Auto-migración: añade cols 15/16 si faltan (hojas creadas antes).
   if (sheet.getLastColumn() < 15) {
     sheet.getRange(1, 15).setValue('Voucher URL').setFontWeight('bold');
+  }
+  if (sheet.getLastColumn() < 16) {
+    sheet.getRange(1, 16).setValue('Email').setFontWeight('bold');
   }
   return sheet;
 }
@@ -320,17 +323,18 @@ function saveMalayaReserva(payload) {
   const huesped   = String(payload.guestName || '').trim() || '(sin nombre)';
 
   const voucherURL = String(payload.voucherURL || '').trim();
+  const guestEmail = String(payload.guestEmail || '').trim();
 
   sheet.appendRow([
     id, huesped, guestPhone, checkin, checkout, noches,
     personas, montoTotal, comision, 'Directa', 'pendiente',
-    false, fechaReserva, notas, voucherURL
+    false, fechaReserva, notas, voucherURL, guestEmail
   ]);
-  logDebugEntry('malaya-reserva-OK', { id: id, guest: huesped, ci: checkin, co: checkout, monto: montoTotal, comision: comision, voucher: !!voucherURL });
+  logDebugEntry('malaya-reserva-OK', { id: id, guest: huesped, ci: checkin, co: checkout, monto: montoTotal, comision: comision, voucher: !!voucherURL, email: !!guestEmail });
 
   // Notificación automática a Celestino (sin ventana de 24h de WhatsApp).
   _emailCelestinoNuevaReserva({
-    id: id, huesped: huesped, phone: guestPhone,
+    id: id, huesped: huesped, phone: guestPhone, email: guestEmail,
     checkin: checkin, checkout: checkout, noches: noches,
     personas: personas, montoTotal: montoTotal, comision: comision,
     notas: notas, voucherURL: voucherURL
@@ -339,7 +343,7 @@ function saveMalayaReserva(payload) {
   // WhatsApp al admin con texto listo para reenviar a Celestino (su ventana
   // de 24h suele estar cerrada, así que el admin reenvía con un long-press).
   _whatsappAdminForwardCelestino({
-    huesped: huesped, phone: guestPhone,
+    huesped: huesped, phone: guestPhone, email: guestEmail,
     checkin: checkin, checkout: checkout, noches: noches, personas: personas,
     voucherURL: voucherURL
   });
@@ -366,6 +370,7 @@ function _whatsappAdminForwardCelestino(d) {
   // Mensaje redactado como si fuera para Celestino — el admin lo reenvía
   // tal cual con un long-press en WhatsApp.
   const voucherLine = d.voucherURL ? '🧾 Voucher: ' + d.voucherURL + '\n' : '';
+  const emailLine   = d.email ? '✉ ' + d.email + '\n' : '';
   const forwardable =
     'Hola Celestino! 👋\n\n' +
     'Cerré una reserva directa en Malaya. Por favor bloquéala en Airbnb:\n\n' +
@@ -373,6 +378,7 @@ function _whatsappAdminForwardCelestino(d) {
     '🕑 Check-in 2pm · Check-out 11am\n' +
     '👤 ' + d.huesped + '\n' +
     '📱 +' + d.phone + '\n' +
+    emailLine +
     '👥 ' + personasLbl + '\n' +
     voucherLine + '\n' +
     'Recuerda enviarle al cliente todos los detalles de la reserva e indicaciones de llegada, junto con tu información de contacto para cualquier duda o coordinación el día del check-in.\n\n' +
@@ -449,6 +455,7 @@ function _emailCelestinoNuevaReserva(d) {
         '<tr><td style="padding:6px 10px; color:#666;">Check-out</td><td style="padding:6px 10px;">11:00 am</td></tr>' +
         '<tr><td style="padding:6px 10px; color:#666;">Huésped</td><td style="padding:6px 10px;">' + d.huesped + '</td></tr>' +
         '<tr><td style="padding:6px 10px; color:#666;">WhatsApp</td><td style="padding:6px 10px;"><a href="https://wa.me/' + d.phone + '">+' + d.phone + '</a></td></tr>' +
+        (d.email ? '<tr><td style="padding:6px 10px; color:#666;">Email</td><td style="padding:6px 10px;"><a href="mailto:' + d.email + '">' + d.email + '</a></td></tr>' : '') +
         '<tr><td style="padding:6px 10px; color:#666;">Personas</td><td style="padding:6px 10px;">' + d.personas + '</td></tr>' +
         '<tr><td style="padding:6px 10px; color:#666;">Total cobrado</td><td style="padding:6px 10px;">$' + Number(d.montoTotal).toFixed(2) + '</td></tr>' +
         '<tr><td style="padding:6px 10px; color:#666;">Comisión</td><td style="padding:6px 10px;">$' + Number(d.comision).toFixed(2) + '</td></tr>' +
