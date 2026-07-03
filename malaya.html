@@ -697,9 +697,10 @@ async function parseAdminVoucher() {
       if (data.codTransferencia) summary += '🔢 Código: ' + data.codTransferencia + '\n';
       if (data.fechaPago)        summary += '📅 Fecha pago: ' + data.fechaPago + '\n';
       if (data.nombreCompleto)   summary += '📝 Nombre extraído: ' + data.nombreCompleto + '\n';
-      if (data.telefono)         summary += '📱 Teléfono extraído: ' + data.telefono;
+      if (data.telefono)         summary += '📱 Teléfono extraído: ' + data.telefono + '\n';
+      if (data.email)            summary += '✉ Email extraído: ' + data.email;
       info.textContent = summary;
-      // Pre-llenar campos
+      // Pre-llenar campos del form del modal.
       if (data.nombreCompleto || data.sender) {
         const nameField = document.getElementById('adminGuestName');
         if (!nameField.value) nameField.value = data.nombreCompleto || data.sender;
@@ -707,6 +708,10 @@ async function parseAdminVoucher() {
       if (data.telefono) {
         const phField = document.getElementById('adminGuestPhone');
         if (!phField.value) phField.value = data.telefono;
+      }
+      if (data.email) {
+        const emField = document.getElementById('adminGuestEmail');
+        if (!emField.value) emField.value = data.email;
       }
       // Guardar datos del voucher para incluir en la reserva.
       window._lastVoucher = data;
