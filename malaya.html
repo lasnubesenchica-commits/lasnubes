@@ -233,9 +233,23 @@
   .admin-row input, .admin-row textarea {
     width: 100%; padding: 8px 10px; border: 1px solid var(--border);
     border-radius: 8px; font-family: inherit; font-size: 16px; background: var(--surface);
-    /* 16px evita el auto-zoom de iOS Safari al enfocar el input. */
   }
   .admin-row input[type=file] { padding: 6px; font-size: 14px; }
+  /* iOS Safari zoom-out fix: cualquier input de texto/textarea a >=16px con
+     !important para vencer cualquier regla más específica. Aplica sólo a
+     inputs cuya interacción abre teclado (los file no cuentan). */
+  input[type="text"],
+  input[type="email"],
+  input[type="tel"],
+  input[type="number"],
+  input[type="password"],
+  input[type="search"],
+  input[type="url"],
+  input:not([type]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
   .voucher-info {
     background: var(--surface); border: 1px solid var(--border);
     border-radius: 8px; padding: 12px; font-size: 13px; margin: 10px 0;
