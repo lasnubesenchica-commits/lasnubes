@@ -36,6 +36,26 @@
     min-height: 100vh;
   }
 
+  /* iOS Safari zoom-out fix: cualquier input con font-size < 16px dispara
+     auto-zoom al enfocarse en iPhone (desaliena el modal y sale del marco).
+     16px !important en todos los inputs que abren teclado. file/checkbox/
+     radio/submit no cuentan porque no abren teclado. */
+  input[type="text"],
+  input[type="email"],
+  input[type="tel"],
+  input[type="number"],
+  input[type="password"],
+  input[type="search"],
+  input[type="url"],
+  input[type="date"],
+  input[type="datetime-local"],
+  input[type="time"],
+  input:not([type]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
 
   /* ── DISPONIBILIDAD MODULE ─────────────────────────────── */
   .disp-cabin-tabs { display:flex; gap:8px; margin-bottom:28px; flex-wrap:wrap; }
