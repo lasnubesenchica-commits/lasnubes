@@ -592,3 +592,35 @@ function _testMalayaSync() {
     Logger.log('  ' + data[i][0] + ' → ' + data[i][1] + ' · ' + data[i][2]);
   }
 }
+
+// Test de la plantilla malaya_reserva_celestino apuntando a un destino
+// custom (útil para probar sin molestar a Celestino). Editá la constante
+// TO_PHONE con tu número y correlo desde el editor.
+function _testMalayaCelestinoTemplate() {
+  const TO_PHONE = '50769812266'; // ← cambiá por TU número (E.164 sin +)
+
+  const props = PropertiesService.getScriptProperties();
+  const templateName = props.getProperty('MALAYA_CELESTINO_TEMPLATE_NAME');
+  const templateLang = props.getProperty('MALAYA_CELESTINO_TEMPLATE_LANG') || 'es_PA';
+  if (!templateName) { Logger.log('✗ Falta MALAYA_CELESTINO_TEMPLATE_NAME en Script Properties'); return; }
+
+  const vars = _buildCelestinoTemplateVars({
+    huesped:    'Test Reserva',
+    phone:      '50761234567',
+    email:      'test@example.com',
+    checkin:    '2026-08-15',
+    checkout:   '2026-08-17',
+    noches:     2,
+    personas:   2,
+    voucherURL: 'https://drive.google.com/file/d/1abc/view'
+  });
+
+  const to = TO_PHONE.replace(/\D/g, '');
+  Logger.log('→ Enviando template "' + templateName + '" (' + templateLang + ') a +' + to);
+  try {
+    const res = sendWhatsAppTemplate(to, templateName, templateLang, vars);
+    Logger.log('✓ OK: ' + JSON.stringify(res));
+  } catch(e) {
+    Logger.log('✗ ERR: ' + e.message);
+  }
+}
