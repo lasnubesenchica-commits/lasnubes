@@ -232,9 +232,10 @@
   .admin-row label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 4px; }
   .admin-row input, .admin-row textarea {
     width: 100%; padding: 8px 10px; border: 1px solid var(--border);
-    border-radius: 8px; font-family: inherit; font-size: 14px; background: var(--surface);
+    border-radius: 8px; font-family: inherit; font-size: 16px; background: var(--surface);
+    /* 16px evita el auto-zoom de iOS Safari al enfocar el input. */
   }
-  .admin-row input[type=file] { padding: 6px; font-size: 12px; }
+  .admin-row input[type=file] { padding: 6px; font-size: 14px; }
   .voucher-info {
     background: var(--surface); border: 1px solid var(--border);
     border-radius: 8px; padding: 12px; font-size: 13px; margin: 10px 0;
