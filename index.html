@@ -286,6 +286,21 @@
 
   .cal-day.partial:hover { transform: scale(1.04); }
 
+  /* Días donde todas las cabañas visibles están bloqueadas por cortesía
+     (early / pasadía del día siguiente) — la ventana 12:30-7pm queda libre
+     para un pasatarde. Fondo cálido + hint 🌇 pequeño. */
+  .cal-day.pasatarde-only {
+    background: #fff7ed;
+    border: 1.5px dashed #f59e0b;
+    cursor: pointer;
+  }
+  .cal-day.pasatarde-only:hover { transform: scale(1.04); border-style: solid; }
+  .cal-day.pasatarde-only .pt-mark {
+    position: absolute; top: 3px; right: 4px;
+    font-size: 9px; line-height: 1; opacity: 0.9;
+  }
+  .cdot.pasatarde-only { background: #f59e0b; }
+
   .cal-day.past { opacity: 0.35; cursor: default !important; }
   .cal-day.past:hover { transform: none !important; }
 
@@ -2453,7 +2468,7 @@ async function loadData() {
     if (resData && resData.reservations) {
       reservations = resData.reservations.map(r => ({
         cabin: r.cabin, checkin: r.checkin, checkout: r.checkout,
-        origin: r.origin, estadoPago: r.estadoPago
+        origin: r.origin, estadoPago: r.estadoPago, tipo: r.tipo || 'noche'
       }));
     }
 
@@ -2488,6 +2503,36 @@ function buildOccupied(cabin) {
     }
   });
   return set;
+}
+
+// Días donde la cabaña está bloqueada SÓLO por cortesía (early/pasadia de
+// una reserva cuya storage.checkin cae ese día) y NINGUNA otra reserva la
+// ocupa físicamente. En esos días una pasatarde 12:30-7pm cabe técnicamente,
+// aunque implica doble limpieza — decisión operativa del admin.
+function buildCourtesyOnly(cabin) {
+  const courtesy = new Set();
+  const occupied = new Set();
+  reservations.filter(r => r.cabin === cabin && r.origin !== 'Abierta' && r.estadoPago !== 'CANCELADA').forEach(r => {
+    if (!r.checkin || !r.checkout) return;
+    const tipo = r.tipo || 'noche';
+    const startISO = r.checkin;
+    const start = new Date(startISO + 'T12:00:00');
+    const end   = new Date(r.checkout + 'T12:00:00');
+    for (let c = new Date(start); c < end; c.setDate(c.getDate()+1)) {
+      const ds = c.toISOString().slice(0,10);
+      // early: storage.checkin = arrival - 1 (cortesía prep 9am siguiente).
+      // pasadia: storage.checkin = pasadia - 1 (cortesía prep 9am siguiente).
+      // late: cortesía es storage.checkout - 1 pero la cabaña queda ocupada
+      //       hasta 4pm — pasatarde no cabe. Se excluye.
+      const isCourtesy = (tipo === 'early' || tipo === 'pasadia') && ds === startISO;
+      if (isCourtesy) courtesy.add(ds);
+      else            occupied.add(ds);
+    }
+  });
+  // Si otra reserva ocupa físicamente el día → no cabe pasatarde tampoco.
+  const result = new Set();
+  courtesy.forEach(d => { if (!occupied.has(d)) result.add(d); });
+  return result;
 }
 
 let activeFilter  = 'all';
@@ -2526,7 +2571,11 @@ function render() {
   _updatePromoBanner();
   const today = new Date(); today.setHours(0,0,0,0);
   const occMap = {};
-  CABINS.forEach(c => { occMap[c.key] = buildOccupied(c.key); });
+  const courtesyMap = {};
+  CABINS.forEach(c => {
+    occMap[c.key]      = buildOccupied(c.key);
+    courtesyMap[c.key] = buildCourtesyOnly(c.key);
+  });
 
   // Which cabins to show based on filter
   const visibleCabins = activeFilter === 'all' ? CABINS : CABINS.filter(c => c.key === activeFilter);
@@ -2552,36 +2601,47 @@ function render() {
       const isPast   = thisDate < today;
       const isToday  = thisDate.getTime() === today.getTime();
 
-      const avail = {};
+      const avail    = {};
+      const cortesia = {};
       CABINS.forEach(c => {
-        avail[c.key] = !occMap[c.key].has(dateStr);
+        avail[c.key]    = !occMap[c.key].has(dateStr);
+        cortesia[c.key] = courtesyMap[c.key].has(dateStr);
         if (avail[c.key] && !isPast) freeDays[c.key]++;
       });
 
       // Availability considering only visible cabins
-      const visibleAvail = visibleCabins.map(c => avail[c.key]);
-      const anyFree = visibleAvail.some(Boolean);
-      const allOcc  = !anyFree;
+      const visibleAvail    = visibleCabins.map(c => avail[c.key]);
+      const visibleCortesia = visibleCabins.map(c => cortesia[c.key]);
+      const anyFree      = visibleAvail.some(Boolean);
+      const anyCortesia  = visibleCortesia.some(Boolean);
+      const allOccupied  = !anyFree && !anyCortesia;
+      const pasatardeOnly = !anyFree && anyCortesia;
 
       let cls = 'cal-day';
-      if      (allOcc)                          cls += ' all-occupied';
+      if      (allOccupied)                     cls += ' all-occupied';
+      else if (pasatardeOnly)                   cls += ' pasatarde-only';
       else if (visibleAvail.every(Boolean))     cls += ' all-free';
       else                                      cls += ' partial';
 
       if (isPast)  cls += ' past';
       if (isToday) cls += ' today-ring';
 
-      const precio   = getPrecio(dateStr);
-      const clickable = anyFree && !isPast;
+      const precio    = getPrecio(dateStr);
+      const clickable = (anyFree || anyCortesia) && !isPast;
       const onclick   = clickable ? ` onclick="showDetail('${dateStr}')"` : '';
 
-      const dots = visibleCabins.map(c =>
-        `<div class="cdot ${c.key} ${avail[c.key] ? 'avail' : 'occupied'}"></div>`
-      ).join('');
+      const dots = visibleCabins.map(c => {
+        const state = avail[c.key] ? 'avail' : (cortesia[c.key] ? 'pasatarde-only' : 'occupied');
+        return `<div class="cdot ${c.key} ${state}"></div>`;
+      }).join('');
 
-      const priceHtml = (anyFree && !isPast) ? `<div class="day-price">$${precio}</div>` : '';
+      const priceHtml = anyFree && !isPast
+        ? `<div class="day-price">$${precio}</div>`
+        : (pasatardeOnly && !isPast ? `<div class="day-price" style="color:#c2700a;">Pasatarde</div>` : '');
+      const ptMark = pasatardeOnly && !isPast ? '<span class="pt-mark">🌇</span>' : '';
 
       cells += `<div class="${cls}"${onclick}>
+        ${ptMark}
         <span class="day-num">${day}</span>
         ${priceHtml}
         <div class="cabin-dots">${dots}</div>
@@ -2686,8 +2746,15 @@ function getTotalPrecio(baseDateStr, nights) {
 function showDetail(dateStr) {
   _adminBaseDate = dateStr;
   _adminNights   = 1;
-  _adminTipo     = 'hospedaje';
   _adminPersonas = 2;
+
+  // Auto-detectar día pasatarde-only: si NO hay hospedaje libre pero SÍ
+  // hay al menos una cabaña libre por cortesía → forzar tipo=pasatarde para
+  // que la ventana 12:30-7pm sea la que se cotice / reserve por defecto.
+  const anyHospFree = CABINS.some(c => !buildOccupied(c.key).has(dateStr));
+  const anyPtOnly   = CABINS.some(c =>  buildCourtesyOnly(c.key).has(dateStr));
+  _adminTipo = (!anyHospFree && anyPtOnly) ? 'pasatarde' : 'hospedaje';
+
   const d     = new Date(dateStr + 'T12:00:00');
   const label = d.toLocaleDateString('es-PA', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
   document.getElementById('ttDate').textContent = label;
@@ -2778,7 +2845,18 @@ function updateModalPriceAndCabins() {
   }
 
   const occMap = {};
-  CABINS.forEach(c => { occMap[c.key] = buildOccupied(c.key); });
+  const courtesyMap = {};
+  CABINS.forEach(c => {
+    occMap[c.key]      = buildOccupied(c.key);
+    courtesyMap[c.key] = buildCourtesyOnly(c.key);
+  });
+  // Para pasatarde, un día de cortesía NO bloquea la cabaña (la ventana
+  // 12:30-7pm queda libre). Helper de bloqueo aware de tipo.
+  const blocksTipo = (cabinKey, ds) => {
+    if (!occMap[cabinKey].has(ds)) return false;
+    if (tipo === 'pasatarde' && courtesyMap[cabinKey].has(ds)) return false;
+    return true;
+  };
 
   let cabinsHtml;
   if (isCombo) {
@@ -2820,9 +2898,9 @@ function updateModalPriceAndCabins() {
   } else {
     const visibleCabins = activeFilter === 'all' ? CABINS : CABINS.filter(c => c.key === activeFilter);
     cabinsHtml = visibleCabins.map(c => {
-      const blockedNights = datesToCheck.filter(ds => occMap[c.key].has(ds));
+      const blockedNights = datesToCheck.filter(ds => blocksTipo(c.key, ds));
       const rangeAvail    = blockedNights.length === 0;
-      const firstAvail    = !occMap[c.key].has(dateStr);
+      const firstAvail    = !blocksTipo(c.key, dateStr);
       const cabinTotal    = isHosp ? _precioCabinTotal(c.key, dateStr, nights, personas) : null;
       const priceTag      = (isHosp && personas >= 3)
         ? ' <span style="color:var(--muted);font-size:12px;">· $' + cabinTotal + (nights > 1 ? ' total' : '/noche') + '</span>'
