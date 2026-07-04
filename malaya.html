@@ -156,7 +156,18 @@
   .modal-card {
     background: var(--surface); border-radius: 16px; max-width: 460px; width: 100%;
     padding: 22px; box-shadow: 0 12px 40px rgba(0,0,0,0.25); max-height: 90vh; overflow-y: auto;
+    position: relative;
   }
+  .modal-close {
+    position: absolute; top: 12px; right: 12px;
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 0; background: var(--bg); color: var(--text-muted);
+    font-size: 20px; line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-family: inherit;
+  }
+  .modal-close:hover { background: var(--border); color: var(--text); }
+  .modal-close:active { transform: scale(0.94); }
   .modal-card h3 { margin: 0 0 12px; color: var(--verde-dark); }
   .modal-card .quote-text {
     background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
@@ -434,7 +445,8 @@
 <!-- Modal de cotización -->
 <div class="modal-overlay" id="quoteModal" onclick="if(event.target===this) closeQuoteModal()">
   <div class="modal-card">
-    <h3 style="margin-bottom:14px;">🌿 Reservar Malaya Lodge</h3>
+    <button class="modal-close" onclick="closeQuoteModal()" aria-label="Cerrar">×</button>
+    <h3 style="margin-bottom:14px; padding-right:32px;">🌿 Reservar Malaya Lodge</h3>
     <div class="modal-row">
       <span class="lbl">Check-in</span>
       <span class="val" id="modalCheckin">—</span>
