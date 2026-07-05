@@ -2111,6 +2111,14 @@ function tipoEmailMeta(r) {
     checkoutHora    = 'salida 7:00 pm';
     estanciaLabel   = 'Estancia';
     estanciaValue   = 'Pasatarde';
+  } else if (tipo === 'pasanoche') {
+    // Entra 8pm día X, sale 12:30pm día X+1. Storage checkin=X, checkout=X+1
+    // (idéntico a noche). Solo difiere en horario y label.
+    displayCheckout = checkoutStored;
+    checkinHora     = 'a partir de las 8:00 pm';
+    checkoutHora    = 'antes de las 12:30 pm';
+    estanciaLabel   = 'Estancia';
+    estanciaValue   = 'Pasanoche';
   } else if (tipo === 'pasadia') {
     displayCheckin  = addDaysISO(checkinStored, 1);
     displayCheckout = displayCheckin;
@@ -2918,11 +2926,13 @@ function _horaPlantilla(tipo, kind, checkoutExtendido) {
   const t = (tipo || 'noche').toString();
   if (kind === 'checkin') {
     if (t === 'pasatarde') return '12:30 pm';
+    if (t === 'pasanoche') return '8:00 pm';
     if (t === 'pasadia' || t === 'early') return '9:00 am';
     return '2:00 pm';                          // noche, late
   }
   // checkout
   if (t === 'pasatarde') return '7:00 pm';
+  if (t === 'pasanoche') return '12:30 pm';
   if (t === 'pasadia')   return '5:00 pm';
   if (t === 'late')      return '4:00 pm';
   // noche / early: 11am, salvo cortesía 12:30 pm
