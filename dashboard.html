@@ -3961,7 +3961,8 @@ function showDispDetail(id) {
   let duracionLabel = '?';
   if (days > 0) {
     if (tipo === 'pasatarde')       duracionLabel = 'Pasatarde 12:30pm – 7pm';
-    else if (tipo === 'pasadia')   duracionLabel = 'Pasadía 9am – 5pm';
+    else if (tipo === 'pasanoche')  duracionLabel = 'Pasanoche 8pm – 12:30pm';
+    else if (tipo === 'pasadia')    duracionLabel = 'Pasadía 9am – 5pm';
     else if (tipo === 'early')      duracionLabel = '1 noche · entra 9am';
     else if (tipo === 'late')       duracionLabel = '1 noche · sale 4pm';
     else                            duracionLabel = days + (days === 1 ? ' noche' : ' noches');
