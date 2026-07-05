@@ -147,6 +147,7 @@ function _getEventTimes(r) {
   const tipo = meta.tipo;
   let startH, startM, endH, endM;
   if (tipo === 'pasatarde')      { startH = '12'; startM = '30'; endH = '19'; endM = '00'; }
+  else if (tipo === 'pasanoche') { startH = '20'; startM = '00'; endH = '12'; endM = '30'; }
   else if (tipo === 'pasadia')   { startH = '09'; startM = '00'; endH = '17'; endM = '00'; }
   else if (tipo === 'early')     { startH = '09'; startM = '00'; endH = '11'; endM = '00'; }
   else if (tipo === 'late')      { startH = '14'; startM = '00'; endH = '16'; endM = '00'; }
@@ -196,6 +197,7 @@ function getCabinGuideSteps(cabin, tipo, checkoutExtendido) {
   const checkoutTitleMap = {
     'noche':     'Check-out · 11:00 am',
     'pasatarde': 'Salida · 7:00 pm',
+    'pasanoche': 'Check-out · 12:30 pm día siguiente',
     'pasadia':   'Salida · 5:00 pm',
     'early':     'Check-out · 11:00 am',
     'late':      'Check-out · 4:00 pm'
