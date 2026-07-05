@@ -2201,6 +2201,7 @@
       <button class="btn btn-ghost" id="detailVoucherBtn" style="font-size:13px;display:none;" title="Abrir voucher en Drive">🧾 Ver voucher</button>
       <button class="btn btn-ghost" id="detailLinkBtn" style="font-size:13px;" title="Copiar link publico para cliente">🔗 Link cliente</button>
       <button class="btn btn-ghost" id="detailResendBtn" style="font-size:13px;" title="Reenviar email al huésped">📧 Reenviar</button>
+      <button class="btn btn-secondary" id="detailAddSiblingBtn" style="font-size:13px;display:none;" title="Registrar reserva complementaria en la misma cabaña y día"></button>
       <button class="btn btn-danger" id="detailDeleteBtn">Eliminar</button>
       <button class="btn btn-primary" id="detailEditBtn">Editar</button>
     </div>
@@ -3962,6 +3963,30 @@ function showDispDetail(id) {
   if (detailEstado) detailEstado.innerHTML = estadoPagoBadge(r);
   document.getElementById('detailEditBtn').onclick   = () => { closeDetail(); editReservation(id); };
   document.getElementById('detailDeleteBtn').onclick = () => { closeDetail(); deleteReservation(id); };
+
+  // Botón "Registrar sibling": pasatarde ↔ pasanoche del mismo día conviven
+  // en la misma cabaña. Ofrecer el complementario en un solo tap.
+  const siblingBtn = document.getElementById('detailAddSiblingBtn');
+  if (siblingBtn) {
+    if (tipo === 'pasatarde') {
+      siblingBtn.style.display = '';
+      siblingBtn.textContent   = '🌙 Registrar pasanoche';
+      siblingBtn.onclick = () => {
+        closeDetail();
+        // r.checkin es el storage checkin del pasatarde (= día real).
+        openModalWithType(r.cabin, r.checkin, 'pasanoche');
+      };
+    } else if (tipo === 'pasanoche') {
+      siblingBtn.style.display = '';
+      siblingBtn.textContent   = '🌇 Registrar pasatarde';
+      siblingBtn.onclick = () => {
+        closeDetail();
+        openModalWithType(r.cabin, r.checkin, 'pasatarde');
+      };
+    } else {
+      siblingBtn.style.display = 'none';
+    }
+  }
   // Botón "Ver voucher" si la reserva tiene voucherURL (soporta multiples separados por |)
   const voucherBtn = document.getElementById('detailVoucherBtn');
   if (voucherBtn) {
@@ -4142,8 +4167,9 @@ function showCourtesyDetail(id, dateStr) {
 }
 
 // Wrapper de openModal que además pre-selecciona el tipo. Útil desde el
-// modal de día bloqueado por cortesía para registrar un pasatarde en la
-// ventana libre. openModal(cabin, date) por sí mismo default a 'noche'.
+// modal de cortesía (registrar pasatarde en día bloqueado) o del detalle
+// de reserva (registrar pasanoche sibling de una pasatarde). openModal por
+// sí mismo default a 'noche' con checkout=día+1 y monto weekday.
 function openModalWithType(cabin, date, tipo) {
   openModal(cabin, date);
   const tipoEl = document.getElementById('fTipo');
@@ -4153,11 +4179,21 @@ function openModalWithType(cabin, date, tipo) {
   const hintEl = document.getElementById('fTipoHint');
   if (hintEl) hintEl.textContent = TIPO_HINTS[tipo] || '';
   _updateSalidaLock(tipo);
-  // Para pasatarde/pasadia el checkout iguala a la entrada.
-  if (tipo === 'pasatarde' || tipo === 'pasadia') {
-    document.getElementById('fCheckout').value = date;
+  const coEl = document.getElementById('fCheckout');
+  // Ajustar salida según tipo. pasatarde/pasadia son single-day; pasanoche/
+  // early/late duran hasta día+1; noche mantiene lo que openModal setea.
+  if (coEl) {
+    if (tipo === 'pasatarde' || tipo === 'pasadia') {
+      coEl.value = date;
+    } else if (tipo === 'pasanoche' || tipo === 'early' || tipo === 'late') {
+      coEl.value = _addDaysISO(date, 1);
+    }
   }
-  // Preview de precio si existe la función.
+  // Monto default para tipos de horario reducido.
+  if (tipo === 'pasatarde' || tipo === 'pasadia' || tipo === 'pasanoche') {
+    const amt = document.getElementById('fAmount');
+    if (amt) amt.value = '75.00';
+  }
   try { if (typeof pricePreview === 'function') pricePreview(); } catch(_) {}
 }
 
