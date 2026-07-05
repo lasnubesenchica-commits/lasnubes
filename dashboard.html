@@ -797,6 +797,59 @@
     border: none;
   }
 
+  /* ── Mini timeline: 3 días con franjas de ocupación real ─────── */
+  .mini-timeline {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px 6px;
+  }
+  .mini-timeline .mt-legend {
+    font-size: 10px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    margin-bottom: 8px; font-weight: 600;
+  }
+  .mini-timeline .mt-row {
+    display: grid;
+    grid-template-columns: 70px 1fr;
+    gap: 10px;
+    align-items: center;
+    padding: 4px 0;
+  }
+  .mini-timeline .mt-row.current .mt-label { font-weight: 600; color: var(--text); }
+  .mini-timeline .mt-label { font-size: 11px; color: var(--text-muted); line-height: 1.2; }
+  .mini-timeline .mt-label b { display: block; font-size: 10px; }
+  .mini-timeline .mt-bar-wrap { position: relative; }
+  .mini-timeline .mt-bar {
+    position: relative;
+    height: 18px;
+    background: repeating-linear-gradient(90deg, transparent 0 24.9%, rgba(0,0,0,0.05) 25% 25.1%);
+    background-color: #fff;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .mini-timeline .mt-block {
+    position: absolute; top: 0; bottom: 0;
+    font-size: 9px; line-height: 18px;
+    color: white; font-weight: 700;
+    text-align: center;
+    padding: 0 3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+  }
+  .mini-timeline .mt-block.current { box-shadow: inset 0 0 0 2px var(--text); }
+  .mini-timeline .mt-ticks {
+    display: flex; justify-content: space-between;
+    font-size: 9px; color: var(--text-muted);
+    padding: 1px 1px 0;
+    margin-top: 1px;
+  }
+  .mini-timeline .mt-ticks span:first-child { margin-left: -2px; }
+  .mini-timeline .mt-ticks span:last-child  { margin-right: -2px; }
+
   .btn-sm {
     padding: 5px 10px;
     font-size: 12px;
@@ -2196,6 +2249,10 @@
       ⚠ <strong>Verificar itinerario</strong> — Airbnb notificó un cambio. Revisa fechas y monto en la app de Airbnb.
     </div>
     <div id="detailAlerta2" style="display:none;margin-bottom:12px;"></div>
+
+    <!-- Timeline mini: ayer / hoy / mañana con bloques de ocupación real -->
+    <div id="detailMiniTimeline" style="margin-bottom:14px;"></div>
+
     <div class="modal-footer" style="flex-wrap:wrap;gap:8px;">
       <button class="btn btn-ghost" onclick="closeDetail()">Cerrar</button>
       <button class="btn btn-ghost" id="detailVoucherBtn" style="font-size:13px;display:none;" title="Abrir voucher en Drive">🧾 Ver voucher</button>
@@ -4097,8 +4154,124 @@ function showDispDetail(id) {
       } catch(e) { console.warn('cumple badge', e); }
     }
   }
+  try { renderMiniTimeline(r); } catch(e) { console.warn('renderMiniTimeline', e); }
   document.getElementById('detailOverlay').classList.add('open');
 }
+// Devuelve los tramos de ocupación REAL (con horas) de una reserva.
+// Cada elemento: { start: Date, end: Date }. Usado para el mini-timeline.
+function _reservationOccupancySpans(r) {
+  const tipo = r.tipo || 'noche';
+  const ci = r.checkin, co = r.checkout;
+  if (!ci || !co) return [];
+  const at = (dateISO, h, m) => {
+    const d = new Date(dateISO + 'T00:00:00');
+    d.setHours(h, m || 0, 0, 0);
+    return d;
+  };
+  if (tipo === 'pasatarde') return [{ start: at(ci, 12, 30), end: at(ci, 19, 0) }];
+  if (tipo === 'pasanoche') return [{ start: at(ci, 20, 0),  end: at(co, 12, 30) }];
+  if (tipo === 'pasadia') {
+    // storage.checkin = pasadia-1 (cortesía prep). El huésped realmente
+    // ocupa el día siguiente 9am-5pm.
+    const mainDay = _addDaysISO(ci, 1);
+    return [{ start: at(mainDay, 9, 0), end: at(mainDay, 17, 0) }];
+  }
+  if (tipo === 'early') {
+    // Guest en cabaña arrival day 9am → checkout 11am.
+    const arrivalDay = _addDaysISO(ci, 1);
+    return [{ start: at(arrivalDay, 9, 0), end: at(co, 11, 0) }];
+  }
+  if (tipo === 'late') {
+    // Guest 2pm día checkin → 4pm día real de salida (co - 1).
+    const realDeparture = _addDaysISO(co, -1);
+    return [{ start: at(ci, 14, 0), end: at(realDeparture, 16, 0) }];
+  }
+  // noche (default): 2pm → 11am siguiente.
+  const coHour = r.checkoutExtendido ? 12.5 : 11;  // cortesía 12:30pm
+  const coH = Math.floor(coHour);
+  const coM = (coHour - coH) * 60;
+  return [{ start: at(ci, 14, 0), end: at(co, coH, coM) }];
+}
+
+// Renderiza mini-timeline horizontal 3 días (ayer/hoy/mañana) centrado en
+// el día de la reserva. Cada bloque = franja horaria real. Ayuda a
+// visualizar ventanas de limpieza y conflictos con otras reservas.
+function renderMiniTimeline(currentRes) {
+  const container = document.getElementById('detailMiniTimeline');
+  if (!container) return;
+  const cabin = currentRes.cabin;
+  // Ancla: día principal visible del huésped (checkin real, no cortesía).
+  const tipoCur = currentRes.tipo || 'noche';
+  let anchor = currentRes.checkin;
+  if (tipoCur === 'pasadia' || tipoCur === 'early') anchor = _addDaysISO(currentRes.checkin, 1);
+  const days = [_addDaysISO(anchor, -1), anchor, _addDaysISO(anchor, 1)];
+  const dayStarts = days.map(d => new Date(d + 'T00:00:00'));
+  const dayEnds   = dayStarts.map(d => { const x = new Date(d); x.setDate(x.getDate()+1); return x; });
+
+  // Recolectar reservas de la misma cabaña con presencia en el rango.
+  const rangeStart = dayStarts[0];
+  const rangeEnd   = dayEnds[2];
+  const relevantes = reservations.filter(r =>
+    r.cabin === cabin && r.estadoPago !== 'CANCELADA' && r.origin !== 'Abierta' && r.checkin && r.checkout
+  );
+  const events = [];
+  relevantes.forEach(r => {
+    const spans = _reservationOccupancySpans(r);
+    spans.forEach(s => {
+      if (s.end <= rangeStart || s.start >= rangeEnd) return;
+      events.push({ start: s.start, end: s.end, r: r });
+    });
+  });
+
+  const DOW = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const MON = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const TIPO_BG = {
+    noche:     '#6a9e62',
+    pasatarde: '#d97706',
+    pasanoche: '#3b82f6',
+    pasadia:   '#f97316',
+    early:     '#5b54c9',
+    late:      '#ec4899'
+  };
+  const TIPO_SHORT = { noche:'Noche', pasatarde:'PT', pasanoche:'PN', pasadia:'PD', early:'Early', late:'Late' };
+  const MS_DAY = 24 * 3600 * 1000;
+
+  const rowLabels = ['Ayer', 'Hoy', 'Mañana'];
+  let rowsHtml = '';
+  days.forEach((day, idx) => {
+    const d = new Date(day + 'T00:00:00');
+    const isAnchor = (day === anchor);
+    const labelDate = DOW[d.getDay()] + ' ' + d.getDate() + ' ' + MON[d.getMonth()];
+    const dayStart = dayStarts[idx];
+    const dayEnd   = dayEnds[idx];
+    const overlapping = events.filter(e => e.start < dayEnd && e.end > dayStart);
+    const blocksHtml = overlapping.map(e => {
+      const s = e.start < dayStart ? dayStart : e.start;
+      const en = e.end > dayEnd ? dayEnd : e.end;
+      const startPct = (s - dayStart) / MS_DAY * 100;
+      const width    = (en - s)     / MS_DAY * 100;
+      const tipo = e.r.tipo || 'noche';
+      const bg = TIPO_BG[tipo] || '#6a9e62';
+      const short = TIPO_SHORT[tipo] || tipo;
+      const first = (e.r.name || '').split(' ')[0] || '?';
+      const label = first + ' · ' + short;
+      const cls = e.r.id === currentRes.id ? 'mt-block current' : 'mt-block';
+      return '<div class="' + cls + '" style="left:' + startPct.toFixed(2) + '%;width:' + width.toFixed(2) + '%;background:' + bg + ';" title="' + escapeHtml(e.r.name + ' — ' + short) + '">' + escapeHtml(label) + '</div>';
+    }).join('');
+    const rowCls = isAnchor ? 'mt-row current' : 'mt-row';
+    rowsHtml += ''
+      + '<div class="' + rowCls + '">'
+      +   '<div class="mt-label"><b>' + rowLabels[idx] + '</b>' + labelDate + '</div>'
+      +   '<div class="mt-bar-wrap">'
+      +     '<div class="mt-bar">' + blocksHtml + '</div>'
+      +     '<div class="mt-ticks"><span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span></div>'
+      +   '</div>'
+      + '</div>';
+  });
+  container.className = 'mini-timeline';
+  container.innerHTML = '<div class="mt-legend">Ocupación · 3 días</div>' + rowsHtml;
+}
+
 function closeDetail() {
   document.getElementById('detailOverlay').classList.remove('open');
 }
