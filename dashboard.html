@@ -845,6 +845,28 @@
   .mini-timeline .mt-block:hover { filter: brightness(1.1); }
   .mini-timeline .mt-block:active { filter: brightness(0.92); }
   .mini-timeline .mt-block.current { box-shadow: inset 0 0 0 2px var(--text); }
+  /* Slots libres cotizables (pasatarde / pasanoche) — bloques punteados */
+  .mini-timeline .mt-slot {
+    position: absolute; top: 1px; bottom: 1px;
+    background: rgba(6, 118, 71, 0.05);
+    border: 1.5px dashed #86efac;
+    border-radius: 3px;
+    font-size: 8.5px; line-height: 14px;
+    color: #067647; font-weight: 600;
+    text-align: center;
+    padding: 0 3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .mini-timeline .mt-slot:hover {
+    background: rgba(6, 118, 71, 0.13);
+    border-color: #22c55e;
+    border-style: solid;
+  }
+  .mini-timeline .mt-slot:active { background: rgba(6, 118, 71, 0.2); }
   .mini-timeline .mt-ticks {
     display: flex; justify-content: space-between;
     font-size: 9px; color: var(--text-muted);
@@ -2196,6 +2218,32 @@
 <!-- RESERVATION DETAIL POPUP -->
 <div class="modal-overlay" id="detailOverlay" onclick="if(event.target===this)closeDetail()">
   <div class="modal" style="max-width:380px;padding:32px;">
+    <!-- ── Modo disponibilidad (slot vacío tapeado en timeline) ── -->
+    <div id="detailAvailabilitySection" style="display:none;">
+      <div class="modal-title" style="font-size:18px;color:var(--verde-dark);">🟢 <span id="avlHeader">Ventana disponible</span></div>
+      <div style="margin-top:4px; margin-bottom:16px; font-size:13px; color:var(--text-muted);" id="avlSubtitle">Ventana libre. Podés cotizar o registrar la reserva directamente.</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px;">
+        <div>
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Cabaña</div>
+          <div style="font-size:15px;font-weight:500;" id="avlCabin"></div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Fecha</div>
+          <div style="font-size:15px;font-weight:500;" id="avlDate"></div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Ventana</div>
+          <div style="font-size:15px;" id="avlHours"></div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Tarifa base</div>
+          <div style="font-size:15px;color:var(--verde-dark);font-weight:500;" id="avlPrice">$75</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Modo reserva (datos del huésped) ── -->
+    <div id="detailReservationSection">
     <div class="modal-title" id="detailName" style="font-size:18px;"></div>
     <div style="margin-top:4px; margin-bottom:12px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
       <span style="font-size:13px; color:var(--text-muted);" id="detailCabin"></span>
@@ -2253,18 +2301,23 @@
       ⚠ <strong>Verificar itinerario</strong> — Airbnb notificó un cambio. Revisa fechas y monto en la app de Airbnb.
     </div>
     <div id="detailAlerta2" style="display:none;margin-bottom:12px;"></div>
+    </div><!-- /#detailReservationSection -->
 
     <!-- Timeline mini: ayer / hoy / mañana con bloques de ocupación real -->
     <div id="detailMiniTimeline" style="margin-bottom:14px;"></div>
 
     <div class="modal-footer" style="flex-wrap:wrap;gap:8px;">
       <button class="btn btn-ghost" onclick="closeDetail()">Cerrar</button>
-      <button class="btn btn-ghost" id="detailVoucherBtn" style="font-size:13px;display:none;" title="Abrir voucher en Drive">🧾 Ver voucher</button>
-      <button class="btn btn-ghost" id="detailLinkBtn" style="font-size:13px;" title="Copiar link publico para cliente">🔗 Link cliente</button>
-      <button class="btn btn-ghost" id="detailResendBtn" style="font-size:13px;" title="Reenviar email al huésped">📧 Reenviar</button>
-      <button class="btn btn-ghost" id="detailAddSiblingBtn" style="font-size:13px;display:none;border-color:#f59e0b;color:#b45309;" title="Registrar reserva complementaria en la misma cabaña y día"></button>
-      <button class="btn btn-danger" id="detailDeleteBtn">Eliminar</button>
-      <button class="btn btn-primary" id="detailEditBtn">Editar</button>
+      <!-- Botones modo reserva -->
+      <button class="btn btn-ghost rsv-only" id="detailVoucherBtn" style="font-size:13px;display:none;" title="Abrir voucher en Drive">🧾 Ver voucher</button>
+      <button class="btn btn-ghost rsv-only" id="detailLinkBtn" style="font-size:13px;" title="Copiar link publico para cliente">🔗 Link cliente</button>
+      <button class="btn btn-ghost rsv-only" id="detailResendBtn" style="font-size:13px;" title="Reenviar email al huésped">📧 Reenviar</button>
+      <button class="btn btn-ghost rsv-only" id="detailAddSiblingBtn" style="font-size:13px;display:none;border-color:#f59e0b;color:#b45309;" title="Registrar reserva complementaria en la misma cabaña y día"></button>
+      <button class="btn btn-danger rsv-only" id="detailDeleteBtn">Eliminar</button>
+      <button class="btn btn-primary rsv-only" id="detailEditBtn">Editar</button>
+      <!-- Botones modo disponibilidad -->
+      <button class="btn btn-ghost avl-only" id="avlCopyBtn" style="display:none;font-size:13px;border-color:#0f7a4e;color:#0f7a4e;" title="Copiar cotización al portapapeles">📋 Copiar cotización</button>
+      <button class="btn btn-primary avl-only" id="avlRegisterBtn" style="display:none;">➕ Registrar reserva</button>
     </div>
   </div>
 </div>
@@ -4027,18 +4080,26 @@ function showDispDetail(id) {
   document.getElementById('detailDeleteBtn').onclick = () => { closeDetail(); deleteReservation(id); };
 
   // Botón "Registrar sibling": pasatarde ↔ pasanoche del mismo día conviven
-  // en la misma cabaña. Ofrecer el complementario en un solo tap.
+  // en la misma cabaña. Ofrecer el complementario en un solo tap. Ocultar
+  // si el sibling YA existe (evitar duplicados).
   const siblingBtn = document.getElementById('detailAddSiblingBtn');
   if (siblingBtn) {
-    if (tipo === 'pasatarde') {
+    const siblingExists = (siblingTipo) => reservations.some(other =>
+      other.id !== r.id &&
+      other.cabin === r.cabin &&
+      other.estadoPago !== 'CANCELADA' &&
+      other.origin !== 'Abierta' &&
+      (other.tipo || 'noche') === siblingTipo &&
+      other.checkin === r.checkin && other.checkout === r.checkout
+    );
+    if (tipo === 'pasatarde' && !siblingExists('pasanoche')) {
       siblingBtn.style.display = '';
       siblingBtn.textContent   = '🌙 Registrar pasanoche';
       siblingBtn.onclick = () => {
         closeDetail();
-        // r.checkin es el storage checkin del pasatarde (= día real).
         openModalWithType(r.cabin, r.checkin, 'pasanoche');
       };
-    } else if (tipo === 'pasanoche') {
+    } else if (tipo === 'pasanoche' && !siblingExists('pasatarde')) {
       siblingBtn.style.display = '';
       siblingBtn.textContent   = '🌇 Registrar pasatarde';
       siblingBtn.onclick = () => {
@@ -4159,6 +4220,7 @@ function showDispDetail(id) {
       } catch(e) { console.warn('cumple badge', e); }
     }
   }
+  try { _setDetailMode('reservation'); } catch(e) { console.warn('setDetailMode', e); }
   try { renderMiniTimeline(r); } catch(e) { console.warn('renderMiniTimeline', e); }
   document.getElementById('detailOverlay').classList.add('open');
 }
@@ -4250,6 +4312,18 @@ function renderMiniTimeline(currentRes) {
     const dayStart = dayStarts[idx];
     const dayEnd   = dayEnds[idx];
     const overlapping = events.filter(e => e.start < dayEnd && e.end > dayStart);
+    // Detectar slots libres para pasatarde y pasanoche que arrancan este día.
+    const availableSlots = _findAvailableSlots(cabin, day, events);
+    const slotsHtml = availableSlots.map(slot => {
+      const s = slot.start < dayStart ? dayStart : slot.start;
+      const en = slot.end > dayEnd ? dayEnd : slot.end;
+      const startPct = (s - dayStart) / MS_DAY * 100;
+      const width    = (en - s)     / MS_DAY * 100;
+      const label = slot.tipo === 'pasatarde' ? '＋ PT libre'
+                  : slot.tipo === 'pasanoche' ? '＋ PN libre'
+                  : '＋ libre';
+      return '<div class="mt-slot" onclick="event.stopPropagation();showAvailabilityDetail(\'' + cabin + '\',\'' + day + '\',\'' + slot.tipo + '\')" style="left:' + startPct.toFixed(2) + '%;width:' + width.toFixed(2) + '%" title="Ventana libre — tap para cotizar/registrar">' + label + '</div>';
+    }).join('');
     const blocksHtml = overlapping.map(e => {
       const s = e.start < dayStart ? dayStart : e.start;
       const en = e.end > dayEnd ? dayEnd : e.end;
@@ -4272,13 +4346,100 @@ function renderMiniTimeline(currentRes) {
       + '<div class="' + rowCls + '">'
       +   '<div class="mt-label"><b>' + rowLabels[idx] + '</b>' + labelDate + '</div>'
       +   '<div class="mt-bar-wrap">'
-      +     '<div class="mt-bar">' + blocksHtml + '</div>'
+      +     '<div class="mt-bar">' + slotsHtml + blocksHtml + '</div>'
       +     '<div class="mt-ticks"><span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span></div>'
       +   '</div>'
       + '</div>';
   });
   container.className = 'mini-timeline';
-  container.innerHTML = '<div class="mt-legend">Ocupación · 3 días · tap un bloque para verlo</div>' + rowsHtml;
+  container.innerHTML = '<div class="mt-legend">Ocupación · 3 días · tap bloques para verlos</div>' + rowsHtml;
+}
+
+// Detecta ventanas libres que se pueden cotizar como pasatarde o pasanoche
+// para una cabaña en un día dado. Devuelve [{tipo, start, end}].
+function _findAvailableSlots(cabin, dayISO, events) {
+  const at = (iso, h, m) => { const d = new Date(iso + 'T00:00:00'); d.setHours(h, m || 0, 0, 0); return d; };
+  const overlaps = (s, e) => events.some(ev => ev.start < e && ev.end > s);
+  const slots = [];
+  // Pasatarde: 12:30pm–7pm el día dado.
+  const ptS = at(dayISO, 12, 30);
+  const ptE = at(dayISO, 19, 0);
+  if (!overlaps(ptS, ptE)) slots.push({ tipo: 'pasatarde', start: ptS, end: ptE });
+  // Pasanoche: 8pm día dado → 12:30pm día siguiente.
+  const pnS = at(dayISO, 20, 0);
+  const pnE = at(_addDaysISO(dayISO, 1), 12, 30);
+  if (!overlaps(pnS, pnE)) slots.push({ tipo: 'pasanoche', start: pnS, end: pnE });
+  return slots;
+}
+
+// Cambia el modal de detalle entre "reserva existente" y "ventana disponible".
+function _setDetailMode(mode) {
+  const rsvSection = document.getElementById('detailReservationSection');
+  const avlSection = document.getElementById('detailAvailabilitySection');
+  document.querySelectorAll('#detailOverlay .rsv-only').forEach(el => {
+    if (mode === 'availability') {
+      if (!el.dataset._prevDisplay) el.dataset._prevDisplay = el.style.display || 'inline-flex';
+      el.style.display = 'none';
+    } else {
+      if (el.dataset._prevDisplay) { el.style.display = el.dataset._prevDisplay === 'none' ? 'none' : ''; delete el.dataset._prevDisplay; }
+    }
+  });
+  document.querySelectorAll('#detailOverlay .avl-only').forEach(el => {
+    el.style.display = (mode === 'availability') ? '' : 'none';
+  });
+  if (rsvSection) rsvSection.style.display = (mode === 'availability') ? 'none' : '';
+  if (avlSection) avlSection.style.display = (mode === 'availability') ? '' : 'none';
+}
+
+// Muestra el modal en modo disponibilidad para un slot libre.
+function showAvailabilityDetail(cabin, dayISO, tipo) {
+  const CABIN_NAMES = { verde: 'Paseo por Las Nubes', azul: 'Portal hacia Las Nubes', lila: 'Puente entre Las Nubes' };
+  const TIPO_META = {
+    pasatarde: { titulo: 'Pasatarde disponible', horas: '12:30 pm – 7:00 pm', short: 'Pasatarde' },
+    pasanoche: { titulo: 'Pasanoche disponible', horas: '8:00 pm – 12:30 pm día siguiente', short: 'Pasanoche' }
+  };
+  const meta = TIPO_META[tipo] || { titulo: 'Ventana disponible', horas: '—', short: tipo };
+  document.getElementById('avlHeader').textContent   = meta.titulo;
+  document.getElementById('avlSubtitle').textContent = 'Ventana libre en el timeline. Podés cotizar o registrar la reserva directamente.';
+  document.getElementById('avlCabin').textContent    = CABIN_NAMES[cabin] || cabin;
+  document.getElementById('avlDate').textContent     = formatDate(dayISO);
+  document.getElementById('avlHours').textContent    = meta.horas;
+  document.getElementById('avlPrice').textContent    = '$75 (editable)';
+  document.getElementById('avlCopyBtn').onclick = () => _copyAvailabilityQuote(cabin, dayISO, tipo);
+  document.getElementById('avlRegisterBtn').onclick = () => {
+    closeDetail();
+    openModalWithType(cabin, dayISO, tipo);
+  };
+  _setDetailMode('availability');
+  // Timeline centrado en este día/cabaña, sin ninguna reserva marcada como "actual"
+  try { renderMiniTimeline({ cabin, checkin: dayISO, tipo: 'noche', id: '__slot__' }); } catch(e) { console.warn('timeline slot', e); }
+  document.getElementById('detailOverlay').classList.add('open');
+}
+
+// Copia una cotización estilo WhatsApp de la ventana libre al portapapeles.
+function _copyAvailabilityQuote(cabin, dayISO, tipo) {
+  const CABIN_NAMES = { verde: 'Paseo por Las Nubes', azul: 'Portal hacia Las Nubes', lila: 'Puente entre Las Nubes' };
+  const cabinName = CABIN_NAMES[cabin] || cabin;
+  const fechaFmt  = formatDate(dayISO);
+  const horas = tipo === 'pasatarde' ? '12:30 pm – 7:00 pm'
+              : tipo === 'pasanoche' ? '8:00 pm – 12:30 pm (día siguiente)'
+              : '—';
+  const label = tipo === 'pasatarde' ? 'Pasatarde' : tipo === 'pasanoche' ? 'Pasanoche' : tipo;
+  const text = ''
+    + '🌿 *Las Nubes · ' + cabinName + '*\n\n'
+    + '📅 ' + fechaFmt + '\n'
+    + '🕐 ' + label + ' ' + horas + '\n'
+    + '💰 $75\n\n'
+    + 'Cabaña 100% privada con jacuzzi. Quedo atento si deseas proceder y te comparto las formas de pago.';
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('📋 Cotización copiada');
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); showToast('📋 Cotización copiada'); } catch(_) {}
+    document.body.removeChild(ta);
+  });
 }
 
 function closeDetail() {
