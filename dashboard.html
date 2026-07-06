@@ -2602,11 +2602,11 @@
     <div class="form-row" id="dateRow">
       <div class="form-group">
         <label>Entrada</label>
-        <input type="date" id="fCheckin" onchange="autoCheckout();calcPrice();">
+        <input type="date" id="fCheckin" onchange="autoCheckout();calcPrice();_refreshMultiCabinAvailability();">
       </div>
       <div class="form-group">
         <label>Salida</label>
-        <input type="date" id="fCheckout" onchange="calcPrice()">
+        <input type="date" id="fCheckout" onchange="calcPrice();_refreshMultiCabinAvailability();">
       </div>
     </div>
 
@@ -2633,6 +2633,24 @@
           <option value="late">Late check-out (2pm → 4pm día siguiente · bloquea noche siguiente)</option>
         </select>
         <div id="fTipoHint" style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.4;"></div>
+      </div>
+    </div>
+
+    <!-- Fila 4c: Multi-cabaña — misma reserva/pago distribuida en varias cabañas -->
+    <div class="form-row" id="multiCabinRow" style="display:none;">
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:500;cursor:pointer;">
+          <input type="checkbox" id="fMultiCabin" onchange="toggleMultiCabin()" style="width:18px;height:18px;cursor:pointer;">
+          <span>🏡 Multi-cabaña — distribuir las noches en cabañas distintas <span style="color:var(--text-muted);font-weight:400;font-size:12px;">(mismo pago, un solo voucher)</span></span>
+        </label>
+        <div id="multiCabinPanel" style="display:none;margin-top:10px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;line-height:1.4;">
+            Asignar cada noche a su cabaña. Se creará una reserva por cabaña asignada. El voucher se
+            vincula a todas. El monto total se divide en partes iguales por noche.
+          </div>
+          <div id="fMultiNights"></div>
+          <div id="fMultiSplitInfo" style="font-size:11px;color:var(--verde-dark);margin-top:8px;font-weight:500;"></div>
+        </div>
       </div>
     </div>
 
@@ -5831,6 +5849,111 @@ function handleTipoChange() {
   }
   _updateSalidaLock(tipo);
   calcSaldo();
+  _refreshMultiCabinAvailability();
+}
+
+// ─── Multi-cabaña: distribuir noches en varias cabañas ─────────
+// Habilitado solo cuando tipo=noche y hay ≥2 noches. Al guardar, crea N
+// reservas (una por noche) todas con el mismo voucher y monto dividido.
+const CABIN_OPTIONS_HTML = ''
+  + '<option value="verde">Paseo por Las Nubes</option>'
+  + '<option value="azul">Portal hacia Las Nubes</option>'
+  + '<option value="lila">Puente entre Las Nubes</option>';
+
+// Muestra u oculta la fila del checkbox multi-cabaña según tipo + noches.
+function _refreshMultiCabinAvailability() {
+  const row = document.getElementById('multiCabinRow');
+  if (!row) return;
+  const tipoEl = document.getElementById('fTipo');
+  const tipo = tipoEl ? tipoEl.value : 'noche';
+  const ci = document.getElementById('fCheckin').value;
+  const co = document.getElementById('fCheckout').value;
+  const nights = (ci && co) ? Math.round((new Date(co+'T12:00:00') - new Date(ci+'T12:00:00')) / 86400000) : 0;
+  const enable = (tipo === 'noche') && nights >= 2 && !editId;
+  row.style.display = enable ? '' : 'none';
+  if (!enable) {
+    const chk = document.getElementById('fMultiCabin');
+    if (chk && chk.checked) { chk.checked = false; toggleMultiCabin(); }
+  } else {
+    // Si ya está checked, regenerar las filas (por si cambió el rango).
+    const chk = document.getElementById('fMultiCabin');
+    if (chk && chk.checked) _regenerateMultiCabinNights();
+  }
+}
+
+function toggleMultiCabin() {
+  const chk = document.getElementById('fMultiCabin');
+  const panel = document.getElementById('multiCabinPanel');
+  if (!chk || !panel) return;
+  panel.style.display = chk.checked ? '' : 'none';
+  if (chk.checked) _regenerateMultiCabinNights();
+}
+
+function _regenerateMultiCabinNights() {
+  const wrap = document.getElementById('fMultiNights');
+  const infoEl = document.getElementById('fMultiSplitInfo');
+  if (!wrap) return;
+  const ci = document.getElementById('fCheckin').value;
+  const co = document.getElementById('fCheckout').value;
+  if (!ci || !co) { wrap.innerHTML = ''; if (infoEl) infoEl.textContent = ''; return; }
+  const start = new Date(ci + 'T12:00:00');
+  const end = new Date(co + 'T12:00:00');
+  const nights = Math.round((end - start) / 86400000);
+  if (nights < 2) { wrap.innerHTML = ''; if (infoEl) infoEl.textContent = ''; return; }
+  // Default: primera mitad en la cabaña seleccionada arriba, segunda mitad en otra.
+  const primaryCabin = document.getElementById('fCabin').value || 'lila';
+  const otherCabin = primaryCabin === 'lila' ? 'azul' : primaryCabin === 'azul' ? 'lila' : 'azul';
+  // Preservar selecciones existentes si el usuario ya las tocó.
+  const prevSelects = wrap.querySelectorAll('select[data-night-idx]');
+  const prev = {};
+  prevSelects.forEach(s => { prev[s.dataset.nightIdx] = s.value; });
+
+  const DOW = ['dom','lun','mar','mié','jue','vie','sáb'];
+  const MON = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  let html = '';
+  for (let i = 0; i < nights; i++) {
+    const nightDate = new Date(start); nightDate.setDate(nightDate.getDate() + i);
+    const nightISO = nightDate.toISOString().slice(0,10);
+    const label = DOW[nightDate.getDay()] + ' ' + nightDate.getDate() + ' ' + MON[nightDate.getMonth()];
+    const defaultCabin = prev[i] || (i < Math.ceil(nights / 2) ? primaryCabin : otherCabin);
+    let opts = '';
+    ['verde','azul','lila'].forEach(k => {
+      const name = k === 'verde' ? 'Paseo' : k === 'azul' ? 'Portal' : 'Puente';
+      opts += '<option value="' + k + '"' + (k === defaultCabin ? ' selected' : '') + '>' + name + '</option>';
+    });
+    html += ''
+      + '<div style="display:grid;grid-template-columns:80px 1fr;gap:10px;align-items:center;margin-bottom:6px;">'
+      +   '<div style="font-size:12px;color:var(--text);font-weight:500;text-transform:capitalize;" data-night-iso="' + nightISO + '">'
+      +     '<span style="font-family:ui-monospace,monospace;font-size:11px;color:var(--text-muted);">N' + (i+1) + '</span> ' + label
+      +   '</div>'
+      +   '<select data-night-idx="' + i + '" data-night-iso="' + nightISO + '" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;">' + opts + '</select>'
+      + '</div>';
+  }
+  wrap.innerHTML = html;
+  _updateMultiCabinSplitInfo();
+  // Al cambiar cualquier select, recalcular info.
+  wrap.querySelectorAll('select[data-night-idx]').forEach(s => {
+    s.onchange = _updateMultiCabinSplitInfo;
+  });
+}
+
+function _updateMultiCabinSplitInfo() {
+  const infoEl = document.getElementById('fMultiSplitInfo');
+  if (!infoEl) return;
+  const wrap = document.getElementById('fMultiNights');
+  const selects = wrap ? wrap.querySelectorAll('select[data-night-idx]') : [];
+  const nights = selects.length;
+  if (nights < 2) { infoEl.textContent = ''; return; }
+  const amount = parseFloat(document.getElementById('fAmount').value) || 0;
+  const perNight = amount / nights;
+  // Contar cuántas noches por cabaña
+  const counts = { verde: 0, azul: 0, lila: 0 };
+  selects.forEach(s => { counts[s.value] = (counts[s.value] || 0) + 1; });
+  const names = { verde: 'Paseo', azul: 'Portal', lila: 'Puente' };
+  const breakdown = Object.keys(counts).filter(k => counts[k] > 0)
+    .map(k => names[k] + ': ' + counts[k] + ' × $' + perNight.toFixed(2) + ' = $' + (counts[k] * perNight).toFixed(2))
+    .join(' · ');
+  infoEl.textContent = 'Split: ' + breakdown + '  →  Total $' + amount.toFixed(2);
 }
 
 function autoCheckout() {
@@ -5982,6 +6105,10 @@ function openModal(cabin, date) {
   if (_hint) _hint.textContent = TIPO_HINTS.noche;
   _updateSalidaLock('noche');
   const _pp = document.getElementById('pricePreview'); if(_pp) _pp.style.display = 'none';
+  // Multi-cabaña se resetea (nueva reserva → checkbox off, panel oculto)
+  const _mcChk = document.getElementById('fMultiCabin');
+  if (_mcChk) { _mcChk.checked = false; toggleMultiCabin(); }
+  _refreshMultiCabinAvailability();
   document.getElementById('reservaModal').classList.add('open');
   clearVoucher();
   document.getElementById('voucherSection').style.display = 'block'; // Directa por defecto
@@ -6026,6 +6153,10 @@ function editReservation(id) {
   calcSaldo();
   clearVoucher();
   document.getElementById('voucherSection').style.display = ['Directa','Referido'].includes(r.origin) ? 'block' : 'none';
+  // Multi-cabaña: en edición se oculta (solo aplica a nuevas reservas)
+  const _mcChk = document.getElementById('fMultiCabin');
+  if (_mcChk) { _mcChk.checked = false; toggleMultiCabin(); }
+  _refreshMultiCabinAvailability();
   document.getElementById('reservaModal').classList.add('open');
   applyModalCabinTint(r.cabin);
   calcPrice();
@@ -6376,7 +6507,181 @@ function handleOriginChange() {
   if (dateRow) dateRow.style.display = isAbierta ? 'none' : '';
 }
 
+// ─── Multi-cabaña save: crea N reservas hermanas ─────────────
+// Consolida noches consecutivas de la misma cabaña en bloques (para no
+// crear filas separadas si "Puente, Puente, Portal" → 1 fila Puente 2n
+// + 1 fila Portal 1n). Sube el voucher una sola vez y comparte el URL.
+async function _saveMultiCabinReservation() {
+  const name     = document.getElementById('fName').value.trim();
+  const email    = document.getElementById('fEmail').value.trim();
+  const telefonoRaw = document.getElementById('fTelefono').value.trim();
+  const telefono = telefonoRaw.replace(/^[+=\-@]+\s*/, '');
+  const pagador  = document.getElementById('fPagador').value.trim() || name;
+  const persons  = parseInt(document.getElementById('fPersons').value) || 2;
+  const origin   = document.getElementById('fOrigin').value;
+  const totalAmount = parseFloat(document.getElementById('fAmount').value) || 0;
+  const deposit  = parseFloat(document.getElementById('fDeposit').value) || 0;
+  const comentariosBase = document.getElementById('fComentarios').value.trim();
+  const codNuevo = ((document.getElementById('fCodTransferencia') || {}).value || '').trim();
+  const fFechaReservaEl = document.getElementById('fFechaReserva');
+  const fechaReserva = (fFechaReservaEl && fFechaReservaEl.value) || new Date().toISOString().slice(0,10);
+
+  if (!name || totalAmount <= 0) {
+    showToast('Falta nombre o monto total');
+    return;
+  }
+
+  const wrap = document.getElementById('fMultiNights');
+  const nightSelects = wrap ? wrap.querySelectorAll('select[data-night-idx]') : [];
+  if (nightSelects.length < 2) {
+    showToast('Necesitas al menos 2 noches para multi-cabaña');
+    return;
+  }
+
+  // Consolidar noches consecutivas de la misma cabaña.
+  const groups = [];
+  let cur = null;
+  nightSelects.forEach(s => {
+    const night = s.dataset.nightIso;
+    const cabin = s.value;
+    if (cur && cur.cabin === cabin) {
+      cur.nights.push(night);
+    } else {
+      if (cur) groups.push(cur);
+      cur = { cabin, nights: [night] };
+    }
+  });
+  if (cur) groups.push(cur);
+
+  if (groups.length < 2) {
+    showToast('Todas las noches quedaron en la misma cabaña — desactiva multi-cabaña');
+    return;
+  }
+
+  const perNight = totalAmount / nightSelects.length;
+  const groupId  = 'MC-' + Date.now().toString();
+
+  // Voucher: uno solo, compartido entre todas las reservas.
+  const pv = pendingVoucher;
+  const montoVoucherNum = pv ? _voucherMontoNumber(pv.monto) : 0;
+  const montoVoucherStr = montoVoucherNum > 0 ? '$' + montoVoucherNum.toFixed(2) : '';
+  const sinPago = SIN_PAGO_ORIGINS;
+  let estadoBase = '';
+  if (origin === 'Airbnb') estadoBase = 'PAGA';
+  else if (!sinPago.includes(origin) && totalAmount > 0) estadoBase = 'PENDIENTE';
+  if (pv && montoVoucherNum >= totalAmount * 0.99) estadoBase = 'PAGA';
+
+  // Armar reservas por grupo.
+  const CABIN_NAMES = { verde: 'Paseo', azul: 'Portal', lila: 'Puente' };
+  const reservasHermanas = groups.map((g, idx) => {
+    const groupCheckin  = g.nights[0];
+    const lastNight     = g.nights[g.nights.length - 1];
+    const groupCheckout = _addDaysISO(lastNight, 1);
+    const groupAmount   = +(g.nights.length * perNight).toFixed(2);
+    const groupDeposit  = idx === 0 ? deposit : 0;
+    const id = groupId + '-' + (idx+1);
+    const cabinsList = groups.map(x => CABIN_NAMES[x.cabin] || x.cabin).join(' + ');
+    const nota = '[Multi-cabaña ' + (idx+1) + '/' + groups.length + ' · ' + cabinsList + ' · pago único $' + totalAmount.toFixed(2) + ']';
+    const comentarios = comentariosBase ? (comentariosBase + '\n' + nota) : nota;
+    return {
+      id, name, email, telefono, pagador,
+      cabin: g.cabin,
+      checkin: groupCheckin, checkout: groupCheckout,
+      persons,
+      origin, deposit: groupDeposit, amount: groupAmount,
+      confirmCode: id, serviceFee: 0, neto: groupAmount,
+      fechaReserva,
+      codTransferencia: codNuevo,
+      montoVoucher: pv ? montoVoucherStr : '',
+      estadoPago: estadoBase,
+      comentarios,
+      tipo: 'noche',
+      checkoutExtendido: false,
+      voucherURL: ''  // Se rellena tras la subida del voucher
+    };
+  });
+
+  // Push locales inmediatamente.
+  reservasHermanas.forEach(r => reservations.push(r));
+  save();
+  renderCalendar();
+  renderList();
+  renderDisponibilidad();
+
+  const saveBtn = document.getElementById('saveReservationBtn');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Guardando ' + reservasHermanas.length + ' reservas…'; }
+
+  // POST secuencial. La primera sube el voucher y captura el URL; las siguientes
+  // lo incluyen en el payload para persistirlo directo en su columna 26.
+  let sharedVoucherURL = '';
+  let allOk = true;
+  for (let i = 0; i < reservasHermanas.length; i++) {
+    const r = Object.assign({}, reservasHermanas[i]);
+    if (sharedVoucherURL) r.voucherURL = sharedVoucherURL;
+    try {
+      const res = await fetch(SHEETS_API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'saveReservation', reservation: r })
+      });
+      const data = await res.json();
+      if (!data || !data.ok) { allOk = false; console.warn('multi-cabin save failed:', data); }
+      // Después de la primera: subir voucher y capturar URL para las siguientes.
+      if (i === 0 && pv) {
+        try {
+          if (saveBtn) saveBtn.textContent = '📎 Subiendo voucher…';
+          const vres = await fetch(SHEETS_API_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+              action: 'saveVoucherToDrive',
+              reservation: r,
+              imageBase64: pv.base64,
+              mimeType:    pv.mimeType,
+              fileName:    pv.fileName
+            })
+          });
+          const vdata = await vres.json();
+          if (vdata && vdata.ok && vdata.fileUrl) {
+            sharedVoucherURL = vdata.fileUrl;
+            // Reflejar el URL en el objeto local también
+            const idx0 = reservations.findIndex(x => x.id === r.id);
+            if (idx0 >= 0) reservations[idx0].voucherURL = sharedVoucherURL;
+          }
+        } catch(e) { console.warn('voucher upload error:', e); }
+      }
+      if (saveBtn) saveBtn.textContent = '⏳ Guardado ' + (i+1) + '/' + reservasHermanas.length + '…';
+    } catch(e) {
+      allOk = false;
+      console.error('multi-cabin save network error:', e);
+    }
+  }
+
+  // Reflejar sharedVoucherURL en las siguientes reservas locales también.
+  if (sharedVoucherURL) {
+    reservasHermanas.slice(1).forEach(r => {
+      const idx = reservations.findIndex(x => x.id === r.id);
+      if (idx >= 0) reservations[idx].voucherURL = sharedVoucherURL;
+    });
+    save();
+  }
+
+  if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Guardar reserva'; }
+  closeModal();
+  renderCalendar();
+  renderList();
+  renderDisponibilidad();
+  showToast(allOk
+    ? '✓ ' + reservasHermanas.length + ' reservas guardadas · $' + totalAmount.toFixed(2) + ' distribuido'
+    : '⚠ Algunas reservas fallaron — revisar');
+  clearVoucher();
+}
+
 async function saveReservation() {
+  // Multi-cabaña: si el toggle está activo, saveMultiCabin maneja todo y sale.
+  const _mcChk = document.getElementById('fMultiCabin');
+  if (_mcChk && _mcChk.checked && !editId) {
+    return _saveMultiCabinReservation();
+  }
+
   const name     = document.getElementById('fName').value.trim();
   const email    = document.getElementById('fEmail').value.trim();
   // Sanitizar telefono: strip leading "+" (Sheets lo interpreta como inicio
