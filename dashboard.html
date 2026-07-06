@@ -4267,11 +4267,14 @@ function renderMiniTimeline(currentRes) {
   const container = document.getElementById('detailMiniTimeline');
   if (!container) return;
   const cabin = currentRes.cabin;
-  // Ancla FIJA en el día real actual (hoy). El timeline funciona como una
-  // vista operativa: siempre ves "ayer / hoy / mañana" reales, sin importar
-  // qué reserva estés viendo. Útil para coordinar limpieza sobre lo actual.
+  // Ancla: día principal de la reserva vista (checkin real, no cortesía).
+  // El label "Hoy" solo aparece si alguno de los 3 días coincide con el
+  // día real actual — no se usa como posición fija Ayer/Hoy/Mañana.
+  const tipoCur = currentRes.tipo || 'noche';
+  let anchor = currentRes.checkin;
+  if (tipoCur === 'pasadia' || tipoCur === 'early') anchor = _addDaysISO(currentRes.checkin, 1);
   const _now = new Date();
-  const anchor = _now.getFullYear() + '-' + String(_now.getMonth()+1).padStart(2,'0') + '-' + String(_now.getDate()).padStart(2,'0');
+  const todayISO = _now.getFullYear() + '-' + String(_now.getMonth()+1).padStart(2,'0') + '-' + String(_now.getDate()).padStart(2,'0');
   const days = [_addDaysISO(anchor, -1), anchor, _addDaysISO(anchor, 1)];
   const dayStarts = days.map(d => new Date(d + 'T00:00:00'));
   const dayEnds   = dayStarts.map(d => { const x = new Date(d); x.setDate(x.getDate()+1); return x; });
@@ -4304,12 +4307,13 @@ function renderMiniTimeline(currentRes) {
   const TIPO_SHORT = { noche:'Noche', pasatarde:'PT', pasanoche:'PN', pasadia:'PD', early:'Early', late:'Late' };
   const MS_DAY = 24 * 3600 * 1000;
 
-  const rowLabels = ['Ayer', 'Hoy', 'Mañana'];
   let rowsHtml = '';
   days.forEach((day, idx) => {
     const d = new Date(day + 'T00:00:00');
     const isAnchor = (day === anchor);
+    const isToday  = (day === todayISO);
     const labelDate = DOW[d.getDay()] + ' ' + d.getDate() + ' ' + MON[d.getMonth()];
+    const rowPrefix = isToday ? 'Hoy' : '';
     const dayStart = dayStarts[idx];
     const dayEnd   = dayEnds[idx];
     const overlapping = events.filter(e => e.start < dayEnd && e.end > dayStart);
@@ -4343,9 +4347,12 @@ function renderMiniTimeline(currentRes) {
       return '<div class="' + cls + '" ' + onclick + ' style="left:' + startPct.toFixed(2) + '%;width:' + width.toFixed(2) + '%;background:' + bg + ';" title="' + escapeHtml(e.r.name + ' — ' + short + ' · tap para ver detalle') + '">' + escapeHtml(label) + '</div>';
     }).join('');
     const rowCls = isAnchor ? 'mt-row current' : 'mt-row';
+    const labelHtml = rowPrefix
+      ? '<b>' + rowPrefix + '</b>' + labelDate
+      : labelDate;
     rowsHtml += ''
       + '<div class="' + rowCls + '">'
-      +   '<div class="mt-label"><b>' + rowLabels[idx] + '</b>' + labelDate + '</div>'
+      +   '<div class="mt-label">' + labelHtml + '</div>'
       +   '<div class="mt-bar-wrap">'
       +     '<div class="mt-bar">' + slotsHtml + blocksHtml + '</div>'
       +     '<div class="mt-ticks"><span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span></div>'
