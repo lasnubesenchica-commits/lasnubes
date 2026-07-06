@@ -867,6 +867,30 @@
     border-style: solid;
   }
   .mini-timeline .mt-slot:active { background: rgba(6, 118, 71, 0.2); }
+  /* Leyenda de tipos debajo del timeline */
+  .mini-timeline .mt-tipo-legend {
+    display: flex; flex-wrap: wrap;
+    gap: 6px 12px;
+    padding-top: 10px;
+    margin-top: 8px;
+    border-top: 1px solid rgba(0,0,0,0.06);
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+  .mini-timeline .mt-tipo-legend span {
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .mini-timeline .mt-tipo-legend i {
+    display: inline-block;
+    width: 9px; height: 9px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .mini-timeline .mt-tipo-legend i.slot-swatch {
+    background: rgba(6, 118, 71, 0.05);
+    border: 1.5px dashed #86efac;
+    box-sizing: border-box;
+  }
   .mini-timeline .mt-ticks {
     display: flex; justify-content: space-between;
     font-size: 9px; color: var(--text-muted);
@@ -4396,7 +4420,18 @@ function renderMiniTimeline(currentRes) {
       + '</div>';
   });
   container.className = 'mini-timeline';
-  container.innerHTML = '<div class="mt-legend">Ocupación · 3 días · tap bloques para verlos</div>' + rowsHtml;
+  // Leyenda de colores por tipo (referencia rápida bajo el timeline)
+  const legendTipos = ''
+    + '<div class="mt-tipo-legend">'
+    +   '<span><i style="background:#6a9e62"></i>Noche</span>'
+    +   '<span><i style="background:#d97706"></i>Pasatarde</span>'
+    +   '<span><i style="background:#3b82f6"></i>Pasanoche</span>'
+    +   '<span><i style="background:#f97316"></i>Pasadía</span>'
+    +   '<span><i style="background:#5b54c9"></i>Early</span>'
+    +   '<span><i style="background:#ec4899"></i>Late</span>'
+    +   '<span><i class="slot-swatch"></i>Libre</span>'
+    + '</div>';
+  container.innerHTML = '<div class="mt-legend">Ocupación · 3 días · tap bloques para verlos</div>' + rowsHtml + legendTipos;
 }
 
 // Detecta ventanas libres que se pueden cotizar como pasatarde o pasanoche
