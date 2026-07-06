@@ -4267,10 +4267,11 @@ function renderMiniTimeline(currentRes) {
   const container = document.getElementById('detailMiniTimeline');
   if (!container) return;
   const cabin = currentRes.cabin;
-  // Ancla: día principal visible del huésped (checkin real, no cortesía).
-  const tipoCur = currentRes.tipo || 'noche';
-  let anchor = currentRes.checkin;
-  if (tipoCur === 'pasadia' || tipoCur === 'early') anchor = _addDaysISO(currentRes.checkin, 1);
+  // Ancla FIJA en el día real actual (hoy). El timeline funciona como una
+  // vista operativa: siempre ves "ayer / hoy / mañana" reales, sin importar
+  // qué reserva estés viendo. Útil para coordinar limpieza sobre lo actual.
+  const _now = new Date();
+  const anchor = _now.getFullYear() + '-' + String(_now.getMonth()+1).padStart(2,'0') + '-' + String(_now.getDate()).padStart(2,'0');
   const days = [_addDaysISO(anchor, -1), anchor, _addDaysISO(anchor, 1)];
   const dayStarts = days.map(d => new Date(d + 'T00:00:00'));
   const dayEnds   = dayStarts.map(d => { const x = new Date(d); x.setDate(x.getDate()+1); return x; });
