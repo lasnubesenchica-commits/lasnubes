@@ -798,7 +798,9 @@
   }
 
   /* ── Mini timeline: 3 días con franjas de ocupación real ─────── */
+  /* ── Mini timeline vertical: reloj vertical + agenda al lado ─── */
   .mini-timeline {
+    --mt-hour-h: 10px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -809,69 +811,218 @@
     text-transform: uppercase; letter-spacing: 0.06em;
     margin-bottom: 8px; font-weight: 600;
   }
-  .mini-timeline .mt-row {
-    display: grid;
-    grid-template-columns: 70px 1fr;
-    gap: 10px;
-    align-items: center;
-    padding: 4px 0;
-  }
-  .mini-timeline .mt-row.current .mt-label { font-weight: 600; color: var(--text); }
-  .mini-timeline .mt-label { font-size: 11px; color: var(--text-muted); line-height: 1.2; }
-  .mini-timeline .mt-label b { display: block; font-size: 10px; }
-  .mini-timeline .mt-bar-wrap { position: relative; }
-  .mini-timeline .mt-bar {
-    position: relative;
-    height: 18px;
-    background: repeating-linear-gradient(90deg, transparent 0 24.9%, rgba(0,0,0,0.05) 25% 25.1%);
-    background-color: #fff;
+  .mini-timeline .mt-v-scroll {
+    background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 4px;
-    overflow: hidden;
+    border-radius: 6px;
+    max-height: 460px;
+    overflow-y: auto;
   }
-  .mini-timeline .mt-block {
-    position: absolute; top: 0; bottom: 0;
-    font-size: 9px; line-height: 18px;
-    color: white; font-weight: 700;
-    text-align: center;
-    padding: 0 3px;
+  .mini-timeline .mt-v-grid {
+    display: grid;
+    grid-template-columns: 44px 22px 1fr;
+    column-gap: 8px;
+    padding: 8px 12px 12px;
+    position: relative;
+  }
+  .mini-timeline .mt-v-hours {
+    position: relative;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+  .mini-timeline .mt-v-hour {
+    position: absolute;
+    right: 0;
+    transform: translateY(-50%);
+    font-variant-numeric: tabular-nums;
+  }
+  .mini-timeline .mt-v-day-label {
+    position: absolute;
+    left: 0; right: 0;
+    padding: 2px 4px 2px 0;
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--verde-dark);
+    text-align: right;
+    background: var(--surface);
+    z-index: 3;
+    line-height: 1.05;
+  }
+  .mini-timeline .mt-v-day-label span {
+    display: block;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+    margin-top: 1px;
+  }
+  .mini-timeline .mt-v-bar-col {
+    position: relative;
+    background: var(--bg);
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+  .mini-timeline .mt-v-daybreak {
+    position: absolute;
+    left: 0; right: 0;
+    height: 1px;
+    background: repeating-linear-gradient(90deg, var(--border) 0 3px, transparent 3px 6px);
+    z-index: 2;
+  }
+  .mini-timeline .mt-v-block {
+    position: absolute;
+    left: 0; right: 0;
+    color: white;
+    font-weight: 700;
+    font-size: 9px;
+    padding: 2px 3px;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    text-align: center;
     letter-spacing: 0.02em;
+    box-sizing: border-box;
+    border-radius: 2px;
     cursor: pointer;
+    line-height: 1.15;
     transition: filter 0.15s ease;
   }
-  .mini-timeline .mt-block:hover { filter: brightness(1.1); }
-  .mini-timeline .mt-block:active { filter: brightness(0.92); }
-  .mini-timeline .mt-block.current { box-shadow: inset 0 0 0 2px var(--text); }
-  /* Slots libres cotizables (pasatarde / pasanoche) — bloques punteados */
-  .mini-timeline .mt-slot {
-    position: absolute; top: 1px; bottom: 1px;
+  .mini-timeline .mt-v-block:hover  { filter: brightness(1.1); }
+  .mini-timeline .mt-v-block:active { filter: brightness(0.9); }
+  .mini-timeline .mt-v-block.current { box-shadow: inset 0 0 0 2px var(--text); }
+  .mini-timeline .mt-v-slot {
+    position: absolute;
+    left: 1px; right: 1px;
     background: rgba(6, 118, 71, 0.05);
     border: 1.5px dashed #86efac;
     border-radius: 3px;
-    font-size: 8.5px; line-height: 14px;
+    font-size: 8.5px;
     color: #067647; font-weight: 600;
     text-align: center;
-    padding: 0 3px;
+    box-sizing: border-box;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     cursor: pointer;
+    line-height: 1.15;
+    padding: 1px 2px;
     transition: all 0.15s;
   }
-  .mini-timeline .mt-slot:hover {
+  .mini-timeline .mt-v-slot:hover {
     background: rgba(6, 118, 71, 0.13);
     border-color: #22c55e;
     border-style: solid;
   }
-  .mini-timeline .mt-slot:active { background: rgba(6, 118, 71, 0.2); }
+  .mini-timeline .mt-v-agenda {
+    position: relative;
+    font-size: 12px;
+  }
+  .mini-timeline .mt-v-day-block {
+    position: absolute;
+    left: 0; right: 0;
+    padding: 4px 0 0 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow: hidden;
+  }
+  .mini-timeline .mt-v-item {
+    display: grid;
+    grid-template-columns: 58px 1fr;
+    column-gap: 6px;
+    align-items: baseline;
+    line-height: 1.3;
+    cursor: pointer;
+  }
+  .mini-timeline .mt-v-item:hover strong { color: var(--verde-dark); }
+  .mini-timeline .mt-v-item time {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 10px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .mini-timeline .mt-v-item strong { font-weight: 600; color: var(--text); font-size: 12px; }
+  .mini-timeline .mt-v-item .tag {
+    display: block;
+    font-size: 10.5px;
+    color: var(--text-muted);
+    margin-top: 1px;
+    line-height: 1.3;
+  }
+  .mini-timeline .mt-v-clean {
+    display: grid;
+    grid-template-columns: 58px 1fr;
+    column-gap: 6px;
+    align-items: baseline;
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+  .mini-timeline .mt-v-clean.tight   { color: #a35c04; }
+  .mini-timeline .mt-v-clean.critical { color: #b8332a; font-weight: 500; }
+  .mini-timeline .mt-v-clean b {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 10px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: inherit;
+    font-weight: 600;
+    justify-self: end;
+    white-space: nowrap;
+  }
+  .mini-timeline .mt-v-clean.tight b    { border-color: rgba(163,92,4,0.35); }
+  .mini-timeline .mt-v-clean.critical b { border-color: rgba(184,51,42,0.4); }
+  .mini-timeline .mt-v-carry {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-style: italic;
+    padding-left: 6px;
+    border-left: 2px solid var(--border);
+    line-height: 1.3;
+  }
+  .mini-timeline .mt-v-empty {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 3px 6px;
+    text-align: center;
+    background: var(--bg);
+    border-radius: 4px;
+    border: 1px dashed var(--border);
+  }
+  .mini-timeline .mt-v-slot-item {
+    display: grid;
+    grid-template-columns: 58px 1fr;
+    column-gap: 6px;
+    align-items: baseline;
+    background: rgba(6, 118, 71, 0.05);
+    border: 1.5px dashed #86efac;
+    border-radius: 4px;
+    padding: 4px 6px;
+    color: #067647;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .mini-timeline .mt-v-slot-item:hover {
+    background: rgba(6, 118, 71, 0.13);
+    border-style: solid;
+  }
+  .mini-timeline .mt-v-slot-item time {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 10px;
+    color: #0a7043;
+    font-variant-numeric: tabular-nums;
+  }
+  .mini-timeline .mt-v-slot-item strong { color: #067647; font-weight: 700; font-size: 11.5px; }
   /* Leyenda de tipos debajo del timeline */
   .mini-timeline .mt-tipo-legend {
     display: flex; flex-wrap: wrap;
     gap: 6px 12px;
-    padding-top: 10px;
+    padding: 10px 2px 2px;
     margin-top: 8px;
     border-top: 1px solid rgba(0,0,0,0.06);
     font-size: 10px;
@@ -891,14 +1042,6 @@
     border: 1.5px dashed #86efac;
     box-sizing: border-box;
   }
-  .mini-timeline .mt-ticks {
-    display: flex; justify-content: space-between;
-    font-size: 9px; color: var(--text-muted);
-    padding: 1px 1px 0;
-    margin-top: 1px;
-  }
-  .mini-timeline .mt-ticks span:first-child { margin-left: -2px; }
-  .mini-timeline .mt-ticks span:last-child  { margin-right: -2px; }
 
   .btn-sm {
     padding: 5px 10px;
@@ -4361,66 +4504,192 @@ function renderMiniTimeline(currentRes) {
     });
   });
 
-  let rowsHtml = '';
+  // ── Layout vertical: 10px por hora, 240px por día, 720px total (3 días).
+  const HOUR_H = 10;
+  const DAY_H  = 24 * HOUR_H;
+  const TOTAL_H = 3 * DAY_H;
+  // Convertir un Date a offset en px desde el inicio del rango de 3 días.
+  const rangeStartMs = dayStarts[0].getTime();
+  const dtToPx = (dt) => Math.max(0, Math.min(TOTAL_H, (dt.getTime() - rangeStartMs) / (3600000) * HOUR_H));
+
+  // ── Columna de horas + labels de día ─────────────────────────
+  let hoursHtml = '';
   days.forEach((day, idx) => {
     const d = new Date(day + 'T00:00:00');
-    const isAnchor = (day === anchor);
-    const isToday  = (day === todayISO);
+    const isToday = (day === todayISO);
     const labelDate = DOW[d.getDay()] + ' ' + d.getDate() + ' ' + MON[d.getMonth()];
-    const rowPrefix = isToday ? 'Hoy' : '';
+    const dayTop = idx * DAY_H;
+    const suffix = isToday ? '<span>Hoy</span>' : (day === anchor ? '<span>Esta</span>' : '');
+    hoursHtml += '<div class="mt-v-day-label" style="top:' + dayTop + 'px;">' + escapeHtml(labelDate) + suffix + '</div>';
+    // Ticks de horas dentro del día (6a, 12p, 6p). El 12a se solapa con el label del día.
+    [6, 12, 18].forEach(h => {
+      const label = h === 12 ? '12p' : (h < 12 ? h + 'a' : (h - 12) + 'p');
+      hoursHtml += '<div class="mt-v-hour" style="top:' + (dayTop + h * HOUR_H) + 'px;">' + label + '</div>';
+    });
+  });
+
+  // ── Columna de barra: daybreaks + bloques + slots ────────────
+  let barHtml = '';
+  // Daybreaks a 240px y 480px
+  barHtml += '<div class="mt-v-daybreak" style="top:' + DAY_H + 'px;"></div>';
+  barHtml += '<div class="mt-v-daybreak" style="top:' + (2*DAY_H) + 'px;"></div>';
+  // Bloques de reservas
+  events.forEach(e => {
+    const top = dtToPx(e.start);
+    const bottom = dtToPx(e.end);
+    const height = Math.max(4, bottom - top);
+    const tipo = e.r.tipo || 'noche';
+    const bg = TIPO_BG[tipo] || '#6a9e62';
+    const short = TIPO_SHORT[tipo] || tipo;
+    const first = (e.r.name || '').split(' ')[0] || '?';
+    // Mostrar iniciales si el bloque es < 24px de alto.
+    const inner = height >= 34 ? escapeHtml(first) + '<br>' + short
+                : height >= 20 ? escapeHtml(first)
+                : escapeHtml(first.charAt(0) + short.charAt(0));
+    const isCurrent = e.r.id === currentRes.id;
+    const cls = isCurrent ? 'mt-v-block current' : 'mt-v-block';
+    const tip = e.r.name + ' · ' + short + ' · ' + _fmtDT(e.start) + ' → ' + _fmtDT(e.end) + ' · tap para ver detalle';
+    const onclick = 'onclick="event.stopPropagation();_timelineBlockClick(\'' + escapeHtml(String(e.r.id)) + '\')"';
+    barHtml += '<div class="' + cls + '" ' + onclick
+             + ' style="top:' + top.toFixed(1) + 'px;height:' + height.toFixed(1) + 'px;background:' + bg + ';"'
+             + ' title="' + escapeHtml(tip) + '">' + inner + '</div>';
+  });
+  // Slots libres (bloques dashed)
+  allSlots.forEach(slot => {
+    // Clipear al rango visible
+    if (slot.end.getTime() <= rangeStartMs || slot.start.getTime() >= rangeStartMs + TOTAL_H/HOUR_H*3600000) return;
+    const top = dtToPx(slot.start);
+    const bottom = dtToPx(slot.end);
+    const height = Math.max(6, bottom - top);
+    const short = slot.tipo === 'pasatarde' ? 'PT' : slot.tipo === 'pasanoche' ? 'PN' : '';
+    const inner = height >= 20 ? '＋<br>' + short : '＋';
+    const slotTip = 'Ventana libre · ' + _fmtDT(slot.start) + ' → ' + _fmtDT(slot.end) + ' · tap para cotizar/registrar';
+    barHtml += '<div class="mt-v-slot" onclick="event.stopPropagation();showAvailabilityDetail(\'' + cabin + '\',\'' + slot.originDay + '\',\'' + slot.tipo + '\')"'
+             + ' style="top:' + top.toFixed(1) + 'px;height:' + height.toFixed(1) + 'px;"'
+             + ' title="' + escapeHtml(slotTip) + '">' + inner + '</div>';
+  });
+
+  // ── Columna de agenda: una sección por día, entries fluyen ────
+  const _fmtHM = (dt) => {
+    let h = dt.getHours();
+    const m = dt.getMinutes();
+    const ampm = h >= 12 ? 'pm' : 'am';
+    h = h % 12; if (h === 0) h = 12;
+    return h + (m ? ':' + String(m).padStart(2,'0') : '') + ' ' + ampm;
+  };
+  const _hoursDiff = (a, b) => (b - a) / 3600000;
+  const _fmtDuration = (hrs) => {
+    if (hrs < 1) return Math.round(hrs * 60) + 'min';
+    const h = Math.floor(hrs);
+    const m = Math.round((hrs - h) * 60);
+    if (m === 0) return h + 'h';
+    if (m === 30) return h + '½h';
+    return h + 'h ' + m + 'm';
+  };
+
+  let agendaHtml = '';
+  days.forEach((day, idx) => {
     const dayStart = dayStarts[idx];
     const dayEnd   = dayEnds[idx];
-    const overlapping = events.filter(e => e.start < dayEnd && e.end > dayStart);
-    // Slots libres que se superponen con este día (incluye colas de pasanoche
-    // del día anterior).
-    const availableSlots = allSlots.filter(slot => slot.start < dayEnd && slot.end > dayStart);
-    const slotsHtml = availableSlots.map(slot => {
-      const s = slot.start < dayStart ? dayStart : slot.start;
-      const en = slot.end > dayEnd ? dayEnd : slot.end;
-      const startPct = (s - dayStart) / MS_DAY * 100;
-      const width    = (en - s)     / MS_DAY * 100;
-      const isTail = slot.originDay !== day;  // Cola de pasanoche del día anterior
-      let label;
-      if (slot.tipo === 'pasatarde')      label = '＋ PT libre';
-      else if (slot.tipo === 'pasanoche') label = isTail ? 'PN → 12:30p' : '＋ PN libre';
-      else                                label = '＋ libre';
-      const slotTip = 'Ventana libre · ' + _fmtDT(slot.start) + ' → ' + _fmtDT(slot.end) + ' · tap para cotizar/registrar';
-      return '<div class="mt-slot" onclick="event.stopPropagation();showAvailabilityDetail(\'' + cabin + '\',\'' + slot.originDay + '\',\'' + slot.tipo + '\')" style="left:' + startPct.toFixed(2) + '%;width:' + width.toFixed(2) + '%" title="' + escapeHtml(slotTip) + '">' + label + '</div>';
-    }).join('');
-    const blocksHtml = overlapping.map(e => {
-      const s = e.start < dayStart ? dayStart : e.start;
-      const en = e.end > dayEnd ? dayEnd : e.end;
-      const startPct = (s - dayStart) / MS_DAY * 100;
-      const width    = (en - s)     / MS_DAY * 100;
-      const tipo = e.r.tipo || 'noche';
-      const bg = TIPO_BG[tipo] || '#6a9e62';
-      const short = TIPO_SHORT[tipo] || tipo;
-      const first = (e.r.name || '').split(' ')[0] || '?';
-      const label = first + ' · ' + short;
-      const isCurrent = e.r.id === currentRes.id;
-      const cls = isCurrent ? 'mt-block current' : 'mt-block';
-      // Cada bloque es clickeable → cambia el detalle del top al de la
-      // reserva tapeada, PERO mantiene el timeline anclado en la reserva
-      // originalmente abierta (no se corren las fechas).
-      const onclick = 'onclick="event.stopPropagation();_timelineBlockClick(\'' + escapeHtml(String(e.r.id)) + '\')"';
-      const tip = e.r.name + ' · ' + short + ' · ' + _fmtDT(e.start) + ' → ' + _fmtDT(e.end) + ' · tap para ver detalle';
-      return '<div class="' + cls + '" ' + onclick + ' style="left:' + startPct.toFixed(2) + '%;width:' + width.toFixed(2) + '%;background:' + bg + ';" title="' + escapeHtml(tip) + '">' + escapeHtml(label) + '</div>';
-    }).join('');
-    const rowCls = isAnchor ? 'mt-row current' : 'mt-row';
-    const labelHtml = rowPrefix
-      ? '<b>' + rowPrefix + '</b>' + labelDate
-      : labelDate;
-    rowsHtml += ''
-      + '<div class="' + rowCls + '">'
-      +   '<div class="mt-label">' + labelHtml + '</div>'
-      +   '<div class="mt-bar-wrap">'
-      +     '<div class="mt-bar">' + slotsHtml + blocksHtml + '</div>'
-      +     '<div class="mt-ticks"><span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span></div>'
-      +   '</div>'
-      + '</div>';
+    const dayTop   = idx * DAY_H;
+    // Eventos que suceden dentro de este día (start o end caen en el rango del día)
+    // Ordenados por tiempo cronológico.
+    const dayEvents = events.filter(e => e.start < dayEnd && e.end > dayStart);
+    // Carry-over: reservas que empezaron antes de este día y continúan
+    const carries = dayEvents.filter(e => e.start < dayStart);
+    // Construir lista de items cronológicos: entra/sale + limpieza
+    const items = [];
+    dayEvents.forEach(e => {
+      if (e.start >= dayStart && e.start < dayEnd) {
+        items.push({ type: 'entra', at: e.start, e: e });
+      }
+      if (e.end > dayStart && e.end <= dayEnd) {
+        items.push({ type: 'sale', at: e.end, e: e });
+      }
+    });
+    // Ventanas de limpieza entre sale (event_i.end) y siguiente entra (event_j.start)
+    // en este día. Ordenar events por start, y detectar gaps.
+    const sortedInDay = dayEvents.slice().sort((a, b) => a.start - b.start);
+    for (let i = 0; i < sortedInDay.length - 1; i++) {
+      const cur = sortedInDay[i];
+      const nxt = sortedInDay[i + 1];
+      if (cur.end < nxt.start && cur.end >= dayStart && nxt.start <= dayEnd) {
+        const gapH = _hoursDiff(cur.end, nxt.start);
+        if (gapH > 0.05) {
+          const level = gapH < 1 ? 'critical' : (gapH <= 2 ? 'tight' : '');
+          items.push({ type: 'clean', at: cur.end, gapH: gapH, level: level });
+        }
+      }
+    }
+    // Slots libres para agenda: los que arrancan en este día O son cola de pasanoche.
+    allSlots.forEach(slot => {
+      if (slot.originDay === day) {
+        items.push({ type: 'slot', at: slot.start, slot: slot });
+      }
+    });
+    // Ordenar cronológicamente
+    items.sort((a, b) => a.at - b.at);
+
+    let inner = '';
+    // Carry-overs al inicio
+    carries.forEach(e => {
+      const short = TIPO_SHORT[e.r.tipo || 'noche'] || 'Noche';
+      inner += '<div class="mt-v-carry">' + escapeHtml(e.r.name) + ' · ' + short + ' continúa desde ' + _fmtDT(e.start) + '</div>';
+    });
+    // Placeholder si no hay eventos ni carry-overs
+    if (items.length === 0 && carries.length === 0) {
+      inner += '<div class="mt-v-empty">Sin ocupación registrada</div>';
+    }
+    // Items
+    items.forEach(it => {
+      if (it.type === 'entra') {
+        const tipo = it.e.r.tipo || 'noche';
+        const short = TIPO_SHORT[tipo] || 'Noche';
+        const persons = it.e.r.persons ? it.e.r.persons + ' pers' : '';
+        const salida = _fmtDT(it.e.end);
+        const tag = [short, persons, 'sale ' + salida].filter(Boolean).join(' · ');
+        const rid = escapeHtml(String(it.e.r.id));
+        inner += '<div class="mt-v-item" onclick="event.stopPropagation();_timelineBlockClick(\'' + rid + '\')">'
+              +   '<time>' + _fmtHM(it.at) + '</time>'
+              +   '<div><strong>' + escapeHtml(it.e.r.name) + ' entra</strong>'
+              +     '<span class="tag">' + escapeHtml(tag) + '</span>'
+              +   '</div>'
+              + '</div>';
+      } else if (it.type === 'sale') {
+        const rid = escapeHtml(String(it.e.r.id));
+        inner += '<div class="mt-v-item" onclick="event.stopPropagation();_timelineBlockClick(\'' + rid + '\')">'
+              +   '<time>' + _fmtHM(it.at) + '</time>'
+              +   '<div><strong>' + escapeHtml(it.e.r.name) + ' sale</strong></div>'
+              + '</div>';
+      } else if (it.type === 'clean') {
+        const dur = _fmtDuration(it.gapH);
+        const suffix = it.level === 'critical' ? '⚠' : '';
+        const desc = it.level === 'critical' ? 'ventana crítica — turnover al límite'
+                   : it.level === 'tight'    ? 'ventana de limpieza · ajustado'
+                   :                            'ventana de limpieza';
+        const cls = 'mt-v-clean' + (it.level ? ' ' + it.level : '');
+        inner += '<div class="' + cls + '">'
+              +   '<b>' + dur + (suffix ? ' ' + suffix : '') + '</b>'
+              +   '<span>' + desc + '</span>'
+              + '</div>';
+      } else if (it.type === 'slot') {
+        const slot = it.slot;
+        const tipoLabel = slot.tipo === 'pasatarde' ? 'Pasatarde libre' : 'Pasanoche libre';
+        const horas = slot.tipo === 'pasatarde' ? '12:30 pm – 7 pm'
+                    : slot.tipo === 'pasanoche' ? '8 pm – 12:30 pm día siguiente'
+                    : '';
+        inner += '<div class="mt-v-slot-item" onclick="event.stopPropagation();showAvailabilityDetail(\'' + cabin + '\',\'' + slot.originDay + '\',\'' + slot.tipo + '\')">'
+              +   '<time>' + _fmtHM(slot.start) + '</time>'
+              +   '<div><strong>' + tipoLabel + '</strong>'
+              +     '<span class="tag" style="color:#0a7043;">' + horas + ' · tap para cotizar</span>'
+              +   '</div>'
+              + '</div>';
+      }
+    });
+    agendaHtml += '<div class="mt-v-day-block" style="top:' + dayTop + 'px;height:' + DAY_H + 'px;">' + inner + '</div>';
   });
+
   container.className = 'mini-timeline';
-  // Leyenda de colores por tipo (referencia rápida bajo el timeline)
   const legendTipos = ''
     + '<div class="mt-tipo-legend">'
     +   '<span><i style="background:#6a9e62"></i>Noche</span>'
@@ -4431,7 +4700,16 @@ function renderMiniTimeline(currentRes) {
     +   '<span><i style="background:#ec4899"></i>Late</span>'
     +   '<span><i class="slot-swatch"></i>Libre</span>'
     + '</div>';
-  container.innerHTML = '<div class="mt-legend">Ocupación · 3 días · tap bloques para verlos</div>' + rowsHtml + legendTipos;
+  container.innerHTML = ''
+    + '<div class="mt-legend">Ocupación · 3 días · tap bloques o eventos para verlos</div>'
+    + '<div class="mt-v-scroll">'
+    +   '<div class="mt-v-grid" style="height:' + TOTAL_H + 'px;">'
+    +     '<div class="mt-v-hours">' + hoursHtml + '</div>'
+    +     '<div class="mt-v-bar-col">' + barHtml + '</div>'
+    +     '<div class="mt-v-agenda">' + agendaHtml + '</div>'
+    +   '</div>'
+    + '</div>'
+    + legendTipos;
 }
 
 // Detecta ventanas libres que se pueden cotizar como pasatarde o pasanoche
