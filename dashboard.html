@@ -4313,6 +4313,18 @@ function renderMiniTimeline(currentRes) {
   };
   const TIPO_SHORT = { noche:'Noche', pasatarde:'PT', pasanoche:'PN', pasadia:'PD', early:'Early', late:'Late' };
   const MS_DAY = 24 * 3600 * 1000;
+  // Formatea "vie 24 jul 8:00pm" a partir de un Date.
+  const _fmtDT = (dt) => {
+    const dowShort = ['dom','lun','mar','mié','jue','vie','sáb'][dt.getDay()];
+    const dd = dt.getDate();
+    const mm = MON[dt.getMonth()];
+    let h = dt.getHours();
+    const mn = dt.getMinutes();
+    const ampm = h >= 12 ? 'pm' : 'am';
+    h = h % 12; if (h === 0) h = 12;
+    const mnStr = mn === 0 ? '' : ':' + String(mn).padStart(2,'0');
+    return dowShort + ' ' + dd + ' ' + mm + ' ' + h + mnStr + ampm;
+  };
 
   // Pre-computar TODOS los slots libres de los 3 días con originDay tagueado.
   // Un slot de pasanoche que arranca en día X y termina en X+1 se dibuja tanto
@@ -4348,7 +4360,8 @@ function renderMiniTimeline(currentRes) {
       if (slot.tipo === 'pasatarde')      label = '＋ PT libre';
       else if (slot.tipo === 'pasanoche') label = isTail ? 'PN → 12:30p' : '＋ PN libre';
       else                                label = '＋ libre';
-      return '<div class="mt-slot" onclick="event.stopPropagation();showAvailabilityDetail(\'' + cabin + '\',\'' + slot.originDay + '\',\'' + slot.tipo + '\')" style="left:' + startPct.toFixed(2) + '%;width:' + width.toFixed(2) + '%" title="Ventana libre — tap para cotizar/registrar">' + label + '</div>';
+      const slotTip = 'Ventana libre · ' + _fmtDT(slot.start) + ' → ' + _fmtDT(slot.end) + ' · tap para cotizar/registrar';
+      return '<div class="mt-slot" onclick="event.stopPropagation();showAvailabilityDetail(\'' + cabin + '\',\'' + slot.originDay + '\',\'' + slot.tipo + '\')" style="left:' + startPct.toFixed(2) + '%;width:' + width.toFixed(2) + '%" title="' + escapeHtml(slotTip) + '">' + label + '</div>';
     }).join('');
     const blocksHtml = overlapping.map(e => {
       const s = e.start < dayStart ? dayStart : e.start;
@@ -4366,7 +4379,8 @@ function renderMiniTimeline(currentRes) {
       // reserva tapeada, PERO mantiene el timeline anclado en la reserva
       // originalmente abierta (no se corren las fechas).
       const onclick = 'onclick="event.stopPropagation();_timelineBlockClick(\'' + escapeHtml(String(e.r.id)) + '\')"';
-      return '<div class="' + cls + '" ' + onclick + ' style="left:' + startPct.toFixed(2) + '%;width:' + width.toFixed(2) + '%;background:' + bg + ';" title="' + escapeHtml(e.r.name + ' — ' + short + ' · tap para ver detalle') + '">' + escapeHtml(label) + '</div>';
+      const tip = e.r.name + ' · ' + short + ' · ' + _fmtDT(e.start) + ' → ' + _fmtDT(e.end) + ' · tap para ver detalle';
+      return '<div class="' + cls + '" ' + onclick + ' style="left:' + startPct.toFixed(2) + '%;width:' + width.toFixed(2) + '%;background:' + bg + ';" title="' + escapeHtml(tip) + '">' + escapeHtml(label) + '</div>';
     }).join('');
     const rowCls = isAnchor ? 'mt-row current' : 'mt-row';
     const labelHtml = rowPrefix
