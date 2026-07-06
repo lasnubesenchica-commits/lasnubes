@@ -2270,6 +2270,38 @@ function buildEmailHTMLAbierta(r) {
 '</td></tr></table></td></tr></table></body></html>';
 }
 
+// Banner para reservas multi-cabaña: se inserta arriba del bloque de detalles
+// cuando r.multiCabin trae un array con las N estadías hermanas.
+function _multiCabinBannerHTML(r) {
+  if (!r || !r.multiCabin || !Array.isArray(r.multiCabin) || r.multiCabin.length < 2) return '';
+  const total = parseFloat(r.amount) || 0;
+  let rows = '';
+  r.multiCabin.forEach(function(s, i) {
+    const color = CABIN_COLORS_EMAIL[s.cabin] || '#6a9e62';
+    const ciFmt = formatDateES(s.checkin);
+    const coFmt = formatDateES(s.checkout);
+    const nightsLbl = (s.nights === 1 ? '1 noche' : s.nights + ' noches');
+    const amtLbl = s.amount ? ' · $' + parseFloat(s.amount).toFixed(2) : '';
+    rows += '<tr>'
+         +  '<td style="padding:8px 0;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:0.06em;width:36px;vertical-align:top;">' + (i+1) + '</td>'
+         +  '<td style="padding:8px 0;font-size:14px;color:#3a3530;vertical-align:top;">'
+         +    '<span style="display:inline-block;width:8px;height:8px;background:' + color + ';border-radius:50%;margin-right:8px;vertical-align:middle;"></span>'
+         +    '<strong style="color:' + color + ';">' + (s.cabinName || s.cabin) + '</strong>'
+         +    '<span style="color:#8a8078;font-size:12px;margin-left:8px;">' + nightsLbl + amtLbl + '</span>'
+         +    '<br><span style="font-size:12px;color:#6b6560;padding-left:18px;">' + ciFmt + ' → ' + coFmt + '</span>'
+         +  '</td>'
+         +  '</tr>';
+  });
+  return '<table width="100%" cellpadding="0" cellspacing="0" style="background:#fef9f0;border:1px solid #e8dfc9;border-left:4px solid #d97706;border-radius:10px;margin-bottom:20px;">'
+       +   '<tr><td style="padding:18px 22px;">'
+       +     '<p style="margin:0 0 4px;font-size:12px;color:#8a6000;text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">Estadía multi-cabaña</p>'
+       +     '<p style="margin:0 0 12px;font-size:14px;color:#3a3530;line-height:1.5;">Reservaste <strong>' + r.multiCabin.length + ' cabañas</strong> consecutivas con un pago único de <strong>$' + total.toFixed(2) + '</strong>. Cambiarás de cabaña según este itinerario:</p>'
+       +     '<table width="100%" cellpadding="0" cellspacing="0">' + rows + '</table>'
+       +     '<p style="margin:12px 0 0;font-size:12px;color:#6b6560;line-height:1.5;">El día del cambio te esperamos con la siguiente cabaña lista. Si tienes dudas, escríbenos al WhatsApp.</p>'
+       +   '</td></tr>'
+       + '</table>';
+}
+
 function buildEmailHTML(r) {
   if (r.origin === 'Abierta') return buildEmailHTMLAbierta(r);
   const cabin       = CABIN_NAMES_EMAIL[r.cabin] || r.cabin;
@@ -2300,6 +2332,7 @@ function buildEmailHTML(r) {
 '</td></tr>' +
 '<tr><td style="background:#ffffff;padding:36px 40px;">' +
 '<p style="margin:0 0 18px;font-size:16px;color:#3a3530;line-height:1.6;">Hola <strong>' + r.name + '</strong>, tu reserva ha sido confirmada. ¡Te esperamos en Las Nubes!</p>' +
+_multiCabinBannerHTML(r) +
 (r.origin === 'Referido' ? '<p style="margin:0 0 18px;font-size:13px;color:#385d7a;background:#eef4f8;border-left:3px solid #5a85b0;padding:10px 14px;border-radius:6px;">&#129309; Tarifa pactada con descuento del <strong>Programa Amigos</strong>.</p>' : '') +
 (publicLink ? '<p style="margin:0 0 24px;font-size:13px;color:#6b6560;">&#128279; <a href="' + publicLink + '" target="_blank" style="color:' + color + ';text-decoration:none;font-weight:500;border-bottom:1px solid ' + color + ';">Ver detalles online</a> &mdash; este link tambi&eacute;n se puede compartir por WhatsApp.</p>' : '') +
 '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f8f6;border-radius:12px;border:1px solid #e8e4de;margin-bottom:24px;">' +

@@ -232,16 +232,28 @@ function sendWAReservaConfirmada(reservation) {
     azul:  'Portal hacia Las Nubes',
     lila:  'Puente entre Las Nubes'
   };
-  const cabin = CABIN_NAMES[reservation.cabin] || reservation.cabin || 'Las Nubes';
+  const CABIN_SHORT = { verde: 'Paseo', azul: 'Portal', lila: 'Puente' };
 
-  // Linea de fechas segun tipo
-  let fechas;
-  const tipo = meta.tipo;
-  if (tipo === 'pasatarde')      fechas = meta.checkinFmt + ' · Pasatarde 12:30pm – 7pm';
-  else if (tipo === 'pasadia')   fechas = meta.checkinFmt + ' · Pasadía 9am – 5pm';
-  else if (tipo === 'early')     fechas = meta.checkinFmt + ' → ' + meta.checkoutFmt + ' · 1 noche (entrada anticipada 9am)';
-  else if (tipo === 'late')      fechas = meta.checkinFmt + ' → ' + meta.checkoutFmt + ' · 1 noche (salida tardía 4pm)';
-  else                           fechas = meta.checkinFmt + ' → ' + meta.checkoutFmt + ' · ' + meta.estanciaValue + (meta.estanciaValue === 1 ? ' noche' : ' noches');
+  // Multi-cabaña: override cabana + fechas para reflejar el itinerario.
+  const isMulti = reservation.multiCabin && Array.isArray(reservation.multiCabin) && reservation.multiCabin.length >= 2;
+  let cabin, fechas;
+  if (isMulti) {
+    const arr = reservation.multiCabin;
+    const cabinTags = arr.map(function(s) { return CABIN_SHORT[s.cabin] || s.cabin; });
+    cabin = cabinTags.join(' → ') + ' (multi-cabaña)';
+    const totalNights = arr.reduce(function(sum, s) { return sum + (s.nights || 0); }, 0);
+    const firstIn = formatDateES(arr[0].checkin);
+    const lastOut = formatDateES(arr[arr.length - 1].checkout);
+    fechas = firstIn + ' → ' + lastOut + ' · ' + totalNights + ' ' + (totalNights === 1 ? 'noche' : 'noches') + ' en ' + arr.length + ' cabañas';
+  } else {
+    cabin = CABIN_NAMES[reservation.cabin] || reservation.cabin || 'Las Nubes';
+    const tipo = meta.tipo;
+    if (tipo === 'pasatarde')      fechas = meta.checkinFmt + ' · Pasatarde 12:30pm – 7pm';
+    else if (tipo === 'pasadia')   fechas = meta.checkinFmt + ' · Pasadía 9am – 5pm';
+    else if (tipo === 'early')     fechas = meta.checkinFmt + ' → ' + meta.checkoutFmt + ' · 1 noche (entrada anticipada 9am)';
+    else if (tipo === 'late')      fechas = meta.checkinFmt + ' → ' + meta.checkoutFmt + ' · 1 noche (salida tardía 4pm)';
+    else                           fechas = meta.checkinFmt + ' → ' + meta.checkoutFmt + ' · ' + meta.estanciaValue + (meta.estanciaValue === 1 ? ' noche' : ' noches');
+  }
 
   const persons      = parseInt(reservation.persons, 10) || 1;
   const personasStr  = persons + (persons === 1 ? ' persona' : ' personas');

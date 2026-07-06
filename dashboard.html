@@ -6664,6 +6664,63 @@ async function _saveMultiCabinReservation() {
     save();
   }
 
+  // ── Notificaciones: UN solo email + UN solo WhatsApp consolidado ──
+  // Armar objeto sintético que combina las hermanas para pasarle al backend.
+  // El backend detecta el campo `multiCabin` y ajusta el template.
+  const CABIN_NAMES_FULL = {
+    verde: 'Paseo por Las Nubes',
+    azul:  'Portal hacia Las Nubes',
+    lila:  'Puente entre Las Nubes'
+  };
+  const combined = Object.assign({}, reservasHermanas[0], {
+    amount: totalAmount,
+    // Preservar deposit total (no solo el de la primera hermana)
+    deposit: deposit,
+    // checkout consolidado = último día
+    checkout: reservasHermanas[reservasHermanas.length - 1].checkout,
+    // voucherURL compartido (ya seteado si la subida funcionó)
+    voucherURL: sharedVoucherURL || '',
+    multiCabin: reservasHermanas.map(rr => ({
+      id: rr.id,
+      cabin: rr.cabin,
+      cabinName: CABIN_NAMES_FULL[rr.cabin] || rr.cabin,
+      checkin: rr.checkin,
+      checkout: rr.checkout,
+      nights: Math.round((new Date(rr.checkout + 'T12:00:00') - new Date(rr.checkin + 'T12:00:00')) / 86400000),
+      amount: rr.amount
+    }))
+  });
+
+  // Email consolidado
+  if (email) {
+    try {
+      showToast('📧 Enviando email consolidado…');
+      const emailPayload = { action: 'sendConfirmationEmail', reservation: combined };
+      if (pv && pv.base64 && (origin === 'Directa' || origin === 'Referido')) {
+        emailPayload.voucherBase64   = pv.base64;
+        emailPayload.voucherMimeType = pv.mimeType || 'image/jpeg';
+      }
+      const _emailRes  = await fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify(emailPayload) });
+      const _emailData = await _emailRes.json();
+      if (_emailData.ok) showToast('📧 Email enviado ✓');
+      else showToast('⚠ Email falló: ' + (_emailData.error || 'error'));
+    } catch(e) { console.warn('email consolidado error:', e); }
+  }
+
+  // WhatsApp consolidado
+  const shouldSendWA = telefono && (origin === 'Directa' || origin === 'Referido');
+  if (shouldSendWA) {
+    try {
+      const _waRes  = await fetch(SHEETS_API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'sendWAConfirmacion', reservation: combined })
+      });
+      const _waData = await _waRes.json();
+      if (_waData.ok) showToast('💬 WhatsApp enviado ✓');
+      else showToast('⚠ WhatsApp falló: ' + (_waData.error || 'error'));
+    } catch(e) { console.warn('WA consolidado error:', e); }
+  }
+
   if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Guardar reserva'; }
   closeModal();
   renderCalendar();
