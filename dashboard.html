@@ -4221,6 +4221,9 @@ function showDispDetail(id) {
     }
   }
   try { _setDetailMode('reservation'); } catch(e) { console.warn('setDetailMode', e); }
+  // Setear ancla solo la primera vez (o al reabrir); los taps dentro del
+  // timeline preservan el ancla original vía _preserveTimelineAnchor.
+  if (!_preserveTimelineAnchor) _timelineAnchorRes = r;
   try { renderMiniTimeline(r); } catch(e) { console.warn('renderMiniTimeline', e); }
   document.getElementById('detailOverlay').classList.add('open');
 }
@@ -4266,13 +4269,17 @@ function _reservationOccupancySpans(r) {
 function renderMiniTimeline(currentRes) {
   const container = document.getElementById('detailMiniTimeline');
   if (!container) return;
-  const cabin = currentRes.cabin;
-  // Ancla: día principal de la reserva vista (checkin real, no cortesía).
+  // El ancla del timeline es persistente durante la vida del modal (no se
+  // mueve al tocar bloques). Se usa _timelineAnchorRes si está seteado,
+  // sino cae al currentRes.
+  const anchorRes = _timelineAnchorRes || currentRes;
+  const cabin = anchorRes.cabin;
+  // Ancla: día principal de la reserva ancla (checkin real, no cortesía).
   // El label "Hoy" solo aparece si alguno de los 3 días coincide con el
   // día real actual — no se usa como posición fija Ayer/Hoy/Mañana.
-  const tipoCur = currentRes.tipo || 'noche';
-  let anchor = currentRes.checkin;
-  if (tipoCur === 'pasadia' || tipoCur === 'early') anchor = _addDaysISO(currentRes.checkin, 1);
+  const tipoCur = anchorRes.tipo || 'noche';
+  let anchor = anchorRes.checkin;
+  if (tipoCur === 'pasadia' || tipoCur === 'early') anchor = _addDaysISO(anchorRes.checkin, 1);
   const _now = new Date();
   const todayISO = _now.getFullYear() + '-' + String(_now.getMonth()+1).padStart(2,'0') + '-' + String(_now.getDate()).padStart(2,'0');
   const days = [_addDaysISO(anchor, -1), anchor, _addDaysISO(anchor, 1)];
@@ -4341,9 +4348,10 @@ function renderMiniTimeline(currentRes) {
       const label = first + ' · ' + short;
       const isCurrent = e.r.id === currentRes.id;
       const cls = isCurrent ? 'mt-block current' : 'mt-block';
-      // Cada bloque es clickeable → recarga el modal con la reserva tocada.
-      // La reserva actual también es clickable pero no cambia nada (idempotente).
-      const onclick = 'onclick="event.stopPropagation();showDispDetail(\'' + escapeHtml(String(e.r.id)) + '\')"';
+      // Cada bloque es clickeable → cambia el detalle del top al de la
+      // reserva tapeada, PERO mantiene el timeline anclado en la reserva
+      // originalmente abierta (no se corren las fechas).
+      const onclick = 'onclick="event.stopPropagation();_timelineBlockClick(\'' + escapeHtml(String(e.r.id)) + '\')"';
       return '<div class="' + cls + '" ' + onclick + ' style="left:' + startPct.toFixed(2) + '%;width:' + width.toFixed(2) + '%;background:' + bg + ';" title="' + escapeHtml(e.r.name + ' — ' + short + ' · tap para ver detalle') + '">' + escapeHtml(label) + '</div>';
     }).join('');
     const rowCls = isAnchor ? 'mt-row current' : 'mt-row';
@@ -4452,6 +4460,23 @@ function _copyAvailabilityQuote(cabin, dayISO, tipo) {
 
 function closeDetail() {
   document.getElementById('detailOverlay').classList.remove('open');
+  // Al cerrar el modal, olvidar el ancla persistente del timeline. La
+  // próxima apertura re-anclará en la reserva de destino.
+  _timelineAnchorRes = null;
+}
+
+// Estado del ancla del timeline en el modal detalle. Se setea al abrir
+// (showDispDetail sin flag) y se preserva mientras el usuario toca
+// bloques dentro del timeline (para no correr las fechas).
+let _timelineAnchorRes = null;
+let _preserveTimelineAnchor = false;
+
+// Handler para tap en un bloque del timeline: repuebla el header con la
+// reserva tapeada pero MANTIENE las 3 fechas del timeline en la reserva
+// originalmente abierta.
+function _timelineBlockClick(id) {
+  _preserveTimelineAnchor = true;
+  try { showDispDetail(id); } finally { _preserveTimelineAnchor = false; }
 }
 
 function closeCourtesy() {
