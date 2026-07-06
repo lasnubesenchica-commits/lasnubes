@@ -1271,6 +1271,12 @@ function doPost(e) {
         if (r.checkoutExtendido) {
           sheet.getRange(sheet.getLastRow(), 29).setValue(true);
         }
+        // Col 26 (VoucherURL) — persistir si viene en el payload. Usado por el
+        // flujo multi-cabaña donde el voucher se sube una vez y su URL se
+        // comparte entre las reservas hermanas.
+        if (r.voucherURL) {
+          sheet.getRange(sheet.getLastRow(), 26).setValue(r.voucherURL);
+        }
       } catch(appendErr) {
         Logger.log('  ✗ appendRow THREW: ' + appendErr.message + ' stack: ' + appendErr.stack);
         logDebugEntry('saveReservation-FAIL', { id: r.id, error: appendErr.message, stack: appendErr.stack ? String(appendErr.stack).slice(0, 400) : '' });
