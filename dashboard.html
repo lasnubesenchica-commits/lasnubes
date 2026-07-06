@@ -4314,6 +4314,17 @@ function renderMiniTimeline(currentRes) {
   const TIPO_SHORT = { noche:'Noche', pasatarde:'PT', pasanoche:'PN', pasadia:'PD', early:'Early', late:'Late' };
   const MS_DAY = 24 * 3600 * 1000;
 
+  // Pre-computar TODOS los slots libres de los 3 días con originDay tagueado.
+  // Un slot de pasanoche que arranca en día X y termina en X+1 se dibuja tanto
+  // en la fila de X (parte inicial 8pm-12am) como en la de X+1 (cola 12am-12:30pm).
+  // Ambos bloques rutean a la misma modal de disponibilidad (originDay).
+  const allSlots = [];
+  days.forEach(originDay => {
+    _findAvailableSlots(cabin, originDay, events).forEach(slot => {
+      allSlots.push(Object.assign({}, slot, { originDay: originDay }));
+    });
+  });
+
   let rowsHtml = '';
   days.forEach((day, idx) => {
     const d = new Date(day + 'T00:00:00');
@@ -4324,17 +4335,20 @@ function renderMiniTimeline(currentRes) {
     const dayStart = dayStarts[idx];
     const dayEnd   = dayEnds[idx];
     const overlapping = events.filter(e => e.start < dayEnd && e.end > dayStart);
-    // Detectar slots libres para pasatarde y pasanoche que arrancan este día.
-    const availableSlots = _findAvailableSlots(cabin, day, events);
+    // Slots libres que se superponen con este día (incluye colas de pasanoche
+    // del día anterior).
+    const availableSlots = allSlots.filter(slot => slot.start < dayEnd && slot.end > dayStart);
     const slotsHtml = availableSlots.map(slot => {
       const s = slot.start < dayStart ? dayStart : slot.start;
       const en = slot.end > dayEnd ? dayEnd : slot.end;
       const startPct = (s - dayStart) / MS_DAY * 100;
       const width    = (en - s)     / MS_DAY * 100;
-      const label = slot.tipo === 'pasatarde' ? '＋ PT libre'
-                  : slot.tipo === 'pasanoche' ? '＋ PN libre'
-                  : '＋ libre';
-      return '<div class="mt-slot" onclick="event.stopPropagation();showAvailabilityDetail(\'' + cabin + '\',\'' + day + '\',\'' + slot.tipo + '\')" style="left:' + startPct.toFixed(2) + '%;width:' + width.toFixed(2) + '%" title="Ventana libre — tap para cotizar/registrar">' + label + '</div>';
+      const isTail = slot.originDay !== day;  // Cola de pasanoche del día anterior
+      let label;
+      if (slot.tipo === 'pasatarde')      label = '＋ PT libre';
+      else if (slot.tipo === 'pasanoche') label = isTail ? 'PN → 12:30p' : '＋ PN libre';
+      else                                label = '＋ libre';
+      return '<div class="mt-slot" onclick="event.stopPropagation();showAvailabilityDetail(\'' + cabin + '\',\'' + slot.originDay + '\',\'' + slot.tipo + '\')" style="left:' + startPct.toFixed(2) + '%;width:' + width.toFixed(2) + '%" title="Ventana libre — tap para cotizar/registrar">' + label + '</div>';
     }).join('');
     const blocksHtml = overlapping.map(e => {
       const s = e.start < dayStart ? dayStart : e.start;
