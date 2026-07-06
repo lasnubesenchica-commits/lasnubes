@@ -2699,7 +2699,7 @@
       </div>
       <div class="form-group">
         <label>Monto total ($)</label>
-        <input type="number" id="fAmount" placeholder="0.00" step="0.01" oninput="calcSaldo()">
+        <input type="number" id="fAmount" placeholder="0.00" step="0.01" oninput="calcSaldo();_updateMultiCabinSplitInfo();">
         <label class="promo-toggle disabled" id="promoToggleLabel" title="Disponible al cargar voucher">
           <input type="checkbox" id="fPromoTarifa" onchange="togglePromoTarifa()" disabled>
           Promocional
@@ -6443,7 +6443,21 @@ async function handleVoucherUpload(event) {
       } else {
         fDeposit.value = montoNum.toFixed(2);
       }
+      // Si el voucher supera el Monto Total actual, subirlo a lo que se pagó
+      // (mantiene el split y estado de pago consistentes con la realidad).
+      // Aplica solo a reservas nuevas — en edición respetamos el total que
+      // ya estaba definido.
+      const fAmountEl = document.getElementById('fAmount');
+      if (!editId && fAmountEl) {
+        const currentAmount = parseFloat(fAmountEl.value) || 0;
+        const totalPagado = parseFloat(fDeposit.value) || 0;
+        if (totalPagado > currentAmount) {
+          fAmountEl.value = totalPagado.toFixed(2);
+          showToast('💰 Monto Total actualizado a $' + totalPagado.toFixed(2) + ' según voucher');
+        }
+      }
       calcSaldo();
+      _updateMultiCabinSplitInfo();
     }
 
     // Habilitar promo y rellenar card
