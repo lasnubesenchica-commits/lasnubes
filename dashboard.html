@@ -817,15 +817,8 @@
     padding: 4px 0;
   }
   .mini-timeline .mt-row.current .mt-label { font-weight: 600; color: var(--text); }
-  .mini-timeline .mt-label { font-size: 11px; color: var(--text-muted); line-height: 1.3; }
-  .mini-timeline .mt-badge {
-    display: inline-block; margin-left: 4px;
-    padding: 1px 5px; border-radius: 4px;
-    font-size: 9px; font-weight: 700; letter-spacing: 0.03em;
-    text-transform: lowercase;
-  }
-  .mini-timeline .mt-badge.today-badge  { background: #d1fadf; color: #067647; }
-  .mini-timeline .mt-badge.anchor-badge { background: #f0ece8; color: var(--text); }
+  .mini-timeline .mt-label { font-size: 11px; color: var(--text-muted); line-height: 1.2; }
+  .mini-timeline .mt-label b { display: block; font-size: 10px; }
   .mini-timeline .mt-bar-wrap { position: relative; }
   .mini-timeline .mt-bar {
     position: relative;
@@ -846,7 +839,11 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     letter-spacing: 0.02em;
+    cursor: pointer;
+    transition: filter 0.15s ease;
   }
+  .mini-timeline .mt-block:hover { filter: brightness(1.1); }
+  .mini-timeline .mt-block:active { filter: brightness(0.92); }
   .mini-timeline .mt-block.current { box-shadow: inset 0 0 0 2px var(--text); }
   .mini-timeline .mt-ticks {
     display: flex; justify-content: space-between;
@@ -4244,15 +4241,11 @@ function renderMiniTimeline(currentRes) {
   const TIPO_SHORT = { noche:'Noche', pasatarde:'PT', pasanoche:'PN', pasadia:'PD', early:'Early', late:'Late' };
   const MS_DAY = 24 * 3600 * 1000;
 
-  // Fecha real de hoy para marcar la fila que coincide con el día actual.
-  const nowD = new Date(); nowD.setHours(0,0,0,0);
-  const todayISO = nowD.toISOString().slice(0,10);
-
+  const rowLabels = ['Ayer', 'Hoy', 'Mañana'];
   let rowsHtml = '';
   days.forEach((day, idx) => {
     const d = new Date(day + 'T00:00:00');
     const isAnchor = (day === anchor);
-    const isToday  = (day === todayISO);
     const labelDate = DOW[d.getDay()] + ' ' + d.getDate() + ' ' + MON[d.getMonth()];
     const dayStart = dayStarts[idx];
     const dayEnd   = dayEnds[idx];
@@ -4267,16 +4260,17 @@ function renderMiniTimeline(currentRes) {
       const short = TIPO_SHORT[tipo] || tipo;
       const first = (e.r.name || '').split(' ')[0] || '?';
       const label = first + ' · ' + short;
-      const cls = e.r.id === currentRes.id ? 'mt-block current' : 'mt-block';
-      return '<div class="' + cls + '" style="left:' + startPct.toFixed(2) + '%;width:' + width.toFixed(2) + '%;background:' + bg + ';" title="' + escapeHtml(e.r.name + ' — ' + short) + '">' + escapeHtml(label) + '</div>';
+      const isCurrent = e.r.id === currentRes.id;
+      const cls = isCurrent ? 'mt-block current' : 'mt-block';
+      // Cada bloque es clickeable → recarga el modal con la reserva tocada.
+      // La reserva actual también es clickable pero no cambia nada (idempotente).
+      const onclick = 'onclick="event.stopPropagation();showDispDetail(\'' + escapeHtml(String(e.r.id)) + '\')"';
+      return '<div class="' + cls + '" ' + onclick + ' style="left:' + startPct.toFixed(2) + '%;width:' + width.toFixed(2) + '%;background:' + bg + ';" title="' + escapeHtml(e.r.name + ' — ' + short + ' · tap para ver detalle') + '">' + escapeHtml(label) + '</div>';
     }).join('');
-    const rowCls = (isAnchor ? 'mt-row current' : 'mt-row') + (isToday ? ' today' : '');
-    const badges = ''
-      + (isToday  ? '<span class="mt-badge today-badge">hoy</span>' : '')
-      + (isAnchor ? '<span class="mt-badge anchor-badge">esta</span>' : '');
+    const rowCls = isAnchor ? 'mt-row current' : 'mt-row';
     rowsHtml += ''
       + '<div class="' + rowCls + '">'
-      +   '<div class="mt-label">' + labelDate + ' ' + badges + '</div>'
+      +   '<div class="mt-label"><b>' + rowLabels[idx] + '</b>' + labelDate + '</div>'
       +   '<div class="mt-bar-wrap">'
       +     '<div class="mt-bar">' + blocksHtml + '</div>'
       +     '<div class="mt-ticks"><span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span></div>'
@@ -4284,7 +4278,7 @@ function renderMiniTimeline(currentRes) {
       + '</div>';
   });
   container.className = 'mini-timeline';
-  container.innerHTML = '<div class="mt-legend">Ocupación · 3 días</div>' + rowsHtml;
+  container.innerHTML = '<div class="mt-legend">Ocupación · 3 días · tap un bloque para verlo</div>' + rowsHtml;
 }
 
 function closeDetail() {
