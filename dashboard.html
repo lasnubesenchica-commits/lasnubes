@@ -4944,13 +4944,13 @@ function renderMiniTimeline(currentRes) {
   // (start y end de cada reserva). Sirven para "anclar" visualmente los
   // textos del agenda con los bordes de la barra a la misma hora.
   let guidesHtml = '';
-  // Shift guide 2px hacia abajo para compensar el offset natural del text
-  // ascender (con line-height 1.15 el text visible top sale ~1-2px debajo
-  // del contenedor). Así la guide cae exactamente en el top del texto.
+  // Guide se dibuja en el pixel exacto del borde del bloque (event.start /
+  // event.end en la barra). El texto del agenda cae inmediatamente debajo
+  // por el line-height natural, lo cual es la lectura semántica correcta:
+  // "en este punto ocurre X" con el label debajo.
   const _addGuide = (px) => {
-    const shifted = px + 2;
-    if (shifted < 0 || shifted > TOTAL_H) return;
-    guidesHtml += '<div class="mt-v-guide" style="top:' + shifted.toFixed(1) + 'px;"></div>';
+    if (px < 0 || px > TOTAL_H) return;
+    guidesHtml += '<div class="mt-v-guide" style="top:' + px.toFixed(1) + 'px;"></div>';
   };
   events.forEach(e => { _addGuide(dtToPx(e.start)); _addGuide(dtToPx(e.end)); });
 
