@@ -1075,13 +1075,15 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* Slot libre compacto en la agenda — hint de una línea, no card grande.
-     Info completa se ve al tapear (abre modal de disponibilidad). */
+  /* Slot libre compacto en la agenda — misma grid de 2 columnas que los
+     otros items (mt-v-item / mt-v-clean). Time a la izquierda para que
+     alinee con las horas de entra/sale y no rompa la lectura vertical. */
   .mini-timeline .mt-v-slot-hint {
-    display: flex;
+    display: grid;
+    grid-template-columns: 58px 1fr;
+    column-gap: 6px;
     align-items: baseline;
-    gap: 6px;
-    padding: 3px 6px;
+    padding: 2px 4px;
     font-size: 11px;
     color: var(--text-muted);
     line-height: 1.3;
@@ -1092,6 +1094,13 @@
   .mini-timeline .mt-v-slot-hint:hover {
     background: rgba(6, 118, 71, 0.06);
     color: var(--verde-dark);
+  }
+  .mini-timeline .mt-v-slot-hint time {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 10px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
   .mini-timeline .mt-v-slot-hint .mt-slot-lbl {
     font-weight: 600;
@@ -4827,9 +4836,11 @@ function renderMiniTimeline(currentRes) {
                      : slot.tipo === 'pasanoche' ? '$75'
                      : '';
         inner += '<div class="mt-v-slot-hint" onclick="event.stopPropagation();showAvailabilityDetail(\'' + cabin + '\',\'' + slot.originDay + '\',\'' + slot.tipo + '\')" title="Ventana libre — tap para cotizar/registrar">'
-              +   '💡 <span class="mt-slot-lbl">' + tipoLabel + ' libre</span> '
-              +   '<span class="mt-slot-hrs">' + horas + '</span> '
-              +   '<span class="mt-slot-price">' + precio + '</span>'
+              +   '<time>' + _fmtHM(slot.start) + '</time>'
+              +   '<div>💡 <span class="mt-slot-lbl">' + tipoLabel + ' libre</span> '
+              +     '<span class="mt-slot-hrs">' + horas + '</span> '
+              +     '<span class="mt-slot-price">' + precio + '</span>'
+              +   '</div>'
               + '</div>';
       }
     });
