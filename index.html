@@ -2332,8 +2332,9 @@
   <div class="tooltip-box">
     <div class="tooltip-date" id="ttDate"></div>
     <div id="ttTipoTabs" style="display:none;justify-content:center;gap:6px;margin:10px 0 4px;flex-wrap:wrap;">
-      <button data-tipo="hospedaje"     onclick="setAdminTipo('hospedaje')"     class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Hospedaje</button>
+      <button data-tipo="hospedaje" onclick="setAdminTipo('hospedaje')" class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Hospedaje</button>
       <button data-tipo="pasatarde" onclick="setAdminTipo('pasatarde')" class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Pasatarde</button>
+      <button data-tipo="pasanoche" onclick="setAdminTipo('pasanoche')" class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Pasanoche</button>
       <button data-tipo="pasadia"   onclick="setAdminTipo('pasadia')"   class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Pasadía</button>
     </div>
     <div id="ttNightsRow" style="display:none;align-items:center;justify-content:center;gap:14px;margin:8px 0 4px;">
@@ -2479,6 +2480,18 @@ async function loadData() {
       if (t.weekend !== undefined)     RATE_WEEKEND = t.weekend;
       if (t.promo   !== undefined)     RATE_PROMO   = t.promo;
       if (t.promoActive !== undefined) PROMO_ACTIVE = t.promoActive;
+      // Tarifas planas y recargos vienen del backend cuando existen en Config.
+      // Si no vienen, se conservan los defaults hardcodeados arriba.
+      if (t.pasatarde !== undefined)              PASATARDE_RATE            = t.pasatarde;
+      if (t.pasanoche !== undefined)              PASANOCHE_RATE            = t.pasanoche;
+      if (t.pasadia   !== undefined)              PASADIA_RATE              = t.pasadia;
+      if (t.recargoPersonaGrande   !== undefined) RECARGO_PERSONA_GRANDE    = t.recargoPersonaGrande;
+      if (t.recargoPersonaPortal   !== undefined) RECARGO_PERSONA_PORTAL    = t.recargoPersonaPortal;
+      if (t.recargoCombo5          !== undefined) RECARGO_COMBO_5           = t.recargoCombo5;
+      if (t.recargoCombo6          !== undefined) RECARGO_COMBO_6           = t.recargoCombo6;
+      if (t.recargoPasatardePersona!== undefined) RECARGO_PASATARDE_PERSONA = t.recargoPasatardePersona;
+      if (t.recargoPasanochePersona!== undefined) RECARGO_PASANOCHE_PERSONA = t.recargoPasanochePersona;
+      if (t.recargoPasadiaPersona  !== undefined) RECARGO_PASADIA_PERSONA   = t.recargoPasadiaPersona;
     }
   } catch(e) {
     console.warn('Sin conexión a Sheets, usando tarifas por defecto.');
@@ -2677,25 +2690,29 @@ const IS_ADMIN = new URLSearchParams(window.location.search).get('admin') === '1
 // ── DETAIL POPUP ──────────────────────────────────────────────────
 let _adminBaseDate = null;
 let _adminNights   = 1;
-let _adminTipo     = 'hospedaje'; // 'hospedaje' | 'pasatarde' | 'pasadia'
+let _adminTipo     = 'hospedaje'; // 'hospedaje' | 'pasatarde' | 'pasanoche' | 'pasadia'
 let _adminPersonas = 2;           // 2..6 (solo aplica a hospedaje)
 
-// Tarifas planas para pasatarde y pasadia (2 personas, no varian por dia ni cabaña)
-const PASATARDE_RATE  = 60;  // pasatarde 12:30-7pm
-const PASADIA_RATE    = 75;  // pasadia 9am-5pm
+// Tarifas planas para tipos-de-ventana (2 personas, no varían por día ni cabaña).
+// Se sobreescriben desde el backend en loadData (action=getTarifas).
+let PASATARDE_RATE    = 60;  // pasatarde 12:30 pm – 7:00 pm
+let PASANOCHE_RATE    = 75;  // pasanoche 8:00 pm día X – 12:30 pm día X+1
+let PASADIA_RATE      = 75;  // pasadía 9:00 am – 5:00 pm
 const PASATARDE_HORARIO = '12:30 pm – 7:00 pm';
+const PASANOCHE_HORARIO = '8:00 pm – 12:30 pm día siguiente';
 const PASADIA_HORARIO   = '9:00 am – 5:00 pm';
 
 // Recargos por persona extra en hospedaje (3-4 personas), por noche.
 // Portal solo tiene 1 cama matrimonial → traer colchon inflable.
-const RECARGO_PERSONA_GRANDE  = 20;  // Puente (lila) y Paseo (verde)
-const RECARGO_PERSONA_PORTAL  = 10;  // Portal (azul)
-const RECARGO_COMBO_5         = 80;  // Hospedaje 5 personas: Puente + Portal contiguas, por noche
-const RECARGO_COMBO_6         = 100; // Hospedaje 6 personas
+let RECARGO_PERSONA_GRANDE  = 20;  // Puente (lila) y Paseo (verde)
+let RECARGO_PERSONA_PORTAL  = 10;  // Portal (azul)
+let RECARGO_COMBO_5         = 80;  // Hospedaje 5 personas: Puente + Portal contiguas, por noche
+let RECARGO_COMBO_6         = 100; // Hospedaje 6 personas
 
-// Pasatarde / Pasadia: recargo por persona desde la 3ra. Pasadia cobra mas por las horas extra.
-const RECARGO_PASATARDE_PERSONA = 20;  // pasatarde (12:30 pm – 7:00 pm)
-const RECARGO_PASADIA_PERSONA   = 25;  // pasadia (9:00 am – 5:00 pm)
+// Pasatarde / Pasanoche / Pasadía: recargo por persona desde la 3ra.
+let RECARGO_PASATARDE_PERSONA = 20;  // 12:30 pm – 7:00 pm
+let RECARGO_PASANOCHE_PERSONA = 25;  // 8:00 pm día X – 12:30 pm día X+1 (incluye noche)
+let RECARGO_PASADIA_PERSONA   = 25;  // 9:00 am – 5:00 pm
 
 // Descripciones de camas por cabaña (para texto 3-4 personas en hospedaje)
 const CABIN_CAMAS = {
@@ -2717,8 +2734,10 @@ function _precioComboTotal(dateStr, nights, personas) {
 }
 
 function _precioPasadia(tipo, personas) {
-  const base    = tipo === 'pasatarde' ? PASATARDE_RATE         : PASADIA_RATE;
-  const recargo = tipo === 'pasatarde' ? RECARGO_PASATARDE_PERSONA : RECARGO_PASADIA_PERSONA;
+  let base, recargo;
+  if (tipo === 'pasatarde')      { base = PASATARDE_RATE; recargo = RECARGO_PASATARDE_PERSONA; }
+  else if (tipo === 'pasanoche') { base = PASANOCHE_RATE; recargo = RECARGO_PASANOCHE_PERSONA; }
+  else                           { base = PASADIA_RATE;   recargo = RECARGO_PASADIA_PERSONA; }
   if (personas <= 2) return base;
   return base + recargo * (personas - 2);
 }
@@ -2806,10 +2825,15 @@ function updateModalPriceAndCabins() {
   const nights   = isHosp ? _adminNights : 1;
   const dates    = isHosp ? getNightDates(dateStr, nights) : [dateStr];
 
-  // Para pasadia (9-5): storage incluye dia-1 (cortesia, cabaña lista 9am). Tambien debe estar libre.
-  const datesToCheck = (tipo === 'pasadia')
-    ? [_addDaysISO(dateStr, -1)].concat(dates)
-    : dates;
+  // Chequeo de días necesarios por tipo:
+  // - pasadia (9-5): incluye día-1 (cortesía, cabaña lista 9am)
+  // - pasanoche (8pm día X → 12:30pm día X+1): incluye día+1 (checkout en el siguiente)
+  // - pasatarde (12:30-7pm): solo día actual
+  // - hospedaje: rango de noches
+  let datesToCheck;
+  if (tipo === 'pasadia')        datesToCheck = [_addDaysISO(dateStr, -1)].concat(dates);
+  else if (tipo === 'pasanoche') datesToCheck = dates.concat([_addDaysISO(dateStr, 1)]);
+  else                           datesToCheck = dates;
 
   const nightsRow   = document.getElementById('ttNightsRow');
   const personasRow = document.getElementById('ttPersonasRow');
@@ -2827,7 +2851,9 @@ function updateModalPriceAndCabins() {
   const priceEl = document.getElementById('ttPrice');
   if (!isHosp) {
     const total   = _precioPasadia(tipo, personas);
-    const horario = tipo === 'pasatarde' ? PASATARDE_HORARIO : PASADIA_HORARIO;
+    const horario = tipo === 'pasatarde' ? PASATARDE_HORARIO
+                  : tipo === 'pasanoche' ? PASANOCHE_HORARIO
+                  :                        PASADIA_HORARIO;
     priceEl.textContent = '$' + total + ' · ' + horario + (personas > 2 ? ' · ' + personas + ' pers' : '');
   } else if (isCombo) {
     const total = _precioComboTotal(dateStr, nights, personas);
@@ -3013,7 +3039,7 @@ function openWA(dateStr, cabinKey) {
   // Toma tipo y personas del estado global del modal.
   const tipo  = _adminTipo  || 'noche';
   const pers  = _adminPersonas || 2;
-  const nochs = (tipo === 'pasatarde' || tipo === 'pasadia') ? 1 : (_adminNights || 1);
+  const nochs = (tipo === 'pasatarde' || tipo === 'pasanoche' || tipo === 'pasadia') ? 1 : (_adminNights || 1);
   const msg = _buildClientReservaMessage({
     dateStr,
     cabinKey,
@@ -3028,79 +3054,15 @@ function openWA(dateStr, cabinKey) {
 // Builder del mensaje que envía el cliente. Incluye todo lo necesario
 // para que el admin solo tenga que responder con las formas de pago.
 function _buildClientReservaMessage(opts) {
-  const { dateStr, cabinKey, nights, personas, tipo, isCombo } = opts;
-  const CABIN_NAMES = {
-    verde: 'Paseo por Las Nubes',
-    azul:  'Portal hacia Las Nubes',
-    lila:  'Puente entre Las Nubes'
-  };
-  const d = new Date(dateStr + 'T12:00:00');
-  const dCheckout = new Date(d);
-  dCheckout.setDate(dCheckout.getDate() + (nights || 1));
-  const isPasadia = (tipo === 'pasatarde' || tipo === 'pasadia');
-
-  // Linea de fecha
-  let fechaLine;
-  if (tipo === 'pasatarde') {
-    fechaLine = '*Fecha:* ' + formatDayLong(d) + ' · Pasatarde 12:30 pm – 7:00 pm';
-  } else if (tipo === 'pasadia') {
-    fechaLine = '*Fecha:* ' + formatDayLong(d) + ' · Pasadía 9:00 am – 5:00 pm';
-  } else if (nights === 1) {
-    fechaLine = '*Fecha:* ' + formatDayLong(d) + ' · 1 noche';
-  } else {
-    fechaLine = '*Fecha:* ' + formatDayLong(d) + ' al ' + formatDayLong(dCheckout) + ' · ' + nights + ' noches';
-  }
-
-  // Linea de cabaña
-  let cabinLine;
-  if (isCombo) {
-    cabinLine = '*Cabaña:* Combo Puente entre Las Nubes + Portal hacia Las Nubes (cabañas contiguas)';
-  } else {
-    cabinLine = '*Cabaña:* ' + (CABIN_NAMES[cabinKey] || cabinKey || '');
-  }
-
-  // Total
-  let total;
-  if (isCombo) {
-    total = _precioComboTotal(dateStr, nights || 1, personas);
-  } else if (isPasadia) {
-    total = _precioPasadia(tipo, personas);
-  } else {
-    total = _precioCabinTotal(cabinKey, dateStr, nights || 1, personas);
-  }
-  const promoNote = (!isPasadia && PROMO_ACTIVE) ? ' (tarifa promocional)' : '';
-
-  let msg = 'Hola! Deseo reservar:\n\n';
-  msg += fechaLine + '\n';
-  msg += cabinLine + '\n';
-  msg += '*Personas:* ' + personas + '\n';
-  msg += '*Total:* $' + total + '.00' + promoNote + '\n';
-  if (!isPasadia) {
-    msg += '\n';
-    msg += 'Check-in '  + formatDayShort(d)         + ': 2:00 pm\n';
-    msg += 'Check-out ' + formatDayShort(dCheckout) + ': 11:00 am\n';
-  }
-  msg += '\n'
-    + '*Cocina & Alimentación*\n'
-    + '• Cocina completamente equipada para preparar sus alimentos\n'
-    + '• Área de BBQ disponible\n'
-    + '• Incluye café, azúcar y especias básicas\n'
-    + '• Cooler grande disponible (no contamos con nevera — traer hielo y alimentos)\n'
-    + '• Menú sencillo de comida disponible bajo reserva previa\n'
-    + '\n'
-    + '*Energía & Conectividad*\n'
-    + '• Iluminación 100% solar mediante paneles fotovoltaicos\n'
-    + '• Inversor disponible para cargar celulares y dispositivos\n'
-    + '• Excelente señal de todas las operadoras\n'
-    + '\n'
-    + '*Baño & Comodidades*\n'
-    + '• Jabón de baño, papel higiénico y toallas limpias incluidos\n'
-    + '• Fumigación semanal — se recomienda traer repelente si eres sensible a mosquitos\n'
-    + '\n'
-    + '*Privacidad*\n'
-    + '• Todas las instalaciones son de uso exclusivo para quienes reservan\n';
-  msg += '\nQuedo atento a las formas de pago. ¡Gracias!';
-  return msg;
+  return _buildQuoteText({
+    dateStr:  opts.dateStr,
+    cabinKey: opts.cabinKey,
+    nights:   opts.nights || 1,
+    personas: opts.personas,
+    tipo:     opts.tipo,
+    isCombo:  !!opts.isCombo,
+    audience: 'client'
+  });
 }
 
 function closeTooltip() {
@@ -3209,110 +3171,137 @@ function formatDayLong(d) {
 }
 
 // ── COPY PROMO ────────────────────────────────────────────────────
-function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
-  nights   = nights   || 1;
-  tipo     = tipo     || 'hospedaje';
-  personas = personas || 2;
-  const isCombo = cabinKey === 'combo';
-  const cabin   = isCombo ? null : CABINS.find(c => c.key === cabinKey);
-  const d       = new Date(dateStr + 'T12:00:00');
+// Bloque compartido de amenidades para todas las cotizaciones. Mantener
+// SIN mención de menú/comida — no ofrecemos ese servicio.
+const _AMENIDADES_BLOCK =
+    '*Cocina & Alimentación*\n'
+  + '• Cocina completamente equipada para preparar sus alimentos\n'
+  + '• Área de BBQ disponible\n'
+  + '• Incluye café, azúcar y especias básicas\n'
+  + '• Cooler grande disponible (no contamos con nevera — traer hielo y alimentos)\n'
+  + '\n'
+  + '*Energía & Conectividad*\n'
+  + '• Iluminación 100% solar mediante paneles fotovoltaicos\n'
+  + '• Inversor disponible para cargar celulares y dispositivos\n'
+  + '• Excelente señal de todas las operadoras\n'
+  + '\n'
+  + '*Baño & Comodidades*\n'
+  + '• Jabón de baño, papel higiénico y toallas limpias incluidos\n'
+  + '• Fumigación semanal — se recomienda traer repelente si eres sensible a mosquitos\n'
+  + '\n'
+  + '*Privacidad*\n'
+  + '• Todas las instalaciones son de uso exclusivo para quienes reservan';
+
+const CABIN_NOMBRES_FULL = {
+  verde: 'Paseo por Las Nubes',
+  azul:  'Portal hacia Las Nubes',
+  lila:  'Puente entre Las Nubes'
+};
+
+// Header emoji unificado (mismo estilo que dashboard._copyAvailabilityQuote).
+// audience='admin' → intro "Tengo disponible…" · audience='client' → "Deseo reservar…"
+function _buildQuoteText(opts) {
+  const {
+    dateStr, cabinKey, nights, personas, tipo,
+    isCombo, audience   // 'admin' o 'client'
+  } = opts;
+  const isAdmin = audience === 'admin';
+  const d = new Date(dateStr + 'T12:00:00');
   const dCheckout = new Date(d);
-  dCheckout.setDate(dCheckout.getDate() + nights);
+  dCheckout.setDate(dCheckout.getDate() + (nights || 1));
 
-  const checkinLabel      = formatDayShort(d);
-  const checkoutLabel     = formatDayShort(dCheckout);
-  const fechaLong         = formatDayLong(d);
-  const fechaCheckoutLong = formatDayLong(dCheckout);
-  const dias              = nights + 1;
+  const fechaShort  = formatDayShort(d);
+  const fechaLong   = formatDayLong(d);
+  const coShortLbl  = formatDayShort(dCheckout);
+  const coLongLbl   = formatDayLong(dCheckout);
+  const persLbl     = personas + (personas === 1 ? ' persona' : ' personas');
 
-  const CABIN_NOMBRES = {
-    verde: 'Paseo por Las Nubes',
-    azul:  'Portal hacia Las Nubes',
-    lila:  'Puente entre Las Nubes'
-  };
-  const cabinNombre = isCombo ? null : (CABIN_NOMBRES[cabinKey] || cabin.name);
+  const cabinTitle = isCombo
+    ? 'Combo Puente + Portal'
+    : (CABIN_NOMBRES_FULL[cabinKey] || cabinKey || '');
 
-  const seccionesComunes =
-      '*Cocina & Alimentación*\n'
-    + '• Cocina completamente equipada para preparar sus alimentos\n'
-    + '• Área de BBQ disponible\n'
-    + '• Incluye café, azúcar y especias básicas\n'
-    + '• Cooler grande disponible (no contamos con nevera — traer hielo y alimentos)\n'
-    + '• Menú sencillo de comida disponible bajo reserva previa\n'
-    + '\n'
-    + '*Energía & Conectividad*\n'
-    + '• Iluminación 100% solar mediante paneles fotovoltaicos\n'
-    + '• Inversor disponible para cargar celulares y dispositivos\n'
-    + '• Excelente señal de todas las operadoras\n'
-    + '\n'
-    + '*Baño & Comodidades*\n'
-    + '• Jabón de baño, papel higiénico y toallas limpias incluidos\n'
-    + '• Fumigación semanal — se recomienda traer repelente si eres sensible a mosquitos\n'
-    + '\n'
-    + '*Privacidad*\n'
-    + '• Todas las instalaciones son de uso exclusivo para quienes reservan\n'
-    + '\n'
-    + '*Para Reservar*\n'
-    + '• Pago disponible vía Yappy o ACH\n'
-    + '• Quedo atento si desea proceder para compartirle las formas de pago';
+  const isPasadiaLike = tipo === 'pasatarde' || tipo === 'pasanoche' || tipo === 'pasadia';
 
-  let texto;
-  if (tipo === 'pasatarde' || tipo === 'pasadia') {
-    const monto    = _precioPasadia(tipo, personas);
-    const horaIn   = tipo === 'pasatarde' ? '12:30 pm'   : '9:00 am';
-    const horaOut  = tipo === 'pasatarde' ? '7:00 pm'    : '5:00 pm';
-    const label    = tipo === 'pasatarde' ? 'pasatarde'  : 'pasadía';
-    const persLbl  = personas + ' personas';
-    texto = 'Tengo disponible el ' + fechaLong + ' en concepto de ' + label + ' en $' + monto + '.00 para ' + persLbl + '.\n\n'
-      + '*Cabaña:* ' + cabinNombre + '\n'
-      + 'Entrada ' + checkinLabel + ': ' + horaIn + '\n'
-      + 'Salida '  + checkinLabel + ': ' + horaOut + '\n'
-      + '\n'
-      + seccionesComunes;
+  // Total
+  let total;
+  if (isPasadiaLike)   total = _precioPasadia(tipo, personas);
+  else if (isCombo)    total = _precioComboTotal(dateStr, nights || 1, personas);
+  else                 total = _precioCabinTotal(cabinKey, dateStr, nights || 1, personas);
+  const promoNote = (!isPasadiaLike && PROMO_ACTIVE) ? ' (tarifa promocional)' : '';
+
+  // Línea de horario según tipo
+  let horarioLine, fechaLine;
+  if (tipo === 'pasatarde') {
+    fechaLine   = '📅 ' + fechaLong;
+    horarioLine = '🕐 Pasatarde ' + PASATARDE_HORARIO;
+  } else if (tipo === 'pasanoche') {
+    fechaLine   = '📅 ' + fechaLong;
+    horarioLine = '🕐 Pasanoche ' + PASANOCHE_HORARIO;
+  } else if (tipo === 'pasadia') {
+    fechaLine   = '📅 ' + fechaLong;
+    horarioLine = '🕐 Pasadía ' + PASADIA_HORARIO;
+  } else if (nights === 1) {
+    fechaLine   = '📅 ' + fechaLong + ' · 1 noche';
+    horarioLine = '🕐 Check-in 2:00 pm · Check-out 11:00 am día siguiente';
   } else {
-    // Hospedaje: ajustar tarifa y descripcion de personas
-    let total;
-    if (isCombo) {
-      total = _precioComboTotal(dateStr, nights, personas);
-    } else {
-      total = _precioCabinTotal(cabinKey, dateStr, nights, personas);
-    }
-    const personasLabel = personas + ' personas';
-    let introLine;
-    if (nights === 1) {
-      introLine = PROMO_ACTIVE
-        ? 'Tengo la noche del ' + fechaLong + ' disponible para reserva en tarifa promocional de $' + total + '.00 para ' + personasLabel + '.'
-        : 'Tengo la noche del ' + fechaLong + ' disponible para reserva a $' + total + '.00 para ' + personasLabel + '.';
-    } else {
-      introLine = PROMO_ACTIVE
-        ? 'Tengo las noches del ' + fechaLong + ' al ' + fechaCheckoutLong + ' disponibles para reserva en tarifa promocional de $' + total + '.00 para ' + personasLabel + '.'
-        : 'Tengo las noches del ' + fechaLong + ' al ' + fechaCheckoutLong + ' disponibles para reserva a $' + total + '.00 para ' + personasLabel + '.';
-    }
-
-    let cabinaBlock;
-    if (isCombo) {
-      cabinaBlock =
-          '*Cabañas:*\n'
-        + 'Puente entre Las Nubes: 2 camas matrimoniales (queen y full)\n'
-        + 'Portal hacia Las Nubes: 1 cama matrimonial full\n'
-        + 'Las cabañas son contiguas y se comunican. Perfectas para grupos.\n';
-    } else if (personas >= 3) {
-      cabinaBlock =
-          '*Cabaña:* ' + cabinNombre + '\n'
-        + CABIN_CAMAS[cabinKey] + '\n';
-    } else {
-      cabinaBlock = '*Cabaña:* ' + cabinNombre + '\n';
-    }
-
-    texto = introLine + '\n\n'
-      + cabinaBlock
-      + 'Check in ' + checkinLabel + ': 2:00 pm\n'
-      + 'Check out ' + checkoutLabel + ': 11:00 am\n'
-      + (nights > 1 ? dias + ' dias, ' + nights + ' noches\n' : '')
-      + '\n'
-      + seccionesComunes;
+    fechaLine   = '📅 ' + fechaLong + ' → ' + coLongLbl + ' · ' + nights + ' noches';
+    horarioLine = '🕐 Check-in ' + fechaShort + ' 2:00 pm · Check-out ' + coShortLbl + ' 11:00 am';
   }
 
+  // Header emoji + intro por audiencia
+  let header = '🌿 *Las Nubes · ' + cabinTitle + '*\n\n';
+  let intro;
+  if (isAdmin) {
+    if (isPasadiaLike) {
+      const label = tipo === 'pasatarde' ? 'pasatarde'
+                  : tipo === 'pasanoche' ? 'pasanoche'
+                  :                        'pasadía';
+      intro = 'Tengo disponible el ' + fechaLong + ' en concepto de ' + label + ' para ' + persLbl + '.';
+    } else if (nights === 1) {
+      intro = PROMO_ACTIVE
+        ? 'Tengo la noche del ' + fechaLong + ' disponible en tarifa promocional para ' + persLbl + '.'
+        : 'Tengo la noche del ' + fechaLong + ' disponible para reserva, ' + persLbl + '.';
+    } else {
+      intro = PROMO_ACTIVE
+        ? 'Tengo las noches del ' + fechaLong + ' al ' + coLongLbl + ' disponibles en tarifa promocional para ' + persLbl + '.'
+        : 'Tengo las noches del ' + fechaLong + ' al ' + coLongLbl + ' disponibles para reserva, ' + persLbl + '.';
+    }
+  } else {
+    intro = 'Hola! Deseo reservar:';
+  }
+
+  // Bloque de camas si aplica
+  let camasLine = '';
+  if (isCombo) {
+    camasLine = '\n\n*Camas:* Puente (queen + full) + Portal (full). Las cabañas son contiguas y se comunican — ideal para grupos.';
+  } else if (!isPasadiaLike && personas >= 3 && CABIN_CAMAS[cabinKey]) {
+    camasLine = '\n\n' + CABIN_CAMAS[cabinKey];
+  }
+
+  const cierre = isAdmin
+    ? 'Quedo atento si desea proceder y le comparto las formas de pago (Yappy o ACH).'
+    : 'Quedo atento a las formas de pago. ¡Gracias!';
+
+  return header
+    + intro + '\n\n'
+    + fechaLine + '\n'
+    + horarioLine + '\n'
+    + '💰 $' + total + '.00' + promoNote
+    + camasLine + '\n\n'
+    + _AMENIDADES_BLOCK + '\n\n'
+    + cierre;
+}
+
+function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
+  const texto = _buildQuoteText({
+    dateStr,
+    cabinKey,
+    nights:   nights   || 1,
+    tipo:     tipo     || 'hospedaje',
+    personas: personas || 2,
+    isCombo:  cabinKey === 'combo',
+    audience: 'admin'
+  });
   navigator.clipboard.writeText(texto).then(() => {
     showCopyToast();
   }).catch(() => {

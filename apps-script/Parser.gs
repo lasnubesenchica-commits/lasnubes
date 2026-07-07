@@ -886,7 +886,19 @@ function doGet(e) {
         weekday:     parseFloat(map['weekday'])    || 90,
         weekend:     parseFloat(map['weekend'])    || 110,
         promo:       parseFloat(map['promo'])      || 75,
-        promoActive: map['promoActive'] === true || map['promoActive'] === 'true' || map['promoActive'] === 1
+        promoActive: map['promoActive'] === true || map['promoActive'] === 'true' || map['promoActive'] === 1,
+        // Tarifas planas para ventanas cortas (2 personas base).
+        pasatarde:          parseFloat(map['pasatarde'])            || 60,
+        pasanoche:          parseFloat(map['pasanoche'])            || 75,
+        pasadia:            parseFloat(map['pasadia'])              || 75,
+        // Recargos por persona extra (desde la 3ra).
+        recargoPersonaGrande:   parseFloat(map['recargoPersonaGrande'])   || 20,
+        recargoPersonaPortal:   parseFloat(map['recargoPersonaPortal'])   || 10,
+        recargoCombo5:          parseFloat(map['recargoCombo5'])          || 80,
+        recargoCombo6:          parseFloat(map['recargoCombo6'])          || 100,
+        recargoPasatardePersona: parseFloat(map['recargoPasatardePersona']) || 20,
+        recargoPasanochePersona: parseFloat(map['recargoPasanochePersona']) || 25,
+        recargoPasadiaPersona:   parseFloat(map['recargoPasadiaPersona'])   || 25
       };
       return ContentService
         .createTextOutput(JSON.stringify({ ok: true, tarifas }))
