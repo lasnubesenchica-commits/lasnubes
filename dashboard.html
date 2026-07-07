@@ -4791,7 +4791,8 @@ function renderMiniTimeline(currentRes) {
         const gapH = _hoursDiff(cur.end, nxt.start);
         if (gapH > 0.05) {
           const level = gapH < 1 ? 'critical' : (gapH <= 2 ? 'tight' : '');
-          items.push({ type: 'clean', at: cur.end, gapH: gapH, level: level });
+          // Guardo también end para centrar el texto entre las 2 guides.
+          items.push({ type: 'clean', at: cur.end, endAt: nxt.start, gapH: gapH, level: level });
         }
       }
     }
@@ -4812,12 +4813,26 @@ function renderMiniTimeline(currentRes) {
       if (it.type === 'entra') return 40;   // strong + tag = 2 líneas
       return 20;                             // sale / clean / slot = 1 línea
     };
+    // Offset visual: la guide se dibuja a la altura exacta de la hora, pero
+    // el texto tiene line-height que lo empuja hacia abajo. Compensamos
+    // ~4px para que el baseline del texto coincida con la guide.
+    const LINE_OFFSET = -4;
     const positioned = [];
     let prevBottom = 0;
     items.forEach(it => {
-      const idealTop = ((it.at - dayStart) / (3600000)) * HOUR_H;
       const height = _estHeight(it);
-      const top = Math.max(idealTop, prevBottom);
+      let top;
+      if (it.type === 'clean' && it.endAt) {
+        // Centrar el texto de "ventana de limpieza" entre las 2 guides
+        // (sale del anterior en it.at y entra del siguiente en it.endAt).
+        const startPx = ((it.at - dayStart) / 3600000) * HOUR_H;
+        const endPx   = ((it.endAt - dayStart) / 3600000) * HOUR_H;
+        const midCentered = startPx + (endPx - startPx - height) / 2;
+        top = Math.max(midCentered, prevBottom + 2);
+      } else {
+        const idealTop = ((it.at - dayStart) / 3600000) * HOUR_H;
+        top = Math.max(idealTop + LINE_OFFSET, prevBottom);
+      }
       positioned.push(Object.assign({}, it, { top: top, height: height }));
       prevBottom = top + height + 2;
     });
