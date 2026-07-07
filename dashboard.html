@@ -4812,13 +4812,13 @@ function renderMiniTimeline(currentRes) {
     // el segundo hacia abajo. Preserva orden cronológico a costa de que la
     // alineación con la barra sea aproximada en zonas densas.
     const _estHeight = (it) => {
-      if (it.type === 'entra') return 44;   // strong + tag = 2 líneas + padding
-      return 22;                             // sale / clean / slot = 1 línea + padding
+      if (it.type === 'entra') return 40;   // strong + tag = 2 líneas
+      return 18;                             // sale / clean / slot = 1 línea compacta
     };
-    // Shift items 5px hacia abajo respecto al guide superior para dar
-    // breathing room. Cada item se lee como "contenido en su celda"
-    // acotada por 2 guides.
-    const ITEM_SHIFT = 5;
+    // Shift items hacia abajo respecto al guide superior para dar breathing
+    // room. 3px es suficiente para que el texto se lea con margen del guide,
+    // sin comprometer el fit en gaps chicos (3h).
+    const ITEM_SHIFT = 3;
     // Posicionar items por hora exacta + shift. Clean se centra entre 2 guides.
     const positioned = [];
     let prevBottom = 0;
@@ -4828,10 +4828,13 @@ function renderMiniTimeline(currentRes) {
       if (it.type === 'clean' && it.endAt) {
         // Centrar el texto de "ventana de limpieza" entre las 2 guides
         // (sale del anterior en it.at y entra del siguiente en it.endAt).
+        // Clamp para que clean NUNCA se pase del endAt guide (bottom border
+        // de su celda) — mantiene siempre >=2px de padding sobre el guide.
         const startPx = ((it.at - dayStart) / 3600000) * HOUR_H;
         const endPx   = ((it.endAt - dayStart) / 3600000) * HOUR_H;
         const midCentered = startPx + (endPx - startPx - height) / 2;
-        top = Math.max(midCentered, prevBottom + 2);
+        const maxTop = endPx - height - 3;  // 3px de padding sobre bottom guide
+        top = Math.min(Math.max(midCentered, prevBottom + 2), maxTop);
       } else {
         const idealTop = ((it.at - dayStart) / 3600000) * HOUR_H;
         top = Math.max(idealTop + ITEM_SHIFT, prevBottom);
