@@ -6873,49 +6873,70 @@ async function _saveMultiCabinReservation() {
   const saveBtn = document.getElementById('saveReservationBtn');
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Guardando ' + reservasHermanas.length + ' reservas…'; }
 
-  // POST secuencial. La primera sube el voucher y captura el URL; las siguientes
-  // lo incluyen en el payload para persistirlo directo en su columna 26.
+  // POST secuencial con retry. La primera sube el voucher y captura el URL;
+  // las siguientes lo incluyen en el payload. Fallos se recolectan para
+  // reporte visible al admin (así no se pierden silenciosamente).
   let sharedVoucherURL = '';
-  let allOk = true;
+  const failedHermanas = [];
+  const _postSave = async (r) => {
+    const res = await fetch(SHEETS_API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'saveReservation', reservation: r })
+    });
+    return await res.json();
+  };
   for (let i = 0; i < reservasHermanas.length; i++) {
     const r = Object.assign({}, reservasHermanas[i]);
     if (sharedVoucherURL) r.voucherURL = sharedVoucherURL;
-    try {
-      const res = await fetch(SHEETS_API_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'saveReservation', reservation: r })
-      });
-      const data = await res.json();
-      if (!data || !data.ok) { allOk = false; console.warn('multi-cabin save failed:', data); }
-      // Después de la primera: subir voucher y capturar URL para las siguientes.
-      if (i === 0 && pv) {
-        try {
-          if (saveBtn) saveBtn.textContent = '📎 Subiendo voucher…';
-          const vres = await fetch(SHEETS_API_URL, {
-            method: 'POST',
-            body: JSON.stringify({
-              action: 'saveVoucherToDrive',
-              reservation: r,
-              imageBase64: pv.base64,
-              mimeType:    pv.mimeType,
-              fileName:    pv.fileName
-            })
-          });
-          const vdata = await vres.json();
-          if (vdata && vdata.ok && vdata.fileUrl) {
-            sharedVoucherURL = vdata.fileUrl;
-            // Reflejar el URL en el objeto local también
-            const idx0 = reservations.findIndex(x => x.id === r.id);
-            if (idx0 >= 0) reservations[idx0].voucherURL = sharedVoucherURL;
-          }
-        } catch(e) { console.warn('voucher upload error:', e); }
+    let ok = false;
+    let lastError = null;
+    // Hasta 3 intentos con backoff simple para tolerar errores de red /
+    // dedup semántico (que podría desaparecer si el admin cancela la fila
+    // vieja mientras tanto — improbable, pero cubre casos edge).
+    for (let attempt = 1; attempt <= 3 && !ok; attempt++) {
+      try {
+        const data = await _postSave(r);
+        if (data && data.ok && data.status !== 'duplicate') {
+          ok = true;
+        } else {
+          lastError = data && data.error ? data.error : (data && data.status) || 'unknown';
+          console.warn('multi-cabin save attempt ' + attempt + '/' + 3 + ' hermana ' + (i+1) + ':', data);
+          if (attempt < 3) await new Promise(res => setTimeout(res, 500 * attempt));
+        }
+      } catch(e) {
+        lastError = e.message;
+        console.error('multi-cabin save network attempt ' + attempt + '/' + 3 + ' hermana ' + (i+1) + ':', e);
+        if (attempt < 3) await new Promise(res => setTimeout(res, 500 * attempt));
       }
-      if (saveBtn) saveBtn.textContent = '⏳ Guardado ' + (i+1) + '/' + reservasHermanas.length + '…';
-    } catch(e) {
-      allOk = false;
-      console.error('multi-cabin save network error:', e);
     }
+    if (!ok) {
+      failedHermanas.push({ index: i + 1, hermana: reservasHermanas[i], error: lastError });
+    }
+    // Después de la primera reserva OK: subir voucher y capturar URL.
+    if (i === 0 && ok && pv) {
+      try {
+        if (saveBtn) saveBtn.textContent = '📎 Subiendo voucher…';
+        const vres = await fetch(SHEETS_API_URL, {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'saveVoucherToDrive',
+            reservation: r,
+            imageBase64: pv.base64,
+            mimeType:    pv.mimeType,
+            fileName:    pv.fileName
+          })
+        });
+        const vdata = await vres.json();
+        if (vdata && vdata.ok && vdata.fileUrl) {
+          sharedVoucherURL = vdata.fileUrl;
+          const idx0 = reservations.findIndex(x => x.id === r.id);
+          if (idx0 >= 0) reservations[idx0].voucherURL = sharedVoucherURL;
+        }
+      } catch(e) { console.warn('voucher upload error:', e); }
+    }
+    if (saveBtn) saveBtn.textContent = '⏳ Guardado ' + (i+1) + '/' + reservasHermanas.length + (ok ? '' : ' ⚠') + '…';
   }
+  const allOk = failedHermanas.length === 0;
 
   // Reflejar sharedVoucherURL en las siguientes reservas locales también.
   if (sharedVoucherURL) {
@@ -6988,9 +7009,27 @@ async function _saveMultiCabinReservation() {
   renderCalendar();
   renderList();
   renderDisponibilidad();
-  showToast(allOk
-    ? '✓ ' + reservasHermanas.length + ' reservas guardadas · $' + totalAmount.toFixed(2) + ' distribuido'
-    : '⚠ Algunas reservas fallaron — revisar');
+  if (allOk) {
+    showToast('✓ ' + reservasHermanas.length + ' reservas guardadas · $' + totalAmount.toFixed(2) + ' distribuido');
+  } else {
+    // Reporte visible con las hermanas que fallaron. Bloquea el modal
+    // hasta que el admin confirme que vio el problema — así no se pierden
+    // reservas silenciosamente como pasó antes.
+    const CABIN_LBL = { verde: 'Paseo', azul: 'Portal', lila: 'Puente' };
+    const detalle = failedHermanas.map(f =>
+      '  · Hermana ' + f.index + '/' + reservasHermanas.length +
+      ' → ' + (CABIN_LBL[f.hermana.cabin] || f.hermana.cabin) +
+      ' ' + f.hermana.checkin + ' → ' + f.hermana.checkout +
+      (f.error ? '  [' + f.error + ']' : '')
+    ).join('\n');
+    alert(
+      '⚠ MULTI-CABAÑA: ' + failedHermanas.length + ' de ' + reservasHermanas.length +
+      ' hermanas NO se guardaron en el Sheet.\n\n' + detalle +
+      '\n\nCrea manualmente las reservas faltantes o intenta de nuevo.' +
+      '\nLos IDs y detalles están en la consola (F12).'
+    );
+    console.error('MULTI-CABAÑA: hermanas fallidas', failedHermanas);
+  }
   clearVoucher();
 }
 
