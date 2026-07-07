@@ -4946,11 +4946,15 @@ function renderMiniTimeline(currentRes) {
   // (start y end de cada reserva). Sirven para "anclar" visualmente los
   // textos del agenda con los bordes de la barra a la misma hora.
   let guidesHtml = '';
-  // Guide y bar block ahora usan el mismo origen de coordenadas (bar-col
-  // sin border → sin offset). Sin shift compensatorio.
+  // Guide en mt-v-grid con grid-column: 1/-1 y position:absolute usa el
+  // padding-box del grid como containing block. Bar blocks están dentro
+  // de bar-col (grid child) cuyo top empieza en el CONTENT-BOX del grid
+  // (después del padding-top de 8px). Compensamos con +8 en la guide.
+  const GRID_PADDING_TOP = 8;
   const _addGuide = (px) => {
-    if (px < 0 || px > TOTAL_H) return;
-    guidesHtml += '<div class="mt-v-guide" style="top:' + px.toFixed(1) + 'px;"></div>';
+    const shifted = px + GRID_PADDING_TOP;
+    if (shifted < 0 || shifted > TOTAL_H + GRID_PADDING_TOP) return;
+    guidesHtml += '<div class="mt-v-guide" style="top:' + shifted.toFixed(1) + 'px;"></div>';
   };
   events.forEach(e => { _addGuide(dtToPx(e.start)); _addGuide(dtToPx(e.end)); });
 
