@@ -4620,6 +4620,32 @@ function renderMiniTimeline(currentRes) {
     });
   });
 
+  // Filtrar slots libres según regla de negocio: la prioridad de venta es
+  // Noche completa. Solo sugerir pasatarde/pasanoche cuando el día ya está
+  // "fragmentado" — hay una reserva de tipo pasatarde/pasanoche/pasadía/
+  // early/late en ese día, o es día cortesía de un early/pasadía del día
+  // siguiente. Si el día está fully libre, no fragmentamos ofertando slots
+  // — queremos venderlo como noche entera.
+  const FRAGMENTING_TIPOS = { pasatarde:1, pasanoche:1, pasadia:1, early:1, late:1 };
+  const _isFragmentedDay = (dayISO) => {
+    const dayStart = new Date(dayISO + 'T00:00:00');
+    const dayEnd = new Date(_addDaysISO(dayISO, 1) + 'T00:00:00');
+    // (a) evento de tipo fragmentante que se superpone al día
+    for (const e of events) {
+      const tipo = e.r.tipo || 'noche';
+      if (!FRAGMENTING_TIPOS[tipo]) continue;
+      if (e.start < dayEnd && e.end > dayStart) return true;
+    }
+    // (b) día cortesía de un early/pasadía: su storage.checkin coincide con dayISO
+    for (const e of events) {
+      const tipo = e.r.tipo || 'noche';
+      if (tipo !== 'early' && tipo !== 'pasadia') continue;
+      if (e.r.checkin === dayISO) return true;
+    }
+    return false;
+  };
+  const filteredSlots = allSlots.filter(slot => _isFragmentedDay(slot.originDay));
+
   // ── Layout vertical: 10px por hora, 240px por día, 720px total (3 días).
   const HOUR_H = 10;
   const DAY_H  = 24 * HOUR_H;
@@ -4671,7 +4697,7 @@ function renderMiniTimeline(currentRes) {
              + ' title="' + escapeHtml(tip) + '">' + inner + '</div>';
   });
   // Slots libres (bloques dashed)
-  allSlots.forEach(slot => {
+  filteredSlots.forEach(slot => {
     // Clipear al rango visible
     if (slot.end.getTime() <= rangeStartMs || slot.start.getTime() >= rangeStartMs + TOTAL_H/HOUR_H*3600000) return;
     const top = dtToPx(slot.start);
@@ -4738,7 +4764,7 @@ function renderMiniTimeline(currentRes) {
       }
     }
     // Slots libres para agenda: los que arrancan en este día O son cola de pasanoche.
-    allSlots.forEach(slot => {
+    filteredSlots.forEach(slot => {
       if (slot.originDay === day) {
         items.push({ type: 'slot', at: slot.start, slot: slot });
       }
