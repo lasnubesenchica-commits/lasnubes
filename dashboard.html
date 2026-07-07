@@ -864,7 +864,9 @@
     position: relative;
     background: var(--bg);
     border-radius: 4px;
-    border: 1px solid var(--border);
+    /* Border via box-shadow inset — no afecta el layout (los bloques
+       absolutos dentro miden desde el top exacto del contenedor). */
+    box-shadow: inset 0 0 0 1px var(--border);
   }
   .mini-timeline .mt-v-daybreak {
     position: absolute;
@@ -4944,16 +4946,11 @@ function renderMiniTimeline(currentRes) {
   // (start y end de cada reserva). Sirven para "anclar" visualmente los
   // textos del agenda con los bordes de la barra a la misma hora.
   let guidesHtml = '';
-  // Guide se dibuja en el pixel exacto del borde del bloque en la barra.
-  // Compensación: .mt-v-bar-col tiene border 1px, entonces los bloques
-  // absolutos dentro arrancan 1px debajo del top del grid (miden desde el
-  // padding-edge de bar-col, no del grid). Guide vive en el grid → shift
-  // +1px para que coincidan visualmente con el top del bloque.
-  const BAR_BORDER_COMP = 1;
+  // Guide y bar block ahora usan el mismo origen de coordenadas (bar-col
+  // sin border → sin offset). Sin shift compensatorio.
   const _addGuide = (px) => {
-    const shifted = px + BAR_BORDER_COMP;
-    if (shifted < 0 || shifted > TOTAL_H) return;
-    guidesHtml += '<div class="mt-v-guide" style="top:' + shifted.toFixed(1) + 'px;"></div>';
+    if (px < 0 || px > TOTAL_H) return;
+    guidesHtml += '<div class="mt-v-guide" style="top:' + px.toFixed(1) + 'px;"></div>';
   };
   events.forEach(e => { _addGuide(dtToPx(e.start)); _addGuide(dtToPx(e.end)); });
 
