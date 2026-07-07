@@ -1080,6 +1080,38 @@
   /* Tinte de cabaña en modal de reserva — colores aplicados via inline style desde applyModalCabinTint() */
   #reservaModal #fCabin { border-left: 4px solid #6a9e62; transition: border-color .2s ease; }
 
+  /* En desktop, el modal de detalle se ensancha para dar aire al mini-timeline
+     y a la agenda al lado. Móvil se queda con el max-width inline (380px).
+     Umbral: 900px para asegurar espacio real, no solo tablets angostas. */
+  @media (min-width: 900px) {
+    #detailOverlay .modal {
+      max-width: 720px !important;
+      padding: 36px 44px !important;
+    }
+    /* Con más ancho, damos más espacio a la barra de color y a la agenda
+       para que las entries no wrappen tanto. */
+    #detailOverlay .mini-timeline .mt-v-grid {
+      grid-template-columns: 52px 28px 1fr;
+      column-gap: 12px;
+    }
+    #detailOverlay .mini-timeline .mt-v-item,
+    #detailOverlay .mini-timeline .mt-v-clean,
+    #detailOverlay .mini-timeline .mt-v-slot-item {
+      grid-template-columns: 72px 1fr;
+      column-gap: 10px;
+      font-size: 13px;
+    }
+    #detailOverlay .mini-timeline .mt-v-item time,
+    #detailOverlay .mini-timeline .mt-v-slot-item time,
+    #detailOverlay .mini-timeline .mt-v-clean b {
+      font-size: 11px;
+    }
+    #detailOverlay .mini-timeline .mt-v-item strong,
+    #detailOverlay .mini-timeline .mt-v-slot-item strong {
+      font-size: 13px;
+    }
+  }
+
   .modal-body {
     padding: 28px 32px 8px;
     overflow-y: auto;
