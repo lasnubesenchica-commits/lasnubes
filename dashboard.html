@@ -815,8 +815,7 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 6px;
-    max-height: 460px;
-    overflow-y: auto;
+    overflow: visible;
   }
   .mini-timeline .mt-v-grid {
     display: grid;
@@ -1208,6 +1207,37 @@
     }
     #detailOverlay .mini-timeline .mt-v-item strong,
     #detailOverlay .mini-timeline .mt-v-slot-item strong {
+      font-size: 13px;
+    }
+  }
+
+  /* Móvil: modal full-screen y botones fijos abajo siempre visibles.
+     El .modal es el scroll container; el footer sticky se ancla a su bottom. */
+  @media (max-width: 640px) {
+    #detailOverlay .modal {
+      max-width: 100% !important;
+      max-height: 100dvh;
+      height: 100dvh;
+      border-radius: 0;
+      padding: 20px 20px 0 !important;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    #detailOverlay .modal-footer {
+      position: sticky;
+      bottom: 0;
+      margin: 12px -20px 0;
+      padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      box-shadow: 0 -6px 14px rgba(0,0,0,0.06);
+      border-radius: 0;
+      z-index: 5;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+    #detailOverlay .modal-footer .btn {
+      padding: 8px 12px;
       font-size: 13px;
     }
   }
