@@ -920,11 +920,19 @@
   .mini-timeline .mt-v-day-block {
     position: absolute;
     left: 0; right: 0;
-    padding: 4px 0 0 4px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+    padding: 0 4px;
     overflow: hidden;
+  }
+  /* Items posicionados por hora real (top: X px absoluto) — así la agenda
+     alinea con los bloques de la barra vertical. */
+  .mini-timeline .mt-v-item,
+  .mini-timeline .mt-v-clean,
+  .mini-timeline .mt-v-slot-hint,
+  .mini-timeline .mt-v-carry,
+  .mini-timeline .mt-v-empty {
+    position: absolute;
+    left: 4px;
+    right: 4px;
   }
   .mini-timeline .mt-v-item {
     display: grid;
@@ -4781,18 +4789,42 @@ function renderMiniTimeline(currentRes) {
     // Ordenar cronológicamente
     items.sort((a, b) => a.at - b.at);
 
+    // Posicionar cada item por su hora real dentro del day-block (top: X px).
+    // Colisión: si dos eventos caen juntos y sus contenidos se solapan, empuja
+    // el segundo hacia abajo. Preserva orden cronológico a costa de que la
+    // alineación con la barra sea aproximada en zonas densas.
+    const _estHeight = (it) => {
+      if (it.type === 'entra') return 40;   // strong + tag = 2 líneas
+      return 20;                             // sale / clean / slot = 1 línea
+    };
+    const positioned = [];
+    let prevBottom = 0;
+    items.forEach(it => {
+      const idealTop = ((it.at - dayStart) / (3600000)) * HOUR_H;
+      const height = _estHeight(it);
+      const top = Math.max(idealTop, prevBottom);
+      positioned.push(Object.assign({}, it, { top: top, height: height }));
+      prevBottom = top + height + 2;
+    });
+
     let inner = '';
-    // Carry-overs al inicio
+    // Carry-overs al inicio (position:absolute top:0, no interfiere con
+    // items posicionados por hora — aunque un item de las 12am sí choca).
+    let carryTop = 0;
     carries.forEach(e => {
       const short = TIPO_SHORT[e.r.tipo || 'noche'] || 'Noche';
-      inner += '<div class="mt-v-carry">' + escapeHtml(e.r.name) + ' · ' + short + ' continúa desde ' + _fmtDT(e.start) + '</div>';
+      inner += '<div class="mt-v-carry" style="top:' + carryTop + 'px;">'
+            +    escapeHtml(e.r.name) + ' · ' + short + ' continúa desde ' + _fmtDT(e.start)
+            + '</div>';
+      carryTop += 20;
     });
     // Placeholder si no hay eventos ni carry-overs
     if (items.length === 0 && carries.length === 0) {
-      inner += '<div class="mt-v-empty">Sin ocupación registrada</div>';
+      inner += '<div class="mt-v-empty" style="top:12px;">Sin ocupación registrada</div>';
     }
-    // Items
-    items.forEach(it => {
+    // Items posicionados
+    positioned.forEach(it => {
+      const topStyle = 'style="top:' + it.top.toFixed(1) + 'px;"';
       if (it.type === 'entra') {
         const tipo = it.e.r.tipo || 'noche';
         const short = TIPO_SHORT[tipo] || 'Noche';
@@ -4800,7 +4832,7 @@ function renderMiniTimeline(currentRes) {
         const salida = _fmtDT(it.e.end);
         const tag = [short, persons, 'sale ' + salida].filter(Boolean).join(' · ');
         const rid = escapeHtml(String(it.e.r.id));
-        inner += '<div class="mt-v-item" onclick="event.stopPropagation();_timelineBlockClick(\'' + rid + '\')">'
+        inner += '<div class="mt-v-item" ' + topStyle + ' onclick="event.stopPropagation();_timelineBlockClick(\'' + rid + '\')">'
               +   '<time>' + _fmtHM(it.at) + '</time>'
               +   '<div><strong>' + escapeHtml(it.e.r.name) + ' entra</strong>'
               +     '<span class="tag">' + escapeHtml(tag) + '</span>'
@@ -4808,7 +4840,7 @@ function renderMiniTimeline(currentRes) {
               + '</div>';
       } else if (it.type === 'sale') {
         const rid = escapeHtml(String(it.e.r.id));
-        inner += '<div class="mt-v-item" onclick="event.stopPropagation();_timelineBlockClick(\'' + rid + '\')">'
+        inner += '<div class="mt-v-item" ' + topStyle + ' onclick="event.stopPropagation();_timelineBlockClick(\'' + rid + '\')">'
               +   '<time>' + _fmtHM(it.at) + '</time>'
               +   '<div><strong>' + escapeHtml(it.e.r.name) + ' sale</strong></div>'
               + '</div>';
@@ -4819,7 +4851,7 @@ function renderMiniTimeline(currentRes) {
                    : it.level === 'tight'    ? 'ventana de limpieza · ajustado'
                    :                            'ventana de limpieza';
         const cls = 'mt-v-clean' + (it.level ? ' ' + it.level : '');
-        inner += '<div class="' + cls + '">'
+        inner += '<div class="' + cls + '" ' + topStyle + '>'
               +   '<b>' + dur + (suffix ? ' ' + suffix : '') + '</b>'
               +   '<span>' + desc + '</span>'
               + '</div>';
@@ -4835,7 +4867,7 @@ function renderMiniTimeline(currentRes) {
         const precio = slot.tipo === 'pasatarde' ? '$60'
                      : slot.tipo === 'pasanoche' ? '$75'
                      : '';
-        inner += '<div class="mt-v-slot-hint" onclick="event.stopPropagation();showAvailabilityDetail(\'' + cabin + '\',\'' + slot.originDay + '\',\'' + slot.tipo + '\')" title="Ventana libre — tap para cotizar/registrar">'
+        inner += '<div class="mt-v-slot-hint" ' + topStyle + ' onclick="event.stopPropagation();showAvailabilityDetail(\'' + cabin + '\',\'' + slot.originDay + '\',\'' + slot.tipo + '\')" title="Ventana libre — tap para cotizar/registrar">'
               +   '<time>' + _fmtHM(slot.start) + '</time>'
               +   '<div>💡 <span class="mt-slot-lbl">' + tipoLabel + ' libre</span> '
               +     '<span class="mt-slot-hrs">' + horas + '</span> '
