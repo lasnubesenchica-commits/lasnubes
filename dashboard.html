@@ -4812,11 +4812,14 @@ function renderMiniTimeline(currentRes) {
     // el segundo hacia abajo. Preserva orden cronológico a costa de que la
     // alineación con la barra sea aproximada en zonas densas.
     const _estHeight = (it) => {
-      if (it.type === 'entra') return 40;   // strong + tag = 2 líneas
-      return 20;                             // sale / clean / slot = 1 línea
+      if (it.type === 'entra') return 44;   // strong + tag = 2 líneas + padding
+      return 22;                             // sale / clean / slot = 1 línea + padding
     };
-    // Posicionar items por hora exacta. line-height tightened en CSS para
-    // que el texto se pegue al top del contenedor. Colisión por debajo.
+    // Shift items 5px hacia abajo respecto al guide superior para dar
+    // breathing room. Cada item se lee como "contenido en su celda"
+    // acotada por 2 guides.
+    const ITEM_SHIFT = 5;
+    // Posicionar items por hora exacta + shift. Clean se centra entre 2 guides.
     const positioned = [];
     let prevBottom = 0;
     items.forEach(it => {
@@ -4831,7 +4834,7 @@ function renderMiniTimeline(currentRes) {
         top = Math.max(midCentered, prevBottom + 2);
       } else {
         const idealTop = ((it.at - dayStart) / 3600000) * HOUR_H;
-        top = Math.max(idealTop, prevBottom);
+        top = Math.max(idealTop + ITEM_SHIFT, prevBottom);
       }
       positioned.push(Object.assign({}, it, { top: top, height: height }));
       prevBottom = top + height + 2;
