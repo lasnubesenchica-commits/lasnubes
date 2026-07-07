@@ -800,7 +800,7 @@
   /* ── Mini timeline: 3 días con franjas de ocupación real ─────── */
   /* ── Mini timeline vertical: reloj vertical + agenda al lado ─── */
   .mini-timeline {
-    --mt-hour-h: 10px;
+    --mt-hour-h: 14px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -872,6 +872,21 @@
     height: 1px;
     background: repeating-linear-gradient(90deg, var(--border) 0 3px, transparent 3px 6px);
     z-index: 2;
+  }
+  /* Guías horizontales al top/bottom de cada bloque de reserva. Extendidas
+     por todo el grid para anclar visualmente barra ↔ agenda al mismo nivel
+     de hora. Muy tenues para no distraer del contenido. */
+  .mini-timeline .mt-v-guide {
+    position: absolute;
+    left: 0; right: 0;
+    height: 1px;
+    grid-column: 1 / -1;
+    background: repeating-linear-gradient(90deg,
+      rgba(0,0,0,0.08) 0 4px,
+      transparent 4px 10px
+    );
+    z-index: 0;
+    pointer-events: none;
   }
   .mini-timeline .mt-v-block {
     position: absolute;
@@ -4664,7 +4679,7 @@ function renderMiniTimeline(currentRes) {
   const filteredSlots = allSlots.filter(slot => _isFragmentedDay(slot.originDay));
 
   // ── Layout vertical: 10px por hora, 240px por día, 720px total (3 días).
-  const HOUR_H = 10;
+  const HOUR_H = 14;
   const DAY_H  = 24 * HOUR_H;
   const TOTAL_H = 3 * DAY_H;
   // Convertir un Date a offset en px desde el inicio del rango de 3 días.
@@ -4912,11 +4927,22 @@ function renderMiniTimeline(currentRes) {
     +   (_summaryTimes ? ' <span class="mt-summary-sep">·</span> <span class="mt-summary-times">' + escapeHtml(_summaryTimes) + '</span>' : '')
     + '</div>';
 
+  // Guías horizontales tenues a la altura de cada borde de bloque real
+  // (start y end de cada reserva). Sirven para "anclar" visualmente los
+  // textos del agenda con los bordes de la barra a la misma hora.
+  let guidesHtml = '';
+  const _addGuide = (px) => {
+    if (px < 0 || px > TOTAL_H) return;
+    guidesHtml += '<div class="mt-v-guide" style="top:' + px.toFixed(1) + 'px;"></div>';
+  };
+  events.forEach(e => { _addGuide(dtToPx(e.start)); _addGuide(dtToPx(e.end)); });
+
   container.innerHTML = ''
     + '<div class="mt-legend">Ocupación · 3 días · tap bloques o eventos para verlos</div>'
     + summaryHtml
     + '<div class="mt-v-scroll">'
     +   '<div class="mt-v-grid" style="height:' + TOTAL_H + 'px;">'
+    +     guidesHtml
     +     '<div class="mt-v-hours">' + hoursHtml + '</div>'
     +     '<div class="mt-v-bar-col">' + barHtml + '</div>'
     +     '<div class="mt-v-agenda">' + agendaHtml + '</div>'
