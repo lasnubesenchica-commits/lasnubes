@@ -1211,6 +1211,13 @@
     }
   }
 
+  /* Footer del detalle con dos filas conceptuales.
+     Desktop: display:contents en las filas → todos los botones se aplanan
+     en una única fila con justify-content:flex-end del .modal-footer.
+     Mobile: se convierten en filas reales apiladas (secundaria arriba
+     right-aligned, primaria abajo centrada). */
+  .detail-footer .footer-row { display: contents; }
+
   /* Móvil: modal full-screen y botones fijos abajo siempre visibles.
      El .modal es el scroll container; el footer sticky se ancla a su bottom. */
   @media (max-width: 640px) {
@@ -1223,7 +1230,7 @@
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
     }
-    #detailOverlay .modal-footer {
+    #detailOverlay .modal-footer.detail-footer {
       position: sticky;
       bottom: 0;
       margin: 12px -20px 0;
@@ -1233,12 +1240,31 @@
       box-shadow: 0 -6px 14px rgba(0,0,0,0.06);
       border-radius: 0;
       z-index: 5;
-      justify-content: flex-end;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+    }
+    #detailOverlay .detail-footer .footer-row {
+      display: flex;
+      flex-wrap: wrap;
       gap: 6px;
     }
-    #detailOverlay .modal-footer .btn {
-      padding: 8px 12px;
+    #detailOverlay .detail-footer .footer-row-secondary {
+      justify-content: center;
+    }
+    #detailOverlay .detail-footer .footer-row-primary {
+      justify-content: center;
+      padding-top: 6px;
+      border-top: 1px dashed var(--border);
+    }
+    #detailOverlay .detail-footer .footer-row .btn {
+      padding: 9px 14px;
       font-size: 13px;
+      flex: 0 1 auto;
+    }
+    #detailOverlay .detail-footer .footer-row-primary .btn {
+      min-width: 92px;
+      font-weight: 600;
     }
   }
 
@@ -2635,18 +2661,22 @@
     <!-- Timeline mini: ayer / hoy / mañana con bloques de ocupación real -->
     <div id="detailMiniTimeline" style="margin-bottom:14px;"></div>
 
-    <div class="modal-footer" style="flex-wrap:wrap;gap:8px;">
-      <button class="btn btn-ghost" onclick="closeDetail()">Cerrar</button>
-      <!-- Botones modo reserva -->
-      <button class="btn btn-ghost rsv-only" id="detailVoucherBtn" style="font-size:13px;display:none;" title="Abrir voucher en Drive">🧾 Ver voucher</button>
-      <button class="btn btn-ghost rsv-only" id="detailLinkBtn" style="font-size:13px;" title="Copiar link publico para cliente">🔗 Link cliente</button>
-      <button class="btn btn-ghost rsv-only" id="detailResendBtn" style="font-size:13px;" title="Reenviar email al huésped">📧 Reenviar</button>
-      <button class="btn btn-ghost rsv-only" id="detailAddSiblingBtn" style="font-size:13px;display:none;border-color:#f59e0b;color:#b45309;" title="Registrar reserva complementaria en la misma cabaña y día"></button>
-      <button class="btn btn-danger rsv-only" id="detailDeleteBtn">Eliminar</button>
-      <button class="btn btn-primary rsv-only" id="detailEditBtn">Editar</button>
-      <!-- Botones modo disponibilidad -->
-      <button class="btn btn-ghost avl-only" id="avlCopyBtn" style="display:none;font-size:13px;border-color:#0f7a4e;color:#0f7a4e;" title="Copiar cotización al portapapeles">📋 Copiar cotización</button>
-      <button class="btn btn-primary avl-only" id="avlRegisterBtn" style="display:none;">➕ Registrar reserva</button>
+    <div class="modal-footer detail-footer" style="gap:8px;">
+      <!-- Fila secundaria (mobile: arriba; desktop: aparecen todos en una fila) -->
+      <div class="footer-row footer-row-secondary">
+        <button class="btn btn-ghost rsv-only" id="detailVoucherBtn" style="font-size:13px;display:none;" title="Abrir voucher en Drive">🧾 Ver voucher</button>
+        <button class="btn btn-ghost rsv-only" id="detailLinkBtn" style="font-size:13px;" title="Copiar link publico para cliente">🔗 Link cliente</button>
+        <button class="btn btn-ghost rsv-only" id="detailResendBtn" style="font-size:13px;" title="Reenviar email al huésped">📧 Reenviar</button>
+        <button class="btn btn-ghost rsv-only" id="detailAddSiblingBtn" style="font-size:13px;display:none;border-color:#f59e0b;color:#b45309;" title="Registrar reserva complementaria en la misma cabaña y día"></button>
+        <button class="btn btn-ghost avl-only" id="avlCopyBtn" style="display:none;font-size:13px;border-color:#0f7a4e;color:#0f7a4e;" title="Copiar cotización al portapapeles">📋 Copiar cotización</button>
+      </div>
+      <!-- Fila primaria (mobile: abajo centrada; desktop: derecha) -->
+      <div class="footer-row footer-row-primary">
+        <button class="btn btn-ghost btn-close-detail" onclick="closeDetail()">✕ Cerrar</button>
+        <button class="btn btn-danger rsv-only" id="detailDeleteBtn">🗑️ Eliminar</button>
+        <button class="btn btn-primary rsv-only" id="detailEditBtn">✏️ Editar</button>
+        <button class="btn btn-primary avl-only" id="avlRegisterBtn" style="display:none;">➕ Registrar reserva</button>
+      </div>
     </div>
   </div>
 </div>
