@@ -875,17 +875,17 @@
     background: repeating-linear-gradient(90deg, var(--border) 0 3px, transparent 3px 6px);
     z-index: 2;
   }
-  /* Guías horizontales al top/bottom de cada bloque de reserva. Extendidas
-     por todo el grid para anclar visualmente barra ↔ agenda al mismo nivel
-     de hora. Suficientemente oscuras para ser trazables sin distraer. */
+  /* Guías horizontales al top/bottom de cada bloque de reserva. 2px de
+     alto + alpha más alto para que cualquier micro-offset sub-pixel sea
+     visualmente insignificante y la línea sea trazable de golpe. */
   .mini-timeline .mt-v-guide {
     position: absolute;
     left: 0; right: 0;
-    height: 1px;
+    height: 2px;
     grid-column: 1 / -1;
     background: repeating-linear-gradient(90deg,
-      rgba(0,0,0,0.22) 0 5px,
-      transparent 5px 9px
+      rgba(0,0,0,0.30) 0 6px,
+      transparent 6px 10px
     );
     z-index: 0;
     pointer-events: none;
