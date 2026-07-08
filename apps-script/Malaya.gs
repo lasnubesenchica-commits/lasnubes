@@ -18,9 +18,12 @@
  *      Si pasaron > GRACE_MINUTES sin bloqueo → 'no_bloqueada' + alerta WA.
  *
  * Script Properties requeridas:
- *   - MALAYA_AIRBNB_ICAL    : URL .ics del listing en Airbnb.
- *   - MALAYA_CELESTINO_PHONE: 50765429927 (solo para texto de alertas).
- *   - MALAYA_GRACE_MINUTES  : 60 (opcional, default 60).
+ *   - MALAYA_AIRBNB_ICAL         : URL .ics del listing en Airbnb.
+ *   - MALAYA_CELESTINO_PHONE     : 50765429927 (solo para texto de alertas).
+ *   - MALAYA_GRACE_MINUTES       : 60 (opcional, default 60).
+ *   - MALAYA_EXTRA_NOTIFY_PHONES : opcional, CSV de teléfonos adicionales
+ *       que también reciben la plantilla WA de reserva (redundancia por si
+ *       Celestino no la ve). Default: '50761000079' (Glorimar).
  */
 
 const MALAYA_CABIN_NAME    = 'Malaya Lodge';
@@ -370,18 +373,34 @@ function _notifyCelestinoWA(d) {
   const templateName   = props.getProperty('MALAYA_CELESTINO_TEMPLATE_NAME');
   const templateLang   = props.getProperty('MALAYA_CELESTINO_TEMPLATE_LANG') || 'es_PA';
   const celestinoPhone = (props.getProperty('MALAYA_CELESTINO_PHONE') || '50765429927').replace(/\D/g, '');
+  // Contactos adicionales que también reciben la plantilla (redundancia por si
+  // Celestino no la ve). CSV en Script Property MALAYA_EXTRA_NOTIFY_PHONES;
+  // default incluye a Glorimar (+507 6100-0079).
+  const extraRaw = props.getProperty('MALAYA_EXTRA_NOTIFY_PHONES') || '50761000079';
+  const extras = extraRaw.split(',').map(s => s.replace(/\D/g, '')).filter(Boolean);
+  const recipients = [celestinoPhone].concat(extras).filter((n, i, arr) => n && arr.indexOf(n) === i);
 
-  if (!templateName || !celestinoPhone) {
+  if (!templateName || !recipients.length) {
     _whatsappAdminForwardCelestino(d);
     return;
   }
 
-  try {
-    sendWhatsAppTemplate(celestinoPhone, templateName, templateLang, _buildCelestinoTemplateVars(d));
-    logDebugEntry('malaya-celestino-template-OK', { to: celestinoPhone, template: templateName });
-    _whatsappAdminTemplateAck(d);
-  } catch(e) {
-    logDebugEntry('malaya-celestino-template-FAIL', { to: celestinoPhone, template: templateName, error: e.message });
+  const vars = _buildCelestinoTemplateVars(d);
+  let anyOk = false;
+  recipients.forEach(to => {
+    try {
+      sendWhatsAppTemplate(to, templateName, templateLang, vars);
+      logDebugEntry('malaya-celestino-template-OK', { to: to, template: templateName });
+      anyOk = true;
+    } catch(e) {
+      logDebugEntry('malaya-celestino-template-FAIL', { to: to, template: templateName, error: e.message });
+    }
+  });
+
+  if (anyOk) {
+    _whatsappAdminTemplateAck(d, recipients);
+  } else {
+    // Ningún destinatario recibió la plantilla → aviso manual para no perder la notificación.
     _whatsappAdminForwardCelestino(d);
   }
 }
@@ -414,15 +433,19 @@ function _buildCelestinoTemplateVars(d) {
 
 // Aviso corto al admin cuando la plantilla se entregó ok. Corto porque el
 // admin ya no necesita reenviar nada — solo confirmar que quedó fuera.
-function _whatsappAdminTemplateAck(d) {
+function _whatsappAdminTemplateAck(d, recipients) {
   const fmt = iso => {
     const dt = new Date(iso + 'T12:00:00');
     const M = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
     return dt.getDate() + ' ' + M[dt.getMonth()];
   };
+  const n = (recipients && recipients.length) || 1;
+  const destinoLbl = n === 1
+    ? 'Celestino'
+    : 'Celestino + ' + (n - 1) + ' contacto' + (n - 1 === 1 ? '' : 's') + ' extra';
   const msg =
     '✅ *Reserva Malaya guardada*\n' +
-    'Notificación enviada a Celestino via plantilla WhatsApp.\n\n' +
+    'Notificación enviada a ' + destinoLbl + ' via plantilla WhatsApp.\n\n' +
     '👤 ' + d.huesped + '\n' +
     '📅 ' + fmt(d.checkin) + ' → ' + fmt(d.checkout);
   try { sendWhatsAppText(BOT_ADMIN_PHONE, msg); } catch(_) {}
