@@ -335,6 +335,74 @@ function getMalayaCalendarData() {
   return { blocked: blocked };
 }
 
+// ─── iCal feed público (para importar en Airbnb) ─────────────────
+//
+// Devuelve un .ics con todas las reservas directas ACTIVAS de Malaya
+// (pendiente / confirmada / no_bloqueada). Airbnb permite importar una URL
+// externa de iCal; polla cada pocas horas y bloquea esas fechas para
+// evitar double-booking. El endpoint se expone via doGet?action=malayaIcal
+// en Parser.gs. La URL es PÚBLICA (sin auth — Airbnb no manda credenciales
+// al pollear) → sólo emitimos rango de fechas + summary genérico, cero
+// datos personales del huésped.
+function getMalayaIcalFeed() {
+  const sheet = _malayaSheet();
+  const nowUtc = _icalUtcNow();
+  const lines = [];
+  lines.push('BEGIN:VCALENDAR');
+  lines.push('PRODID:-//Las Nubes//Malaya Lodge//ES');
+  lines.push('VERSION:2.0');
+  lines.push('CALSCALE:GREGORIAN');
+  lines.push('METHOD:PUBLISH');
+  lines.push('X-WR-CALNAME:Malaya Lodge — Directas Las Nubes');
+  lines.push('X-WR-CALDESC:Reservas directas registradas en Las Nubes que Airbnb debe bloquear.');
+  lines.push('X-WR-TIMEZONE:America/Panama');
+
+  if (sheet.getLastRow() > 1) {
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      const id = String(row[0] || '').trim();
+      if (!id) continue;
+      const estado = String(row[10] || '').toLowerCase().trim();
+      if (estado === 'cancelada' || estado === 'completada') continue;
+      const ci = row[3] instanceof Date ? Utilities.formatDate(row[3], 'America/Panama', 'yyyy-MM-dd') : String(row[3] || '').slice(0, 10);
+      const co = row[4] instanceof Date ? Utilities.formatDate(row[4], 'America/Panama', 'yyyy-MM-dd') : String(row[4] || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(ci) || !/^\d{4}-\d{2}-\d{2}$/.test(co)) continue;
+
+      // DTSTART inclusivo, DTEND exclusivo (spec de all-day iCal). Una
+      // reserva 2026-07-18 → 2026-07-19 emite un bloque de la noche del 18.
+      const dtStart = ci.replace(/-/g, '');
+      const dtEnd   = co.replace(/-/g, '');
+      lines.push('BEGIN:VEVENT');
+      lines.push('UID:' + id + '@lasnubes.cloud');
+      lines.push('DTSTAMP:' + nowUtc);
+      lines.push('DTSTART;VALUE=DATE:' + dtStart);
+      lines.push('DTEND;VALUE=DATE:' + dtEnd);
+      lines.push('SUMMARY:Reservado (Directa Las Nubes)');
+      lines.push('DESCRIPTION:Bloqueo desde el sistema de reservas de Las Nubes.');
+      lines.push('STATUS:CONFIRMED');
+      lines.push('TRANSP:OPAQUE');
+      lines.push('END:VEVENT');
+    }
+  }
+  lines.push('END:VCALENDAR');
+
+  // iCal spec exige CRLF entre líneas.
+  const body = lines.join('\r\n') + '\r\n';
+  return ContentService
+    .createTextOutput(body)
+    .setMimeType(ContentService.MimeType.ICAL);
+}
+
+// Timestamp UTC en formato iCal: YYYYMMDDTHHMMSSZ.
+function _icalUtcNow() {
+  const d = new Date();
+  const p = n => (n < 10 ? '0' + n : String(n));
+  return d.getUTCFullYear() + p(d.getUTCMonth() + 1) + p(d.getUTCDate())
+       + 'T' + p(d.getUTCHours()) + p(d.getUTCMinutes()) + p(d.getUTCSeconds())
+       + 'Z';
+}
+
 // ─── Save reserva (API) ─────────────────────────────────────────
 
 function saveMalayaReserva(payload) {
@@ -670,6 +738,13 @@ function instalarTriggersMalaya() {
   ScriptApp.newTrigger('syncMalayaAirbnb').timeBased().everyMinutes(30).create();
   ScriptApp.newTrigger('verificarMalayaPendientes').timeBased().everyDays(1).atHour(11).inTimezone('America/Panama').create();
   Logger.log('✓ Triggers Malaya instalados: sync 30 min, verificar 11am diario.');
+}
+
+// Test desde editor: renderea el iCal público de Malaya y lo loguea.
+// Útil para verificar el contenido antes de compartirle la URL a Celestino.
+function _testMalayaIcalFeed() {
+  const out = getMalayaIcalFeed();
+  Logger.log(out.getContent());
 }
 
 // Test desde editor: corre sync manualmente y loguea resultado.

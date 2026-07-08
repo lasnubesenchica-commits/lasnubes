@@ -873,6 +873,16 @@ function doGet(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
+    // ── MALAYA iCAL FEED (para importar en Airbnb) ────────────
+    // Devuelve un .ics con todas las reservas directas activas de Malaya.
+    // Airbnb polla esta URL cada pocas horas y bloquea esas fechas para
+    // evitar double-booking. La URL es pública (necesita serlo para que
+    // Airbnb la lea sin auth) — no expone datos del huésped, sólo rango
+    // de fechas y un summary genérico.
+    if (action === 'malayaIcal') {
+      return getMalayaIcalFeed();
+    }
+
     // ── GET TARIFAS ───────────────────────────────────────────
     if (action === 'getTarifas') {
       const cfg  = getOrCreateConfig();
