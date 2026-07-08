@@ -473,7 +473,12 @@
     </div>
     <div class="modal-row total">
       <span class="lbl">Total</span>
-      <span class="val" id="modalTotal">$0</span>
+      <span id="modalTotalWrap" style="display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;">
+        <span class="val" id="modalTotal">$0</span>
+        <input type="number" id="modalTotalInput" step="1" min="0" inputmode="numeric" style="display:none;width:100px;font:inherit;color:var(--verde-dark);font-weight:600;font-size:20px;border:1px solid var(--verde-dark);border-radius:8px;padding:4px 8px;text-align:right;">
+        <button type="button" id="modalTotalEdit" onclick="startEditTotal()" title="Editar tarifa (descuento u oferta especial)" style="display:none;background:none;border:none;cursor:pointer;font-size:15px;color:var(--verde-dark);padding:2px 6px;line-height:1;" aria-label="Editar tarifa">✎</button>
+        <button type="button" id="modalTotalReset" onclick="resetTotalOverride()" title="Volver a la tarifa calculada" style="display:none;background:none;border:none;cursor:pointer;font-size:11px;color:var(--verde-dark);padding:2px 4px;font-family:inherit;text-decoration:underline;">↺ auto</button>
+      </span>
     </div>
 
     <!-- Bloque admin: form de reserva integrado (solo con ?admin=1) -->
@@ -566,6 +571,15 @@ if (ADMIN_MODE) {
   document.addEventListener('DOMContentLoaded', () => {
     const td = document.getElementById('tarifasDetails');
     if (td) td.open = false;
+    // Confirmar edición del total con Enter o blur; Escape cancela.
+    const totalInput = document.getElementById('modalTotalInput');
+    if (totalInput) {
+      totalInput.addEventListener('blur', commitEditTotal);
+      totalInput.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter')  { ev.preventDefault(); totalInput.blur(); }
+        if (ev.key === 'Escape') { ev.preventDefault(); refreshModal(); }
+      });
+    }
   });
 }
 
@@ -783,7 +797,12 @@ async function adminSubmitReserva() {
   const email = document.getElementById('adminGuestEmail').value.trim();
   const notas = document.getElementById('adminNotas').value.trim();
   const v = window._lastVoucher || {};
-  const monto = v.monto || null;
+  // Tarifa que se envía como monto de la reserva: el override manual si el
+  // admin ajustó el total, sino la tarifa calculada del modal. Antes se
+  // mandaba v.monto (lo que el voucher decía que se pagó), lo que colapsa
+  // en el caso feliz pero es incorrecto cuando el voucher es un abono
+  // parcial o el admin aplica un descuento manual.
+  const effectiveTotal = _effectiveModalTotal() || null;
 
   const btn = document.getElementById('modalReservar');
   btn.disabled = true; btn.textContent = '⏳ Guardando…';
@@ -796,7 +815,7 @@ async function adminSubmitReserva() {
     checkin:    selStart,
     checkout:   selEnd,
     personas:   modalPersonas,
-    monto:      monto,
+    monto:      effectiveTotal,
     voucherURL: window._lastVoucherURL || '',
     notas: notas + (v.codTransferencia ? ' · cod ' + v.codTransferencia : '') + (v.sender ? ' · pagó ' + v.sender : '')
   };
@@ -828,6 +847,47 @@ async function adminSubmitReserva() {
 // ─── Cotización modal (steppers) ───
 let modalNoches = 1;
 let modalPersonas = 2;
+// Override manual de la tarifa total. null = usar tarifa calculada por
+// calcTarifa(). Se resetea al cambiar noches/personas o al abrir el modal.
+let _modalTotalOverride = null;
+let _modalTotalCalculated = 0;
+
+function _effectiveModalTotal() {
+  return _modalTotalOverride != null ? _modalTotalOverride : _modalTotalCalculated;
+}
+
+function startEditTotal() {
+  const totalEl = document.getElementById('modalTotal');
+  const input   = document.getElementById('modalTotalInput');
+  const editBtn = document.getElementById('modalTotalEdit');
+  const resetBtn = document.getElementById('modalTotalReset');
+  input.value = _effectiveModalTotal() || 0;
+  totalEl.style.display = 'none';
+  editBtn.style.display = 'none';
+  resetBtn.style.display = 'none';
+  input.style.display = 'inline-block';
+  input.focus();
+  input.select();
+}
+
+function commitEditTotal() {
+  const input = document.getElementById('modalTotalInput');
+  const raw = parseFloat(input.value);
+  if (!isNaN(raw) && raw >= 0) {
+    // Si iguala la tarifa calculada, no hay override efectivo.
+    if (Math.abs(raw - _modalTotalCalculated) < 0.005) {
+      _modalTotalOverride = null;
+    } else {
+      _modalTotalOverride = Math.round(raw * 100) / 100;
+    }
+  }
+  refreshModal();
+}
+
+function resetTotalOverride() {
+  _modalTotalOverride = null;
+  refreshModal();
+}
 
 function _fmtDateLong(iso) {
   const d = new Date(iso + 'T12:00:00');
@@ -839,6 +899,9 @@ function _fmtDateLong(iso) {
 function _buildQuoteText(personas) {
   const t = calcTarifa(selStart, selEnd, personas);
   if (!t) return null;
+  // Si el admin sobrescribió el total, la cotización refleja ese precio final.
+  // Para 1 noche además reescribimos "tarifa promocional de $X" con el override.
+  const effectiveTotal = _modalTotalOverride != null ? _modalTotalOverride : t.total;
   const fmt = iso => {
     const d = new Date(iso + 'T12:00:00');
     const M = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
@@ -851,7 +914,8 @@ function _buildQuoteText(personas) {
   // Tarifa promocional del primer día (vie/sáb = $100, resto = $75) + persona extra.
   const dow0     = new Date(selStart + 'T12:00:00').getDay();
   const baseRate = (dow0 === 5 || dow0 === 6) ? 100 : 75;
-  const nightRate = baseRate + Math.max(0, personas - 2) * 30;
+  const calcNightRate = baseRate + Math.max(0, personas - 2) * 30;
+  const nightRate = (_modalTotalOverride != null && t.noches === 1) ? effectiveTotal : calcNightRate;
 
   const intro = (t.noches === 1)
     ? 'Tengo la noche del *' + fechaIn + '* disponible para reserva en cabaña Malaya Lodge en tarifa promocional de $' + nightRate + ' para ' + personasLbl + '.'
@@ -860,7 +924,7 @@ function _buildQuoteText(personas) {
   const text =
     intro + '\n\n' +
     '🏡 *Malaya Lodge*\n' +
-    '💰 *Total:* $' + t.total + '\n' +
+    '💰 *Total:* $' + effectiveTotal + '\n' +
     '🕑 Check in ' + fechaIn + ': 2:00 pm\n' +
     '🕚 Check out ' + fechaOut + ': 11:00 am\n\n' +
     'Malaya Lodge es un refugio romántico en las montañas de Aires de Chicá en Panamá. Diseñado para desconectar de la rutina y reconectar con la naturaleza, contigo mismo y con quien amas.\n\n' +
@@ -874,7 +938,7 @@ function _buildQuoteText(personas) {
     '📶 Señal excelente de todas las telefónicas\n\n' +
     '*Para Reservar*\n' +
     'Quedo atento si deseas proceder y le comparto las formas de pago.';
-  return { text: text, noches: t.noches, total: t.total };
+  return { text: text, noches: t.noches, total: effectiveTotal };
 }
 
 function refreshModal() {
@@ -901,21 +965,54 @@ function refreshModal() {
   document.getElementById('personasMinus').disabled = (modalPersonas <= 1);
   document.getElementById('personasPlus').disabled  = (modalPersonas >= 6);
 
+  // Tarifa base calculada, sin override (para poder mostrar comparación al editar).
+  const calcQuote = calcTarifa(selStart, selEnd, modalPersonas);
+  _modalTotalCalculated = calcQuote ? calcQuote.total : 0;
+
   const q = _buildQuoteText(modalPersonas);
-  document.getElementById('modalTotal').textContent = q ? '$' + q.total : '—';
+  const totalEl = document.getElementById('modalTotal');
+  const input   = document.getElementById('modalTotalInput');
+  const editBtn = document.getElementById('modalTotalEdit');
+  const resetBtn = document.getElementById('modalTotalReset');
+  // Salir de modo edición si estaba activo (por ejemplo por adjust noches).
+  if (input) input.style.display = 'none';
+  totalEl.style.display = '';
+  if (q) {
+    const effective = _effectiveModalTotal();
+    totalEl.textContent = '$' + effective;
+    if (_modalTotalOverride != null) {
+      totalEl.title = 'Tarifa editada — calculada sería $' + _modalTotalCalculated;
+      totalEl.style.textDecoration = 'underline';
+      totalEl.style.textDecorationStyle = 'dotted';
+    } else {
+      totalEl.title = '';
+      totalEl.style.textDecoration = '';
+    }
+  } else {
+    totalEl.textContent = '—';
+    totalEl.title = '';
+    totalEl.style.textDecoration = '';
+  }
+  const showAdmin = ADMIN_MODE && !!q;
+  editBtn.style.display  = showAdmin ? 'inline-block' : 'none';
+  resetBtn.style.display = (showAdmin && _modalTotalOverride != null) ? 'inline-block' : 'none';
+
   document.getElementById('modalWA').href = q
     ? 'https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(q.text)
     : '#';
 
 }
 
-function adjustNoches(delta)   { modalNoches += delta;   refreshModal(); }
-function adjustPersonas(delta) { modalPersonas += delta; refreshModal(); }
+// Al cambiar noches/personas el override deja de tener sentido porque la base
+// de cálculo cambia. Volvemos a la tarifa auto — el admin puede re-editar.
+function adjustNoches(delta)   { _modalTotalOverride = null; modalNoches += delta;   refreshModal(); }
+function adjustPersonas(delta) { _modalTotalOverride = null; modalPersonas += delta; refreshModal(); }
 
 function openQuoteModal() {
   if (!selStart) return;
   modalNoches = 1;
   modalPersonas = modalPersonas || 2;
+  _modalTotalOverride = null;
   // Botones: público → solo WhatsApp; admin → Copiar + Bloquear (sin WA
   // porque en admin abriría chat con uno mismo).
   if (ADMIN_MODE) {
