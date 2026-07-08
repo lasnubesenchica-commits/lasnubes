@@ -1142,6 +1142,140 @@
     opacity: 0.7;
   }
 
+  /* ── Timeline extendido de disponibilidad (vista principal) ─── */
+  .disp-view-toggle {
+    display: inline-flex;
+    gap: 4px;
+    padding: 3px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 14px;
+  }
+  .disp-view-btn {
+    padding: 6px 14px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 7px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background .15s, color .15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .disp-view-btn.active {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+  }
+  .disp-view-btn:not(.active):hover { color: var(--text); }
+
+  #dispTimeline .disp-tl-day {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  #dispTimeline .disp-tl-day-header {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 14px;
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-weight: 600;
+    font-size: 16px;
+    color: var(--text);
+    text-transform: capitalize;
+  }
+  #dispTimeline .disp-tl-day-header.is-today { color: var(--verde-dark); }
+  #dispTimeline .disp-tl-badge {
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 700;
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+  }
+  #dispTimeline .disp-tl-badge-today {
+    background: var(--verde-dark);
+    color: #fff;
+  }
+  #dispTimeline .disp-tl-badge-yesterday,
+  #dispTimeline .disp-tl-badge-tomorrow {
+    background: var(--bg);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+  }
+  #dispTimeline .disp-tl-day-grid {
+    display: grid;
+    grid-template-columns: 44px 22px 1fr;
+    column-gap: 8px;
+    padding: 8px 14px 12px;
+    position: relative;
+  }
+  #dispTimeline .disp-tl-day.is-past .disp-tl-day-grid { opacity: 0.55; }
+  #dispTimeline .disp-tl-more-wrap {
+    text-align: center;
+    padding: 8px 0 4px;
+  }
+  #dispTimeline .disp-tl-more {
+    background: none;
+    border: 1.5px solid var(--border);
+    border-radius: 20px;
+    padding: 8px 24px;
+    font-size: 13px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all .15s;
+    font-family: inherit;
+  }
+  #dispTimeline .disp-tl-more:hover {
+    border-color: var(--text-muted);
+    color: var(--text);
+  }
+  #dispTimeline .disp-tl-empty {
+    text-align: center;
+    padding: 16px;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-style: italic;
+  }
+  /* Línea de "ahora" — franja horizontal roja sobre la columna de horas + barra */
+  #dispTimeline .disp-tl-now {
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: #dc2626;
+    z-index: 5;
+    pointer-events: none;
+    box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.15);
+  }
+  #dispTimeline .disp-tl-now::before {
+    content: '';
+    position: absolute;
+    left: -4px; top: 50%;
+    transform: translateY(-50%);
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: #dc2626;
+    box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.18);
+  }
+  /* Los estilos internos de columnas (hours, bar-col, agenda, guías, bloques,
+     slots, items, clean, empty, carry) los reutilizamos de .mini-timeline
+     porque #dispTimeline lleva también la clase .mini-timeline. */
+
   .btn-sm {
     padding: 5px 10px;
     font-size: 12px;
@@ -2340,12 +2474,17 @@
         Directa / Otro
       </span>
     </div>
+    <div class="disp-view-toggle" role="tablist" aria-label="Vista de disponibilidad">
+      <button class="disp-view-btn active" data-view="calendar" onclick="setDispViewMode('calendar')" role="tab" aria-selected="true">📅 Calendario</button>
+      <button class="disp-view-btn"        data-view="timeline" onclick="setDispViewMode('timeline')" role="tab" aria-selected="false">📊 Timeline</button>
+    </div>
     <div class="disp-cabin-tabs">
       <button class="disp-cabin-tab verde active" onclick="setDispCabin('verde',this)">Paseo</button>
       <button class="disp-cabin-tab azul"         onclick="setDispCabin('azul',this)">Portal</button>
       <button class="disp-cabin-tab lila"         onclick="setDispCabin('lila',this)">Puente</button>
     </div>
     <div class="disp-calendars" id="dispCalendars"></div>
+    <div class="mini-timeline" id="dispTimeline" style="display:none;padding:0;background:transparent;border:none;"></div>
   </section>
 
 
@@ -3327,7 +3466,10 @@ function showSection(id) {
   const dropBtn = document.getElementById('navDropdownBtn');
   if (dropBtn) dropBtn.textContent = (labels[id] || id) + ' ▾';
   if(id === 'contabilidad')   renderContabilidad();
-  if(id === 'disponibilidad') renderDisponibilidad();
+  if(id === 'disponibilidad') {
+    renderDisponibilidad();
+    if (dispViewMode === 'timeline') setTimeout(() => scrollDispTimelineToToday(false), 60);
+  }
   if(id === 'ocupacion')      { populateOcuMonth(); renderOcupacion(); }
   if(id === 'programa')       renderProgramaMetrics();
   if(id === 'bot')            { loadBotData(); startBotLive(); }
@@ -3930,6 +4072,16 @@ let dispMonthsShown = 3;
 let dispMonthsBack  = 0;
 const CABIN_DIRECT_COLOR = { verde: '#a8c9a0', azul: '#8fb3d4', lila: '#b09fd4' };
 
+// Vista: 'calendar' (default) o 'timeline'. Persistida en localStorage.
+let dispViewMode = (function () {
+  try { return localStorage.getItem('dispViewMode') === 'timeline' ? 'timeline' : 'calendar'; }
+  catch (_) { return 'calendar'; }
+})();
+// Timeline: cuántos días arranca cargados (ayer + rolling 7). Se incrementa
+// en +7 con "Cargar semana siguiente ↓".
+const DISP_TL_START_DAYS = 8;
+let dispTimelineDaysLoaded = DISP_TL_START_DAYS;
+
 function updateDispLegend() {
   const a = document.getElementById('legendDotAirbnb');
   const d = document.getElementById('legendDotDirect');
@@ -3941,10 +4093,413 @@ function setDispCabin(cabin, btn) {
   dispCabin = cabin;
   dispMonthsShown = 3;
   dispMonthsBack  = 0;
+  dispTimelineDaysLoaded = DISP_TL_START_DAYS;
   document.querySelectorAll('.disp-cabin-tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
   updateDispLegend();
   renderDisponibilidad();
+  if (dispViewMode === 'timeline') {
+    // Al cambiar cabaña en timeline, saltamos a la vista de hoy.
+    setTimeout(() => scrollDispTimelineToToday(true), 60);
+  }
+}
+
+function setDispViewMode(mode) {
+  if (mode !== 'calendar' && mode !== 'timeline') return;
+  dispViewMode = mode;
+  try { localStorage.setItem('dispViewMode', mode); } catch (_) {}
+  document.querySelectorAll('.disp-view-btn').forEach(b => {
+    const isActive = b.getAttribute('data-view') === mode;
+    b.classList.toggle('active', isActive);
+    b.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+  const cal = document.getElementById('dispCalendars');
+  const tl  = document.getElementById('dispTimeline');
+  if (mode === 'calendar') {
+    if (cal) cal.style.display = '';
+    if (tl)  tl.style.display  = 'none';
+    renderDisponibilidad();
+  } else {
+    if (cal) cal.style.display = 'none';
+    if (tl)  tl.style.display  = '';
+    dispTimelineDaysLoaded = DISP_TL_START_DAYS;
+    renderDispTimeline();
+    setTimeout(() => scrollDispTimelineToToday(true), 60);
+  }
+}
+
+function _applyDispViewMode() {
+  document.querySelectorAll('.disp-view-btn').forEach(b => {
+    const isActive = b.getAttribute('data-view') === dispViewMode;
+    b.classList.toggle('active', isActive);
+    b.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+  const cal = document.getElementById('dispCalendars');
+  const tl  = document.getElementById('dispTimeline');
+  if (cal) cal.style.display = dispViewMode === 'timeline' ? 'none' : '';
+  if (tl)  tl.style.display  = dispViewMode === 'timeline' ? '' : 'none';
+}
+
+function loadMoreDispTimeline() {
+  const prevDays = dispTimelineDaysLoaded;
+  dispTimelineDaysLoaded += 7;
+  renderDispTimeline();
+  // Scroll al primer día recién cargado.
+  setTimeout(() => {
+    const el = document.querySelector('#dispTimeline .disp-tl-day[data-day-idx="' + prevDays + '"]');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 40);
+}
+
+function scrollDispTimelineToToday(smooth) {
+  const el = document.getElementById('dispTimelineTodayAnchor');
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  // Objetivo: mostrar la etiqueta del día "Hoy" cerca del top, con margen
+  // para que un poco de contexto de "ayer" quede visible arriba.
+  const target = window.scrollY + rect.top - 60;
+  window.scrollTo({ top: Math.max(0, target), behavior: smooth ? 'smooth' : 'auto' });
+}
+
+// Render del timeline extendido (vista principal, no modal). Reusa helpers
+// del mini-timeline (_reservationOccupancySpans, _findAvailableSlots) y
+// dibuja un day-block por día para la cabaña activa.
+function renderDispTimeline() {
+  const container = document.getElementById('dispTimeline');
+  if (!container) return;
+  renderReservasHoy();
+  updateDispLegend();
+
+  const cabin = dispCabin;
+  const HOUR_H = 14;
+  const DAY_H  = 24 * HOUR_H;
+
+  const _now = new Date();
+  const todayISO = _now.getFullYear() + '-' + String(_now.getMonth()+1).padStart(2,'0') + '-' + String(_now.getDate()).padStart(2,'0');
+  const startDayISO = _addDaysISO(todayISO, -1);
+  const totalDays = dispTimelineDaysLoaded;
+  const days = [];
+  for (let i = 0; i < totalDays; i++) days.push(_addDaysISO(startDayISO, i));
+
+  const rangeStart = new Date(days[0] + 'T00:00:00');
+  const rangeEnd   = new Date(_addDaysISO(days[totalDays - 1], 1) + 'T00:00:00');
+  const relevantes = reservations.filter(r =>
+    r.cabin === cabin && r.estadoPago !== 'CANCELADA' && r.origin !== 'Abierta' && r.checkin && r.checkout
+  );
+  const allEvents = [];
+  relevantes.forEach(r => {
+    const spans = _reservationOccupancySpans(r);
+    spans.forEach(s => {
+      if (s.end <= rangeStart || s.start >= rangeEnd) return;
+      allEvents.push({ start: s.start, end: s.end, r: r });
+    });
+  });
+
+  const allSlots = [];
+  days.forEach(originDay => {
+    _findAvailableSlots(cabin, originDay, allEvents).forEach(slot => {
+      allSlots.push(Object.assign({}, slot, { originDay: originDay }));
+    });
+  });
+  // Filtrar slots según la regla de "día fragmentado" (misma que en el mini
+  // timeline del modal): no ofertar pasatarde/pasanoche en días 100% libres,
+  // se quiere venderlos como noche entera.
+  const FRAGMENTING_TIPOS = { pasatarde:1, pasanoche:1, pasadia:1, early:1, late:1 };
+  const _isFragmentedDay = (dayISO) => {
+    const dayStart = new Date(dayISO + 'T00:00:00');
+    const dayEnd   = new Date(_addDaysISO(dayISO, 1) + 'T00:00:00');
+    for (const e of allEvents) {
+      const tipo = e.r.tipo || 'noche';
+      if (!FRAGMENTING_TIPOS[tipo]) continue;
+      if (e.start < dayEnd && e.end > dayStart) return true;
+    }
+    for (const e of allEvents) {
+      const tipo = e.r.tipo || 'noche';
+      if (tipo !== 'early' && tipo !== 'pasadia') continue;
+      if (e.r.checkin === dayISO) return true;
+    }
+    return false;
+  };
+  const filteredSlots = allSlots.filter(s => _isFragmentedDay(s.originDay));
+
+  const DOW = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const MON = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const TIPO_BG = { noche:'#6a9e62', pasatarde:'#d97706', pasanoche:'#3b82f6', pasadia:'#f97316', early:'#5b54c9', late:'#ec4899' };
+  const TIPO_SHORT = { noche:'Noche', pasatarde:'PT', pasanoche:'PN', pasadia:'PD', early:'Early', late:'Late' };
+  const _fmtDT = (dt) => {
+    const dowShort = ['dom','lun','mar','mié','jue','vie','sáb'][dt.getDay()];
+    const dd = dt.getDate();
+    const mm = MON[dt.getMonth()];
+    let h = dt.getHours();
+    const mn = dt.getMinutes();
+    const ampm = h >= 12 ? 'pm' : 'am';
+    h = h % 12; if (h === 0) h = 12;
+    const mnStr = mn === 0 ? '' : ':' + String(mn).padStart(2,'0');
+    return dowShort + ' ' + dd + ' ' + mm + ' ' + h + mnStr + ampm;
+  };
+  const _fmtHM = (dt) => {
+    let h = dt.getHours();
+    const m = dt.getMinutes();
+    const ampm = h >= 12 ? 'pm' : 'am';
+    h = h % 12; if (h === 0) h = 12;
+    return h + (m ? ':' + String(m).padStart(2,'0') : '') + ' ' + ampm;
+  };
+  const _hoursDiff = (a, b) => (b - a) / 3600000;
+  const _fmtDuration = (hrs) => {
+    if (hrs < 1) return Math.round(hrs * 60) + 'min';
+    const h = Math.floor(hrs);
+    const m = Math.round((hrs - h) * 60);
+    if (m === 0) return h + 'h';
+    if (m === 30) return h + '½h';
+    return h + 'h ' + m + 'm';
+  };
+
+  const yesterdayISO = _addDaysISO(todayISO, -1);
+  const tomorrowISO  = _addDaysISO(todayISO, 1);
+
+  let daysHtml = '';
+  days.forEach((day, idx) => {
+    daysHtml += _buildDispTimelineDay({
+      day, idx, cabin, todayISO, yesterdayISO, tomorrowISO,
+      HOUR_H, DAY_H, DOW, MON, TIPO_BG, TIPO_SHORT,
+      allEvents, filteredSlots,
+      _fmtDT, _fmtHM, _hoursDiff, _fmtDuration
+    });
+  });
+
+  const legendTipos = ''
+    + '<div class="mt-tipo-legend" style="padding:10px 4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:12px;">'
+    +   '<span><i style="background:#6a9e62"></i>Noche</span>'
+    +   '<span><i style="background:#d97706"></i>Pasatarde</span>'
+    +   '<span><i style="background:#3b82f6"></i>Pasanoche</span>'
+    +   '<span><i style="background:#f97316"></i>Pasadía</span>'
+    +   '<span><i style="background:#5b54c9"></i>Early</span>'
+    +   '<span><i style="background:#ec4899"></i>Late</span>'
+    +   '<span><i class="slot-swatch"></i>Libre</span>'
+    +   '<span style="display:inline-flex;align-items:center;gap:4px;"><i style="background:#dc2626;border-radius:50%;width:9px;height:9px;"></i>Ahora</span>'
+    + '</div>';
+
+  container.innerHTML = legendTipos
+    + daysHtml
+    + '<div class="disp-tl-more-wrap">'
+    +   '<button class="disp-tl-more" onclick="loadMoreDispTimeline()">Cargar semana siguiente ↓</button>'
+    + '</div>';
+}
+
+function _buildDispTimelineDay(ctx) {
+  const { day, idx, cabin, todayISO, yesterdayISO, tomorrowISO,
+          HOUR_H, DAY_H, DOW, MON, TIPO_BG, TIPO_SHORT,
+          allEvents, filteredSlots,
+          _fmtDT, _fmtHM, _hoursDiff, _fmtDuration } = ctx;
+
+  const dayStart = new Date(day + 'T00:00:00');
+  const dayEnd   = new Date(_addDaysISO(day, 1) + 'T00:00:00');
+  const isToday  = (day === todayISO);
+  const isYesterday = (day === yesterdayISO);
+  const isTomorrow  = (day === tomorrowISO);
+  const isPast   = dayEnd < new Date(new Date().setHours(0,0,0,0));
+  const d = new Date(day + 'T00:00:00');
+  const labelDate = DOW[d.getDay()] + ' ' + d.getDate() + ' ' + MON[d.getMonth()];
+
+  const dayEvents = allEvents.filter(e => e.start < dayEnd && e.end > dayStart);
+  const dayEventsSorted = dayEvents.slice().sort((a, b) => a.start - b.start);
+
+  // ─── Columna barra ──────────────────────────────────────
+  let barHtml = '';
+  dayEvents.forEach(e => {
+    const startClipped = e.start < dayStart ? dayStart : e.start;
+    const endClipped   = e.end > dayEnd     ? dayEnd   : e.end;
+    const top = ((startClipped - dayStart) / 3600000) * HOUR_H;
+    const bottom = ((endClipped - dayStart) / 3600000) * HOUR_H;
+    const height = Math.max(4, bottom - top);
+    const tipo = e.r.tipo || 'noche';
+    const bg = TIPO_BG[tipo] || '#6a9e62';
+    const short = TIPO_SHORT[tipo] || tipo;
+    const first = (e.r.name || '').split(' ')[0] || '?';
+    const inner = height >= 34 ? escapeHtml(first) + '<br>' + short
+                : height >= 20 ? escapeHtml(first)
+                : escapeHtml(first.charAt(0) + short.charAt(0));
+    const tip = e.r.name + ' · ' + short + ' · ' + _fmtDT(e.start) + ' → ' + _fmtDT(e.end) + ' · tap para ver detalle';
+    const rid = escapeHtml(String(e.r.id));
+    barHtml += '<div class="mt-v-block" onclick="event.stopPropagation();_timelineBlockClick(\'' + rid + '\')"'
+             + ' style="top:' + top.toFixed(1) + 'px;height:' + height.toFixed(1) + 'px;background:' + bg + ';"'
+             + ' title="' + escapeHtml(tip) + '">' + inner + '</div>';
+  });
+  filteredSlots.forEach(slot => {
+    if (slot.end <= dayStart || slot.start >= dayEnd) return;
+    const startClipped = slot.start < dayStart ? dayStart : slot.start;
+    const endClipped   = slot.end > dayEnd     ? dayEnd   : slot.end;
+    const top = ((startClipped - dayStart) / 3600000) * HOUR_H;
+    const bottom = ((endClipped - dayStart) / 3600000) * HOUR_H;
+    const height = Math.max(6, bottom - top);
+    const short = slot.tipo === 'pasatarde' ? 'PT' : slot.tipo === 'pasanoche' ? 'PN' : '';
+    const inner = height >= 20 ? '＋<br>' + short : '＋';
+    const slotTip = 'Ventana libre · ' + _fmtDT(slot.start) + ' → ' + _fmtDT(slot.end) + ' · tap para cotizar/registrar';
+    barHtml += '<div class="mt-v-slot" onclick="event.stopPropagation();showAvailabilityDetail(\'' + cabin + '\',\'' + slot.originDay + '\',\'' + slot.tipo + '\')"'
+             + ' style="top:' + top.toFixed(1) + 'px;height:' + height.toFixed(1) + 'px;"'
+             + ' title="' + escapeHtml(slotTip) + '">' + inner + '</div>';
+  });
+  // Línea "ahora" solo en el día de hoy
+  let nowLineHtml = '';
+  if (isToday) {
+    const now = new Date();
+    const hoursFromDayStart = (now - dayStart) / 3600000;
+    if (hoursFromDayStart >= 0 && hoursFromDayStart <= 24) {
+      const nowPx = hoursFromDayStart * HOUR_H;
+      nowLineHtml = '<div class="disp-tl-now" style="top:' + nowPx.toFixed(1) + 'px;"></div>';
+    }
+  }
+
+  // ─── Columna horas (ticks) ───────────────────────────────
+  let hoursHtml = '';
+  [0, 6, 12, 18].forEach(h => {
+    const label = h === 0 ? '12a' : h === 12 ? '12p' : (h < 12 ? h + 'a' : (h - 12) + 'p');
+    hoursHtml += '<div class="mt-v-hour" style="top:' + (h * HOUR_H) + 'px;">' + label + '</div>';
+  });
+
+  // ─── Guides (top/bottom de cada bloque real dentro del día) ──
+  let guidesHtml = '';
+  const GRID_PADDING_TOP = 8;
+  const _addGuide = (px) => {
+    if (px < 0 || px > DAY_H) return;
+    const shifted = px + GRID_PADDING_TOP;
+    guidesHtml += '<div class="mt-v-guide" style="top:' + shifted.toFixed(1) + 'px;"></div>';
+  };
+  dayEvents.forEach(e => {
+    const s = e.start < dayStart ? dayStart : e.start;
+    const t = e.end   > dayEnd   ? dayEnd   : e.end;
+    _addGuide(((s - dayStart) / 3600000) * HOUR_H);
+    _addGuide(((t - dayStart) / 3600000) * HOUR_H);
+  });
+
+  // ─── Columna agenda (items posicionados por hora) ────────
+  const carries = dayEvents.filter(e => e.start < dayStart);
+  const items = [];
+  dayEvents.forEach(e => {
+    if (e.start >= dayStart && e.start < dayEnd) items.push({ type: 'entra', at: e.start, e: e });
+    if (e.end > dayStart && e.end <= dayEnd)     items.push({ type: 'sale',  at: e.end,   e: e });
+  });
+  for (let i = 0; i < dayEventsSorted.length - 1; i++) {
+    const cur = dayEventsSorted[i], nxt = dayEventsSorted[i + 1];
+    if (cur.end < nxt.start && cur.end >= dayStart && nxt.start <= dayEnd) {
+      const gapH = _hoursDiff(cur.end, nxt.start);
+      if (gapH > 0.05) {
+        const level = gapH < 1 ? 'critical' : (gapH <= 2 ? 'tight' : '');
+        items.push({ type: 'clean', at: cur.end, endAt: nxt.start, gapH: gapH, level: level });
+      }
+    }
+  }
+  filteredSlots.forEach(slot => {
+    if (slot.originDay === day) items.push({ type: 'slot', at: slot.start, slot: slot });
+  });
+  items.sort((a, b) => a.at - b.at);
+
+  const _estHeight = (it) => it.type === 'entra' ? 40 : 18;
+  const ITEM_SHIFT = 3;
+  const positioned = [];
+  let prevBottom = 0;
+  items.forEach(it => {
+    const height = _estHeight(it);
+    let top;
+    if (it.type === 'clean' && it.endAt) {
+      const startPx = ((it.at - dayStart) / 3600000) * HOUR_H;
+      const endPx   = ((it.endAt - dayStart) / 3600000) * HOUR_H;
+      const midCentered = startPx + (endPx - startPx - height) / 2;
+      const maxTop = endPx - height - 3;
+      top = Math.min(Math.max(midCentered, prevBottom + 2), maxTop);
+    } else {
+      const idealTop = ((it.at - dayStart) / 3600000) * HOUR_H;
+      top = Math.max(idealTop + ITEM_SHIFT, prevBottom);
+    }
+    positioned.push(Object.assign({}, it, { top: top, height: height }));
+    prevBottom = top + height + 2;
+  });
+
+  let innerAgenda = '';
+  let carryTop = 0;
+  carries.forEach(e => {
+    const short = TIPO_SHORT[e.r.tipo || 'noche'] || 'Noche';
+    innerAgenda += '<div class="mt-v-carry" style="top:' + carryTop + 'px;">'
+                +    escapeHtml(e.r.name) + ' · ' + short + ' continúa desde ' + _fmtDT(e.start)
+                + '</div>';
+    carryTop += 20;
+  });
+  if (items.length === 0 && carries.length === 0) {
+    innerAgenda += '<div class="mt-v-empty" style="top:12px;">Sin ocupación registrada</div>';
+  }
+  positioned.forEach(it => {
+    const topStyle = 'style="top:' + it.top.toFixed(1) + 'px;"';
+    if (it.type === 'entra') {
+      const tipo = it.e.r.tipo || 'noche';
+      const short = TIPO_SHORT[tipo] || 'Noche';
+      const persons = it.e.r.persons ? it.e.r.persons + ' pers' : '';
+      const salida = _fmtDT(it.e.end);
+      const tag = [short, persons, 'sale ' + salida].filter(Boolean).join(' · ');
+      const rid = escapeHtml(String(it.e.r.id));
+      innerAgenda += '<div class="mt-v-item" ' + topStyle + ' onclick="event.stopPropagation();_timelineBlockClick(\'' + rid + '\')">'
+                  +   '<time>' + _fmtHM(it.at) + '</time>'
+                  +   '<div><strong>' + escapeHtml(it.e.r.name) + ' entra</strong>'
+                  +     '<span class="tag">' + escapeHtml(tag) + '</span>'
+                  +   '</div>'
+                  + '</div>';
+    } else if (it.type === 'sale') {
+      const rid = escapeHtml(String(it.e.r.id));
+      innerAgenda += '<div class="mt-v-item" ' + topStyle + ' onclick="event.stopPropagation();_timelineBlockClick(\'' + rid + '\')">'
+                  +   '<time>' + _fmtHM(it.at) + '</time>'
+                  +   '<div><strong>' + escapeHtml(it.e.r.name) + ' sale</strong></div>'
+                  + '</div>';
+    } else if (it.type === 'clean') {
+      const dur = _fmtDuration(it.gapH);
+      const suffix = it.level === 'critical' ? '⚠' : '';
+      const desc = it.level === 'critical' ? 'ventana crítica — turnover al límite'
+                 : it.level === 'tight'    ? 'ventana de limpieza · ajustado'
+                 :                            'ventana de limpieza';
+      const cls = 'mt-v-clean' + (it.level ? ' ' + it.level : '');
+      innerAgenda += '<div class="' + cls + '" ' + topStyle + '>'
+                  +   '<b>' + dur + (suffix ? ' ' + suffix : '') + '</b>'
+                  +   '<span>' + desc + '</span>'
+                  + '</div>';
+    } else if (it.type === 'slot') {
+      const slot = it.slot;
+      const tipoLabel = slot.tipo === 'pasatarde' ? 'PT' : 'PN';
+      const horas = slot.tipo === 'pasatarde' ? '12:30–7 pm'
+                  : slot.tipo === 'pasanoche' ? '8 pm–12:30 pm sig.'
+                  : '';
+      const precio = slot.tipo === 'pasatarde' ? '$60'
+                   : slot.tipo === 'pasanoche' ? '$75'
+                   : '';
+      innerAgenda += '<div class="mt-v-slot-hint" ' + topStyle + ' onclick="event.stopPropagation();showAvailabilityDetail(\'' + cabin + '\',\'' + slot.originDay + '\',\'' + slot.tipo + '\')" title="Ventana libre — tap para cotizar/registrar">'
+                  +   '<time>' + _fmtHM(slot.start) + '</time>'
+                  +   '<div>💡 <span class="mt-slot-lbl">' + tipoLabel + ' libre</span> '
+                  +     '<span class="mt-slot-hrs">' + horas + '</span> '
+                  +     '<span class="mt-slot-price">' + precio + '</span>'
+                  +   '</div>'
+                  + '</div>';
+    }
+  });
+
+  // Badges
+  let badges = '';
+  if (isToday)     badges += '<span class="disp-tl-badge disp-tl-badge-today">Hoy</span>';
+  if (isYesterday) badges += '<span class="disp-tl-badge disp-tl-badge-yesterday">Ayer</span>';
+  if (isTomorrow)  badges += '<span class="disp-tl-badge disp-tl-badge-tomorrow">Mañana</span>';
+
+  const anchorAttr = isToday ? ' id="dispTimelineTodayAnchor"' : '';
+  const pastCls = isPast ? ' is-past' : '';
+  const todayHeaderCls = isToday ? ' is-today' : '';
+
+  return '<div class="disp-tl-day' + pastCls + '"' + anchorAttr + ' data-day-idx="' + idx + '">'
+       +   '<div class="disp-tl-day-header' + todayHeaderCls + '">'
+       +     escapeHtml(labelDate)
+       +     badges
+       +   '</div>'
+       +   '<div class="disp-tl-day-grid" style="height:' + (DAY_H + 16) + 'px;">'
+       +     guidesHtml
+       +     '<div class="mt-v-hours" style="height:' + DAY_H + 'px;">' + hoursHtml + '</div>'
+       +     '<div class="mt-v-bar-col" style="height:' + DAY_H + 'px;">' + nowLineHtml + barHtml + '</div>'
+       +     '<div class="mt-v-agenda" style="height:' + DAY_H + 'px;position:relative;">' + innerAgenda + '</div>'
+       +   '</div>'
+       + '</div>';
 }
 
 // Devuelve las fechas "reales" de check-in/out según el tipo (sin mutar storage).
@@ -4188,6 +4743,15 @@ async function openWhatsApp(id, kind) {
 
 function renderDisponibilidad() {
   console.time('renderDisponibilidad');
+  // Sincroniza qué contenedor está visible según el modo persistido y refleja
+  // el estado activo en los botones del toggle. Se llama en cada render para
+  // que los deep-links a `#disponibilidad` respeten la última elección.
+  _applyDispViewMode();
+  if (dispViewMode === 'timeline') {
+    console.timeEnd('renderDisponibilidad');
+    renderDispTimeline();
+    return;
+  }
   renderReservasHoy();
   updateDispLegend();
   const container = document.getElementById('dispCalendars');
