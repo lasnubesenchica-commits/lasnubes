@@ -789,7 +789,12 @@ async function parseAdminVoucher() {
 }
 
 // ─── Admin: submit reserva ───
+// Flag de submit en vuelo. `btn.disabled=true` no protege contra double-taps
+// muy rápidos (el segundo click ya está dispatched antes de que el handler
+// del primero corra), así que además llevamos este flag en JS.
+let _submittingReserva = false;
 async function adminSubmitReserva() {
+  if (_submittingReserva) return;
   if (!selStart || !selEnd) { showToast('⚠ Selecciona check-in y check-out en el calendario.'); return; }
   const phone = document.getElementById('adminGuestPhone').value.trim();
   if (!phone) { showToast('⚠ Falta el WhatsApp del huésped.'); return; }
@@ -797,6 +802,7 @@ async function adminSubmitReserva() {
   const email = document.getElementById('adminGuestEmail').value.trim();
   const notas = document.getElementById('adminNotas').value.trim();
   const v = window._lastVoucher || {};
+  _submittingReserva = true;
   // Tarifa que se envía como monto de la reserva: el override manual si el
   // admin ajustó el total, sino la tarifa calculada del modal. Antes se
   // mandaba v.monto (lo que el voucher decía que se pagó), lo que colapsa
@@ -824,7 +830,13 @@ async function adminSubmitReserva() {
     const res  = await fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify(payload) });
     const data = await res.json();
     if (!data.ok) { showToast('✗ ' + (data.error || 'error')); return; }
-    showToast('✅ Reserva bloqueada (' + data.noches + ' noches · $' + data.montoTotal + ' total · $' + data.comision + ' comisión).');
+    if (data.duplicate) {
+      // El servidor detectó una reserva idéntica reciente y la reutilizó.
+      // Igual limpiamos el form y avisamos.
+      showToast('ℹ️ Ya existía esta reserva (' + data.noches + ' noches · $' + data.montoTotal + ' total). No se duplicó.');
+    } else {
+      showToast('✅ Reserva bloqueada (' + data.noches + ' noches · $' + data.montoTotal + ' total · $' + data.comision + ' comisión).');
+    }
     // Reset
     document.getElementById('adminGuestPhone').value = '';
     document.getElementById('adminGuestName').value  = '';
@@ -840,6 +852,7 @@ async function adminSubmitReserva() {
   } catch(e) {
     showToast('✗ Red: ' + e.message);
   } finally {
+    _submittingReserva = false;
     btn.disabled = false; btn.textContent = '🔒 Bloquear reserva';
   }
 }

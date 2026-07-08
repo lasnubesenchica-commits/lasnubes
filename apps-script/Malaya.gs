@@ -87,6 +87,45 @@ function _malayaNightCount(ciIso, coIso) {
   return Math.round((b - a) / 86400000);
 }
 
+// Busca una reserva reciente con MISMO teléfono + mismas fechas dentro de
+// una ventana de tiempo (segundos). Se usa como dedupe idempotente en
+// saveMalayaReserva para que un retry / double-tap del cliente no cree dos
+// filas. Devuelve null si no hay match o el objeto con los campos que la
+// respuesta original devolvería (id, noches, montoTotal, comisión, huesped).
+function _findRecentMalayaReserva(phone, ciIso, coIso, windowSeconds) {
+  const sheet = _malayaSheet();
+  if (sheet.getLastRow() < 2) return null;
+  const now = Date.now();
+  const data = sheet.getDataRange().getValues();
+  // Recorremos de abajo hacia arriba: los duplicados son casi siempre las
+  // últimas filas insertadas, así que salimos rápido.
+  for (let i = data.length - 1; i >= 1; i--) {
+    const row = data[i];
+    const rowPhone = String(row[2] || '').replace(/\D/g, '');
+    if (rowPhone !== phone) continue;
+    const rowCi = row[3] instanceof Date ? Utilities.formatDate(row[3], 'America/Panama', 'yyyy-MM-dd') : String(row[3] || '').slice(0,10);
+    const rowCo = row[4] instanceof Date ? Utilities.formatDate(row[4], 'America/Panama', 'yyyy-MM-dd') : String(row[4] || '').slice(0,10);
+    if (rowCi !== ciIso || rowCo !== coIso) continue;
+    const fecha = row[12];
+    let ts = null;
+    if (fecha instanceof Date) ts = fecha.getTime();
+    else if (fecha) {
+      const parsed = new Date(String(fecha).replace(' ', 'T') + '-05:00'); // Panamá = UTC-5, sin DST
+      if (!isNaN(parsed.getTime())) ts = parsed.getTime();
+    }
+    if (ts && (now - ts) <= windowSeconds * 1000) {
+      return {
+        id:         String(row[0] || ''),
+        huesped:    String(row[1] || ''),
+        noches:     parseInt(row[5], 10) || 0,
+        montoTotal: parseFloat(row[7]) || 0,
+        comision:   parseFloat(row[8]) || 0
+      };
+    }
+  }
+  return null;
+}
+
 // Comisión total por reserva: itera cada noche y suma según día de la semana
 // del CHECKIN de esa noche. Vie/Sáb → $20, resto → $10.
 function _malayaCalculateCommission(ciIso, coIso) {
@@ -306,33 +345,60 @@ function saveMalayaReserva(payload) {
   if (!checkin || !checkout) throw new Error('Fechas inválidas');
   if (checkout <= checkin)   throw new Error('Check-out debe ser posterior a check-in');
 
-  // Validar disponibilidad (no chocar con iCal ni con otra Directa activa).
-  const cal = getMalayaCalendarData();
-  for (const b of cal.blocked) {
-    // Overlap test: rangos se cruzan si max(start) < min(end).
-    if (Math.max(checkin, b.checkin) < Math.min(checkout, b.checkout)) {
-      throw new Error('Esas fechas están ocupadas (' + b.source + ').');
+  // Serializamos validate+append para que dos requests concurrentes (o un
+  // double-tap del cliente) no puedan ambos "no ver overlap" y ambos insertar.
+  // El lock protege TAMBIÉN la lectura del sheet: sin él, la segunda request
+  // podría haber leído antes de que la primera hiciera flush del appendRow.
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  let id, huesped, noches, personas, montoTotal, comision, fechaReserva,
+      notas, voucherURL, guestEmail, duplicate = false;
+  try {
+    // Dedupe idempotente: si en los últimos 120 s ya se guardó una reserva
+    // con MISMO teléfono + MISMAS fechas, devolvemos esa en vez de insertar
+    // otra. Cubre casos como reintentos del cliente por timeout percibido
+    // aunque el primer submit haya llegado ok al servidor.
+    const existing = _findRecentMalayaReserva(guestPhone, checkin, checkout, 120);
+    if (existing) {
+      logDebugEntry('malaya-reserva-DUPLICATE-IGNORED', { id: existing.id, guest: existing.huesped, ci: checkin, co: checkout, phone: guestPhone });
+      return {
+        ok: true, id: existing.id, noches: existing.noches, montoTotal: existing.montoTotal, comision: existing.comision, duplicate: true
+      };
     }
+
+    // Validar disponibilidad (no chocar con iCal ni con otra Directa activa).
+    const cal = getMalayaCalendarData();
+    for (const b of cal.blocked) {
+      // Overlap test: rangos se cruzan si max(start) < min(end).
+      if (Math.max(checkin, b.checkin) < Math.min(checkout, b.checkout)) {
+        throw new Error('Esas fechas están ocupadas (' + b.source + ').');
+      }
+    }
+
+    const sheet = _malayaSheet();
+    id           = 'MAL-' + Date.now();
+    noches       = _malayaNightCount(checkin, checkout);
+    personas     = parseInt(payload.personas, 10) || 2;
+    montoTotal   = parseFloat(payload.monto) || _malayaCalculateTotal(checkin, checkout, personas);
+    comision     = _malayaCalculateCommission(checkin, checkout);
+    fechaReserva = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd HH:mm:ss');
+    notas        = String(payload.notas || '');
+    huesped      = String(payload.guestName || '').trim() || '(sin nombre)';
+    voucherURL   = String(payload.voucherURL || '').trim();
+    guestEmail   = String(payload.guestEmail || '').trim();
+
+    sheet.appendRow([
+      id, huesped, guestPhone, checkin, checkout, noches,
+      personas, montoTotal, comision, 'Directa', 'pendiente',
+      false, fechaReserva, notas, voucherURL, guestEmail
+    ]);
+    // Flush inmediato para que si viene un request seguidilla (dedupe check
+    // arriba) ya vea esta fila. Sin flush, appendRow puede quedar en cache y
+    // el siguiente getDataRange() retornar valores previos.
+    SpreadsheetApp.flush();
+  } finally {
+    lock.releaseLock();
   }
-
-  const sheet = _malayaSheet();
-  const id    = 'MAL-' + Date.now();
-  const noches    = _malayaNightCount(checkin, checkout);
-  const personas  = parseInt(payload.personas, 10) || 2;
-  const montoTotal = parseFloat(payload.monto) || _malayaCalculateTotal(checkin, checkout, personas);
-  const comision  = _malayaCalculateCommission(checkin, checkout);
-  const fechaReserva = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd HH:mm:ss');
-  const notas     = String(payload.notas || '');
-  const huesped   = String(payload.guestName || '').trim() || '(sin nombre)';
-
-  const voucherURL = String(payload.voucherURL || '').trim();
-  const guestEmail = String(payload.guestEmail || '').trim();
-
-  sheet.appendRow([
-    id, huesped, guestPhone, checkin, checkout, noches,
-    personas, montoTotal, comision, 'Directa', 'pendiente',
-    false, fechaReserva, notas, voucherURL, guestEmail
-  ]);
   logDebugEntry('malaya-reserva-OK', { id: id, guest: huesped, ci: checkin, co: checkout, monto: montoTotal, comision: comision, voucher: !!voucherURL, email: !!guestEmail });
 
   // Notificación automática a Celestino (sin ventana de 24h de WhatsApp).
