@@ -7853,36 +7853,46 @@ async function saveReservation() {
     }
   }
 
-  // ── Duplicate check: same cabin + overlapping checkin ────────
-  // (excluyendo la fila que vamos a eliminar como parte del cleanup legacy)
+  // ── Conflict check: overlap HORARIO real (no solo por fecha) ─────
+  // Construimos los spans del prospecto y de cada reserva existente en la
+  // misma cabaña y comparamos. Antes se chequeaba por rango de storage día
+  // a día — eso generaba falsos positivos entre reservas que compartían un
+  // día pero cuyos horarios no se pisaban (ej: late 2pm→4pm + pasanoche
+  // 4:30pm→12:30pm). Con los spans efectivos (que respetan tipo, cortesía
+  // y horas custom) el warning solo salta cuando realmente hay overlap.
+  const _prospectHoraEntrada = ((document.getElementById('fHoraEntrada') || {}).value || '').trim();
+  const _prospectHoraSalida  = ((document.getElementById('fHoraSalida')  || {}).value || '').trim();
+  const _prospectCheckoutExt = !!(document.getElementById('fCheckoutExtendido') || {}).checked;
+  const _prospectRes = {
+    cabin, tipo: tipoForm, checkin, checkout,
+    horaEntrada: _prospectHoraEntrada,
+    horaSalida:  _prospectHoraSalida,
+    checkoutExtendido: _prospectCheckoutExt
+  };
+  const _prospectSpans = _reservationOccupancySpans(_prospectRes);
+  const _spansOverlap = (a, b) => a.start < b.end && b.start < a.end;
   const dup = reservations.find(r => {
     if (editId && r.id == editId) return false; // skip self when editing
     if (adjacentToDelete && r.id === adjacentToDelete) return false; // será eliminada
     if (r.cabin !== cabin) return false;
     if (r.origin === 'Abierta') return false;
     if (r.estadoPago === 'CANCELADA') return false;
-    return (r.checkin >= checkin && r.checkin < checkout) ||
-           (checkin >= r.checkin && checkin < r.checkout);
+    // Prefiltro barato por rango de storage: si ni siquiera comparten día
+    // el hour-check no puede matchear. Evita recalcular spans para todo el
+    // sheet cuando la cabaña tiene decenas de reservas.
+    if (!r.checkin || !r.checkout) return false;
+    if (r.checkout <= checkin || r.checkin >= checkout) return false;
+    const rSpans = _reservationOccupancySpans(r);
+    return _prospectSpans.some(ps => rSpans.some(rs => _spansOverlap(ps, rs)));
   });
   if (dup) {
-    // Pasatarde (12:30-7pm) + Pasanoche (8pm-12:30am+) del mismo día conviven:
-    // no se pisan en horario. Skip warning si el par es compatible y comparten
-    // exactamente el rango de storage.
-    const dupTipo   = dup.tipo || 'noche';
-    const compatPair = (
-      (tipoForm === 'pasanoche' && dupTipo === 'pasatarde') ||
-      (tipoForm === 'pasatarde' && dupTipo === 'pasanoche')
-    ) && dup.checkin === checkin && dup.checkout === checkout;
+    const msg = `⚠️ Conflicto horario
 
-    if (!compatPair) {
-      const msg = `⚠️ Conflicto de fechas
-
-Ya existe una reserva en esta cabaña:
+Ya existe una reserva en esta cabaña que se superpone en horario:
 ${dup.name} · ${dup.checkin} → ${dup.checkout}
 
 ¿Deseas guardar de todas formas?`;
-      if (!confirm(msg)) return;
-    }
+    if (!confirm(msg)) return;
   }
 
   // Reusar id de un intento fallido previo para que el dedup del backend
