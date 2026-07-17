@@ -270,8 +270,8 @@ function sendWAReservaConfirmada(reservation) {
     cabana:        cabin,
     fechas:        fechas,
     personas:      personasStr,
-    checkin_hora:  _horaPlantilla(reservation.tipo, 'checkin'),
-    checkout_hora: _horaPlantilla(reservation.tipo, 'checkout', reservation.checkoutExtendido),
+    checkin_hora:  _horaPlantilla(reservation.tipo, 'checkin',  false, reservation.horaEntrada),
+    checkout_hora: _horaPlantilla(reservation.tipo, 'checkout', reservation.checkoutExtendido, null, reservation.horaSalida),
     link:          link
   }, null, 'consulta_' + reservation.id);   // payload del boton "Consultas y cambios"
 }

@@ -2955,7 +2955,7 @@
     <div class="form-row" id="checkoutExtendidoRow">
       <div class="form-group" style="grid-column: 1 / -1;">
         <label style="display:flex;align-items:center;gap:8px;font-weight:500;cursor:pointer;">
-          <input type="checkbox" id="fCheckoutExtendido" style="width:18px;height:18px;cursor:pointer;">
+          <input type="checkbox" id="fCheckoutExtendido" style="width:18px;height:18px;cursor:pointer;" onchange="_updateHorasCustomHint((document.getElementById('fTipo')||{}).value||'noche', this.checked)">
           <span>Check-out extendido hasta 12:30 pm <span style="color:var(--text-muted);font-weight:400;font-size:12px;">(cortesía · sin costo)</span></span>
         </label>
       </div>
@@ -2974,6 +2974,21 @@
           <option value="late">Late check-out (2pm → 4pm día siguiente · bloquea noche siguiente)</option>
         </select>
         <div id="fTipoHint" style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.4;"></div>
+      </div>
+    </div>
+
+    <!-- Fila 4b-bis: Horas custom (opcional) — override del horario default del tipo -->
+    <div class="form-row" id="horasCustomRow">
+      <div class="form-group">
+        <label style="display:flex;align-items:baseline;gap:6px;">Hora entrada <span style="font-size:11px;color:var(--text-muted);font-weight:400;">opcional</span></label>
+        <input type="time" id="fHoraEntrada" step="900" oninput="_syncHoraCustomReset()" title="Deja en blanco para usar la hora default del tipo">
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:baseline;gap:6px;">Hora salida <span style="font-size:11px;color:var(--text-muted);font-weight:400;">opcional</span></label>
+        <input type="time" id="fHoraSalida" step="900" oninput="_syncHoraCustomReset()" title="Deja en blanco para usar la hora default del tipo">
+      </div>
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <div id="fHorasCustomHint" style="font-size:11px;color:var(--text-muted);margin-top:-4px;line-height:1.4;"></div>
       </div>
     </div>
 
@@ -4968,14 +4983,21 @@ function showDispDetail(id) {
   const tipo = r.tipo || 'noche';
   let duracionLabel = '?';
   if (days > 0) {
-    if (tipo === 'pasatarde')       duracionLabel = 'Pasatarde 12:30pm – 7pm';
-    else if (tipo === 'pasanoche')  duracionLabel = 'Pasanoche 8pm – 12:30pm';
-    else if (tipo === 'pasadia')    duracionLabel = 'Pasadía 9am – 5pm';
-    else if (tipo === 'early')      duracionLabel = '1 noche · entra 9am';
-    else if (tipo === 'late')       duracionLabel = '1 noche · sale 4pm';
+    // Horas efectivas para armar el sufijo cuando hay override manual.
+    const _defT = TIPO_DEFAULT_HORAS[tipo] || TIPO_DEFAULT_HORAS.noche;
+    const _hE = r.horaEntrada || _defT.entrada;
+    const _hS = r.horaSalida  || (r.checkoutExtendido && (tipo === 'noche' || tipo === 'early') ? '12:30' : _defT.salida);
+    const _rangoEfectivo = _fmtHora12(_hE) + ' – ' + _fmtHora12(_hS);
+    if (tipo === 'pasatarde')       duracionLabel = 'Pasatarde ' + _rangoEfectivo;
+    else if (tipo === 'pasanoche')  duracionLabel = 'Pasanoche ' + _rangoEfectivo;
+    else if (tipo === 'pasadia')    duracionLabel = 'Pasadía ' + _rangoEfectivo;
+    else if (tipo === 'early')      duracionLabel = '1 noche · entra ' + _fmtHora12(_hE);
+    else if (tipo === 'late')       duracionLabel = '1 noche · sale ' + _fmtHora12(_hS);
     else                            duracionLabel = days + (days === 1 ? ' noche' : ' noches');
-    if (r.checkoutExtendido && (tipo === 'noche' || tipo === 'early')) {
+    if (r.checkoutExtendido && (tipo === 'noche' || tipo === 'early') && !r.horaSalida) {
       duracionLabel += ' · 🤝 sale 12:30pm';
+    } else if (r.horaEntrada || r.horaSalida) {
+      duracionLabel += ' · ✏️ horario ajustado';
     }
   }
   // Fechas a desplegar (translación visual según tipo, sin tocar storage):
@@ -5180,6 +5202,11 @@ function showDispDetail(id) {
 }
 // Devuelve los tramos de ocupación REAL (con horas) de una reserva.
 // Cada elemento: { start: Date, end: Date }. Usado para el mini-timeline.
+//
+// Precedencia horaria (más fuerte a más débil):
+//   1. r.horaEntrada / r.horaSalida       ← override manual del admin
+//   2. r.checkoutExtendido (12:30pm)      ← cortesía sin costo
+//   3. TIPO_DEFAULT_HORAS[tipo]           ← default puro del tipo
 function _reservationOccupancySpans(r) {
   const tipo = r.tipo || 'noche';
   const ci = r.checkin, co = r.checkout;
@@ -5189,29 +5216,40 @@ function _reservationOccupancySpans(r) {
     d.setHours(h, m || 0, 0, 0);
     return d;
   };
-  if (tipo === 'pasatarde') return [{ start: at(ci, 12, 30), end: at(ci, 19, 0) }];
-  if (tipo === 'pasanoche') return [{ start: at(ci, 20, 0),  end: at(co, 12, 30) }];
-  if (tipo === 'pasadia') {
-    // storage.checkin = pasadia-1 (cortesía prep). El huésped realmente
-    // ocupa el día siguiente 9am-5pm.
-    const mainDay = _addDaysISO(ci, 1);
-    return [{ start: at(mainDay, 9, 0), end: at(mainDay, 17, 0) }];
+  // Parse "HH:MM" a {h, m}. Devuelve null si vacío/inválido.
+  const parseHM = (s) => {
+    if (!s) return null;
+    const parts = String(s).split(':');
+    const h = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) || 0;
+    if (isNaN(h) || h < 0 || h > 23 || m < 0 || m > 59) return null;
+    return { h, m };
+  };
+  // "Día de entrada real" según tipo (para saber sobre qué fecha aplica la
+  // hora custom de entrada). En early/pasadia el huésped entra ci+1 aunque
+  // el storage bloquee ci por cortesía.
+  const entradaDay = (tipo === 'early' || tipo === 'pasadia') ? _addDaysISO(ci, 1) : ci;
+  // Día real de salida (para hora custom de salida).
+  const salidaDay = (tipo === 'pasatarde') ? ci
+                  : (tipo === 'late')      ? _addDaysISO(co, -1)
+                  :                          co;
+  // Defaults del tipo (sin cortesía).
+  const def = TIPO_DEFAULT_HORAS[tipo] || TIPO_DEFAULT_HORAS.noche;
+  const defEntrada = parseHM(def.entrada) || { h: 14, m: 0 };
+  let   defSalida  = parseHM(def.salida)  || { h: 11, m: 0 };
+  // Cortesía: solo noche/early sin hora custom de salida elevan checkout a 12:30pm.
+  if (r.checkoutExtendido && (tipo === 'noche' || tipo === 'early') && !r.horaSalida) {
+    defSalida = { h: 12, m: 30 };
   }
-  if (tipo === 'early') {
-    // Guest en cabaña arrival day 9am → checkout 11am.
-    const arrivalDay = _addDaysISO(ci, 1);
-    return [{ start: at(arrivalDay, 9, 0), end: at(co, 11, 0) }];
-  }
-  if (tipo === 'late') {
-    // Guest 2pm día checkin → 4pm día real de salida (co - 1).
-    const realDeparture = _addDaysISO(co, -1);
-    return [{ start: at(ci, 14, 0), end: at(realDeparture, 16, 0) }];
-  }
-  // noche (default): 2pm → 11am siguiente.
-  const coHour = r.checkoutExtendido ? 12.5 : 11;  // cortesía 12:30pm
-  const coH = Math.floor(coHour);
-  const coM = (coHour - coH) * 60;
-  return [{ start: at(ci, 14, 0), end: at(co, coH, coM) }];
+  const customEntrada = parseHM(r.horaEntrada);
+  const customSalida  = parseHM(r.horaSalida);
+  const start = customEntrada
+    ? at(entradaDay, customEntrada.h, customEntrada.m)
+    : at(entradaDay, defEntrada.h, defEntrada.m);
+  const end   = customSalida
+    ? at(salidaDay,  customSalida.h,  customSalida.m)
+    : at(salidaDay,  defSalida.h,     defSalida.m);
+  return [{ start, end }];
 }
 
 // Renderiza mini-timeline horizontal 3 días (ayer/hoy/mañana) centrado en
@@ -6624,6 +6662,55 @@ const TIPO_HINTS = {
   late:            'Salida 4pm. Bloquea automáticamente la noche siguiente al check-out estándar. Entrada 2pm día normal.'
 };
 
+// Horas default por tipo (24h "HH:MM"). Usadas como placeholder de los inputs
+// de hora custom y como fallback en _reservationOccupancySpans cuando no hay
+// override. Nota: `noche` puede extender check-out a 12:30pm via cortesía,
+// pero eso se maneja aparte con checkoutExtendido — este mapa es el default
+// puro del tipo, sin cortesía.
+const TIPO_DEFAULT_HORAS = {
+  noche:     { entrada: '14:00', salida: '11:00' },
+  pasatarde: { entrada: '12:30', salida: '19:00' },
+  pasanoche: { entrada: '20:00', salida: '12:30' },
+  pasadia:   { entrada: '09:00', salida: '17:00' },
+  early:     { entrada: '09:00', salida: '11:00' },
+  late:      { entrada: '14:00', salida: '16:00' }
+};
+
+// "16:30" → "4:30 pm", "20:00" → "8:00 pm".
+function _fmtHora12(hhmm) {
+  if (!hhmm) return '';
+  const parts = String(hhmm).split(':');
+  let h = parseInt(parts[0], 10);
+  const mn = parseInt(parts[1], 10) || 0;
+  if (isNaN(h)) return '';
+  const ampm = h >= 12 ? 'pm' : 'am';
+  h = h % 12; if (h === 0) h = 12;
+  return h + ':' + (mn < 10 ? '0' + mn : String(mn)) + ' ' + ampm;
+}
+
+// Actualiza el hint bajo los inputs de hora custom para mostrar los defaults
+// del tipo actualmente elegido. Se llama al abrir modal, editar, cambiar tipo.
+function _updateHorasCustomHint(tipo, checkoutExtendido) {
+  const hint = document.getElementById('fHorasCustomHint');
+  if (!hint) return;
+  const def = TIPO_DEFAULT_HORAS[tipo || 'noche'] || TIPO_DEFAULT_HORAS.noche;
+  const defEntrada = _fmtHora12(def.entrada);
+  // Cortesía 12:30pm sobrescribe el default sólo para noche/early sin
+  // override manual. Custom hora salida siempre gana; el hint refleja lo
+  // que se usaría si se dejan los campos vacíos.
+  let defSalida = _fmtHora12(def.salida);
+  if (checkoutExtendido && (tipo === 'noche' || tipo === 'early')) {
+    defSalida = '12:30 pm (cortesía)';
+  }
+  hint.textContent = 'Deja en blanco para usar el horario estándar del tipo (' +
+    defEntrada + ' → ' + defSalida + ').';
+}
+
+// Placeholder callback para input events; refresco de estado que dependa de
+// las horas custom (por ejemplo si en el futuro afecta a cotización). Hoy es
+// un noop, pero engancharlo desde ya evita re-tocar el HTML luego.
+function _syncHoraCustomReset() { /* reservado */ }
+
 // Escapa caracteres HTML peligrosos para uso seguro en innerHTML / atributos.
 function escapeHtml(s) {
   if (s == null) return '';
@@ -6692,6 +6779,9 @@ function handleTipoChange() {
   const amountInp = document.getElementById('fAmount');
   const hint = document.getElementById('fTipoHint');
   if (hint) hint.textContent = TIPO_HINTS[tipo] || '';
+  // Refrescar hint de horas custom con los nuevos defaults del tipo.
+  const _ceEl2 = document.getElementById('fCheckoutExtendido');
+  _updateHorasCustomHint(tipo, !!(_ceEl2 && _ceEl2.checked));
 
   if (!ciInp.value) { _updateSalidaLock(tipo); calcSaldo(); return; }
 
@@ -6985,6 +7075,12 @@ function openModal(cabin, date) {
   if (_tipo) { _tipo.value = 'noche'; _tipo.dataset.prevTipo = 'noche'; }
   const _hint = document.getElementById('fTipoHint');
   if (_hint) _hint.textContent = TIPO_HINTS.noche;
+  // Reset horas custom en nueva reserva.
+  const _heEl = document.getElementById('fHoraEntrada');
+  const _hsEl = document.getElementById('fHoraSalida');
+  if (_heEl) _heEl.value = '';
+  if (_hsEl) _hsEl.value = '';
+  _updateHorasCustomHint('noche', false);
   _updateSalidaLock('noche');
   const _pp = document.getElementById('pricePreview'); if(_pp) _pp.style.display = 'none';
   // Multi-cabaña se resetea (nueva reserva → checkbox off, panel oculto)
@@ -7031,6 +7127,12 @@ function editReservation(id) {
   }
   const _hintEl = document.getElementById('fTipoHint');
   if (_hintEl) _hintEl.textContent = TIPO_HINTS[r.tipo || 'noche'] || '';
+  // Poblar horas custom desde la reserva (vacío si no había override).
+  const _heEditEl = document.getElementById('fHoraEntrada');
+  const _hsEditEl = document.getElementById('fHoraSalida');
+  if (_heEditEl) _heEditEl.value = r.horaEntrada || '';
+  if (_hsEditEl) _hsEditEl.value = r.horaSalida || '';
+  _updateHorasCustomHint(r.tipo || 'noche', !!r.checkoutExtendido);
   _updateSalidaLock(r.tipo || 'noche');
   calcSaldo();
   clearVoucher();
@@ -7837,9 +7939,13 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
   const notificarWA = !!(document.getElementById('fNotificarWhatsApp') || {}).checked;
   const tipo = (document.getElementById('fTipo') || {}).value || 'noche';
   const checkoutExtendido = !!(document.getElementById('fCheckoutExtendido') || {}).checked;
+  // Horas custom (opcional). "" = usar default del tipo. El backend normaliza.
+  const horaEntrada = ((document.getElementById('fHoraEntrada') || {}).value || '').trim();
+  const horaSalida  = ((document.getElementById('fHoraSalida')  || {}).value || '').trim();
   const reservation = { id, name, email, telefono, pagador, cabin, checkin, checkout, persons, origin, deposit, amount,
                         confirmCode: id, serviceFee: 0, neto: amount,
-                        fechaReserva, codTransferencia, montoVoucher, estadoPago, comentarios, tipo, checkoutExtendido };
+                        fechaReserva, codTransferencia, montoVoucher, estadoPago, comentarios, tipo, checkoutExtendido,
+                        horaEntrada, horaSalida };
 
   // Detect date change before overwriting
   let fechaAnterior = null;

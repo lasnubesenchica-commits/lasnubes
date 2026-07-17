@@ -2172,7 +2172,7 @@ function _botBuildBodyManana(reserva, firstName, isFirstTime) {
 
 function _botBuildBodySaliendo(reserva, firstName, isFirstTime) {
   const greeting = firstName ? '¡Hola ' + firstName + '! 🌿' : '¡Hola! 🌿';
-  const checkoutHr = _horaPlantilla(reserva.tipo, 'checkout', reserva.checkoutExtendido);
+  const checkoutHr = _horaPlantilla(reserva.tipo, 'checkout', reserva.checkoutExtendido, null, reserva.horaSalida);
   if (!isFirstTime) {
     return '¿Necesitas algo para tu salida hoy de *' + reserva.cabinName + '*? Toca *Ver opciones* abajo 👇';
   }
