@@ -2980,11 +2980,11 @@
     <!-- Fila 4b-bis: Horas custom (opcional) — override del horario default del tipo -->
     <div class="form-row" id="horasCustomRow">
       <div class="form-group">
-        <label style="display:flex;align-items:baseline;gap:6px;">Hora entrada <span style="font-size:11px;color:var(--text-muted);font-weight:400;">opcional</span></label>
+        <label>Hora entrada <small style="font-weight:400;color:var(--text-muted);font-size:10px;text-transform:none;letter-spacing:0;">· opcional</small></label>
         <input type="time" id="fHoraEntrada" step="900" oninput="_syncHoraCustomReset()" title="Deja en blanco para usar la hora default del tipo">
       </div>
       <div class="form-group">
-        <label style="display:flex;align-items:baseline;gap:6px;">Hora salida <span style="font-size:11px;color:var(--text-muted);font-weight:400;">opcional</span></label>
+        <label>Hora salida <small style="font-weight:400;color:var(--text-muted);font-size:10px;text-transform:none;letter-spacing:0;">· opcional</small></label>
         <input type="time" id="fHoraSalida" step="900" oninput="_syncHoraCustomReset()" title="Deja en blanco para usar la hora default del tipo">
       </div>
       <div class="form-group" style="grid-column: 1 / -1;">
@@ -5833,6 +5833,10 @@ function openModalWithType(cabin, date, tipo) {
   tipoEl.dataset.prevTipo = tipo;
   const hintEl = document.getElementById('fTipoHint');
   if (hintEl) hintEl.textContent = TIPO_HINTS[tipo] || '';
+  // Preset via `tipoEl.value` no dispara change → refrescamos el hint de
+  // horas custom manualmente para que refleje los defaults del nuevo tipo.
+  const _ceElOMWT = document.getElementById('fCheckoutExtendido');
+  _updateHorasCustomHint(tipo, !!(_ceElOMWT && _ceElOMWT.checked));
   _updateSalidaLock(tipo);
   const coEl = document.getElementById('fCheckout');
   // Ajustar salida según tipo. pasatarde/pasadia son single-day; pasanoche/
