@@ -322,7 +322,7 @@ function enviarRecordatoriosCheckout() {
     if (r.origin === 'Airbnb') return;        // Airbnb gestiona su propio canal
     const firstName  = (r.name || '').toString().trim().split(/\s+/)[0] || 'amigo';
     const cabinName  = r.cabinName || BOT_CABIN_NAMES[r.cabin] || r.cabin;
-    const checkoutHr = _horaPlantilla(r.tipo, 'checkout', r.checkoutExtendido);
+    const checkoutHr = _horaPlantilla(r.tipo, 'checkout', r.checkoutExtendido, null, r.horaSalida);
     try {
       sendWhatsAppTemplate(
         r.telefono,

@@ -192,7 +192,7 @@ function _buildIcsFor(r) {
 }
 
 // Pasos de la guia de cabaña. Fuente unica usada por email y pagina publica.
-function getCabinGuideSteps(cabin, tipo, checkoutExtendido) {
+function getCabinGuideSteps(cabin, tipo, checkoutExtendido, horaSalidaCustom) {
   tipo = tipo || 'noche';
   const checkoutTitleMap = {
     'noche':     'Check-out · 11:00 am',
@@ -207,7 +207,17 @@ function getCabinGuideSteps(cabin, tipo, checkoutExtendido) {
     checkoutTitleMap.noche = 'Check-out · 12:30 pm (cortesía)';
     checkoutTitleMap.early = 'Check-out · 12:30 pm (cortesía)';
   }
-  const checkoutTitle = checkoutTitleMap[tipo] || checkoutTitleMap.noche;
+  // Override manual con hora custom de salida (pisa cortesía y default).
+  const customSalida = (typeof _normalizeHora === 'function') ? _normalizeHora(horaSalidaCustom) : (horaSalidaCustom || '');
+  let checkoutTitle;
+  if (customSalida) {
+    const isPasadiaTipo = (tipo === 'pasatarde' || tipo === 'pasadia');
+    const label = isPasadiaTipo ? 'Salida' : 'Check-out';
+    const nextDay = (tipo === 'pasanoche') ? ' día siguiente' : '';
+    checkoutTitle = label + ' · ' + _formatHora12(customSalida) + nextDay;
+  } else {
+    checkoutTitle = checkoutTitleMap[tipo] || checkoutTitleMap.noche;
+  }
   const checkoutBody  = 'Dejar la cocina limpia · Llevarse la basura · Cerrar la puerta y dejar la llave dentro del key box.';
 
   const steps = {
@@ -314,7 +324,7 @@ function _buildPublicDTO(r) {
   // Pasos de la guia de la cabaña
   let cabinGuide = [];
   try {
-    cabinGuide = getCabinGuideSteps(r.cabin, meta.tipo, !!r.checkoutExtendido);
+    cabinGuide = getCabinGuideSteps(r.cabin, meta.tipo, !!r.checkoutExtendido, meta.horaSalidaCustom);
     // Ocultar el codigo del key box dentro de la guia tambien cuando no estamos en ventana operativa
     if (!showKeyBox) {
       const mask = 'El código del Key Box aparece más arriba el día de tu entrada.';

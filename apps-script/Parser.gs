@@ -288,20 +288,23 @@ function getOrCreateSheet() {
 
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
-    sheet.getRange(1, 1, 1, 29).setValues([[
+    sheet.getRange(1, 1, 1, 31).setValues([[
       'ID', 'Nombre', 'Cabaña', 'CabañaCodigo',
       'Entrada', 'Salida', 'Personas',
       'Monto', 'Abono', 'Origen', 'CodConfirmacion',
       'ServiceFee', 'Neto', 'Alerta', 'Pagador', 'FechaReserva',
       'FechaPago', 'MontoPagado', 'CodTransferencia', 'MontoVoucher', 'EstadoPago',
       'Email', 'Comentarios', 'Telefono', 'Tipo', 'VoucherURL',
-      'IdHuespedURL', 'FechaNacimiento', 'CheckoutExtendido'
+      'IdHuespedURL', 'FechaNacimiento', 'CheckoutExtendido',
+      'HoraEntrada', 'HoraSalida'
     ]]);
-    sheet.getRange(1, 1, 1, 29).setFontWeight('bold');
+    sheet.getRange(1, 1, 1, 31).setFontWeight('bold');
     sheet.setFrozenRows(1);
   } else {
-    // Auto-asegurar columnas Tipo (25), VoucherURL (26), IdHuespedURL (27), FechaNacimiento (28), CheckoutExtendido (29)
-    if (sheet.getLastColumn() < 29) {
+    // Auto-asegurar columnas Tipo (25), VoucherURL (26), IdHuespedURL (27),
+    // FechaNacimiento (28), CheckoutExtendido (29), HoraEntrada (30),
+    // HoraSalida (31). Idempotente: cada llamada rellena lo que falte.
+    if (sheet.getLastColumn() < 31) {
       const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
       if (!headers.includes('Tipo')) {
         sheet.getRange(1, 25).setValue('Tipo');
@@ -322,6 +325,14 @@ function getOrCreateSheet() {
       if (!headers.includes('CheckoutExtendido')) {
         sheet.getRange(1, 29).setValue('CheckoutExtendido');
         sheet.getRange(1, 29).setFontWeight('bold');
+      }
+      if (!headers.includes('HoraEntrada')) {
+        sheet.getRange(1, 30).setValue('HoraEntrada');
+        sheet.getRange(1, 30).setFontWeight('bold');
+      }
+      if (!headers.includes('HoraSalida')) {
+        sheet.getRange(1, 31).setValue('HoraSalida');
+        sheet.getRange(1, 31).setFontWeight('bold');
       }
     }
   }
@@ -1073,7 +1084,9 @@ function doGet(e) {
         voucherURL:       r[25] || '',
         idHuespedURL:     r[26] || '',
         fechaNacimiento:  r[27] instanceof Date ? Utilities.formatDate(r[27], 'America/Panama', 'yyyy-MM-dd') : (r[27] || ''),
-        checkoutExtendido: r[28] === true || r[28] === 'TRUE' || r[28] === 'true' || r[28] === 1
+        checkoutExtendido: r[28] === true || r[28] === 'TRUE' || r[28] === 'true' || r[28] === 1,
+        horaEntrada:      _normalizeHora(r[29]),
+        horaSalida:       _normalizeHora(r[30])
       }));
 
     return ContentService
@@ -1299,6 +1312,12 @@ function doPost(e) {
         if (r.voucherURL) {
           sheet.getRange(sheet.getLastRow(), 26).setValue(r.voucherURL);
         }
+        // Cols 30/31 (HoraEntrada/HoraSalida) — horas custom que overridean
+        // los defaults del tipo. Vacío = usa el horario estándar del tipo.
+        const hi = _normalizeHora(r.horaEntrada);
+        const ho = _normalizeHora(r.horaSalida);
+        if (hi) sheet.getRange(sheet.getLastRow(), 30).setValue(hi);
+        if (ho) sheet.getRange(sheet.getLastRow(), 31).setValue(ho);
       } catch(appendErr) {
         Logger.log('  ✗ appendRow THREW: ' + appendErr.message + ' stack: ' + appendErr.stack);
         logDebugEntry('saveReservation-FAIL', { id: r.id, error: appendErr.message, stack: appendErr.stack ? String(appendErr.stack).slice(0, 400) : '' });
@@ -1393,6 +1412,11 @@ function doPost(e) {
           ]]);
           // Col 29 (CheckoutExtendido) — actualizar el flag de cortesia
           sheet.getRange(row, 29).setValue(r.checkoutExtendido ? true : false);
+          // Cols 30/31 (HoraEntrada/HoraSalida) — horas custom del check-in
+          // / check-out. Setear siempre (incluso a vacío) para permitir
+          // borrar el override al editar.
+          sheet.getRange(row, 30).setValue(_normalizeHora(r.horaEntrada));
+          sheet.getRange(row, 31).setValue(_normalizeHora(r.horaSalida));
 
           if (payload.fechaAnterior) {
             const fa   = payload.fechaAnterior;
@@ -2118,6 +2142,37 @@ function nightCount(checkin, checkout) {
 
 // Devuelve metadata visual del email según tipo de reserva (noche/pasatarde/pasadia/early/late).
 // Las fechas/horas mostradas reflejan la realidad del huésped (no el rango bloqueado en hoja).
+// Normaliza una hora "HH:MM" recibida desde el frontend/sheet a un string
+// consistente. Si viene vacío/inválido/malformado, devuelve '' (= sin
+// override). Acepta también horas guardadas por Sheets como Date (raro pero
+// posible si el usuario formatea la celda).
+function _normalizeHora(raw) {
+  if (raw === null || raw === undefined || raw === '') return '';
+  if (raw instanceof Date) {
+    return Utilities.formatDate(raw, 'America/Panama', 'HH:mm');
+  }
+  const s = String(raw).trim();
+  if (!s) return '';
+  const m = s.match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return '';
+  const h = parseInt(m[1], 10);
+  const mn = parseInt(m[2], 10);
+  if (isNaN(h) || h < 0 || h > 23 || isNaN(mn) || mn < 0 || mn > 59) return '';
+  return (h < 10 ? '0' + h : String(h)) + ':' + (mn < 10 ? '0' + mn : String(mn));
+}
+
+// "16:30" → "4:30 pm", "20:00" → "8:00 pm", "09:00" → "9:00 am".
+function _formatHora12(hhmm) {
+  const s = _normalizeHora(hhmm);
+  if (!s) return '';
+  const parts = s.split(':');
+  let h = parseInt(parts[0], 10);
+  const mn = parseInt(parts[1], 10) || 0;
+  const ampm = h >= 12 ? 'pm' : 'am';
+  h = h % 12; if (h === 0) h = 12;
+  return h + ':' + (mn < 10 ? '0' + mn : String(mn)) + ' ' + ampm;
+}
+
 function tipoEmailMeta(r) {
   const tipo = (r.tipo || 'noche').toString();
   const checkinStored  = r.checkin instanceof Date  ? Utilities.formatDate(r.checkin,  'America/Panama', 'yyyy-MM-dd') : r.checkin.toString().slice(0,10);
@@ -2172,6 +2227,13 @@ function tipoEmailMeta(r) {
   if (isExtended && (tipo === 'noche' || tipo === 'early')) {
     checkoutHora = 'antes de las 12:30 pm (cortesía)';
   }
+  // Override manual con horas custom por reserva (columnas HoraEntrada /
+  // HoraSalida en la hoja). Pisa el default del tipo y también la cortesía
+  // — la intención explícita del admin siempre gana.
+  const horaEntradaCustom = _normalizeHora(r.horaEntrada);
+  const horaSalidaCustom  = _normalizeHora(r.horaSalida);
+  if (horaEntradaCustom) checkinHora  = 'a partir de las ' + _formatHora12(horaEntradaCustom);
+  if (horaSalidaCustom)  checkoutHora = 'antes de las ' + _formatHora12(horaSalidaCustom);
   return {
     tipo,
     displayCheckin,
@@ -2183,6 +2245,8 @@ function tipoEmailMeta(r) {
     estanciaLabel,
     estanciaValue,
     checkoutExtendido: isExtended,
+    horaEntradaCustom,
+    horaSalidaCustom,
     isPasadia: tipo === 'pasatarde' || tipo === 'pasadia'
   };
 }
@@ -2232,9 +2296,9 @@ function icsContent(reservation) {
   ].join('\r\n');
 }
 
-function buildGuiaHTML(cabin, tipo, checkoutExtendido) {
+function buildGuiaHTML(cabin, tipo, checkoutExtendido, horaSalidaCustom) {
   // Fuente unica: getCabinGuideSteps() en PublicLink.gs
-  var list = getCabinGuideSteps(cabin, tipo, !!checkoutExtendido);
+  var list = getCabinGuideSteps(cabin, tipo, !!checkoutExtendido, horaSalidaCustom || '');
   var rows = '';
   for (var i = 0; i < list.length; i++) {
     var s = list[i];
@@ -2382,7 +2446,7 @@ _multiCabinBannerHTML(r) +
 '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:18px;"><tr><td style="vertical-align:top;padding-right:12px;font-size:22px;width:36px;">&#128274;</td><td><p style="margin:0 0 3px;font-size:14px;font-weight:600;color:#3a3530;">Privacidad total</p><p style="margin:0;font-size:13px;color:#6b6560;line-height:1.6;">Todas las instalaciones de la cabaña son de uso exclusivo de quienes la reservan.</p></td></tr></table>' +
 '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;"><tr><td style="vertical-align:top;padding-right:12px;font-size:22px;width:36px;">&#128506;&#65039;</td><td><p style="margin:0 0 3px;font-size:14px;font-weight:600;color:#3a3530;">Cómo llegar</p><p style="margin:0 0 8px;font-size:13px;color:#6b6560;line-height:1.6;">Por carretera interamericana, entrar por el Pío Pío de Bejuco hacia carretera Bejuco–Sorá. Al llegar al pueblo de Buenos Aires, doblar a la derecha hacia el pueblo de Chicá. La cabaña queda a 100 metros.</p><p style="margin:0 0 12px;font-size:13px;color:#6b6560;line-height:1.6;">La manera más fácil es colocar en <strong>Waze: &quot;Aires de Chicá&quot;</strong>. Te llevará directo al portón verde.</p><a href="https://maps.google.com/?q=8.639400,-79.945900" target="_blank" style="display:inline-block;background:#f0ede8;color:#3a3530;font-size:13px;font-weight:500;padding:8px 16px;border-radius:8px;text-decoration:none;border:1px solid #e8e4de;">&#128205; Ver en Google Maps</a></td></tr></table>' +
 '<hr style="border:none;border-top:1px solid #e8e4de;margin:24px 0;">' +
-buildGuiaHTML(r.cabin, meta.tipo, !!r.checkoutExtendido) +
+buildGuiaHTML(r.cabin, meta.tipo, !!r.checkoutExtendido, meta.horaSalidaCustom) +
 '<hr style="border:none;border-top:1px solid #e8e4de;margin:24px 0;">' +
 '<h2 style="margin:0 0 6px;font-size:17px;font-weight:600;color:#3a3530;">&#127978; Tiendita Las Nubes</h2>' +
 '<p style="margin:0 0 16px;font-size:13px;color:#8a8078;">Tenemos insumos disponibles — te los llevamos directo a la cabaña.</p>' +
@@ -2789,7 +2853,7 @@ function buildUpdateEmailHTML(reservation, cabin, color, checkinFmt, checkoutFmt
 '<td><a href="' + icsUri + '" style="display:inline-block;background:#3a3530;color:#ffffff;font-size:13px;font-weight:500;padding:10px 20px;border-radius:8px;text-decoration:none;">&#127822; Apple / Outlook</a></td>' +
 '</tr></table>' +
 '<hr style="border:none;border-top:1px solid #e8e4de;margin:0 0 28px;">' +
-buildGuiaHTML(reservation.cabin, meta.tipo, !!reservation.checkoutExtendido) +
+buildGuiaHTML(reservation.cabin, meta.tipo, !!reservation.checkoutExtendido, meta.horaSalidaCustom) +
 '</td></tr>' +
 '<tr><td style="background:#3a3530;border-radius:0 0 16px 16px;padding:24px 40px;text-align:center;">' +
 '<p style="margin:0 0 8px;font-size:18px;font-weight:300;color:#ffffff;font-family:Georgia,serif;">Las <em>Nubes</em></p>' +
@@ -2982,16 +3046,21 @@ function _fechasRangoCorto(checkinStr, checkoutStr) {
 
 // Hora corta para plantillas de WhatsApp ("2:00 pm", "11:00 am", "9:00 am",
 // "5:00 pm", "12:30 pm (cortesía)", etc.) según el tipo de reserva.
-// kind: 'checkin' | 'checkout'.
-function _horaPlantilla(tipo, kind, checkoutExtendido) {
+// kind: 'checkin' | 'checkout'. Si se pasan horas custom (HoraEntrada /
+// HoraSalida por reserva), pisan al default del tipo y a la cortesía.
+function _horaPlantilla(tipo, kind, checkoutExtendido, horaEntradaCustom, horaSalidaCustom) {
   const t = (tipo || 'noche').toString();
   if (kind === 'checkin') {
+    const custom = _normalizeHora(horaEntradaCustom);
+    if (custom) return _formatHora12(custom);
     if (t === 'pasatarde') return '12:30 pm';
     if (t === 'pasanoche') return '8:00 pm';
     if (t === 'pasadia' || t === 'early') return '9:00 am';
     return '2:00 pm';                          // noche, late
   }
   // checkout
+  const custom = _normalizeHora(horaSalidaCustom);
+  if (custom) return _formatHora12(custom);
   if (t === 'pasatarde') return '7:00 pm';
   if (t === 'pasanoche') return '12:30 pm';
   if (t === 'pasadia')   return '5:00 pm';
