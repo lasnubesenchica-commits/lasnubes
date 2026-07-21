@@ -307,7 +307,7 @@ function verificarMalayaPendientes() {
 
 // Devuelve fechas ocupadas (de iCal + de mis reservas Directas activas).
 // Estructura: { blocked: [{ checkin: 'yyyy-mm-dd', checkout: 'yyyy-mm-dd' }] }
-function getMalayaCalendarData() {
+function getMalayaCalendarData(includeAdminDetails) {
   const icalSheet = _malayaIcalSheet();
   const blocked = [];
   if (icalSheet.getLastRow() > 1) {
@@ -329,7 +329,23 @@ function getMalayaCalendarData() {
       if (estado === 'cancelada' || estado === 'completada') continue;
       const ci = data[i][3] instanceof Date ? Utilities.formatDate(data[i][3], 'America/Panama', 'yyyy-MM-dd') : String(data[i][3] || '').slice(0,10);
       const co = data[i][4] instanceof Date ? Utilities.formatDate(data[i][4], 'America/Panama', 'yyyy-MM-dd') : String(data[i][4] || '').slice(0,10);
-      if (ci && co) blocked.push({ checkin: ci, checkout: co, source: 'directa' });
+      if (!ci || !co) continue;
+      const entry = { checkin: ci, checkout: co, source: 'directa' };
+      // Solo admin recibe los datos del huésped (para poblar el modal de
+      // edición). El endpoint público sigue siendo anónimo.
+      if (includeAdminDetails) {
+        entry.id         = String(data[i][0] || '');
+        entry.guestName  = String(data[i][1] || '');
+        entry.guestPhone = String(data[i][2] || '');
+        entry.personas   = parseInt(data[i][6], 10) || 2;
+        entry.monto      = parseFloat(data[i][7]) || 0;
+        entry.comision   = parseFloat(data[i][8]) || 0;
+        entry.estado     = String(data[i][10] || '');
+        entry.notas      = String(data[i][13] || '');
+        entry.voucherURL = String(data[i][14] || '');
+        entry.guestEmail = String(data[i][15] || '');
+      }
+      blocked.push(entry);
     }
   }
   return { blocked: blocked };
@@ -707,6 +723,141 @@ function _emailCelestinoNuevaReserva(d) {
     logDebugEntry('malaya-email-celestino-OK', { to: to, id: d.id });
   } catch(e) {
     logDebugEntry('malaya-email-celestino-ERR', { to: to, id: d.id, error: e.message });
+  }
+}
+
+// ─── Update reserva (editar fecha / personas / monto / notas) ──
+//
+// Payload: { id, checkin?, checkout?, personas?, monto?, notas? }
+// - Campos omitidos → se preservan.
+// - Si cambian las fechas: re-valida disponibilidad excluyéndose a sí
+//   misma, recalcula noches + comisión, y si estaba en 'no_bloqueada'
+//   la revierte a 'pendiente' + limpia el flag airbnb_blocked (para que
+//   verificarMalayaPendientes vuelva a chequear).
+// - Si `monto` viene explícito, se usa como total. Si no y cambiaron
+//   fechas o personas, se recalcula. Si no cambia nada relevante, se
+//   mantiene el monto guardado.
+//
+// Nota: no re-envía email/WA a Celestino ni al huésped — la coordinación
+// del cambio queda a cargo del admin.
+function updateMalayaReserva(payload) {
+  const id = String(payload && payload.id || '').trim();
+  if (!id) throw new Error('id de reserva requerido');
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const sheet = _malayaSheet();
+    const data  = sheet.getDataRange().getValues();
+    let rowIdx = -1;
+    let row    = null;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === id) { rowIdx = i + 1; row = data[i]; break; }
+    }
+    if (rowIdx < 0) throw new Error('Reserva ' + id + ' no encontrada');
+
+    // Valores actuales.
+    const curCi       = row[3] instanceof Date ? Utilities.formatDate(row[3], 'America/Panama', 'yyyy-MM-dd') : String(row[3] || '').slice(0,10);
+    const curCo       = row[4] instanceof Date ? Utilities.formatDate(row[4], 'America/Panama', 'yyyy-MM-dd') : String(row[4] || '').slice(0,10);
+    const curPersonas = parseInt(row[6], 10) || 2;
+    const curMonto    = parseFloat(row[7]) || 0;
+    const curComision = parseFloat(row[8]) || 0;
+    const curEstado   = String(row[10] || '').toLowerCase();
+    const curNotas    = String(row[13] || '');
+
+    // Aplicar cambios (undefined → preservar).
+    const newCi       = payload.checkin  !== undefined ? String(payload.checkin).slice(0,10)  : curCi;
+    const newCo       = payload.checkout !== undefined ? String(payload.checkout).slice(0,10) : curCo;
+    const newPersonas = payload.personas !== undefined ? (parseInt(payload.personas, 10) || curPersonas) : curPersonas;
+    const newNotas    = payload.notas    !== undefined ? String(payload.notas)                : curNotas;
+
+    if (!newCi || !newCo) throw new Error('Fechas inválidas');
+    if (newCo <= newCi)   throw new Error('Check-out debe ser posterior a check-in');
+
+    const datesChanged = (newCi !== curCi) || (newCo !== curCo);
+
+    // Re-validar disponibilidad SI cambian las fechas, excluyendo esta misma
+    // reserva por id (no chocar consigo misma).
+    if (datesChanged) {
+      // Airbnb iCal (externo, no puede ser esta reserva).
+      const icalSheet = _malayaIcalSheet();
+      if (icalSheet.getLastRow() > 1) {
+        const idata = icalSheet.getDataRange().getValues();
+        for (let j = 1; j < idata.length; j++) {
+          if (!idata[j][0]) continue;
+          const ci = idata[j][0] instanceof Date ? Utilities.formatDate(idata[j][0], 'America/Panama', 'yyyy-MM-dd') : String(idata[j][0]).slice(0,10);
+          const co = idata[j][1] instanceof Date ? Utilities.formatDate(idata[j][1], 'America/Panama', 'yyyy-MM-dd') : String(idata[j][1]).slice(0,10);
+          if (!ci || !co) continue;
+          if (Math.max(newCi, ci) < Math.min(newCo, co)) {
+            throw new Error('Esas fechas están ocupadas (airbnb).');
+          }
+        }
+      }
+      // Otras directas activas.
+      for (let j = 1; j < data.length; j++) {
+        if (data[j][0] === id) continue; // self
+        const est = String(data[j][10] || '').toLowerCase();
+        if (est === 'cancelada' || est === 'completada') continue;
+        const ci = data[j][3] instanceof Date ? Utilities.formatDate(data[j][3], 'America/Panama', 'yyyy-MM-dd') : String(data[j][3] || '').slice(0,10);
+        const co = data[j][4] instanceof Date ? Utilities.formatDate(data[j][4], 'America/Panama', 'yyyy-MM-dd') : String(data[j][4] || '').slice(0,10);
+        if (!ci || !co) continue;
+        if (Math.max(newCi, ci) < Math.min(newCo, co)) {
+          throw new Error('Esas fechas están ocupadas (directa).');
+        }
+      }
+    }
+
+    // Recomputar noches + comisión si cambian fechas.
+    const noches   = _malayaNightCount(newCi, newCo);
+    const comision = datesChanged ? _malayaCalculateCommission(newCi, newCo) : curComision;
+
+    // Monto: (1) explícito en payload gana; (2) sino, recalcular si cambian
+    // fechas o personas; (3) sino, preservar.
+    let newMonto;
+    if (payload.monto !== undefined && payload.monto !== null && payload.monto !== '') {
+      newMonto = parseFloat(payload.monto);
+      if (isNaN(newMonto)) newMonto = curMonto;
+    } else if (datesChanged || newPersonas !== curPersonas) {
+      newMonto = _malayaCalculateTotal(newCi, newCo, newPersonas);
+    } else {
+      newMonto = curMonto;
+    }
+
+    // Persistir en la hoja.
+    sheet.getRange(rowIdx, 4).setValue(newCi);
+    sheet.getRange(rowIdx, 5).setValue(newCo);
+    sheet.getRange(rowIdx, 6).setValue(noches);
+    sheet.getRange(rowIdx, 7).setValue(newPersonas);
+    sheet.getRange(rowIdx, 8).setValue(newMonto);
+    sheet.getRange(rowIdx, 9).setValue(comision);
+    sheet.getRange(rowIdx, 14).setValue(newNotas);
+    // Si cambian fechas: resetear flag de Airbnb bloqueado y estados
+    // derivados que quedaron ligados al rango anterior.
+    if (datesChanged) {
+      sheet.getRange(rowIdx, 12).setValue(false);
+      if (curEstado === 'no_bloqueada') {
+        sheet.getRange(rowIdx, 11).setValue('pendiente');
+      }
+    }
+    SpreadsheetApp.flush();
+
+    logDebugEntry('malaya-reserva-updated', {
+      id: id,
+      datesChanged: datesChanged,
+      from: { ci: curCi, co: curCo, personas: curPersonas, monto: curMonto },
+      to:   { ci: newCi, co: newCo, personas: newPersonas, monto: newMonto }
+    });
+
+    return {
+      ok: true, id: id,
+      checkin: newCi, checkout: newCo,
+      noches: noches, personas: newPersonas,
+      monto: newMonto, comision: comision,
+      notas: newNotas,
+      datesChanged: datesChanged
+    };
+  } finally {
+    lock.releaseLock();
   }
 }
 

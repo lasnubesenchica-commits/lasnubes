@@ -123,6 +123,17 @@
     background: var(--occupied-bg); color: var(--occupied-fg);
     cursor: not-allowed; text-decoration: line-through;
   }
+  /* Admin: días ocupados por una directa mía son editables — cursor pointer,
+     sin tachado, y un tinte suave para que se distingan de los bloqueos de
+     Airbnb (que siguen no-clickables). */
+  .cal-day.occupied.editable {
+    cursor: pointer;
+    text-decoration: none;
+    background: #ede4d3;
+    color: #7a5f1a;
+    border-color: #d8c9a4;
+  }
+  .cal-day.occupied.editable:hover { background: #e2d5b7; }
   .cal-day.selected {
     background: var(--verde) !important; color: #fff !important; font-weight: 600;
   }
@@ -447,6 +458,8 @@
   <div class="modal-card">
     <button class="modal-close" onclick="closeQuoteModal()" aria-label="Cerrar">×</button>
     <h3 style="margin-bottom:14px; padding-right:32px;">🌿 Reservar Malaya Lodge</h3>
+    <!-- Indicador de modo edición (solo aparece cuando editingReservaId está seteado) -->
+    <div id="modalEditHeader" style="display:none;font-size:12px;color:var(--verde-dark);background:#eef4ea;border:1px solid #d0e2c5;border-radius:8px;padding:8px 10px;margin-bottom:12px;line-height:1.4;"></div>
     <div class="modal-row">
       <span class="lbl">Check-in</span>
       <span class="val" id="modalCheckin">—</span>
@@ -526,6 +539,7 @@
            Cerrar se resuelve tocando fuera del modal (backdrop). -->
       <a class="btn" id="modalWA" target="_blank" rel="noopener">💬 Reservar por WhatsApp</a>
       <button class="btn btn-secondary" id="modalCopy" onclick="copyQuoteFromModal()" style="display:none;">📋 Copiar cotización</button>
+      <button class="btn btn-secondary" id="modalCancelarReserva" onclick="adminCancelReserva()" style="display:none;background:#faeae7;color:#b85c4a;border-color:#e6c1b8;">🗑 Cancelar reserva</button>
       <button class="btn" id="modalReservar" onclick="adminSubmitReserva()" style="display:none;">🔒 Bloquear reserva</button>
     </div>
   </div>
@@ -586,8 +600,12 @@ if (ADMIN_MODE) {
 const TODAY = new Date(); TODAY.setHours(0,0,0,0);
 let viewMonth = TODAY.getMonth();
 let viewYear  = TODAY.getFullYear();
-let blocked = [];   // [{ checkin, checkout, source }]
+let blocked = [];   // [{ checkin, checkout, source }]  (admin: incluye id + datos)
 let selStart = null, selEnd = null;   // ISO yyyy-MM-dd
+// Modo edición: si está seteado, el modal actualiza esa reserva en vez
+// de crear una nueva. Se limpia al cerrar el modal o guardar.
+let editingReservaId = null;
+let _editingReservaOriginal = null;
 
 // ─── Galería ───
 (function renderGallery() {
@@ -614,6 +632,13 @@ function isDateBlocked(iso) {
   // Para el calendario público: un día está "ocupado" si CUALQUIER rango
   // bloqueado lo incluye como noche (checkin <= iso < checkout).
   return blocked.some(b => b.checkin <= iso && iso < b.checkout);
+}
+
+// Devuelve la directa (con id + datos) que cubre este día, o null. Solo
+// hay datos completos si `admin=1` fue el que cargó el calendario. Se usa
+// para hacer clickable el día en admin y abrir el modal de edición.
+function _findDirectaAt(iso) {
+  return blocked.find(b => b.source === 'directa' && b.id && b.checkin <= iso && iso < b.checkout) || null;
 }
 
 function isInRange(iso) {
@@ -644,12 +669,20 @@ function renderCalendar() {
       const occ  = isDateBlocked(iso);
       const sel  = (iso === selStart) || (iso === selEnd);
       const inRng = isInRange(iso);
+      // En admin, un día ocupado por una directa mía es clickable para editar.
+      // Airbnb blocks y días públicos siguen no-clickables.
+      const directa = (ADMIN_MODE && occ && !past) ? _findDirectaAt(iso) : null;
       let cls = 'cal-day';
       if (past) cls += ' past';
-      else if (occ) cls += ' occupied';
+      else if (occ) { cls += ' occupied'; if (directa) cls += ' editable'; }
       else if (sel) cls += ' selected';
       else if (inRng) cls += ' in-range';
-      const click = (past || occ) ? '' : 'onclick="pickDay(\'' + iso + '\')"';
+      let click = '';
+      if (directa) {
+        click = 'onclick="pickDirectaForEdit(\'' + directa.id + '\')"';
+      } else if (!past && !occ) {
+        click = 'onclick="pickDay(\'' + iso + '\')"';
+      }
       html += '<div class="' + cls + '" ' + click + '>' + d + '</div>';
     }
     html += '</div></div>';
@@ -665,17 +698,49 @@ function pickDay(iso) {
   // Single-click flow: el día clickeado es el checkin. El modal se abre y
   // permite ajustar noches con steppers (+/-). El rango se mantiene
   // sincronizado con el calendario al cambiar noches.
+  editingReservaId = null;
+  _editingReservaOriginal = null;
   selStart = iso;
   openQuoteModal();
 }
 
+// Admin: abrir modal en modo edición sobre una directa ya registrada.
+// Los datos vienen de `blocked` (populado con detalle cuando cargamos con
+// admin=1). Precarga fechas, huésped, personas, notas y monto.
+function pickDirectaForEdit(reservaId) {
+  const r = blocked.find(b => b.source === 'directa' && b.id === reservaId);
+  if (!r) { showToast('⚠ No se encontró la reserva'); return; }
+  editingReservaId = reservaId;
+  _editingReservaOriginal = r;
+  selStart = r.checkin;
+  selEnd   = r.checkout;
+  // Noches derivadas del rango de storage.
+  const a = new Date(r.checkin + 'T12:00:00');
+  const b = new Date(r.checkout + 'T12:00:00');
+  modalNoches = Math.max(1, Math.round((b - a) / 86400000));
+  modalPersonas = r.personas || 2;
+  // El monto ya guardado es la fuente de verdad — usamos override para que
+  // el modal lo respete y no recalcule por tarifa base al abrir.
+  _modalTotalOverride = (typeof r.monto === 'number' && r.monto > 0) ? r.monto : null;
+  openQuoteModal();
+}
+
 // Cuántas noches consecutivas no bloqueadas hay a partir de iso (máx 30).
+// En modo edición excluye la propia reserva del cálculo (sino sus propias
+// noches contarían como "ocupadas" y el stepper quedaría bloqueado en 1).
 function _maxNochesFrom(iso) {
+  const excludeSelf = editingReservaId
+    ? blocked.find(b => b.source === 'directa' && b.id === editingReservaId)
+    : null;
+  const isBlockedIgnoringSelf = (curIso) => blocked.some(b => {
+    if (excludeSelf && b === excludeSelf) return false;
+    return b.checkin <= curIso && curIso < b.checkout;
+  });
   let n = 0;
   const cur = new Date(iso + 'T12:00:00');
   for (let i = 0; i < 30; i++) {
     const curIso = isoFromYMD(cur.getFullYear(), cur.getMonth(), cur.getDate());
-    if (isDateBlocked(curIso)) break;
+    if (isBlockedIgnoringSelf(curIso)) break;
     n++;
     cur.setDate(cur.getDate() + 1);
   }
@@ -796,54 +861,72 @@ let _submittingReserva = false;
 async function adminSubmitReserva() {
   if (_submittingReserva) return;
   if (!selStart || !selEnd) { showToast('⚠ Selecciona check-in y check-out en el calendario.'); return; }
-  const phone = document.getElementById('adminGuestPhone').value.trim();
-  if (!phone) { showToast('⚠ Falta el WhatsApp del huésped.'); return; }
-  const name  = document.getElementById('adminGuestName').value.trim();
-  const email = document.getElementById('adminGuestEmail').value.trim();
-  const notas = document.getElementById('adminNotas').value.trim();
+  const isEdit = !!editingReservaId;
+  const name   = document.getElementById('adminGuestName').value.trim();
+  const email  = document.getElementById('adminGuestEmail').value.trim();
+  const phone  = document.getElementById('adminGuestPhone').value.trim();
+  const notas  = document.getElementById('adminNotas').value.trim();
+  if (!isEdit && !phone) { showToast('⚠ Falta el WhatsApp del huésped.'); return; }
   const v = window._lastVoucher || {};
   _submittingReserva = true;
-  // Tarifa que se envía como monto de la reserva: el override manual si el
-  // admin ajustó el total, sino la tarifa calculada del modal. Antes se
-  // mandaba v.monto (lo que el voucher decía que se pagó), lo que colapsa
-  // en el caso feliz pero es incorrecto cuando el voucher es un abono
-  // parcial o el admin aplica un descuento manual.
   const effectiveTotal = _effectiveModalTotal() || null;
 
   const btn = document.getElementById('modalReservar');
+  const btnOriginalText = btn.textContent;
   btn.disabled = true; btn.textContent = '⏳ Guardando…';
 
-  const payload = {
-    action: 'saveMalayaReserva',
-    guestPhone: phone,
-    guestName:  name,
-    guestEmail: email,
-    checkin:    selStart,
-    checkout:   selEnd,
-    personas:   modalPersonas,
-    monto:      effectiveTotal,
-    voucherURL: window._lastVoucherURL || '',
-    notas: notas + (v.codTransferencia ? ' · cod ' + v.codTransferencia : '') + (v.sender ? ' · pagó ' + v.sender : '')
-  };
+  let payload;
+  if (isEdit) {
+    // updateMalayaReserva actualiza fecha/personas/monto/notas. WhatsApp,
+    // email y voucher NO se editan por este flujo (mantener contexto de
+    // pago; si hace falta cambiar el huésped, es más simple cancelar y
+    // registrar de nuevo).
+    payload = {
+      action:   'updateMalayaReserva',
+      id:       editingReservaId,
+      checkin:  selStart,
+      checkout: selEnd,
+      personas: modalPersonas,
+      monto:    effectiveTotal,
+      notas:    notas
+    };
+  } else {
+    payload = {
+      action: 'saveMalayaReserva',
+      guestPhone: phone,
+      guestName:  name,
+      guestEmail: email,
+      checkin:    selStart,
+      checkout:   selEnd,
+      personas:   modalPersonas,
+      monto:      effectiveTotal,
+      voucherURL: window._lastVoucherURL || '',
+      notas: notas + (v.codTransferencia ? ' · cod ' + v.codTransferencia : '') + (v.sender ? ' · pagó ' + v.sender : '')
+    };
+  }
 
   try {
     const res  = await fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify(payload) });
     const data = await res.json();
     if (!data.ok) { showToast('✗ ' + (data.error || 'error')); return; }
-    if (data.duplicate) {
-      // El servidor detectó una reserva idéntica reciente y la reutilizó.
-      // Igual limpiamos el form y avisamos.
+    if (isEdit) {
+      const changedLbl = data.datesChanged ? ' · fechas actualizadas' : '';
+      showToast('✅ Reserva actualizada (' + data.noches + ' noches · $' + data.monto + ')' + changedLbl);
+    } else if (data.duplicate) {
       showToast('ℹ️ Ya existía esta reserva (' + data.noches + ' noches · $' + data.montoTotal + ' total). No se duplicó.');
     } else {
       showToast('✅ Reserva bloqueada (' + data.noches + ' noches · $' + data.montoTotal + ' total · $' + data.comision + ' comisión).');
     }
-    // Reset
+    // Reset form (edit y create limpian igual — closeQuoteModal borra el
+    // estado de edición).
     document.getElementById('adminGuestPhone').value = '';
     document.getElementById('adminGuestName').value  = '';
     document.getElementById('adminGuestEmail').value = '';
-    document.getElementById('adminVoucher').value    = '';
+    const voucherEl = document.getElementById('adminVoucher');
+    if (voucherEl) voucherEl.value = '';
     document.getElementById('adminNotas').value      = '';
-    document.getElementById('voucherInfo').style.display = 'none';
+    const vInfo = document.getElementById('voucherInfo');
+    if (vInfo) vInfo.style.display = 'none';
     window._lastVoucher = null;
     window._lastVoucherURL = null;
     closeQuoteModal();
@@ -853,7 +936,38 @@ async function adminSubmitReserva() {
     showToast('✗ Red: ' + e.message);
   } finally {
     _submittingReserva = false;
-    btn.disabled = false; btn.textContent = '🔒 Bloquear reserva';
+    btn.disabled = false;
+    btn.textContent = btnOriginalText;
+  }
+}
+
+// Admin: cancelar reserva en edición (marca estado=cancelada, mantiene la
+// fila en la hoja como registro histórico).
+async function adminCancelReserva() {
+  if (!editingReservaId) return;
+  const nombre = (_editingReservaOriginal && _editingReservaOriginal.guestName) || 'esta reserva';
+  const confirmMsg = '¿Cancelar la reserva de ' + nombre + '?\n\n' +
+    'La fila queda en la hoja marcada como "cancelada" (no se borra).\n' +
+    'Las fechas dejan de aparecer en el iCal público → Airbnb las libera en el próximo poll.';
+  if (!confirm(confirmMsg)) return;
+  const btn = document.getElementById('modalCancelarReserva');
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳ Cancelando…';
+  try {
+    const res = await fetch(SHEETS_API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'cancelMalayaReserva', reservaId: editingReservaId })
+    });
+    const data = await res.json();
+    if (!data.ok) { showToast('✗ ' + (data.error || 'error al cancelar')); return; }
+    showToast('🗑 Reserva cancelada.');
+    closeQuoteModal();
+    clearSelection();
+    setTimeout(loadCalendar, 800);
+  } catch(e) {
+    showToast('✗ Red: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = original;
   }
 }
 
@@ -1023,21 +1137,69 @@ function adjustPersonas(delta) { _modalTotalOverride = null; modalPersonas += de
 
 function openQuoteModal() {
   if (!selStart) return;
-  modalNoches = 1;
-  modalPersonas = modalPersonas || 2;
-  _modalTotalOverride = null;
-  // Botones: público → solo WhatsApp; admin → Copiar + Bloquear (sin WA
-  // porque en admin abriría chat con uno mismo).
+  const isEdit = ADMIN_MODE && !!editingReservaId;
+  // Nueva reserva: reseteamos steppers y override; edit: los valores ya
+  // vienen seteados por pickDirectaForEdit.
+  if (!isEdit) {
+    modalNoches = 1;
+    modalPersonas = modalPersonas || 2;
+    _modalTotalOverride = null;
+  }
+  const titleEl    = document.querySelector('#quoteModal h3');
+  const adminBlock = document.getElementById('modalAdminBlock');
+  const reservarBtn = document.getElementById('modalReservar');
+  const cancelarBtn = document.getElementById('modalCancelarReserva');
+  const copyBtn    = document.getElementById('modalCopy');
+  const waBtn      = document.getElementById('modalWA');
+  const voucherRow = document.getElementById('adminVoucher');
+  const voucherRowWrap = voucherRow ? voucherRow.closest('.admin-row') : null;
+  const editHeader = document.getElementById('modalEditHeader');
+
   if (ADMIN_MODE) {
-    document.getElementById('modalAdminBlock').style.display = 'block';
-    document.getElementById('modalReservar').style.display   = 'inline-block';
-    document.getElementById('modalCopy').style.display       = 'inline-block';
-    document.getElementById('modalWA').style.display         = 'none';
+    adminBlock.style.display  = 'block';
+    reservarBtn.style.display = 'inline-block';
+    copyBtn.style.display     = 'inline-block';
+    waBtn.style.display       = 'none';
+    if (cancelarBtn) cancelarBtn.style.display = isEdit ? 'inline-block' : 'none';
+    // En edit ocultamos el uploader de voucher — el voucher original ya
+    // quedó vinculado a la reserva y por ahora no lo tocamos desde acá.
+    if (voucherRowWrap) voucherRowWrap.style.display = isEdit ? 'none' : '';
+    if (titleEl) titleEl.innerHTML = isEdit
+      ? '💾 Editar reserva Malaya Lodge'
+      : '🌿 Reservar Malaya Lodge';
+    reservarBtn.textContent = isEdit ? '💾 Actualizar reserva' : '🔒 Bloquear reserva';
+    if (editHeader) {
+      if (isEdit && _editingReservaOriginal) {
+        editHeader.style.display = 'block';
+        editHeader.innerHTML = '✏️ Editando reserva de <strong>' + (_editingReservaOriginal.guestName || '?') + '</strong> · <span style="color:var(--text-muted);font-size:11px;">' + editingReservaId + '</span>';
+      } else {
+        editHeader.style.display = 'none';
+      }
+    }
+    // Precargar / limpiar campos del form según modo.
+    if (isEdit && _editingReservaOriginal) {
+      document.getElementById('adminGuestName').value  = _editingReservaOriginal.guestName  || '';
+      document.getElementById('adminGuestPhone').value = _editingReservaOriginal.guestPhone || '';
+      document.getElementById('adminGuestEmail').value = _editingReservaOriginal.guestEmail || '';
+      document.getElementById('adminNotas').value      = _editingReservaOriginal.notas      || '';
+    } else {
+      document.getElementById('adminGuestName').value  = '';
+      document.getElementById('adminGuestPhone').value = '';
+      document.getElementById('adminGuestEmail').value = '';
+      document.getElementById('adminNotas').value      = '';
+      const vInfo = document.getElementById('voucherInfo');
+      if (vInfo) vInfo.style.display = 'none';
+      window._lastVoucher = null;
+      window._lastVoucherURL = null;
+    }
   } else {
-    document.getElementById('modalAdminBlock').style.display = 'none';
-    document.getElementById('modalReservar').style.display   = 'none';
-    document.getElementById('modalCopy').style.display       = 'none';
-    document.getElementById('modalWA').style.display         = 'inline-block';
+    adminBlock.style.display  = 'none';
+    reservarBtn.style.display = 'none';
+    copyBtn.style.display     = 'none';
+    waBtn.style.display       = 'inline-block';
+    if (cancelarBtn) cancelarBtn.style.display = 'none';
+    if (editHeader) editHeader.style.display = 'none';
+    if (titleEl) titleEl.innerHTML = '🌿 Reservar Malaya Lodge';
   }
   refreshModal();
   document.getElementById('quoteModal').classList.add('open');
@@ -1045,6 +1207,10 @@ function openQuoteModal() {
 
 function closeQuoteModal() {
   document.getElementById('quoteModal').classList.remove('open');
+  // Limpiar estado de edición al cerrar para que el próximo pickDay abra
+  // en modo creación.
+  editingReservaId = null;
+  _editingReservaOriginal = null;
 }
 
 function copyQuoteFromModal() {
@@ -1111,7 +1277,10 @@ function switchTab(name) {
 // ─── Cargar calendario ───
 async function loadCalendar() {
   try {
-    const res = await fetch(SHEETS_API_URL + '?action=getMalayaCalendar');
+    // En admin mode pedimos data extendida (id + huésped + monto + notas
+    // de cada directa) para poder abrir el modal de edición.
+    const url = SHEETS_API_URL + '?action=getMalayaCalendar' + (ADMIN_MODE ? '&admin=1' : '');
+    const res = await fetch(url);
     const data = await res.json();
     blocked = (data && data.blocked) || [];
   } catch(e) {

@@ -1020,7 +1020,11 @@ function doGet(e) {
     if (action === 'getConversaciones') return handleGetConversaciones(e);
     if (action === 'getMensajes')       return handleGetMensajes(e);
     if (action === 'getMalayaCalendar') {
-      const data = getMalayaCalendarData();
+      // ?admin=1 incluye datos de las reservas directas (id, huésped, teléfono,
+      // etc.) para poblar el modal de edición. Sin admin=1, solo devuelve
+      // rangos ocupados anónimos (para el calendario público).
+      const isAdmin = e && e.parameter && (e.parameter.admin === '1' || e.parameter.admin === 'true');
+      const data = getMalayaCalendarData(isAdmin);
       return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
     }
     if (action === 'getBotAlertConfig')
@@ -1766,6 +1770,16 @@ function doPost(e) {
     if (action === 'cancelMalayaReserva') {
       try {
         const result = cancelMalayaReserva(payload.reservaId);
+        return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
+      } catch(e) {
+        return ContentService.createTextOutput(JSON.stringify({ ok: false, error: e.message })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
+    // ── MALAYA: UPDATE RESERVA (editar fecha/personas/monto/notas) ──
+    if (action === 'updateMalayaReserva') {
+      try {
+        const result = updateMalayaReserva(payload);
         return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
       } catch(e) {
         return ContentService.createTextOutput(JSON.stringify({ ok: false, error: e.message })).setMimeType(ContentService.MimeType.JSON);
