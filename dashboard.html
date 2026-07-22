@@ -8702,6 +8702,12 @@ window.addEventListener('resize', () => {
 });
 
 let selectedMonth = null;
+// Bandera de inicialización: solo la primera vez que corre renderContabilidad
+// auto-elegimos "Este mes" como default. Sin este flag, cada re-render con
+// `selectedMonth === null` (que es exactamente el estado "Todo") lo reasigna
+// al mes actual → click en "Todo" no hacía nada visible porque volvía a
+// "Este mes" en el mismo tick.
+let _selectedMonthInitialized = false;
 let amountMode   = 'gross'; // 'gross' | 'neto'
 let origenFilter = 'all';   // 'all' | 'Airbnb' | 'Directa'
 
@@ -8757,10 +8763,16 @@ function renderContabilidad() {
     ...egresos.map(e => e.date?.slice(0,7)).filter(Boolean)
   ])].sort().reverse();
 
-  if (!selectedMonth) {
-    const now = new Date();
-    const thisMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
-    selectedMonth = allMonths.includes(thisMonth) ? thisMonth : (allMonths[0] || null);
+  // Solo en el PRIMER render auto-elegimos el mes actual como default.
+  // A partir de ahí respetamos la selección explícita del usuario, incluido
+  // `null` (chip "Todo") que muestra todos los meses juntos.
+  if (!_selectedMonthInitialized) {
+    _selectedMonthInitialized = true;
+    if (!selectedMonth) {
+      const now = new Date();
+      const thisMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+      selectedMonth = allMonths.includes(thisMonth) ? thisMonth : (allMonths[0] || null);
+    }
   }
 
   const mf = document.getElementById('monthFilter');
