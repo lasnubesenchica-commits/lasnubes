@@ -3403,6 +3403,11 @@ async function syncFromSheets() {
         localStorage.setItem('ln_egresos', JSON.stringify(egresos.filter(e => !e.fromSheets)));
       }
       if (document.getElementById('ingresosList')) renderContabilidad();
+      // renderContabilidad refresca el panel Resumen, pero NO la sub-tab
+      // activa (Egresos / Ingresos / Por Cobrar). Sin esto, el botón
+      // "Actualizar" traía los datos nuevos al array pero la tabla visible
+      // (ej. "Todos los egresos") no se repintaba hasta cambiar de filtro.
+      if (typeof _renderActiveContabTab === 'function') _renderActiveContabTab();
 
       const airbnbCount = reservations.filter(r => r.origin === 'Airbnb').length;
       const directCount = reservations.filter(r => r.origin === 'Directa').length;
