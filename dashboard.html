@@ -2037,6 +2037,16 @@
 
     <!-- Month filter — shared between tabs -->
     <div class="month-filter" id="monthFilter"></div>
+    <!-- Custom range popover: expandible cuando el chip "Custom…" está activo.
+         Un mini row con dos date inputs + botón Aplicar. Cerrable con Cancelar. -->
+    <div id="customRangePopover" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0 12px;padding:10px 12px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;">
+      <label style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Desde</label>
+      <input type="date" id="customRangeFrom" style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+      <label style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Hasta</label>
+      <input type="date" id="customRangeTo"   style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+      <button onclick="_applyCustomRange()" style="padding:6px 14px;font-size:12px;font-weight:600;border:none;border-radius:6px;background:var(--verde-dark);color:#fff;cursor:pointer;">Aplicar</button>
+      <button onclick="_cancelCustomRange()" style="padding:6px 12px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-muted);cursor:pointer;">Cancelar</button>
+    </div>
 
     <!-- TAB: RESUMEN -->
     <div id="contabPanelResumen">
@@ -8708,6 +8718,99 @@ let selectedMonth = null;
 // al mes actual → click en "Todo" no hacía nada visible porque volvía a
 // "Este mes" en el mismo tick.
 let _selectedMonthInitialized = false;
+// Rango custom / preset multi-mes (Últimos 3, Últimos 6, Custom). Cuando
+// está seteado gana sobre selectedMonth. Los filtros comparan con
+// `_matchesSelectedPeriod(iso)` que lee ambos estados.
+// Shape: { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD', presetKey: 'last3'|'last6'|'custom', label: string }
+let selectedRange = null;
+let _customRangeOpen = false;
+
+// Devuelve true si el ISO date cae dentro del período seleccionado.
+// Precedencia: selectedRange > selectedMonth > sin filtro (Todo).
+function _matchesSelectedPeriod(iso) {
+  if (!iso) return false;
+  const s = String(iso);
+  if (selectedRange && selectedRange.from && selectedRange.to) {
+    const day = s.slice(0, 10);
+    return day >= selectedRange.from && day <= selectedRange.to;
+  }
+  if (selectedMonth) return s.startsWith(selectedMonth);
+  return true;
+}
+
+// Cambia el período (mes específico, preset multi-mes, o Todo) y re-renderea.
+function setPeriod(preset) {
+  const now = new Date();
+  const _fmtMonth = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+  const _fmtDate  = d => _fmtMonth(d) + '-' + String(d.getDate()).padStart(2,'0');
+  const thisMonthISO = _fmtMonth(now);
+  _selectedMonthInitialized = true; // cualquier setPeriod cuenta como interacción.
+
+  if (preset === 'todo') {
+    selectedMonth = null; selectedRange = null; _customRangeOpen = false;
+  } else if (preset === 'thisMonth') {
+    selectedMonth = thisMonthISO; selectedRange = null; _customRangeOpen = false;
+  } else if (preset === 'lastMonth') {
+    const p = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    selectedMonth = _fmtMonth(p); selectedRange = null; _customRangeOpen = false;
+  } else if (preset === 'last3' || preset === 'last6') {
+    const n = preset === 'last3' ? 3 : 6;
+    const from = new Date(now.getFullYear(), now.getMonth() - (n - 1), 1);
+    const to   = new Date(now.getFullYear(), now.getMonth() + 1, 0); // último día del mes actual
+    selectedMonth = null;
+    selectedRange = {
+      from: _fmtDate(from), to: _fmtDate(to),
+      presetKey: preset,
+      label: preset === 'last3' ? 'Últimos 3 meses' : 'Últimos 6 meses'
+    };
+    _customRangeOpen = false;
+  } else if (preset === 'customToggle') {
+    // Abre/cierra el popover sin aplicar rango. Se aplica con _applyCustomRange.
+    _customRangeOpen = !_customRangeOpen;
+    // Prellenar los inputs con el rango actual (o el mes actual) para dar
+    // punto de partida.
+    setTimeout(() => {
+      const fromEl = document.getElementById('customRangeFrom');
+      const toEl   = document.getElementById('customRangeTo');
+      if (fromEl && !fromEl.value) {
+        const seed = selectedRange || { from: _fmtDate(new Date(now.getFullYear(), now.getMonth(), 1)),
+                                        to:   _fmtDate(now) };
+        fromEl.value = seed.from;
+        toEl.value   = seed.to;
+      }
+      if (fromEl && _customRangeOpen) fromEl.focus();
+    }, 0);
+  } else if (typeof preset === 'string' && /^\d{4}-\d{2}$/.test(preset)) {
+    selectedMonth = preset; selectedRange = null; _customRangeOpen = false;
+  } else {
+    return;
+  }
+  const canvas = document.getElementById('flujoCanvas');
+  if (canvas) canvas._selectedBar = undefined;
+  renderContabilidad();
+  if (_contabTab === 'egresos') renderEgresosTab();
+}
+
+function _applyCustomRange() {
+  const fromEl = document.getElementById('customRangeFrom');
+  const toEl   = document.getElementById('customRangeTo');
+  const from = fromEl ? fromEl.value : '';
+  const to   = toEl   ? toEl.value   : '';
+  if (!from || !to) { alert('Elegí ambas fechas (desde / hasta).'); return; }
+  if (from > to)    { alert('La fecha "desde" debe ser anterior o igual a "hasta".'); return; }
+  _selectedMonthInitialized = true;
+  selectedMonth = null;
+  selectedRange = { from, to, presetKey: 'custom', label: 'Custom' };
+  _customRangeOpen = false;
+  renderContabilidad();
+  if (_contabTab === 'egresos') renderEgresosTab();
+}
+
+function _cancelCustomRange() {
+  _customRangeOpen = false;
+  renderContabilidad();
+  if (_contabTab === 'egresos') renderEgresosTab();
+}
 let amountMode   = 'gross'; // 'gross' | 'neto'
 let origenFilter = 'all';   // 'all' | 'Airbnb' | 'Directa'
 
@@ -8747,14 +8850,14 @@ function renderContabilidad() {
   // pagos[] viene de la hoja Pagos (un cobro por email de pago de Airbnb)
   // Directas usan reservations[] con fechaReserva
 
-  const filteredPagos = pagos.filter(p => !selectedMonth || p.fechaCobro.startsWith(selectedMonth));
+  const filteredPagos = pagos.filter(p => _matchesSelectedPeriod(p.fechaCobro));
   const isRevenue = r => r.origin !== 'Cortesia' && parseFloat(r.amount||0) > 0;
   const filteredDirectas = reservations.filter(r => {
     if (r.origin === 'Airbnb') return false; // Airbnb viene de pagos[]
     const fi = getFechaIngreso(r);
-    return isRevenue(r) && (!selectedMonth || fi.startsWith(selectedMonth));
+    return isRevenue(r) && _matchesSelectedPeriod(fi);
   });
-  const filteredEgr = egresos.filter(e => !selectedMonth || e.date?.startsWith(selectedMonth));
+  const filteredEgr = egresos.filter(e => _matchesSelectedPeriod(e.date));
 
   // ── Months list (union of pagos, directas, egresos) ──────────────────
   const allMonths = [...new Set([
@@ -8778,13 +8881,41 @@ function renderContabilidad() {
   const mf = document.getElementById('monthFilter');
   const _now = new Date();
   const _thisMonth = _now.getFullYear() + '-' + String(_now.getMonth()+1).padStart(2,'0');
-  mf.innerHTML = `<div class="month-chip${!selectedMonth?' active':''}" onclick="selectMonth(null)">Todo</div>`;
+  const _prevDate = new Date(_now.getFullYear(), _now.getMonth() - 1, 1);
+  const _prevMonth = _prevDate.getFullYear() + '-' + String(_prevDate.getMonth()+1).padStart(2,'0');
+  const _isTodo    = !selectedMonth && !selectedRange;
+  const _rangeKey  = selectedRange ? selectedRange.presetKey : null;
+
+  const _chip = (label, active, onclick, title) => {
+    const t = title ? ` title="${title}"` : '';
+    return `<div class="month-chip${active ? ' active' : ''}" onclick="${onclick}"${t}>${label}</div>`;
+  };
+
+  let chipsHtml = '';
+  // Presets rápidos: cubren la mayoría de los casos frecuentes.
+  chipsHtml += _chip('Todo',          _isTodo,                       `setPeriod('todo')`);
+  chipsHtml += _chip('Este mes',      selectedMonth === _thisMonth,  `setPeriod('thisMonth')`);
+  chipsHtml += _chip('Mes anterior',  selectedMonth === _prevMonth,  `setPeriod('lastMonth')`);
+  chipsHtml += _chip('Últimos 3',     _rangeKey === 'last3',         `setPeriod('last3')`);
+  chipsHtml += _chip('Últimos 6',     _rangeKey === 'last6',         `setPeriod('last6')`);
+  const customLabel = _rangeKey === 'custom'
+    ? '📅 ' + (selectedRange.from + ' → ' + selectedRange.to)
+    : 'Custom…';
+  chipsHtml += _chip(customLabel, _rangeKey === 'custom' || _customRangeOpen, `setPeriod('customToggle')`,
+                     _rangeKey === 'custom' ? 'Click para cambiar el rango' : 'Elegir rango personalizado');
+  // Meses específicos (los que ya salen como preset — este mes y mes
+  // anterior — se saltan para no duplicar).
   allMonths.forEach(m => {
-    const [y,mo] = m.split('-');
-    const isThis = m === _thisMonth;
-    const label = isThis ? `Este mes` : `${MONTHS[parseInt(mo)-1]} ${y}`;
-    mf.innerHTML += `<div class="month-chip${selectedMonth===m?' active':''}" onclick="selectMonth('${m}')" title="${MONTHS[parseInt(mo)-1]} ${y}">${label}</div>`;
+    if (m === _thisMonth || m === _prevMonth) return;
+    const [y, mo] = m.split('-');
+    chipsHtml += _chip(`${MONTHS[parseInt(mo)-1]} ${y}`, selectedMonth === m, `setPeriod('${m}')`);
   });
+  mf.innerHTML = chipsHtml;
+
+  // Popover del rango custom: visible solo cuando el chip está en modo
+  // toggle (recién clickeado sin aplicar aún).
+  const cr = document.getElementById('customRangePopover');
+  if (cr) cr.style.display = _customRangeOpen ? 'flex' : 'none';
 
   // ── Totals ────────────────────────────────────────────────────────────
   // Airbnb: suma de MontoNeto de pagos[]  (exacto, coincide con emails)
@@ -11465,12 +11596,8 @@ function renderEgresosTab() {
     return PALETTE[idx % PALETTE.length];
   }
 
-  // ── Filter by selectedMonth (same variable used by Resumen tab) ─
-  const filtered = egresos.filter(e => {
-    if (!e.date) return false;
-    if (selectedMonth && !e.date.startsWith(selectedMonth)) return false;
-    return true;
-  });
+  // ── Filter by selected period (mes específico o rango custom) ────
+  const filtered = egresos.filter(e => _matchesSelectedPeriod(e.date));
 
   // ── Derive all categories from actual data ───────────────────
   const allCats = [...new Set(
@@ -11526,6 +11653,8 @@ function renderEgresosTab() {
   const barEl = document.getElementById('egrBarChart');
   if (barEl && catEntries.length) {
     const maxVal = catEntries[0][1];
+    // Aseguramos que el placeholder previo (si el render anterior fue vacío)
+    // se limpie antes de repintar barras.
     barEl.innerHTML = catEntries.map(([cat, amt]) => {
       const pct   = grandTotal > 0 ? Math.round(amt/grandTotal*100) : 0;
       const wpct  = Math.round(amt/maxVal*100);
@@ -11541,6 +11670,11 @@ function renderEgresosTab() {
         <div style="width:70px;font-size:12px;color:var(--text-muted);white-space:nowrap;font-variant-numeric:tabular-nums;">$${amt.toFixed(2)}</div>
       </div>`;
     }).join('');
+  } else if (barEl) {
+    // Sin egresos en el período — placeholder para que no quede stale con la
+    // data del render anterior (bug histórico: al cambiar de "Todo" a un mes
+    // sin gastos las barras quedaban colgadas).
+    barEl.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:12px;padding:20px 0;font-style:italic;">Sin egresos en este período</div>';
   }
 
   // ── Top proveedores ──────────────────────────────────────────
