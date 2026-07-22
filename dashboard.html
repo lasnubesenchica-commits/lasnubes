@@ -56,6 +56,9 @@
     font-size: 16px !important;
   }
 
+  /* Spin del ícono de refresh de Contabilidad mientras sincroniza */
+  @keyframes contabSpin { to { transform: rotate(360deg); } }
+
 
   /* ── DISPONIBILIDAD MODULE ─────────────────────────────── */
   .disp-cabin-tabs { display:flex; gap:8px; margin-bottom:28px; flex-wrap:wrap; }
@@ -2037,7 +2040,16 @@
         <h1 class="page-title">Contabilidad</h1>
         <p class="page-subtitle">Ingresos, egresos y balance mensual</p>
       </div>
-      <button class="btn btn-primary" onclick="openEgresoModal()">+ Nuevo egreso</button>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button id="contabRefreshBtn" onclick="refreshContabilidad()" title="Actualizar datos desde la hoja"
+          style="display:inline-flex;align-items:center;gap:6px;background:none;border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px;color:var(--text-muted);cursor:pointer;font-family:inherit;transition:all .15s;"
+          onmouseover="this.style.borderColor='var(--text-muted)';this.style.color='var(--text)'"
+          onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-muted)'">
+          <span id="contabRefreshIcon" style="display:inline-block;line-height:1;">⟳</span>
+          <span id="contabRefreshLabel">Actualizar</span>
+        </button>
+        <button class="btn btn-primary" onclick="openEgresoModal()">+ Nuevo egreso</button>
+      </div>
     </div>
 
     <!-- Tabs -->
@@ -3235,6 +3247,34 @@ let referralUses       = []; // Uses de codigos: { code, referrerEmail, usedByRe
 let pagos = [];              // Cobros de Airbnb (una entrada por email de pago)
 
 // ─── SHEETS SYNC ─────────────────────────────────────────────
+// Botón de refresh de Contabilidad: re-sincroniza contra la hoja (mismo
+// syncFromSheets que corre al cargar y cada 15 min). Muestra el ícono
+// girando + "Actualizando…" mientras corre, y un ✓ breve al terminar.
+let _contabRefreshing = false;
+async function refreshContabilidad() {
+  if (_contabRefreshing) return;
+  _contabRefreshing = true;
+  const btn   = document.getElementById('contabRefreshBtn');
+  const icon  = document.getElementById('contabRefreshIcon');
+  const label = document.getElementById('contabRefreshLabel');
+  if (btn)   btn.style.pointerEvents = 'none';
+  if (icon)  icon.style.animation = 'contabSpin 0.8s linear infinite';
+  if (label) label.textContent = 'Actualizando…';
+  try {
+    await syncFromSheets();
+    if (label) label.textContent = 'Actualizado ✓';
+    if (icon)  icon.style.animation = '';
+    setTimeout(() => { if (label) label.textContent = 'Actualizar'; }, 1800);
+  } catch(e) {
+    if (label) label.textContent = 'Error';
+    if (icon)  icon.style.animation = '';
+    setTimeout(() => { if (label) label.textContent = 'Actualizar'; }, 2500);
+  } finally {
+    if (btn) btn.style.pointerEvents = '';
+    _contabRefreshing = false;
+  }
+}
+
 async function syncFromSheets() {
   if (!USE_SHEETS) return;
 
