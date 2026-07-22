@@ -6057,9 +6057,32 @@ function netoDisplay(r) {
   return '$' + neto.toFixed(2);
 }
 
+// Parse robusto de dinero: tolera strings con "$" / comas ("$1,250.00").
+function _parseMoney(v) {
+  if (v == null || v === '') return 0;
+  const n = parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+
+// FUENTE ÚNICA de "monto recibido" de una reserva. Todo el dashboard (tablas,
+// Por Cobrar, widgets, saldo del modal) debe usar esto para no divergir.
+// - Airbnb: cobrado completo solo si hay FechaPago (viene del email de pago).
+// - Resto: montoVoucher tiene prioridad (es lo realmente pagado vía voucher);
+//   si no hay voucher se cae a deposit (abono manual, ej. efectivo).
+//   Prioridad montoVoucher sobre deposit resuelve el caso donde el campo
+//   Abono quedó desincronizado (ej. Abono=150 pero voucher real=75): manda
+//   el voucher, que es la evidencia del pago.
+function montoRecibido(r) {
+  if (r.origin === 'Airbnb') {
+    return r.fechaPago ? _parseMoney(r.neto || r.amount) : 0;
+  }
+  const mv = _parseMoney(r.montoVoucher);
+  return mv > 0 ? mv : _parseMoney(r.deposit);
+}
+
 function recibidoDisplay(r) {
   if (r.origin === 'Airbnb') return '<span style="color:var(--text-muted);font-size:12px;">Airbnb</span>';
-  const monto = parseFloat(r.montoVoucher) || parseFloat(r.deposit) || 0;
+  const monto = montoRecibido(r);
   if (!monto) return '<span style="color:#ccc;">—</span>';
   return '$' + monto.toFixed(2);
 }
@@ -6069,7 +6092,7 @@ function porCobrarDisplay(r) {
   const sinPago = SIN_PAGO_ORIGINS;
   if (sinPago.includes(r.origin)) return '<span style="color:#ccc;">—</span>';
   const total    = parseFloat(r.neto || r.amount || 0);
-  const recibido = parseFloat(r.montoVoucher) || parseFloat(r.deposit) || 0;
+  const recibido = montoRecibido(r);
   const pendiente = total - recibido;
   if (pendiente <= 0.01) return '<span style="color:var(--verde-dark);font-size:12px;">✓</span>';
   return '$' + pendiente.toFixed(2);
@@ -6228,10 +6251,7 @@ function renderWidgets7d() {
 function _renderWidgetContent(recent, prev, dStartStr, dEndStr, days, isCustom, labelOverride) {
 
   const neto     = arr => arr.reduce((s,r) => s + parseFloat(r.neto || r.amount || 0), 0);
-  const recibido = arr => arr.reduce((s,r) => {
-    if (r.origin === 'Airbnb') return s + (r.fechaPago ? parseFloat(r.neto || r.amount || 0) : 0);
-    return s + (parseFloat(r.montoVoucher||0) || parseFloat(r.deposit||0));
-  }, 0);
+  const recibido = arr => arr.reduce((s,r) => s + montoRecibido(r), 0);
 
   const netoR     = neto(recent),     netoP     = neto(prev);
   const recibidoR = recibido(recent), recibidoP = recibido(prev);
@@ -6322,7 +6342,7 @@ function _renderWidgetContent(recent, prev, dStartStr, dEndStr, days, isCustom, 
       if (r.origin === 'Airbnb') return s + (r.fechaPago ? parseFloat(r.neto||r.amount||0) : 0);
       const sinPago = SIN_PAGO_ORIGINS;
       if (sinPago.includes(r.origin)) return s;
-      return s + (parseFloat(r.montoVoucher||0) || parseFloat(r.deposit||0));
+      return s + montoRecibido(r);
     }, 0);
     const totalRow7 = `<tr style="background:var(--bg);font-weight:600;border-top:2px solid var(--border);">
       <td colspan="4" style="text-align:right;font-size:12px;color:var(--text-muted);padding-right:12px;">Total período</td>
@@ -6404,13 +6424,7 @@ function renderCxC() {
     if (sinPago.includes(r.origin)) return false;
     if (r.estadoPago === 'CANCELADA') return false;  // excluir canceladas
     const total = parseFloat(r.neto || r.amount || 0);
-    let recibido;
-    if (r.origin === 'Airbnb') {
-      // Airbnb: only fully received if fechaPago exists (from payment email)
-      recibido = r.fechaPago ? total : 0;
-    } else {
-      recibido = parseFloat(r.montoVoucher||0) || parseFloat(r.deposit||0);
-    }
+    const recibido = montoRecibido(r);
     return (total - recibido) > 0.01;
   });
 
@@ -6430,7 +6444,7 @@ function renderCxC() {
     const total    = parseFloat(r.neto || r.amount || 0);
     const recibido = r.origin === 'Airbnb'
       ? (r.fechaPago ? total : 0)
-      : (parseFloat(r.montoVoucher||0) || parseFloat(r.deposit||0));
+      : montoRecibido(r);
     return s + Math.max(0, total - recibido);
   }, 0);
 
@@ -6438,7 +6452,7 @@ function renderCxC() {
     const total    = parseFloat(r.neto || r.amount || 0);
     const recibido = r.origin === 'Airbnb'
       ? (r.fechaPago ? total : 0)
-      : (parseFloat(r.montoVoucher||0) || parseFloat(r.deposit||0));
+      : montoRecibido(r);
     const pendiente = Math.max(0, total - recibido);
     const recibidoLabel = r.origin === 'Airbnb' && !r.fechaPago
       ? '<span style="color:#ccc;font-size:12px;">Pendiente de Airbnb</span>'
@@ -6480,7 +6494,7 @@ function descargarCxCExcel() {
     const total = parseFloat(r.neto || r.amount || 0);
     const recibido = r.origin === 'Airbnb'
       ? (r.fechaPago ? total : 0)
-      : (parseFloat(r.montoVoucher||0) || parseFloat(r.deposit||0));
+      : montoRecibido(r);
     return (total - recibido) > 0.01;
   });
 
@@ -6498,7 +6512,7 @@ function descargarCxCExcel() {
     const total    = parseFloat(r.neto || r.amount || 0);
     const recibido = r.origin === 'Airbnb'
       ? (r.fechaPago ? total : 0)
-      : (parseFloat(r.montoVoucher||0) || parseFloat(r.deposit||0));
+      : montoRecibido(r);
     const pendiente = Math.max(0, total - recibido);
     const _dd = reservaDisplayDates(r);
     return [
@@ -6521,11 +6535,11 @@ function descargarCxCExcel() {
   const totalNeto     = data.reduce((s,r) => s + parseFloat(r.neto||r.amount||0), 0);
   const totalRecibido = data.reduce((s,r) => {
     const total = parseFloat(r.neto||r.amount||0);
-    return s + (r.origin==='Airbnb' ? (r.fechaPago ? total : 0) : (parseFloat(r.montoVoucher||0)||parseFloat(r.deposit||0)));
+    return s + (r.origin==='Airbnb' ? (r.fechaPago ? total : 0) : montoRecibido(r));
   }, 0);
   const totalPendiente = data.reduce((s,r) => {
     const total = parseFloat(r.neto||r.amount||0);
-    const rec   = r.origin==='Airbnb' ? (r.fechaPago ? total : 0) : (parseFloat(r.montoVoucher||0)||parseFloat(r.deposit||0));
+    const rec   = r.origin==='Airbnb' ? (r.fechaPago ? total : 0) : montoRecibido(r);
     return s + Math.max(0, total - rec);
   }, 0);
   rows.push(['TOTAL','','','','','', totalNeto.toFixed(2), totalRecibido.toFixed(2), totalPendiente.toFixed(2),'','','']);
@@ -6583,7 +6597,7 @@ function renderList() {
       if (r.origin === 'Airbnb') return s + (r.fechaPago ? parseFloat(r.neto||r.amount||0) : 0);
       const sinPago = SIN_PAGO_ORIGINS;
       if (sinPago.includes(r.origin)) return s;
-      return s + (parseFloat(r.montoVoucher||0) || parseFloat(r.deposit||0));
+      return s + montoRecibido(r);
     }, 0);
     const totalRowFR = `<tr style="background:var(--bg);font-weight:600;border-top:2px solid var(--border);">
       <td colspan="4" style="text-align:right;font-size:12px;color:var(--text-muted);padding-right:12px;">${dataFR.length} reservas</td>
@@ -6612,7 +6626,7 @@ function renderList() {
       if (r.origin === 'Airbnb') return s + (r.fechaPago ? parseFloat(r.neto||r.amount||0) : 0);
       const sinPago = SIN_PAGO_ORIGINS;
       if (sinPago.includes(r.origin)) return s;
-      return s + (parseFloat(r.montoVoucher||0) || parseFloat(r.deposit||0));
+      return s + montoRecibido(r);
     }, 0);
     const totalRowCi = `<tr style="background:var(--bg);font-weight:600;border-top:2px solid var(--border);">
       <td colspan="5" style="text-align:right;font-size:12px;color:var(--text-muted);padding-right:12px;">${dataCi.length} reservas</td>
@@ -7124,7 +7138,12 @@ function editReservation(id) {
   document.getElementById('fOrigin').value = r.origin;
   document.getElementById('fPagador').value = r.pagador || r.name;
   document.getElementById('fTelefono').value = r.telefono || '';
-  document.getElementById('fDeposit').value = r.deposit;
+  // Pre-llenar "Abono recibido" con el recibido CANÓNICO (mismo que usan las
+  // tablas y Por Cobrar), no el campo deposit crudo. Así el saldo del modal
+  // coincide con el resto del dashboard y — si deposit estaba desincronizado
+  // del voucher (ej. Abono=150 con voucher real=75) — al guardar se auto-cura.
+  // Para orígenes Airbnb no aplica (no llevan abono manual).
+  document.getElementById('fDeposit').value = (r.origin === 'Airbnb') ? (r.deposit || 0) : montoRecibido(r);
   document.getElementById('fAmount').value = r.amount;
   document.getElementById('fComentarios').value = r.comentarios || '';
   document.getElementById('fPromoTarifa').checked = false;
