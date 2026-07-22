@@ -1776,6 +1776,19 @@
     background: var(--surface);
     transition: all 0.2s;
   }
+  /* Separador visual entre presets (Todo / Este mes / Últimos N / Custom…)
+     y los chips de meses específicos. Se renderea inline en el listado. */
+  .month-chip-divider {
+    align-self: stretch;
+    width: 1px;
+    background: var(--border);
+    margin: 4px 4px;
+    flex-shrink: 0;
+  }
+  /* Los presets llevan tono verde suave para diferenciarse de los meses
+     específicos (color neutro). */
+  .month-chip.preset { background: var(--verde-light, #eef4ea); border-color: #d0e2c5; color: var(--verde-dark); }
+  .month-chip.preset:hover { background: #dfeed4; }
 
   .month-chip.active {
     background: var(--verde-dark);
@@ -8811,6 +8824,18 @@ function _cancelCustomRange() {
   renderContabilidad();
   if (_contabTab === 'egresos') renderEgresosTab();
 }
+
+// Toggle del filtro por categoría en la tab Egresos. Si el widget clickeado
+// ya está seleccionado, limpia el filtro (vuelve a "todas"). Sino lo aplica.
+// El `renderEgresosTab` posterior refresca la KPI grid, top categorías, top
+// proveedores y la tabla — todo respetando el rango de fecha activo porque
+// filtramos primero por `_matchesSelectedPeriod`.
+function _toggleEgrCatFilter(cat) {
+  const sel = document.getElementById('egrFilterCat');
+  if (!sel) return;
+  sel.value = (sel.value === cat) ? '' : cat;
+  renderEgresosTab();
+}
 let amountMode   = 'gross'; // 'gross' | 'neto'
 let origenFilter = 'all';   // 'all' | 'Airbnb' | 'Directa'
 
@@ -8886,30 +8911,40 @@ function renderContabilidad() {
   const _isTodo    = !selectedMonth && !selectedRange;
   const _rangeKey  = selectedRange ? selectedRange.presetKey : null;
 
-  const _chip = (label, active, onclick, title) => {
-    const t = title ? ` title="${title}"` : '';
-    return `<div class="month-chip${active ? ' active' : ''}" onclick="${onclick}"${t}>${label}</div>`;
+  const _chip = (label, active, onclick, opts) => {
+    opts = opts || {};
+    const cls = ['month-chip'];
+    if (opts.preset) cls.push('preset');
+    if (active)      cls.push('active');
+    const t = opts.title ? ` title="${opts.title}"` : '';
+    return `<div class="${cls.join(' ')}" onclick="${onclick}"${t}>${label}</div>`;
   };
 
+  // Grupo 1 — presets rápidos (cubren los casos frecuentes). Van tinteados
+  // verde suave para leerse como una "familia" distinta a los meses
+  // específicos.
   let chipsHtml = '';
-  // Presets rápidos: cubren la mayoría de los casos frecuentes.
-  chipsHtml += _chip('Todo',          _isTodo,                       `setPeriod('todo')`);
-  chipsHtml += _chip('Este mes',      selectedMonth === _thisMonth,  `setPeriod('thisMonth')`);
-  chipsHtml += _chip('Mes anterior',  selectedMonth === _prevMonth,  `setPeriod('lastMonth')`);
-  chipsHtml += _chip('Últimos 3',     _rangeKey === 'last3',         `setPeriod('last3')`);
-  chipsHtml += _chip('Últimos 6',     _rangeKey === 'last6',         `setPeriod('last6')`);
+  chipsHtml += _chip('Todo',          _isTodo,                       `setPeriod('todo')`,       { preset: true });
+  chipsHtml += _chip('Este mes',      selectedMonth === _thisMonth,  `setPeriod('thisMonth')`,  { preset: true });
+  chipsHtml += _chip('Mes anterior',  selectedMonth === _prevMonth,  `setPeriod('lastMonth')`,  { preset: true });
+  chipsHtml += _chip('Últimos 3',     _rangeKey === 'last3',         `setPeriod('last3')`,      { preset: true });
+  chipsHtml += _chip('Últimos 6',     _rangeKey === 'last6',         `setPeriod('last6')`,      { preset: true });
   const customLabel = _rangeKey === 'custom'
     ? '📅 ' + (selectedRange.from + ' → ' + selectedRange.to)
     : 'Custom…';
   chipsHtml += _chip(customLabel, _rangeKey === 'custom' || _customRangeOpen, `setPeriod('customToggle')`,
-                     _rangeKey === 'custom' ? 'Click para cambiar el rango' : 'Elegir rango personalizado');
-  // Meses específicos (los que ya salen como preset — este mes y mes
-  // anterior — se saltan para no duplicar).
-  allMonths.forEach(m => {
-    if (m === _thisMonth || m === _prevMonth) return;
-    const [y, mo] = m.split('-');
-    chipsHtml += _chip(`${MONTHS[parseInt(mo)-1]} ${y}`, selectedMonth === m, `setPeriod('${m}')`);
-  });
+                     { preset: true, title: _rangeKey === 'custom' ? 'Click para cambiar el rango' : 'Elegir rango personalizado' });
+
+  // Separador visual — los meses específicos van a la derecha (o abajo
+  // en móvil por flex-wrap) con tono neutro.
+  const specificMonths = allMonths.filter(m => m !== _thisMonth && m !== _prevMonth);
+  if (specificMonths.length) {
+    chipsHtml += '<div class="month-chip-divider" aria-hidden="true"></div>';
+    specificMonths.forEach(m => {
+      const [y, mo] = m.split('-');
+      chipsHtml += _chip(`${MONTHS[parseInt(mo)-1]} ${y}`, selectedMonth === m, `setPeriod('${m}')`);
+    });
+  }
   mf.innerHTML = chipsHtml;
 
   // Popover del rango custom: visible solo cuando el chip está en modo
@@ -11623,22 +11658,42 @@ function renderEgresosTab() {
   const catEntries  = Object.entries(bycat).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
 
   // ── KPI Widgets ──────────────────────────────────────────────
+  // Widgets clickables: toggle sobre `egrFilterCat`. Si la categoría ya está
+  // seleccionada se limpia (vuelve a "todas"). Estado visible: borde de color
+  // + fondo suave del color de la categoría cuando activa. "Total egresos"
+  // también funciona como "limpiar filtro" cuando hay uno activo.
   const kpiGrid = document.getElementById('egrKpiGrid');
   if (kpiGrid) {
+    const totalActiveStyle = validFilter
+      ? 'background:var(--card-bg);border:2px dashed var(--border);border-radius:12px;padding:14px 16px;cursor:pointer;display:flex;flex-direction:column;justify-content:center;'
+      : 'background:var(--card-bg);border:2px solid var(--text);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;justify-content:center;';
+    const totalOnClick = validFilter ? `onclick="_toggleEgrCatFilter('')"` : '';
+    const totalHint = validFilter
+      ? '<div style="font-size:10px;color:var(--text-muted);margin-top:6px;font-style:italic;">click para limpiar filtro</div>'
+      : '';
     kpiGrid.innerHTML =
-      `<div style="background:var(--card-bg);border:2px solid var(--border);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;justify-content:center;">
+      `<div style="${totalActiveStyle}" ${totalOnClick} title="${validFilter ? 'Limpiar filtro de categoría' : 'Todas las categorías'}">
         <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;">Total egresos</div>
         <div style="font-size:22px;font-weight:700;color:var(--text);">$${grandTotal.toFixed(2)}</div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${filtered.length} registro${filtered.length!==1?'s':''}</div>
+        ${totalHint}
       </div>` +
       catEntries.map(([cat, amt]) => {
-        const pct   = grandTotal > 0 ? Math.round(amt/grandTotal*100) : 0;
-        const color = getCatColor(cat, allCats);
-        return `<div style="background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;cursor:pointer;"
-          onclick="document.getElementById('egrFilterCat').value='${cat}';renderEgresosTab();">
+        const pct    = grandTotal > 0 ? Math.round(amt/grandTotal*100) : 0;
+        const color  = getCatColor(cat, allCats);
+        const isSel  = cat === validFilter;
+        const bg     = isSel ? `linear-gradient(0deg, ${color}15, ${color}08)` : 'var(--card-bg)';
+        const border = isSel ? `2px solid ${color}` : '1px solid var(--border)';
+        const shadow = isSel ? `box-shadow:0 2px 8px ${color}30;` : '';
+        const checkmark = isSel ? `<span style="margin-left:auto;color:${color};font-weight:700;font-size:14px;" title="Filtro activo — click para quitar">✓</span>` : '';
+        const catEsc = cat.replace(/'/g, "\\'");
+        return `<div style="background:${bg};border:${border};border-radius:12px;padding:14px 16px;cursor:pointer;transition:all .15s;${shadow}"
+          onclick="_toggleEgrCatFilter('${catEsc}')"
+          title="${isSel ? 'Filtro activo — click para quitar' : 'Filtrar por ' + cat}">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
             <span style="width:10px;height:10px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0;"></span>
-            <span style="font-size:12px;font-weight:600;color:var(--text-muted);">${cat}</span>
+            <span style="font-size:12px;font-weight:${isSel ? '700' : '600'};color:${isSel ? 'var(--text)' : 'var(--text-muted)'};">${cat}</span>
+            ${checkmark}
           </div>
           <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:4px;">$${amt.toFixed(2)}</div>
           <div style="height:4px;background:var(--border);border-radius:2px;">
@@ -11650,21 +11705,27 @@ function renderEgresosTab() {
   }
 
   // ── Bar chart: Top Categorías ─────────────────────────────────
+  // Barras también clickables — mismo toggle que las KPI cards. La barra
+  // seleccionada se resalta con bordes, mayor opacidad y label bold.
   const barEl = document.getElementById('egrBarChart');
   if (barEl && catEntries.length) {
     const maxVal = catEntries[0][1];
-    // Aseguramos que el placeholder previo (si el render anterior fue vacío)
-    // se limpie antes de repintar barras.
     barEl.innerHTML = catEntries.map(([cat, amt]) => {
-      const pct   = grandTotal > 0 ? Math.round(amt/grandTotal*100) : 0;
-      const wpct  = Math.round(amt/maxVal*100);
-      const color = getCatColor(cat, allCats);
-      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:default;"
+      const pct    = grandTotal > 0 ? Math.round(amt/grandTotal*100) : 0;
+      const wpct   = Math.round(amt/maxVal*100);
+      const color  = getCatColor(cat, allCats);
+      const isSel  = cat === validFilter;
+      const dim    = (validFilter && !isSel) ? 'opacity:0.45;' : '';
+      const labelWeight = isSel ? '700' : '600';
+      const catEsc = cat.replace(/'/g, "\\'");
+      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer;${dim}"
+          onclick="_toggleEgrCatFilter('${catEsc}')"
+          title="${isSel ? 'Filtro activo — click para quitar' : 'Filtrar por ' + cat}"
           onmouseenter="var t=document.getElementById('egrBarTooltip');t.innerHTML='<strong>${cat}</strong><br>$${amt.toFixed(2)} &middot; ${pct}%';t.style.display='block';"
           onmouseleave="document.getElementById('egrBarTooltip').style.display='none';"
           onmousemove="var t=document.getElementById('egrBarTooltip');t.style.left=(event.clientX+12)+'px';t.style.top=(event.clientY-8)+'px';">
-        <div style="width:90px;font-size:12px;font-weight:600;color:var(--text);text-align:right;flex-shrink:0;">${cat}</div>
-        <div style="flex:1;height:22px;background:var(--border);border-radius:4px;overflow:hidden;">
+        <div style="width:90px;font-size:12px;font-weight:${labelWeight};color:var(--text);text-align:right;flex-shrink:0;">${cat}${isSel ? ' ✓' : ''}</div>
+        <div style="flex:1;height:22px;background:var(--border);border-radius:4px;overflow:hidden;${isSel ? 'box-shadow:0 0 0 2px ' + color + '80;' : ''}">
           <div style="width:${wpct}%;height:100%;background:${color};border-radius:4px;transition:width .3s;"></div>
         </div>
         <div style="width:70px;font-size:12px;color:var(--text-muted);white-space:nowrap;font-variant-numeric:tabular-nums;">$${amt.toFixed(2)}</div>
@@ -11678,8 +11739,11 @@ function renderEgresosTab() {
   }
 
   // ── Top proveedores ──────────────────────────────────────────
+  // Usa `display` (no `filtered`) para que respete el filtro de categoría
+  // seleccionado: si el usuario clickea "Suministros", ve los proveedores
+  // de Suministros — no de todas las categorías juntas.
   const byprov = {};
-  filtered.forEach(e => {
+  display.forEach(e => {
     const p = e.proveedor || '(sin proveedor)';
     byprov[p] = (byprov[p]||0) + parseFloat(e.amount||0);
   });
@@ -11687,7 +11751,7 @@ function renderEgresosTab() {
   const maxProv = provEntries[0]?.[1] || 1;
   const provEl  = document.getElementById('egrProveedores');
   if (provEl) {
-    provEl.innerHTML = provEntries.map(([prov, amt]) => {
+    provEl.innerHTML = provEntries.length ? provEntries.map(([prov, amt]) => {
       const pct = Math.round(amt/maxProv*100);
       return `<div>
         <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
@@ -11698,7 +11762,7 @@ function renderEgresosTab() {
           <div style="width:${pct}%;height:100%;background:var(--azul-dark);border-radius:2px;"></div>
         </div>
       </div>`;
-    }).join('');
+    }).join('') : '<div style="text-align:center;color:var(--text-muted);font-size:12px;padding:20px 0;font-style:italic;">Sin proveedores en este período</div>';
   }
 
   // ── Full table ───────────────────────────────────────────────
