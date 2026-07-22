@@ -8502,7 +8502,10 @@ async function confirmDelete(esCancelacion) {
 let _egresoFotoBase64 = null;
 let _egresoFotoMime   = null;
 let _egresoItems      = [];
-const EGRESO_CATS = ['Limpieza','Mantenimiento','Suministros','Servicios','General','Otro'];
+// Lista maestra de categorías de egreso. Fuente única usada tanto por el
+// modal de nuevo egreso como por el dropdown de recategorizar de la tabla.
+// "Prestamo" incluida (categoría real con manejo especial en rentabilidad).
+const EGRESO_CATS = ['Limpieza','Mantenimiento','Suministros','Servicios','Publicidad','Prestamo','General','Otro'];
 
 function clearFoto() {
   _egresoFotoBase64 = null; _egresoFotoMime = null;
@@ -11837,9 +11840,11 @@ function renderEgresosTab() {
     return;
   }
 
-  // Category dropdown — all actual cats + standard defaults
-  const DEFAULT_CATS = ['Limpieza','Mantenimiento','Suministros','Servicios','Publicidad','General','Otro'];
-  const dropdownCats = [...new Set([...allCats, ...DEFAULT_CATS])].sort();
+  // Category dropdown — categorías reales del período + lista maestra
+  // (EGRESO_CATS, misma que el modal). El union asegura que categorías
+  // como "Prestamo" siempre estén disponibles aunque el período no tenga
+  // ninguna todavía.
+  const dropdownCats = [...new Set([...allCats, ...EGRESO_CATS])].sort();
 
   tbody.innerHTML = sorted.map(e => {
     const curCat = e.cat || 'Otro';
