@@ -2386,18 +2386,16 @@
         <div style="font-size:15px;flex-shrink:0;margin-top:1px;">ℹ️</div>
         <div>
           <div style="font-size:11px;font-weight:600;color:var(--azul-dark);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Filtra por mes de check-in</div>
-          <div style="font-size:13px;color:var(--text-muted);line-height:1.5;">Reservas con saldo pendiente, agrupadas por el mes en que ocurre la estadía. Útil para saber qué dinero falta cobrar antes de cada llegada, no cuándo se hizo la reserva.</div>
+          <div style="font-size:13px;color:var(--text-muted);line-height:1.5;">Reservas con saldo pendiente, agrupadas por el mes en que ocurre la estadía. Útil para saber qué dinero falta cobrar antes de cada llegada, no cuándo se hizo la reserva. Usa el filtro de período de arriba (aplicado al check-in).</div>
         </div>
       </div>
 
-      <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px;">
+      <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px;" id="cxcPeriodLabel">
         💳 Cuentas por Cobrar
       </div>
 
-      <!-- Filtros CxC -->
+      <!-- Filtros CxC (solo origen — el período lo controla el filtro de chips de arriba, aplicado al check-in) -->
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
-        <select id="cxcMonth" onchange="renderCxC()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
-        </select>
         <div class="view-toggle" style="font-size:12px;">
           <button class="active" id="cxcOrigenAll"     onclick="setCxCOrigen('all')">Todos</button>
           <button id="cxcOrigenAirbnb"  onclick="setCxCOrigen('Airbnb')">Airbnb</button>
@@ -6371,36 +6369,38 @@ function setCxCOrigen(o) {
   renderCxC();
 }
 
+// Etiqueta legible del período activo, para el header de CxC.
+function _cxcPeriodLabel() {
+  if (selectedRange && selectedRange.from && selectedRange.to) {
+    const _fmt = iso => { const [y,m,d] = iso.split('-'); return `${d}/${m}/${y}`; };
+    return (selectedRange.label || 'rango') + ' (' + _fmt(selectedRange.from) + ' → ' + _fmt(selectedRange.to) + ')';
+  }
+  if (selectedMonth) {
+    const [y, mo] = selectedMonth.split('-').map(Number);
+    return (typeof MONTHS !== 'undefined' ? MONTHS[mo-1] : mo) + ' ' + y;
+  }
+  return 'todo el histórico';
+}
+
 function populateCxCMonth() {
-  const sel = document.getElementById('cxcMonth');
-  if (!sel) return;
-  const current = sel.value;
-  const today   = new Date();
-  const thisMonth = today.toISOString().slice(0,7);
-  const months  = [...new Set(reservations
-    .filter(r => r.checkin)
-    .map(r => r.checkin.slice(0,7))
-    .filter(Boolean)
-  )].sort().reverse();
-  sel.innerHTML = months.map(m => {
-    const [y,mo] = m.split('-');
-    const label  = new Date(parseInt(y), parseInt(mo)-1, 1)
-      .toLocaleDateString('es-PA', {month:'long', year:'numeric'});
-    return `<option value="${m}" ${m === thisMonth ? 'selected' : ''}>${label}</option>`;
-  }).join('');
-  if (!sel.value && months.length) sel.value = months[0];
+  // El dropdown local fue reemplazado por el filtro de chips compartido.
+  // Se mantiene esta función (llamada desde renderList) como wrapper que
+  // solo re-renderea la tabla respetando el período activo.
   renderCxC();
 }
 
 function renderCxC() {
-  const sel   = document.getElementById('cxcMonth');
   const tbody = document.getElementById('cxcTbody');
-  if (!sel || !tbody) return;
-  const month = sel.value;
+  if (!tbody) return;
   const sinPago = SIN_PAGO_ORIGINS;
 
+  // Actualizar la etiqueta del período (respeta el filtro de chips compartido,
+  // aplicado sobre el check-in de la reserva = mes de la estadía).
+  const periodLabelEl = document.getElementById('cxcPeriodLabel');
+  if (periodLabelEl) periodLabelEl.textContent = '💳 Cuentas por Cobrar — ' + _cxcPeriodLabel();
+
   let data = reservations.filter(r => {
-    if (!r.checkin || !r.checkin.startsWith(month)) return false;
+    if (!r.checkin || !_matchesSelectedPeriod(r.checkin)) return false;
     if (sinPago.includes(r.origin)) return false;
     if (r.estadoPago === 'CANCELADA') return false;  // excluir canceladas
     const total = parseFloat(r.neto || r.amount || 0);
@@ -6471,12 +6471,10 @@ function renderCxC() {
 }
 
 function descargarCxCExcel() {
-  const sel = document.getElementById('cxcMonth');
-  const month = sel ? sel.value : '';
   const sinPago = SIN_PAGO_ORIGINS;
 
   let data = reservations.filter(r => {
-    if (!r.checkin || !r.checkin.startsWith(month)) return false;
+    if (!r.checkin || !_matchesSelectedPeriod(r.checkin)) return false;
     if (sinPago.includes(r.origin)) return false;
     if (r.estadoPago === 'CANCELADA') return false;  // excluir canceladas
     const total = parseFloat(r.neto || r.amount || 0);
@@ -6540,7 +6538,10 @@ function descargarCxCExcel() {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  a.download = 'CxC_LasnNubes_' + month.replace('-','_') + '.xls';
+  const _periodSlug = (selectedRange && selectedRange.from)
+    ? (selectedRange.from + '_a_' + selectedRange.to)
+    : (selectedMonth ? selectedMonth.replace('-','_') : 'todo');
+  a.download = 'CxC_LasnNubes_' + _periodSlug + '.xls';
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -11579,8 +11580,7 @@ let _contabTab = 'resumen';
 function _renderActiveContabTab() {
   if (_contabTab === 'egresos')  renderEgresosTab();
   if (_contabTab === 'ingresos') renderWidgets7d();
-  // cxc tiene su propio filtro (por mes de check-in, no fecha reserva) —
-  // no se sincroniza con los chips compartidos por ahora.
+  if (_contabTab === 'cxc')      renderCxC();
 }
 
 function setContabTab(tab) {
