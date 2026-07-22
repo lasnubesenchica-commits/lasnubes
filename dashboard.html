@@ -8544,7 +8544,7 @@ function renderEgresoItems() {
           onchange="updateEgresoItem(this)" data-field="desc" data-idx="${i}">
       </td>
       <td style="padding:5px 8px;">
-        <select style="font-size:11px;padding:3px 4px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);width:100%;"
+        <select style="font-size:12px !important;padding:3px 4px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);width:100%;"
           onchange="updateEgresoItem(this)" data-field="categoria" data-idx="${i}">
           ${EGRESO_CATS.map(cat =>
             '<option value="'+cat+'"'+(cat===item.categoria?' selected':'')+'>'+cat+'</option>'
@@ -11806,7 +11806,7 @@ function renderEgresosTab() {
       `<option value="${c}"${c===curCat?' selected':''}>${c}</option>`
     ).join('');
     const catSel = `<select onchange="recategorizarEgreso('${e.id}',this.value)"
-      style="font-size:11px;padding:2px 6px;border-radius:20px;border:1px solid ${color};background:${color}22;color:${color};font-weight:600;cursor:pointer;outline:none;">
+      style="font-size:12px !important;padding:3px 8px;border-radius:20px;border:1px solid ${color};background:${color}22;color:${color};font-weight:600;cursor:pointer;outline:none;line-height:1.2;">
       ${opts}
     </select>`;
     return `<tr style="border-bottom:1px solid var(--border);">
