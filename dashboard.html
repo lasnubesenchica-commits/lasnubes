@@ -2347,25 +2347,11 @@
         </div>
       </div>
 
-      <!-- WIDGETS: período -->
+      <!-- WIDGETS: período. Usa el filtro compartido de chips (arriba del
+           bloque de tabs). El selector propio de "Últimos 7 días" fue
+           retirado — ahora todo depende del chip activo para consistencia
+           con Resumen / Egresos / Por Cobrar. -->
       <div id="widgets7d" style="margin-bottom:28px;">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
-          <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">Período</div>
-          <select id="periodSelect" class="filter-select" onchange="activeWidget=null;onPeriodChange()" style="font-size:13px;padding:6px 12px;border-radius:8px;">
-            <option value="1">Últimas 24 horas</option>
-            <option value="3">Últimos 3 días</option>
-            <option value="7" selected>Últimos 7 días</option>
-            <option value="14">Últimos 14 días</option>
-            <option value="30">Últimos 30 días</option>
-            <option value="90">Últimos 3 meses</option>
-            <option value="custom">Rango personalizado…</option>
-          </select>
-          <div id="customRangeRow" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;">
-            <input type="date" id="customDateFrom" class="filter-select" style="font-size:13px;padding:6px 10px;border-radius:8px;" onchange="activeWidget=null;renderWidgets7d()">
-            <span style="font-size:13px;color:var(--text-muted);">→</span>
-            <input type="date" id="customDateTo" class="filter-select" style="font-size:13px;padding:6px 10px;border-radius:8px;" onchange="activeWidget=null;renderWidgets7d()">
-          </div>
-        </div>
         <div id="widgetsRow" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px;"></div>
 
         <div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;" id="recent7dLabel">
@@ -6190,65 +6176,58 @@ function setWidgetFilter(key) {
   renderWidgets7d(); // only re-renders widgets + mini table
 }
 
-function onPeriodChange() {
-  const val = document.getElementById('periodSelect').value;
-  const row = document.getElementById('customRangeRow');
-  if (val === 'custom') {
-    row.style.display = 'flex';
-    // Default to last 30 days if not set
-    const today = new Date().toISOString().slice(0,10);
-    const fromEl = document.getElementById('customDateFrom');
-    const toEl   = document.getElementById('customDateTo');
-    if (!fromEl.value) {
-      const d = new Date(); d.setDate(d.getDate() - 30);
-      fromEl.value = d.toISOString().slice(0,10);
-    }
-    if (!toEl.value) toEl.value = today;
-  } else {
-    row.style.display = 'none';
-  }
-  renderList();
-}
-
+// Deriva el rango de fechas del filtro compartido (chips + custom range) y
+// dispara el render de widgets + tabla. Ya no hay dropdown local; el
+// período de Ingresos es el mismo que se usa en Resumen / Egresos / CxC.
 function renderWidgets7d() {
-  const now   = new Date();
-  const today = now.toISOString().slice(0,10);
-  const selEl = document.getElementById('periodSelect');
-  const val   = selEl ? selEl.value : '7';
+  const now = new Date();
+  const _fmt = d => d.toISOString().slice(0,10);
+  const _fmtLabel = iso => { const [y,m,day] = iso.split('-'); return `${day}/${m}/${y}`; };
 
-  let dStartStr, dPrevStr, days, isCustom = false;
+  let dStartStr, dEndStr, labelText;
 
-  if (val === 'custom') {
-    isCustom = true;
-    dStartStr = document.getElementById('customDateFrom')?.value || today;
-    const dTo = document.getElementById('customDateTo')?.value   || today;
-    // For custom mode, "prev period" mirrors the same span before dStartStr
-    // Usar T12:00:00 para evitar offsets de timezone que corren la fecha
-    const spanMs  = new Date(dTo + 'T12:00:00') - new Date(dStartStr + 'T12:00:00');
+  if (selectedRange && selectedRange.from && selectedRange.to) {
+    dStartStr = selectedRange.from;
+    dEndStr   = selectedRange.to;
+    labelText = 'Reservas ingresadas — ' + (selectedRange.label || 'rango seleccionado')
+              + ' (' + _fmtLabel(dStartStr) + ' → ' + _fmtLabel(dEndStr) + ')';
+  } else if (selectedMonth) {
+    const [y, mo] = selectedMonth.split('-').map(Number);
+    dStartStr = selectedMonth + '-01';
+    const lastDay = new Date(y, mo, 0).getDate();
+    dEndStr   = selectedMonth + '-' + String(lastDay).padStart(2,'0');
+    labelText = 'Reservas ingresadas — ' + (typeof MONTHS !== 'undefined' ? MONTHS[mo-1] : mo) + ' ' + y;
+  } else {
+    // "Todo" — sin filtro de fecha, muestra el histórico completo.
+    dStartStr = '';
+    dEndStr   = '';
+    labelText = 'Reservas ingresadas — todo el histórico';
+  }
+
+  const inRange = (r) => {
+    if (!dStartStr) return true; // Todo
+    const f = r.fechaReserva || '';
+    return f >= dStartStr && f <= dEndStr;
+  };
+  const recent = reservations.filter(r => inRange(r) && r.estadoPago !== 'CANCELADA');
+
+  // Período anterior del mismo largo, para el % vs. período anterior.
+  // No aplica en modo "Todo" (no hay "anterior" definible).
+  let prev = [];
+  if (dStartStr) {
+    const spanMs  = new Date(dEndStr + 'T12:00:00') - new Date(dStartStr + 'T12:00:00');
     const prevEnd = new Date(dStartStr + 'T12:00:00');
     prevEnd.setDate(prevEnd.getDate() - 1);
     const prevStart = new Date(prevEnd.getTime() - spanMs);
-    dPrevStr = prevStart.toISOString().slice(0,10);
-    // Override filter to use dTo instead of today
-    const dToFinal = dTo;
-    const recent  = reservations.filter(r => (r.fechaReserva||'') >= dStartStr && (r.fechaReserva||'') <= dToFinal && r.estadoPago !== 'CANCELADA');
-    const prev    = reservations.filter(r => (r.fechaReserva||'') >= dPrevStr   && (r.fechaReserva||'') < dStartStr  && r.estadoPago !== 'CANCELADA');
-    _renderWidgetContent(recent, prev, dStartStr, dToFinal, null, true);
-    return;
+    const prevStartStr = _fmt(prevStart);
+    const prevEndStr   = _fmt(prevEnd);
+    prev = reservations.filter(r => (r.fechaReserva||'') >= prevStartStr && (r.fechaReserva||'') <= prevEndStr && r.estadoPago !== 'CANCELADA');
   }
 
-  days = parseInt(val) || 7;
-  const dStart = new Date(now); dStart.setDate(dStart.getDate() - days);
-  const dPrev  = new Date(now); dPrev.setDate(dPrev.getDate() - days * 2);
-  dStartStr = dStart.toISOString().slice(0,10);
-  dPrevStr  = dPrev.toISOString().slice(0,10);
-
-  const recent  = reservations.filter(r => (r.fechaReserva||'') >= dStartStr && (r.fechaReserva||'') <= today && r.estadoPago !== 'CANCELADA');
-  const prev    = reservations.filter(r => (r.fechaReserva||'') >= dPrevStr  && (r.fechaReserva||'') < dStartStr && r.estadoPago !== 'CANCELADA');
-  _renderWidgetContent(recent, prev, dStartStr, today, days, false);
+  _renderWidgetContent(recent, prev, dStartStr, dEndStr, null, true, labelText);
 }
 
-function _renderWidgetContent(recent, prev, dStartStr, dEndStr, days, isCustom) {
+function _renderWidgetContent(recent, prev, dStartStr, dEndStr, days, isCustom, labelOverride) {
 
   const neto     = arr => arr.reduce((s,r) => s + parseFloat(r.neto || r.amount || 0), 0);
   const recibido = arr => arr.reduce((s,r) => {
@@ -6312,10 +6291,14 @@ function _renderWidgetContent(recent, prev, dStartStr, dEndStr, days, isCustom) 
     widget('Puente',  lilaNeto,    lilaRec,     byCabin(recent,'lila').length+' res.',  pct(lilaNeto,lilaPrev),   'lila'),
   ].join('');
 
-  // Update section label
+  // Update section label. Priority: caller-provided override (nuevo flujo
+   // con chips compartidos) → fallback a etiquetas legacy por si algún
+   // caller queda pasando days/isCustom crudos.
   const labelEl = document.getElementById('recent7dLabel');
   if (labelEl) {
-    if (isCustom) {
+    if (labelOverride) {
+      labelEl.textContent = labelOverride;
+    } else if (isCustom) {
       const fmt = d => { const [y,m,day] = d.split('-'); return `${day}/${m}/${y}`; };
       labelEl.textContent = `Reservas ingresadas — ${fmt(dStartStr)} al ${fmt(dEndStr)}`;
     } else {
@@ -8801,7 +8784,7 @@ function setPeriod(preset) {
   const canvas = document.getElementById('flujoCanvas');
   if (canvas) canvas._selectedBar = undefined;
   renderContabilidad();
-  if (_contabTab === 'egresos') renderEgresosTab();
+  _renderActiveContabTab();
 }
 
 function _applyCustomRange() {
@@ -8816,13 +8799,13 @@ function _applyCustomRange() {
   selectedRange = { from, to, presetKey: 'custom', label: 'Custom' };
   _customRangeOpen = false;
   renderContabilidad();
-  if (_contabTab === 'egresos') renderEgresosTab();
+  _renderActiveContabTab();
 }
 
 function _cancelCustomRange() {
   _customRangeOpen = false;
   renderContabilidad();
-  if (_contabTab === 'egresos') renderEgresosTab();
+  _renderActiveContabTab();
 }
 
 // Toggle del filtro por categoría en la tab Egresos. Si el widget clickeado
@@ -10337,7 +10320,7 @@ function selectMonth(m) {
   const canvas = document.getElementById('flujoCanvas');
   if (canvas) canvas._selectedBar = undefined;
   renderContabilidad();
-  if (_contabTab === 'egresos') renderEgresosTab();
+  _renderActiveContabTab();
 }
 
 async function deleteEgreso(id) {
@@ -11588,6 +11571,17 @@ function updateRentabilidad() {
 
 // ─── CONTABILIDAD TABS ───────────────────────────────────────
 let _contabTab = 'resumen';
+
+// Re-render de la tab activa. Se llama desde setPeriod / cambios de filtro
+// para que Ingresos, Egresos y Por Cobrar refresquen al cambiar el chip.
+// Resumen ya se re-renderea vía renderContabilidad() que hace todo el
+// panel principal, no hace falta duplicar acá.
+function _renderActiveContabTab() {
+  if (_contabTab === 'egresos')  renderEgresosTab();
+  if (_contabTab === 'ingresos') renderWidgets7d();
+  // cxc tiene su propio filtro (por mes de check-in, no fecha reserva) —
+  // no se sincroniza con los chips compartidos por ahora.
+}
 
 function setContabTab(tab) {
   _contabTab = tab;
