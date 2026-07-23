@@ -2459,7 +2459,7 @@
         <div style="font-size:15px;flex-shrink:0;margin-top:1px;">📦</div>
         <div>
           <div style="font-size:11px;font-weight:600;color:#8a6f1c;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Timeline de suministros</div>
-          <div style="font-size:13px;color:var(--text-muted);line-height:1.5;">Agregá los items que querés seguir (agua, gas, papel higiénico…). El sistema busca esa palabra en la descripción de tus egresos de <strong>Suministros</strong> y arma un timeline: 🟢 barra = tenías stock, ● = compra, y la barra se corta el día antes de la siguiente compra (editable ✎). La última barra llega a hoy; si ya pasó su duración típica se pone 🔴 (toca recomprar).</div>
+          <div style="font-size:13px;color:var(--text-muted);line-height:1.5;">Agregá los items que querés seguir (agua, gas, papel higiénico…). El sistema busca esa palabra en la descripción de tus egresos de <strong>Suministros</strong> y arma un timeline: 🟢 barra = tenías stock, ● = compra, y la barra se corta el día antes de la siguiente compra (editable ✎). La última barra llega a hoy; si ya pasó su duración típica se pone 🔴 (toca recomprar). Usá el filtro de período de arriba para hacer <strong>zoom</strong> a un mes o rango y separar los puntos.</div>
         </div>
       </div>
 
@@ -11839,16 +11839,33 @@ function _renderSumTimeline(wrap, kws) {
     return { kw, ps };
   });
 
-  // Ventana temporal común.
+  // ── Ventana temporal: responde al filtro de período de arriba (zoom) ──
+  // "Todo" (sin filtro) → histórico completo. Un mes / rango / "Últimos N" →
+  // se acota a esa ventana y los puntos se separan (más px por día).
   let minDate = todayISO;
   rows.forEach(r => r.ps.forEach(p => { if (p.date < minDate) minDate = p.date; }));
-  let windowStart = _addDays(minDate, -5);
-  let windowEnd   = _addDays(todayISO, 20);
-  if (_daysBetween(windowStart, windowEnd) > 550) windowStart = _addDays(windowEnd, -550);
-  const totalDays = Math.max(30, _daysBetween(windowStart, windowEnd));
-  const pxPerDay = 4.5;
+  let windowStart, windowEnd;
+  if (selectedRange && selectedRange.from && selectedRange.to) {
+    windowStart = _addDays(selectedRange.from, -2);
+    windowEnd   = _addDays(selectedRange.to, 2);
+  } else if (selectedMonth) {
+    const [my, mm] = selectedMonth.split('-').map(Number);
+    const lastDay = new Date(my, mm, 0).getDate();
+    windowStart = _addDays(selectedMonth + '-01', -2);
+    windowEnd   = _addDays(selectedMonth + '-' + String(lastDay).padStart(2,'0'), 2);
+  } else {
+    // Todo: histórico completo (primera compra → hoy + margen).
+    windowStart = _addDays(minDate, -5);
+    windowEnd   = _addDays(todayISO, 20);
+    if (_daysBetween(windowStart, windowEnd) > 550) windowStart = _addDays(windowEnd, -550);
+  }
+  const totalDays = Math.max(14, _daysBetween(windowStart, windowEnd));
+  // pxPerDay adaptativo: rellena ~1100px cuando la ventana es corta (zoom),
+  // con tope para que no se agrande demasiado ni se comprima ilegible.
+  const pxPerDay = Math.max(3.2, Math.min(34, 1100 / totalDays));
   const trackW = Math.round(totalDays * pxPerDay);
   const leftW = 160, rowH = 46;
+  const inWin = iso => iso >= windowStart && iso <= windowEnd;
   const xOf = iso => {
     const clamped = iso < windowStart ? windowStart : (iso > windowEnd ? windowEnd : iso);
     return Math.round(_daysBetween(windowStart, clamped) * pxPerDay);
@@ -11870,6 +11887,8 @@ function _renderSumTimeline(wrap, kws) {
     cur.setMonth(cur.getMonth() + 1);
   }
   const hoyX = xOf(todayISO);
+  const hoyInWin = inWin(todayISO);
+  const hoyLineRow = hoyInWin ? `<div style="position:absolute;left:${hoyX}px;top:0;bottom:0;width:2px;background:#e8792b;z-index:1;"></div>` : '';
 
   // Filas.
   let rowsHtml = '';
@@ -11883,6 +11902,8 @@ function _renderSumTimeline(wrap, kws) {
       const isLast = i === ps.length - 1;
       let end = p.fechaFin || (isLast ? todayISO : _addDays(ps[i+1].date, -1));
       if (end < p.date) end = p.date;
+      // Saltar compras cuyo tramo de consumo cae totalmente fuera de la ventana.
+      if (end < windowStart || p.date > windowEnd) return;
       const x1 = xOf(p.date), x2 = xOf(end);
       const w = Math.max(3, x2 - x1);
       let color = '#6a9e62';
@@ -11892,7 +11913,7 @@ function _renderSumTimeline(wrap, kws) {
         else if (avg && dias >= avg * 0.8) color = '#c0956a';
       }
       const tip = `${p.desc} · ${formatDate(p.date)} → ${formatDate(end)} · $${p.amount.toFixed(2)}`;
-      // barra de stock
+      // barra de stock (clampeada a la ventana)
       bars += `<div title="${escapeHtml(tip)}" style="position:absolute;left:${x1}px;top:${rowH/2-4}px;width:${w}px;height:8px;background:${color};border-radius:4px;opacity:.85;"></div>`;
       // gap "sin stock" si fechaFin quedó antes de la próxima compra
       if (!isLast && p.fechaFin) {
@@ -11903,10 +11924,14 @@ function _renderSumTimeline(wrap, kws) {
           bars += `<div title="Sin stock ${formatDate(_addDays(end,1))} → ${formatDate(_addDays(nextStart,-1))}" style="position:absolute;left:${gx1}px;top:${rowH/2-3}px;width:${gw}px;height:6px;background:repeating-linear-gradient(45deg,#e57373 0 4px,transparent 4px 8px);border-radius:3px;"></div>`;
         }
       }
-      // punto de compra
-      bars += `<div title="${escapeHtml(tip)}" style="position:absolute;left:${x1-4}px;top:${rowH/2-5}px;width:10px;height:10px;border-radius:50%;background:${color};border:2px solid var(--surface);box-shadow:0 0 0 1px ${color};"></div>`;
-      // handle editable del fin
-      bars += `<div onclick="editSumFechaFin('${p.id}','${end}',event)" title="Ajustar la fecha en que se terminó" style="position:absolute;left:${x2-6}px;top:${rowH/2-7}px;width:13px;height:13px;border-radius:50%;background:var(--surface);border:2px solid ${color};cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:8px;line-height:1;color:${color};">&#9998;</div>`;
+      // punto de compra — solo si la fecha de compra cae dentro de la ventana.
+      if (inWin(p.date)) {
+        bars += `<div title="${escapeHtml(tip)}" style="position:absolute;left:${x1-4}px;top:${rowH/2-5}px;width:10px;height:10px;border-radius:50%;background:${color};border:2px solid var(--surface);box-shadow:0 0 0 1px ${color};"></div>`;
+      }
+      // handle editable del fin — solo si el fin cae dentro de la ventana.
+      if (inWin(end)) {
+        bars += `<div onclick="editSumFechaFin('${p.id}','${end}',event)" title="Ajustar la fecha en que se terminó" style="position:absolute;left:${x2-6}px;top:${rowH/2-7}px;width:13px;height:13px;border-radius:50%;background:var(--surface);border:2px solid ${color};cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:8px;line-height:1;color:${color};">&#9998;</div>`;
+      }
     });
 
     const sub = ps.length
@@ -11918,7 +11943,7 @@ function _renderSumTimeline(wrap, kws) {
         <div style="font-size:10px;color:var(--text-muted);">${sub}</div>
       </div>
       <div style="position:relative;width:${trackW}px;flex-shrink:0;">
-        <div style="position:absolute;left:${hoyX}px;top:0;bottom:0;width:2px;background:#e8792b;z-index:1;"></div>
+        ${hoyLineRow}
         ${bars}
       </div>
     </div>`;
@@ -11930,8 +11955,7 @@ function _renderSumTimeline(wrap, kws) {
         <div style="position:sticky;left:0;z-index:3;width:${leftW}px;flex-shrink:0;background:var(--bg);border-right:1px solid var(--border);padding:6px 10px;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;box-sizing:border-box;">Item</div>
         <div style="position:relative;width:${trackW}px;height:26px;flex-shrink:0;background:var(--bg);">
           ${months}
-          <div style="position:absolute;left:${hoyX}px;top:0;bottom:0;width:2px;background:#e8792b;z-index:2;"></div>
-          <div style="position:absolute;left:${hoyX+4}px;top:6px;font-size:9px;font-weight:700;color:#e8792b;z-index:2;">HOY</div>
+          ${hoyInWin ? `<div style="position:absolute;left:${hoyX}px;top:0;bottom:0;width:2px;background:#e8792b;z-index:2;"></div><div style="position:absolute;left:${hoyX+4}px;top:6px;font-size:9px;font-weight:700;color:#e8792b;z-index:2;">HOY</div>` : ''}
         </div>
       </div>
       ${rowsHtml}
