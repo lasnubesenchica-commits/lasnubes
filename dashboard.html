@@ -2925,15 +2925,10 @@
     <!-- Link externo a la factura real (Drive) -->
     <div id="sumEgFacturaWrap" style="margin-top:12px;"></div>
 
-    <!-- Monto de este item (para facturas que cubren varios items) -->
-    <div style="margin-top:16px;">
-      <label style="display:block;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Monto de <span id="sumEgMontoItemKw">este item</span></label>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:15px;color:var(--text-muted);">$</span>
-        <input type="number" step="0.01" min="0" id="sumEgMontoItem" placeholder="0.00" style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;">
-      </div>
-      <div id="sumEgMontoItemHint" style="font-size:11px;color:var(--text-muted);margin-top:6px;"></div>
-    </div>
+    <!-- Monto por item — 1 campo si la factura es de un solo item, o el
+         repartidor entre varios items si la factura es compartida. Se llena
+         dinámicamente en openSumEgresoModal. -->
+    <div id="sumEgSplitWrap" style="margin-top:16px;"></div>
 
     <!-- Fecha en que se acabó (editable) -->
     <div style="margin-top:16px;">
@@ -12087,18 +12082,17 @@ function openSumEgresoModal(barKey) {
     facturaWrap.innerHTML = '<div style="font-size:12px;color:var(--text-muted);font-style:italic;text-align:center;padding:4px 0;">Sin comprobante adjunto</div>';
   }
 
-  // Monto de este item (para facturas que cubren varios items). Prefill con el
-  // override si existe; placeholder = total de la factura.
-  const ov = _sumItemAmount(e, meta.nkw); // porción asignada (o null)
-  document.getElementById('sumEgMontoItemKw').textContent = meta.kw || 'este item';
-  const montoInput = document.getElementById('sumEgMontoItem');
-  montoInput.value = (ov != null ? ov : '');
-  montoInput.placeholder = totalFactura.toFixed(2);
-  _renderSumMontoItemHint(e, meta.nkw, meta.kw, totalFactura, ov);
+  // Monto por item. Si la factura (por descripción) cubre varios items, se
+  // muestra el repartidor con un campo por item; si es de un solo item, un
+  // único campo.
+  _buildSumSplitEditor(e, meta.nkw, meta.kw, totalFactura);
 
   // Fecha en que se acabó (editable). Prefill con el fin efectivo.
   const input = document.getElementById('sumEgFechaFin');
   input.value = (fechaFin || effEnd || '').slice(0,10);
+  // Recordar el prefill para NO convertir una fecha automática en manual al
+  // guardar si el usuario no la tocó (Guardar suele usarse para el reparto).
+  _sumEgresoModalCtx.fechaFinPrefill = input.value;
   const hint = document.getElementById('sumEgFechaFinHint');
   if (fechaFin) {
     hint.textContent = 'Fecha ajustada manualmente. Usa "Automático" para volver al cálculo por defecto.';
@@ -12112,43 +12106,147 @@ function openSumEgresoModal(barKey) {
   document.getElementById('sumEgresoOverlay').classList.add('open');
 }
 
-// Hint del campo "monto de este item": muestra cuánto de la factura queda sin
-// asignar a OTROS items, para ayudar a repartir un voucher entre varios.
-function _renderSumMontoItemHint(e, nkw, kw, total, ov) {
-  const el = document.getElementById('sumEgMontoItemHint');
-  if (!el) return;
-  const montos = _sumParseMontos(e);
-  // Suma de lo asignado a otros items (distintos de este).
-  let otros = 0, nOtros = 0;
-  Object.keys(montos).forEach(k => {
-    if (k === nkw) return;
-    const v = parseFloat(montos[k]);
-    if (!isNaN(v)) { otros += v; nOtros++; }
+// Estado del repartidor de montos del modal (facturas compartidas por varios items).
+// { egresoId, total, items:[{ nkw, kw, touched }], multi:bool }
+let _sumSplitState = null;
+
+// Construye el editor de montos dentro del modal. Detecta TODOS los items
+// (keywords) cuya descripción matchea este egreso; si son ≥2, muestra un campo
+// por item (factura compartida) con reparto equitativo del resto. Si es 1, un
+// solo campo.
+function _buildSumSplitEditor(e, currentNkw, currentKw, total) {
+  const wrap = document.getElementById('sumEgSplitWrap');
+  if (!wrap) return;
+  const nd = _sumNormalize(e.desc);
+  const kws = _suministrosKeywords || [];
+  // Keywords que matchean, dedup por forma normalizada.
+  const seen = {};
+  const matched = [];
+  kws.forEach(kw => {
+    const nkw = _sumNormalize(kw);
+    if (!nkw || seen[nkw]) return;
+    if (nd.includes(nkw)) { seen[nkw] = 1; matched.push({ nkw, kw }); }
   });
-  if (nOtros > 0) {
-    const disp = Math.round((total - otros) * 100) / 100;
-    el.textContent = 'Otros items de esta factura ya suman $' + otros.toFixed(2) +
-      '. Disponible para "' + (kw||'este item') + '": $' + disp.toFixed(2) + '.';
-  } else if (ov != null) {
-    el.textContent = 'Porción asignada a "' + (kw||'este item') + '". Déjalo vacío para usar el total de la factura.';
-  } else {
-    el.textContent = 'Si esta factura cubre varios items, indica cuánto corresponde a "' + (kw||'este item') + '". Vacío = total de la factura.';
+  // Asegurar que el item clickeado esté presente aunque cambie la lista.
+  if (currentNkw && !seen[currentNkw]) matched.push({ nkw: currentNkw, kw: currentKw });
+
+  const montos = _sumParseMontos(e);
+
+  if (matched.length <= 1) {
+    // Un solo item — campo simple.
+    const only = matched[0] || { nkw: currentNkw, kw: currentKw };
+    const ov = _sumItemAmount(e, only.nkw);
+    _sumSplitState = { egresoId: e.id, total, multi: false, items: [{ nkw: only.nkw, kw: only.kw, touched: ov != null }] };
+    wrap.innerHTML =
+      '<label style="display:block;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Monto de ' + escapeHtml(only.kw || 'este item') + '</label>' +
+      '<div style="display:flex;align-items:center;gap:8px;">' +
+        '<span style="font-size:15px;color:var(--text-muted);">$</span>' +
+        '<input type="number" step="0.01" min="0" id="sumSplitInp_0" oninput="_sumSplitOnInput(0)" value="' + (ov != null ? ov : '') + '" placeholder="' + total.toFixed(2) + '" style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;">' +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Esta factura es de un solo item. Vacío = usa el total ($' + total.toFixed(2) + ').</div>';
+    return;
   }
+
+  // Factura compartida — un campo por item, reparto equitativo del resto.
+  const items = matched.map(m => ({ nkw: m.nkw, kw: m.kw, touched: montos[m.nkw] != null }));
+  _sumSplitState = { egresoId: e.id, total, multi: true, items };
+
+  const rowsHtml = items.map((it, i) => {
+    const isCur = it.nkw === currentNkw;
+    const initVal = it.touched ? (parseFloat(montos[it.nkw]) || 0) : '';
+    return '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;">' +
+      '<div style="flex:1;font-size:13px;font-weight:' + (isCur ? '700' : '500') + ';color:' + (isCur ? 'var(--text)' : 'var(--text-muted)') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(it.kw) + (isCur ? ' •' : '') + '</div>' +
+      '<span style="font-size:14px;color:var(--text-muted);">$</span>' +
+      '<input type="number" step="0.01" min="0" id="sumSplitInp_' + i + '" oninput="_sumSplitOnInput(' + i + ')" value="' + initVal + '" style="width:96px;padding:8px 10px;border:1px solid ' + (isCur ? 'var(--verde)' : 'var(--border)') + ';border-radius:8px;font-size:14px;box-sizing:border-box;text-align:right;">' +
+    '</div>';
+  }).join('');
+
+  wrap.innerHTML =
+    '<label style="display:block;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px;">Reparto de la factura ($' + total.toFixed(2) + ')</label>' +
+    '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">Esta factura cubre varios items. Ajusta cuánto corresponde a cada uno; el resto se reparte por igual entre los que faltan.</div>' +
+    rowsHtml +
+    '<div id="sumEgSplitRecon" style="font-size:12px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);"></div>';
+
+  _sumSplitRebalance(); // llena los no-tocados con el reparto equitativo
+}
+
+// Al editar un campo: se marca como "tocado" y el resto (no tocados) se reparte
+// el saldo equitativamente.
+function _sumSplitOnInput(i) {
+  if (!_sumSplitState || !_sumSplitState.items[i]) return;
+  _sumSplitState.items[i].touched = true;
+  if (_sumSplitState.multi) _sumSplitRebalance();
+  else _sumSplitUpdateRecon();
+}
+
+// Reparte el saldo (total − suma de los tocados) equitativamente entre los no
+// tocados y refresca la línea de conciliación.
+function _sumSplitRebalance() {
+  const st = _sumSplitState;
+  if (!st || !st.multi) return;
+  const getVal = i => { const el = document.getElementById('sumSplitInp_' + i); return el ? (parseFloat(el.value) || 0) : 0; };
+  let touchedSum = 0;
+  const untouched = [];
+  st.items.forEach((it, i) => { if (it.touched) touchedSum += getVal(i); else untouched.push(i); });
+
+  const remaining = Math.round((st.total - touchedSum) * 100) / 100;
+  if (untouched.length) {
+    const share = Math.max(0, remaining) / untouched.length;
+    const base = Math.floor(share * 100) / 100;
+    untouched.forEach((idx, j) => {
+      let v = base;
+      if (j === untouched.length - 1) { // el último absorbe los centavos sobrantes
+        v = Math.round((Math.max(0, remaining) - base * (untouched.length - 1)) * 100) / 100;
+      }
+      const el = document.getElementById('sumSplitInp_' + idx);
+      if (el) el.value = v.toFixed(2);
+    });
+  }
+  _sumSplitUpdateRecon();
+}
+
+// Línea "Asignado / Diferencia" con color según cuadre.
+function _sumSplitUpdateRecon() {
+  const st = _sumSplitState;
+  const el = document.getElementById('sumEgSplitRecon');
+  if (!st || !el) return;
+  let assigned = 0;
+  st.items.forEach((it, i) => { const inp = document.getElementById('sumSplitInp_' + i); assigned += inp ? (parseFloat(inp.value) || 0) : 0; });
+  assigned = Math.round(assigned * 100) / 100;
+  const diff = Math.round((st.total - assigned) * 100) / 100;
+  const ok = Math.abs(diff) < 0.01;
+  const color = ok ? 'var(--verde-dark)' : '#c0392b';
+  el.innerHTML =
+    '<span style="color:var(--text-muted);">Asignado:</span> <strong>$' + assigned.toFixed(2) + '</strong> / $' + st.total.toFixed(2) +
+    ' &nbsp;·&nbsp; <span style="color:' + color + ';font-weight:600;">' +
+    (ok ? '✓ cuadra' : (diff > 0 ? 'faltan $' + diff.toFixed(2) : 'exceso $' + Math.abs(diff).toFixed(2))) +
+    '</span>';
 }
 
 function closeSumEgresoModal() {
   document.getElementById('sumEgresoOverlay').classList.remove('open');
   _sumEgresoModalCtx = null;
+  _sumSplitState = null;
 }
 
-// Guarda fecha-fin y monto de este item desde el modal.
+// Guarda fecha-fin y los montos por item desde el modal.
 function saveSumEgresoModal() {
   if (!_sumEgresoModalCtx) return;
-  const { egresoId, nkw } = _sumEgresoModalCtx;
-  const fecha = (document.getElementById('sumEgFechaFin').value || '').slice(0,10);
-  const rawMonto = (document.getElementById('sumEgMontoItem').value || '').trim();
-  const monto = rawMonto === '' ? null : (parseFloat(rawMonto) || 0);
-  _persistSumEgreso(egresoId, { fechaFin: fecha, itemAmount: { nkw, value: monto } });
+  const { egresoId, fechaFinPrefill } = _sumEgresoModalCtx;
+  const fechaVal = (document.getElementById('sumEgFechaFin').value || '').slice(0,10);
+  // Solo persistir la fecha si el usuario la cambió respecto al prefill; así,
+  // guardar el reparto no convierte una fecha automática en override manual.
+  const fecha = (fechaVal !== fechaFinPrefill) ? fechaVal : undefined;
+
+  const montoOps = [];
+  if (_sumSplitState) {
+    _sumSplitState.items.forEach((it, i) => {
+      const el = document.getElementById('sumSplitInp_' + i);
+      const raw = el ? (el.value || '').trim() : '';
+      montoOps.push({ nkw: it.nkw, value: raw === '' ? null : (parseFloat(raw) || 0) });
+    });
+  }
+  _persistSumEgreso(egresoId, { fechaFin: fecha, montoOps });
   closeSumEgresoModal();
 }
 
@@ -12160,8 +12258,8 @@ function resetSumEgresoFechaFin() {
 }
 
 // Persiste cambios del egreso desde el timeline de Suministros.
-// opts.fechaFin: string ('' = automático). opts.itemAmount: { nkw, value } donde
-// value=null borra la porción de ese item (usa total).
+// opts.fechaFin: string ('' = automático).
+// opts.montoOps: [{ nkw, value }] — value=null borra la porción de ese item.
 function _persistSumEgreso(egresoId, opts) {
   const e = egresos.find(x => x.id === egresoId);
   if (!e) return;
@@ -12172,11 +12270,12 @@ function _persistSumEgreso(egresoId, opts) {
     payload.fechaFin = e.fechaFin;
   }
 
-  if (opts.itemAmount) {
-    const { nkw, value } = opts.itemAmount;
+  if (opts.montoOps && opts.montoOps.length) {
     const montos = _sumParseMontos(e);
-    if (value == null) delete montos[nkw];
-    else montos[nkw] = value;
+    opts.montoOps.forEach(({ nkw, value }) => {
+      if (value == null) delete montos[nkw];
+      else montos[nkw] = value;
+    });
     const json = Object.keys(montos).length ? JSON.stringify(montos) : '';
     e.montosItem = json;
     payload.montosItem = json;
