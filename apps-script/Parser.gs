@@ -850,7 +850,7 @@ function limpiarFechasInvalidas() {
 // (incluyendo 'Item', añadida para el seguimiento de Suministros). Migra
 // hojas viejas de 8 columnas agregando el header 'Item' en la col 9.
 function _getEgresoSheetEnsured(ss) {
-  const HEADERS = ['ID','Fecha','Descripcion','Monto','Categoria','Cabaña','Proveedor','URLFoto','Item','FechaFin'];
+  const HEADERS = ['ID','Fecha','Descripcion','Monto','Categoria','Cabaña','Proveedor','URLFoto','Item','FechaFin','MontosItem'];
   let sheet = ss.getSheetByName('Egresos');
   if (!sheet) {
     sheet = ss.insertSheet('Egresos');
@@ -871,9 +871,14 @@ function _getEgresoSheetEnsured(ss) {
     sheet.getRange(1, sheet.getLastColumn() + 1).setValue('Item').setFontWeight('bold');
   }
   // Releer por si acabamos de agregar Item.
-  const cur = sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0].map(h => (h||'').toString().toLowerCase().trim());
+  let cur = sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0].map(h => (h||'').toString().toLowerCase().trim());
   if (cur.indexOf('fechafin') === -1) {
     sheet.getRange(1, sheet.getLastColumn() + 1).setValue('FechaFin').setFontWeight('bold');
+  }
+  // Releer por si acabamos de agregar FechaFin.
+  cur = sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0].map(h => (h||'').toString().toLowerCase().trim());
+  if (cur.indexOf('montositem') === -1) {
+    sheet.getRange(1, sheet.getLastColumn() + 1).setValue('MontosItem').setFontWeight('bold');
   }
   return sheet;
 }
@@ -1007,7 +1012,8 @@ function doGet(e) {
         proveedor: headers.indexOf('proveedor'),
         urlFoto:   headers.findIndex(h => h.includes('url') || h.includes('foto')),
         item:      headers.indexOf('item'),
-        fechaFin:  headers.indexOf('fechafin')
+        fechaFin:  headers.indexOf('fechafin'),
+        montosItem: headers.indexOf('montositem')
       };
       const egresos = eData.slice(1)
         .filter(r => r[idx.fecha] && r[idx.monto])
@@ -1029,6 +1035,7 @@ function doGet(e) {
             fechaFin:  idx.fechaFin  >= 0 ? (r[idx.fechaFin] instanceof Date
                           ? Utilities.formatDate(r[idx.fechaFin], 'America/Panama', 'yyyy-MM-dd')
                           : (r[idx.fechaFin] || '').toString().slice(0,10)) : '',
+            montosItem: idx.montosItem >= 0 ? (r[idx.montosItem] || '').toString() : '',
             fromSheets: true
           };
         });
@@ -1737,10 +1744,11 @@ function doPost(e) {
       if (!sheet) return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'No Egresos sheet' }))
         .setMimeType(ContentService.MimeType.JSON);
-      // Asegurar columnas Item/FechaFin si el update las va a escribir.
-      if (eg.item !== undefined || eg.fechaFin !== undefined) { _getEgresoSheetEnsured(ss); }
-      const itemCol     = eg.item     !== undefined ? _egresoColIndex(sheet, 'item')     : 0;
-      const fechaFinCol = eg.fechaFin !== undefined ? _egresoColIndex(sheet, 'fechafin') : 0;
+      // Asegurar columnas Item/FechaFin/MontosItem si el update las va a escribir.
+      if (eg.item !== undefined || eg.fechaFin !== undefined || eg.montosItem !== undefined) { _getEgresoSheetEnsured(ss); }
+      const itemCol       = eg.item       !== undefined ? _egresoColIndex(sheet, 'item')       : 0;
+      const fechaFinCol   = eg.fechaFin   !== undefined ? _egresoColIndex(sheet, 'fechafin')   : 0;
+      const montosItemCol = eg.montosItem !== undefined ? _egresoColIndex(sheet, 'montositem') : 0;
       const data = sheet.getDataRange().getValues();
       for (let i = 1; i < data.length; i++) {
         if (data[i][0].toString() === eg.id) {
@@ -1748,8 +1756,9 @@ function doPost(e) {
           if (eg.desc      !== undefined) sheet.getRange(i+1, 3).setValue(eg.desc);
           if (eg.proveedor !== undefined) sheet.getRange(i+1, 7).setValue(eg.proveedor);
           if (eg.cabin     !== undefined) sheet.getRange(i+1, 6).setValue(eg.cabin);
-          if (eg.item      !== undefined && itemCol > 0)     sheet.getRange(i+1, itemCol).setValue(eg.item);
-          if (eg.fechaFin  !== undefined && fechaFinCol > 0) sheet.getRange(i+1, fechaFinCol).setValue(eg.fechaFin || '');
+          if (eg.item      !== undefined && itemCol > 0)       sheet.getRange(i+1, itemCol).setValue(eg.item);
+          if (eg.fechaFin  !== undefined && fechaFinCol > 0)   sheet.getRange(i+1, fechaFinCol).setValue(eg.fechaFin || '');
+          if (eg.montosItem !== undefined && montosItemCol > 0) sheet.getRange(i+1, montosItemCol).setValue(eg.montosItem || '');
           return ContentService
             .createTextOutput(JSON.stringify({ ok: true, status: 'updated' }))
             .setMimeType(ContentService.MimeType.JSON);
