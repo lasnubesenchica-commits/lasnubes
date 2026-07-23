@@ -2453,40 +2453,23 @@
       </div>
     </div><!-- /contabPanelCxC -->
 
-    <!-- TAB: SUMINISTROS (seguimiento de items recurrentes) -->
+    <!-- TAB: SUMINISTROS (timeline de consumo por item) -->
     <div id="contabPanelSuministros" style="display:none;">
-      <div style="background:#f3f0e8;border-radius:10px;padding:12px 16px;margin-bottom:20px;display:flex;gap:10px;align-items:flex-start;">
+      <div style="background:#f3f0e8;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start;">
         <div style="font-size:15px;flex-shrink:0;margin-top:1px;">📦</div>
         <div>
-          <div style="font-size:11px;font-weight:600;color:#8a6f1c;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Seguimiento de suministros</div>
-          <div style="font-size:13px;color:var(--text-muted);line-height:1.5;">Cada compra de la categoría <strong>Suministros</strong> con un <strong>item</strong> etiquetado (agua, hielo, gas…) se agrupa acá para ver cada cuánto la recompras y estimar cuánto te dura. Etiquetá el item al registrar el egreso, o asignalo abajo a compras existentes. Respeta el filtro de período de arriba.</div>
+          <div style="font-size:11px;font-weight:600;color:#8a6f1c;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Timeline de suministros</div>
+          <div style="font-size:13px;color:var(--text-muted);line-height:1.5;">Agregá los items que querés seguir (agua, gas, papel higiénico…). El sistema busca esa palabra en la descripción de tus egresos de <strong>Suministros</strong> y arma un timeline: 🟢 barra = tenías stock, ● = compra, y la barra se corta el día antes de la siguiente compra (editable ✎). La última barra llega a hoy; si ya pasó su duración típica se pone 🔴 (toca recomprar).</div>
         </div>
       </div>
 
-      <div id="sumKpiRow" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;"></div>
-      <div id="sumItemsGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-bottom:24px;"></div>
-
-      <!-- Compras de Suministros SIN item (para asignar) -->
-      <div id="sumUntaggedWrap" class="contab-panel" style="display:none;">
-        <div class="contab-panel-header" style="justify-content:space-between;">
-          <div class="contab-panel-title">⚠️ Compras de Suministros sin item</div>
-          <button onclick="aplicarSugerenciasSuministros()" style="font-size:12px;font-weight:600;padding:6px 14px;border:1px solid var(--verde-dark);border-radius:8px;background:var(--verde-light,#eef4ea);color:var(--verde-dark);cursor:pointer;">✓ Aplicar sugerencias</button>
-        </div>
-        <div style="padding:8px 16px 4px;font-size:12px;color:var(--text-muted);">El sistema <strong>sugiere</strong> un item desde la descripción (editá el que no sea correcto o borralo si no querés trackearlo). "Aplicar sugerencias" guarda todos de una; o editá uno y presioná Enter para guardarlo solo.</div>
-        <div style="overflow-x:auto;">
-          <table style="width:100%;border-collapse:collapse;font-size:13px;">
-            <thead>
-              <tr style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">
-                <th style="padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);">Fecha</th>
-                <th style="padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);">Descripción</th>
-                <th style="padding:8px 12px;text-align:right;border-bottom:1px solid var(--border);">Monto</th>
-                <th style="padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);width:200px;">Asignar item</th>
-              </tr>
-            </thead>
-            <tbody id="sumUntaggedBody"></tbody>
-          </table>
-        </div>
+      <!-- Gestor de keywords -->
+      <div style="margin-bottom:14px;">
+        <div id="sumKeywordChips" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;"></div>
       </div>
+
+      <!-- Timeline -->
+      <div id="sumTimelineWrap" style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);"></div>
     </div><!-- /contabPanelSuministros -->
 
   </section>
@@ -11753,239 +11736,233 @@ function setContabTab(tab) {
   _renderActiveContabTab();
 }
 
-// ─── SUMINISTROS: seguimiento de items recurrentes ───────────
-// Agrupa las compras de categoría Suministros por su campo `item` y calcula
-// la cadencia de compra (cada cuánto se recompra) para estimar duración.
-// Respeta el filtro de período compartido (via _matchesSelectedPeriod).
-function renderSuministrosTab() {
-  const grid       = document.getElementById('sumItemsGrid');
-  const kpiRow     = document.getElementById('sumKpiRow');
-  const untagWrap  = document.getElementById('sumUntaggedWrap');
-  const untagBody  = document.getElementById('sumUntaggedBody');
-  if (!grid) return;
-  _refreshSuministroItemsDatalist();
+// ─── SUMINISTROS: timeline de consumo por keyword ────────────
+// Vos definís keywords (agua, gas, papel higiénico…). El sistema busca esa
+// palabra en la descripción de los egresos de Suministros y arma un timeline
+// horizontal: barra = período con stock, ● = compra, la barra termina el día
+// antes de la próxima compra (o en `fechaFin` si la editaste). La última barra
+// llega a hoy; si superó la duración típica se pinta 🔴 (toca recomprar).
+let _suministrosKeywords = null;   // cache de la lista (null = no cargada aún)
+let _sumKeywordsLoading = false;
 
-  const sinPago = SIN_PAGO_ORIGINS;
-  // Todas las compras de Suministros (histórico completo — la cadencia se
-  // calcula sobre todo el histórico, no solo el período; el período filtra
-  // qué se destaca). Excluye nada raro: los egresos no tienen origin.
-  const suministros = egresos.filter(e => (e.cat||'') === 'Suministros');
-  const conItem   = suministros.filter(e => (e.item||'').trim());
-  const sinItem   = suministros.filter(e => !(e.item||'').trim());
-
-  // Agrupar por item (normalizado en minúsculas para agrupar; mostramos el
-  // nombre tal cual el más frecuente).
-  const groups = {};
-  conItem.forEach(e => {
-    const key = e.item.trim().toLowerCase();
-    (groups[key] = groups[key] || { rawNames: {}, purchases: [] });
-    groups[key].rawNames[e.item.trim()] = (groups[key].rawNames[e.item.trim()]||0) + 1;
-    groups[key].purchases.push({ date: e.date, amount: parseFloat(e.amount||0), desc: e.desc||'' });
-  });
-
-  const _daysBetween = (a, b) => Math.round((new Date(b+'T12:00:00') - new Date(a+'T12:00:00')) / 86400000);
-  const _todayISO = new Date().toISOString().slice(0,10);
-  const _fmtDias = n => n === 1 ? '1 día' : n + ' días';
-
-  const items = Object.keys(groups).map(key => {
-    const g = groups[key];
-    const name = Object.keys(g.rawNames).sort((a,b) => g.rawNames[b]-g.rawNames[a])[0];
-    const purchases = g.purchases.slice().sort((a,b) => a.date.localeCompare(b.date));
-    const nCompras = purchases.length;
-    const gastoTotal = purchases.reduce((s,p) => s + p.amount, 0);
-    const ultima = purchases[nCompras-1];
-    const primera = purchases[0];
-    // Intervalos entre compras consecutivas.
-    const intervalos = [];
-    for (let i = 1; i < purchases.length; i++) {
-      intervalos.push(_daysBetween(purchases[i-1].date, purchases[i].date));
-    }
-    const intervaloProm = intervalos.length ? Math.round(intervalos.reduce((s,x)=>s+x,0)/intervalos.length) : null;
-    const diasDesdeUltima = _daysBetween(ultima.date, _todayISO);
-    // Progreso hacia la próxima compra estimada.
-    let pct = null, estado = 'ok';
-    if (intervaloProm && intervaloProm > 0) {
-      pct = Math.min(120, Math.round(diasDesdeUltima / intervaloProm * 100));
-      if (pct >= 100)      estado = 'vencido';
-      else if (pct >= 80)  estado = 'pronto';
-    }
-    return { key, name, nCompras, gastoTotal, ultima, primera, intervaloProm, diasDesdeUltima, pct, estado,
-             gastoProm: gastoTotal / nCompras };
-  }).sort((a,b) => {
-    // Ordenar: primero los que tocan recomprar (vencido/pronto), luego por días desde última desc.
-    const rank = { vencido: 0, pronto: 1, ok: 2 };
-    if (rank[a.estado] !== rank[b.estado]) return rank[a.estado] - rank[b.estado];
-    return b.diasDesdeUltima - a.diasDesdeUltima;
-  });
-
-  // ── KPIs resumen ──────────────────────────────────────────
-  const totalItems  = items.length;
-  const tocaRecomprar = items.filter(i => i.estado !== 'ok').length;
-  const gastoSuministros = suministros.filter(e => _matchesSelectedPeriod(e.date)).reduce((s,e)=>s+parseFloat(e.amount||0),0);
-  if (kpiRow) {
-    const kpi = (label, val, sub, color) => `<div style="background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;">
-      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">${label}</div>
-      <div style="font-size:22px;font-weight:700;color:${color||'var(--text)'};">${val}</div>
-      ${sub ? '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">'+sub+'</div>' : ''}
-    </div>`;
-    kpiRow.innerHTML =
-      kpi('Items rastreados', totalItems, conItem.length + ' compras etiquetadas') +
-      kpi('Toca recomprar', tocaRecomprar, tocaRecomprar ? '⚠️ revisar tarjetas' : '✓ al día', tocaRecomprar ? '#c0392b' : 'var(--verde-dark)') +
-      kpi('Gasto Suministros', '$'+gastoSuministros.toFixed(2), 'en el período filtrado') +
-      kpi('Sin etiquetar', sinItem.length, sinItem.length ? 'asigná item abajo' : 'todo etiquetado', sinItem.length ? '#8a6f1c' : 'var(--verde-dark)');
-  }
-
-  // ── Cards por item ────────────────────────────────────────
-  if (!items.length) {
-    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);font-size:13px;padding:24px;font-style:italic;">
-      Aún no hay items de Suministros etiquetados. Al registrar un egreso de categoría Suministros, escribí el item (agua, hielo, gas…) ${sinItem.length ? 'o asigná item a las compras de abajo.' : '.'}
-    </div>`;
-  } else {
-    const estadoColor = { vencido: '#c0392b', pronto: '#c0956a', ok: 'var(--verde-dark)' };
-    const estadoLabel = { vencido: '🔴 toca recomprar', pronto: '🟡 se acerca', ok: '🟢 al día' };
-    grid.innerHTML = items.map(it => {
-      const barColor = estadoColor[it.estado];
-      const barPct = it.pct != null ? Math.min(100, it.pct) : 0;
-      const cadencia = it.intervaloProm != null
-        ? 'Dura ~<strong>' + _fmtDias(it.intervaloProm) + '</strong>'
-        : '<span style="color:var(--text-muted);">1 sola compra — sin cadencia aún</span>';
-      const proximaEst = it.intervaloProm != null
-        ? (() => { const d = new Date(it.ultima.date+'T12:00:00'); d.setDate(d.getDate()+it.intervaloProm); return formatDate(d.toISOString().slice(0,10)); })()
-        : '—';
-      return `<div style="background:var(--card-bg);border:1px solid var(--border);border-left:4px solid ${barColor};border-radius:12px;padding:14px 16px;">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px;">
-          <div style="font-size:15px;font-weight:700;color:var(--text);text-transform:capitalize;">${escapeHtml(it.name)}</div>
-          <div style="font-size:10px;font-weight:600;white-space:nowrap;color:${barColor};">${estadoLabel[it.estado]}</div>
-        </div>
-        <div style="font-size:13px;color:var(--text);margin-bottom:8px;">${cadencia}</div>
-        <div style="height:6px;background:var(--border);border-radius:3px;margin-bottom:4px;overflow:hidden;">
-          <div style="width:${barPct}%;height:100%;background:${barColor};border-radius:3px;"></div>
-        </div>
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">
-          Última: ${formatDate(it.ultima.date)} · hace ${_fmtDias(it.diasDesdeUltima)}${it.intervaloProm!=null ? ' · próx. estim. '+proximaEst : ''}
-        </div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);border-top:1px solid var(--border);padding-top:8px;">
-          <span>${it.nCompras} compra${it.nCompras!==1?'s':''}</span>
-          <span>$${it.gastoTotal.toFixed(2)} total</span>
-          <span>~$${it.gastoProm.toFixed(2)} c/u</span>
-        </div>
-      </div>`;
-    }).join('');
-  }
-
-  // ── Compras sin item (para asignar) ───────────────────────
-  if (untagWrap && untagBody) {
-    if (!sinItem.length) {
-      untagWrap.style.display = 'none';
-      untagBody.innerHTML = '';
-    } else {
-      untagWrap.style.display = '';
-      const sorted = sinItem.slice().sort((a,b) => (b.date||'').localeCompare(a.date||''));
-      untagBody.innerHTML = sorted.map(e => {
-        const sugerido = _suggestSuministroItem(e.desc || '');
-        return `<tr style="border-bottom:1px solid var(--border);">
-        <td style="padding:8px 12px;white-space:nowrap;color:var(--text-muted);font-size:12px;">${formatDate(e.date)}</td>
-        <td style="padding:8px 12px;font-size:12px;">${escapeHtml(e.desc||'—')}</td>
-        <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;">$${parseFloat(e.amount||0).toFixed(2)}</td>
-        <td style="padding:8px 12px;">
-          <input type="text" list="suministroItemsList" placeholder="ej. agua" value="${sugerido.replace(/"/g,'&quot;')}" data-eid="${e.id}"
-            style="width:100%;font-size:12px;padding:4px 8px;border:1px solid ${sugerido ? 'var(--verde)' : 'var(--border)'};border-radius:6px;background:var(--surface);color:var(--text);"
-            onchange="asignarItemEgreso('${e.id}', this.value)"
-            onkeydown="if(event.key==='Enter'){this.blur();}">
-        </td>
-      </tr>`; }).join('');
-    }
-  }
+function _sumNormalize(s) {
+  return (s || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
-// Asigna (o cambia) el item de un egreso de Suministros y persiste.
-// `skipRender` evita re-renderizar en operaciones batch (el caller re-renderiza
-// una sola vez al final).
-function asignarItemEgreso(id, itemName, skipRender) {
-  const e = egresos.find(x => x.id === id);
-  if (!e) return;
-  const nuevo = (itemName || '').trim();
-  if (nuevo === (e.item || '')) return;   // sin cambios → no toca nada
-  e.item = nuevo;
-  save();
-  if (!skipRender) renderSuministrosTab();
+async function _loadSuministrosKeywords() {
+  if (_suministrosKeywords !== null || _sumKeywordsLoading) return;
+  _sumKeywordsLoading = true;
+  try {
+    if (USE_SHEETS) {
+      const r = await fetch(SHEETS_API_URL + '?action=getSuministrosItems&_=' + Date.now());
+      const j = await r.json();
+      _suministrosKeywords = (j && j.ok && Array.isArray(j.keywords)) ? j.keywords : [];
+    } else {
+      let ls = null; try { ls = JSON.parse(localStorage.getItem('ln_sum_keywords') || 'null'); } catch(_) {}
+      _suministrosKeywords = Array.isArray(ls) ? ls : ['Papel higiénico','Café','Agua','Gas','Hielo','Cloro','Desinfectante','Detergente','Jabón','Kerosene'];
+    }
+  } catch(e) { _suministrosKeywords = []; }
+  finally { _sumKeywordsLoading = false; }
+}
+
+function _saveSuministrosKeywords() {
+  try { localStorage.setItem('ln_sum_keywords', JSON.stringify(_suministrosKeywords || [])); } catch(_) {}
   if (USE_SHEETS) {
     fetch(SHEETS_API_URL, { method: 'POST',
-      body: JSON.stringify({ action: 'updateEgreso', egreso: { id: e.id, item: e.item } })
-    }).catch(err => console.warn('asignar item sync error:', err));
+      body: JSON.stringify({ action: 'saveSuministrosItems', keywords: _suministrosKeywords || [] })
+    }).catch(e => console.warn('save keywords', e));
   }
 }
 
-// Aplica en lote todas las sugerencias/valores actualmente en los inputs de la
-// tabla "sin item". Guarda cada uno con valor no vacío y re-renderiza una vez.
-function aplicarSugerenciasSuministros() {
-  const inputs = document.querySelectorAll('#sumUntaggedBody input[data-eid]');
-  let aplicados = 0;
-  inputs.forEach(inp => {
-    const val = (inp.value || '').trim();
-    if (!val) return;
-    const id = inp.getAttribute('data-eid');
-    const e = egresos.find(x => x.id === id);
-    if (e && (e.item || '') !== val) { asignarItemEgreso(id, val, true); aplicados++; }
-  });
+function addSuministroKeyword() {
+  const inp = document.getElementById('sumKwInput');
+  if (!inp) return;
+  const kw = (inp.value || '').trim();
+  if (!kw) return;
+  _suministrosKeywords = _suministrosKeywords || [];
+  if (!_suministrosKeywords.some(k => _sumNormalize(k) === _sumNormalize(kw))) {
+    _suministrosKeywords.push(kw);
+    _saveSuministrosKeywords();
+  }
+  inp.value = '';
   renderSuministrosTab();
-  showToast(aplicados ? ('✓ ' + aplicados + ' item' + (aplicados!==1?'s':'') + ' asignado' + (aplicados!==1?'s':'')) : 'No había cambios para aplicar');
 }
 
-// Sugerencia de item a partir de la descripción de un egreso de Suministros.
-// Usa un mapa de palabras clave → nombre canónico (para que "3 garrafones de
-// agua" y "garrafón de agua" agrupen igual). Si no matchea ninguna, cae a un
-// fallback: limpia códigos/cantidades/precios y toma las primeras palabras.
-// Nota: para descripciones que mezclan varios items ("gas y agua") sugiere el
-// PRIMERO que detecta — hay que editar a mano si querés separar (un egreso
-// solo puede llevar un item).
-const _SUMINISTRO_KEYWORDS = [
-  [/garrafon|garrafón|\bagua\b/i,        'Agua'],
-  [/tanque|\bgas\b/i,                     'Gas'],
-  [/hielo/i,                              'Hielo'],
-  [/kerosen|keroseno|querosen/i,          'Kerosene'],
-  [/papel\s*hig|higien|higen/i,           'Papel higiénico'],
-  [/servilleta/i,                         'Servilletas'],
-  [/lavavajilla|lavaplato/i,              'Lavavajillas'],
-  [/detergente/i,                         'Detergente'],
-  [/\bcloro\b|lavandina/i,                'Cloro'],
-  [/desinfectante/i,                      'Desinfectante'],
-  [/jab[oó]n/i,                           'Jabón'],
-  [/shampoo|champ[uú]/i,                  'Shampoo'],
-  [/protector.*colch|colch.*protector/i,  'Protector de colchón'],
-  [/forro.*colch|colch.*forro/i,          'Forro de colchón'],
-  [/bolsa/i,                              'Bolsas'],
-  [/caf[eé]/i,                            'Café'],
-  [/fosfor|encendedor|f[oó]sforo/i,       'Fósforos'],
-  [/\bvela\b|velas/i,                     'Velas'],
-  [/carb[oó]n/i,                          'Carbón'],
-  [/le[nñ]a/i,                            'Leña']
-];
-function _suggestSuministroItem(desc) {
-  const d = (desc || '').toString();
-  if (!d.trim()) return '';
-  // Keyword que aparezca PRIMERO en la descripción (posicional). Así en
-  // "3 tanques de gas y 3 garrafones de agua" sugiere "Gas" (el que lidera),
-  // no el orden de la lista.
-  let best = null, bestIdx = Infinity;
-  for (const [re, name] of _SUMINISTRO_KEYWORDS) {
-    const m = d.match(re);
-    if (m && m.index < bestIdx) { best = name; bestIdx = m.index; }
+function removeSuministroKeyword(kw) {
+  _suministrosKeywords = (_suministrosKeywords || []).filter(k => k !== kw);
+  _saveSuministrosKeywords();
+  renderSuministrosTab();
+}
+
+async function renderSuministrosTab() {
+  const chips = document.getElementById('sumKeywordChips');
+  const wrap  = document.getElementById('sumTimelineWrap');
+  if (!chips || !wrap) return;
+  if (_suministrosKeywords === null) {
+    chips.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">Cargando items…</span>';
+    await _loadSuministrosKeywords();
   }
-  if (best) return best;
-  // Fallback: quitar [códigos], (cantidades @ precio), números y puntuación,
-  // y tomar las primeras 2 palabras significativas en Title Case.
-  let clean = d
-    .replace(/\[[^\]]*\]/g, ' ')        // [CODIGO]
-    .replace(/\([^)]*\)/g, ' ')         // (3 unidades @ 5.99 USD)
-    .replace(/\d+(\.\d+)?/g, ' ')       // números sueltos
-    .replace(/[.,;:/*@#()\[\]"']/g, ' ') // puntuación
-    .replace(/\b(de|del|la|el|los|las|con|para|y|e|o|por|un|una|unos|unas|p)\b/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!clean) return '';
-  const words = clean.split(' ').filter(Boolean).slice(0, 2);
-  return words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+  const kws = _suministrosKeywords || [];
+  _refreshSuministroItemsDatalist();
+  chips.innerHTML = kws.map(kw =>
+    `<span style="display:inline-flex;align-items:center;gap:6px;background:var(--card-bg);border:1px solid var(--border);border-radius:999px;padding:5px 6px 5px 12px;font-size:13px;color:var(--text);">
+      ${escapeHtml(kw)}
+      <button onclick="removeSuministroKeyword('${kw.replace(/'/g, "\\'")}')" title="Quitar" style="border:none;background:var(--border);color:var(--text-muted);width:18px;height:18px;border-radius:50%;cursor:pointer;font-size:12px;line-height:1;">&times;</button>
+    </span>`).join('') +
+    `<span style="display:inline-flex;align-items:center;gap:4px;">
+      <input id="sumKwInput" type="text" placeholder="+ agregar item…" list="suministroItemsList"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();addSuministroKeyword();}"
+        style="font-size:13px;padding:5px 10px;border:1px dashed var(--border);border-radius:999px;background:var(--surface);color:var(--text);width:150px;">
+      <button onclick="addSuministroKeyword()" style="border:none;background:var(--verde-dark);color:#fff;border-radius:999px;padding:6px 12px;font-size:12px;cursor:pointer;">Agregar</button>
+    </span>`;
+  _renderSumTimeline(wrap, kws);
+}
+
+function _renderSumTimeline(wrap, kws) {
+  const todayISO = new Date().toISOString().slice(0,10);
+  const _d = iso => new Date(iso + 'T12:00:00');
+  const _addDays = (iso, n) => { const d = _d(iso); d.setDate(d.getDate() + n); return d.toISOString().slice(0,10); };
+  const _daysBetween = (a, b) => Math.round((_d(b) - _d(a)) / 86400000);
+
+  if (!kws.length) {
+    wrap.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px;font-style:italic;">Agregá un item arriba (agua, gas, papel higiénico…) para ver su timeline de consumo.</div>';
+    return;
+  }
+
+  // Compras por keyword (búsqueda en descripción, sin acentos).
+  const rows = kws.map(kw => {
+    const nkw = _sumNormalize(kw);
+    const ps = egresos
+      .filter(e => (e.cat||'') === 'Suministros' && e.date && _sumNormalize(e.desc).includes(nkw))
+      .map(e => ({ id: e.id, date: e.date, amount: parseFloat(e.amount||0), desc: e.desc||'', fechaFin: (e.fechaFin||'').slice(0,10) }))
+      .sort((a,b) => a.date.localeCompare(b.date));
+    return { kw, ps };
+  });
+
+  // Ventana temporal común.
+  let minDate = todayISO;
+  rows.forEach(r => r.ps.forEach(p => { if (p.date < minDate) minDate = p.date; }));
+  let windowStart = _addDays(minDate, -5);
+  let windowEnd   = _addDays(todayISO, 20);
+  if (_daysBetween(windowStart, windowEnd) > 550) windowStart = _addDays(windowEnd, -550);
+  const totalDays = Math.max(30, _daysBetween(windowStart, windowEnd));
+  const pxPerDay = 4.5;
+  const trackW = Math.round(totalDays * pxPerDay);
+  const leftW = 160, rowH = 46;
+  const xOf = iso => {
+    const clamped = iso < windowStart ? windowStart : (iso > windowEnd ? windowEnd : iso);
+    return Math.round(_daysBetween(windowStart, clamped) * pxPerDay);
+  };
+
+  // Header de meses.
+  const MES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  let months = '';
+  let cur = new Date(windowStart + 'T12:00:00'); cur.setDate(1);
+  while (true) {
+    const iso = cur.toISOString().slice(0,10);
+    if (iso > windowEnd) break;
+    // Saltar el mes parcial inicial (su día 1 cae antes del inicio de ventana)
+    // para no solapar su etiqueta con la del primer mes completo.
+    if (iso < windowStart) { cur.setMonth(cur.getMonth() + 1); continue; }
+    const x = xOf(iso);
+    months += `<div style="position:absolute;left:${x}px;top:0;bottom:0;border-left:1px solid var(--border);"></div>`
+            + `<div style="position:absolute;left:${x+4}px;top:5px;font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;">${MES[cur.getMonth()]} ${String(cur.getFullYear()).slice(2)}</div>`;
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  const hoyX = xOf(todayISO);
+
+  // Filas.
+  let rowsHtml = '';
+  rows.forEach(r => {
+    const ps = r.ps;
+    const gaps = []; for (let i = 1; i < ps.length; i++) gaps.push(_daysBetween(ps[i-1].date, ps[i].date));
+    const avg = gaps.length ? Math.round(gaps.reduce((s,x)=>s+x,0)/gaps.length) : null;
+
+    let bars = '';
+    ps.forEach((p, i) => {
+      const isLast = i === ps.length - 1;
+      let end = p.fechaFin || (isLast ? todayISO : _addDays(ps[i+1].date, -1));
+      if (end < p.date) end = p.date;
+      const x1 = xOf(p.date), x2 = xOf(end);
+      const w = Math.max(3, x2 - x1);
+      let color = '#6a9e62';
+      if (isLast) {
+        const dias = _daysBetween(p.date, todayISO);
+        if (avg && dias > avg) color = '#c0392b';
+        else if (avg && dias >= avg * 0.8) color = '#c0956a';
+      }
+      const tip = `${p.desc} · ${formatDate(p.date)} → ${formatDate(end)} · $${p.amount.toFixed(2)}`;
+      // barra de stock
+      bars += `<div title="${escapeHtml(tip)}" style="position:absolute;left:${x1}px;top:${rowH/2-4}px;width:${w}px;height:8px;background:${color};border-radius:4px;opacity:.85;"></div>`;
+      // gap "sin stock" si fechaFin quedó antes de la próxima compra
+      if (!isLast && p.fechaFin) {
+        const nextStart = ps[i+1].date;
+        if (end < _addDays(nextStart, -1)) {
+          const gx1 = xOf(_addDays(end, 1)), gx2 = xOf(_addDays(nextStart, -1));
+          const gw = Math.max(2, gx2 - gx1);
+          bars += `<div title="Sin stock ${formatDate(_addDays(end,1))} → ${formatDate(_addDays(nextStart,-1))}" style="position:absolute;left:${gx1}px;top:${rowH/2-3}px;width:${gw}px;height:6px;background:repeating-linear-gradient(45deg,#e57373 0 4px,transparent 4px 8px);border-radius:3px;"></div>`;
+        }
+      }
+      // punto de compra
+      bars += `<div title="${escapeHtml(tip)}" style="position:absolute;left:${x1-4}px;top:${rowH/2-5}px;width:10px;height:10px;border-radius:50%;background:${color};border:2px solid var(--surface);box-shadow:0 0 0 1px ${color};"></div>`;
+      // handle editable del fin
+      bars += `<div onclick="editSumFechaFin('${p.id}','${end}',event)" title="Ajustar la fecha en que se terminó" style="position:absolute;left:${x2-6}px;top:${rowH/2-7}px;width:13px;height:13px;border-radius:50%;background:var(--surface);border:2px solid ${color};cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:8px;line-height:1;color:${color};">&#9998;</div>`;
+    });
+
+    const sub = ps.length
+      ? (ps.length + ' compra' + (ps.length !== 1 ? 's' : '') + (avg ? ' · dura ~' + avg + 'd' : ''))
+      : '<span style="color:#c0956a;">sin compras aún</span>';
+    rowsHtml += `<div style="display:flex;border-top:1px solid var(--border);min-height:${rowH}px;">
+      <div style="position:sticky;left:0;z-index:2;width:${leftW}px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);padding:6px 10px;box-sizing:border-box;">
+        <div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.kw)}</div>
+        <div style="font-size:10px;color:var(--text-muted);">${sub}</div>
+      </div>
+      <div style="position:relative;width:${trackW}px;flex-shrink:0;">
+        <div style="position:absolute;left:${hoyX}px;top:0;bottom:0;width:2px;background:#e8792b;z-index:1;"></div>
+        ${bars}
+      </div>
+    </div>`;
+  });
+
+  wrap.innerHTML = `<div style="overflow-x:auto;">
+    <div style="min-width:${leftW + trackW}px;">
+      <div style="display:flex;border-bottom:1px solid var(--border);">
+        <div style="position:sticky;left:0;z-index:3;width:${leftW}px;flex-shrink:0;background:var(--bg);border-right:1px solid var(--border);padding:6px 10px;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;box-sizing:border-box;">Item</div>
+        <div style="position:relative;width:${trackW}px;height:26px;flex-shrink:0;background:var(--bg);">
+          ${months}
+          <div style="position:absolute;left:${hoyX}px;top:0;bottom:0;width:2px;background:#e8792b;z-index:2;"></div>
+          <div style="position:absolute;left:${hoyX+4}px;top:6px;font-size:9px;font-weight:700;color:#e8792b;z-index:2;">HOY</div>
+        </div>
+      </div>
+      ${rowsHtml}
+    </div>
+  </div>
+  <input type="date" id="sumDatePicker" style="position:fixed;left:-999px;top:-999px;opacity:0;width:1px;height:1px;">`;
+}
+
+// Abre un date picker para ajustar la fecha en que se terminó un insumo.
+function editSumFechaFin(egresoId, currentEnd, ev) {
+  if (ev) ev.stopPropagation();
+  const picker = document.getElementById('sumDatePicker');
+  if (!picker) return;
+  picker.value = (currentEnd || '').slice(0,10);
+  picker.onchange = () => { setSumFechaFin(egresoId, picker.value); picker.onchange = null; };
+  if (ev) { picker.style.left = ev.clientX + 'px'; picker.style.top = ev.clientY + 'px'; }
+  try { picker.showPicker(); } catch(_) { picker.focus(); picker.click(); }
+}
+
+// Persiste la fecha de "se terminó" (columna FechaFin del egreso).
+function setSumFechaFin(egresoId, date) {
+  const e = egresos.find(x => x.id === egresoId);
+  if (!e) return;
+  e.fechaFin = (date || '').slice(0,10);
+  save();
+  renderSuministrosTab();
+  if (USE_SHEETS) {
+    fetch(SHEETS_API_URL, { method: 'POST',
+      body: JSON.stringify({ action: 'updateEgreso', egreso: { id: egresoId, fechaFin: e.fechaFin } })
+    }).catch(err => console.warn('fechaFin sync', err));
+  }
 }
 
 function renderEgresosTab() {

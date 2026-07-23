@@ -850,7 +850,7 @@ function limpiarFechasInvalidas() {
 // (incluyendo 'Item', añadida para el seguimiento de Suministros). Migra
 // hojas viejas de 8 columnas agregando el header 'Item' en la col 9.
 function _getEgresoSheetEnsured(ss) {
-  const HEADERS = ['ID','Fecha','Descripcion','Monto','Categoria','Cabaña','Proveedor','URLFoto','Item'];
+  const HEADERS = ['ID','Fecha','Descripcion','Monto','Categoria','Cabaña','Proveedor','URLFoto','Item','FechaFin'];
   let sheet = ss.getSheetByName('Egresos');
   if (!sheet) {
     sheet = ss.insertSheet('Egresos');
@@ -865,22 +865,44 @@ function _getEgresoSheetEnsured(ss) {
     sheet.getRange(1,1,1,HEADERS.length).setFontWeight('bold');
     return sheet;
   }
-  // Auto-migración: añadir 'Item' si falta.
-  const hasItem = firstRow.some(h => h && h.toString().toLowerCase().trim() === 'item');
-  if (!hasItem) {
-    const col = sheet.getLastColumn() + 1;
-    sheet.getRange(1, col).setValue('Item').setFontWeight('bold');
+  // Auto-migración: añadir columnas nuevas al final si faltan.
+  const lowerHeaders = firstRow.map(h => (h||'').toString().toLowerCase().trim());
+  if (lowerHeaders.indexOf('item') === -1) {
+    sheet.getRange(1, sheet.getLastColumn() + 1).setValue('Item').setFontWeight('bold');
+  }
+  // Releer por si acabamos de agregar Item.
+  const cur = sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0].map(h => (h||'').toString().toLowerCase().trim());
+  if (cur.indexOf('fechafin') === -1) {
+    sheet.getRange(1, sheet.getLastColumn() + 1).setValue('FechaFin').setFontWeight('bold');
   }
   return sheet;
 }
 
-// Índice 1-based de la columna 'Item' en la hoja Egresos (0 si no existe).
-function _egresoItemColIndex(sheet) {
+// Índice 1-based de una columna por nombre (case-insensitive) en Egresos (0 si no existe).
+function _egresoColIndex(sheet, name) {
   const headers = sheet.getRange(1,1,1,Math.max(sheet.getLastColumn(),1)).getValues()[0];
+  const target = name.toLowerCase().trim();
   for (let i = 0; i < headers.length; i++) {
-    if (headers[i] && headers[i].toString().toLowerCase().trim() === 'item') return i + 1;
+    if (headers[i] && headers[i].toString().toLowerCase().trim() === target) return i + 1;
   }
   return 0;
+}
+// Compat: se usaba _egresoItemColIndex en varios lugares.
+function _egresoItemColIndex(sheet) { return _egresoColIndex(sheet, 'item'); }
+
+// Hoja con la lista de keywords a trackear en el seguimiento de Suministros.
+// Una columna 'Keyword' — el frontend maneja la lista y la reescribe entera.
+function _getSuministrosItemsSheet(ss) {
+  let sh = ss.getSheetByName('SuministrosItems');
+  if (!sh) {
+    sh = ss.insertSheet('SuministrosItems');
+    sh.getRange(1,1,1,1).setValues([['Keyword']]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+    // Semilla inicial de keywords sugeridos.
+    const seed = ['Papel','Café','Agua','Gas','Hielo','Cloro','Desinfectante','Detergente','Jabón','Kerosene'];
+    sh.getRange(2,1,seed.length,1).setValues(seed.map(k => [k]));
+  }
+  return sh;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -984,7 +1006,8 @@ function doGet(e) {
         cabin:     headers.findIndex(h => h.includes('caba')),
         proveedor: headers.indexOf('proveedor'),
         urlFoto:   headers.findIndex(h => h.includes('url') || h.includes('foto')),
-        item:      headers.indexOf('item')
+        item:      headers.indexOf('item'),
+        fechaFin:  headers.indexOf('fechafin')
       };
       const egresos = eData.slice(1)
         .filter(r => r[idx.fecha] && r[idx.monto])
@@ -1003,11 +1026,25 @@ function doGet(e) {
             proveedor: idx.proveedor >= 0 ? (r[idx.proveedor]  || '') : '',
             urlFoto:   idx.urlFoto   >= 0 ? (r[idx.urlFoto]    || '') : '',
             item:      idx.item      >= 0 ? (r[idx.item]       || '') : '',
+            fechaFin:  idx.fechaFin  >= 0 ? (r[idx.fechaFin] instanceof Date
+                          ? Utilities.formatDate(r[idx.fechaFin], 'America/Panama', 'yyyy-MM-dd')
+                          : (r[idx.fechaFin] || '').toString().slice(0,10)) : '',
             fromSheets: true
           };
         });
       return ContentService
         .createTextOutput(JSON.stringify({ ok: true, egresos }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ── GET SUMINISTROS KEYWORDS (lista de items a trackear) ──
+    if (action === 'getSuministrosItems') {
+      const ss = SpreadsheetApp.openById(SHEET_ID);
+      const sh = _getSuministrosItemsSheet(ss);
+      const rows = sh.getLastRow() > 1 ? sh.getRange(2,1,sh.getLastRow()-1,1).getValues() : [];
+      const keywords = rows.map(r => (r[0]||'').toString().trim()).filter(Boolean);
+      return ContentService
+        .createTextOutput(JSON.stringify({ ok: true, keywords }))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -1589,6 +1626,19 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
+    // ── SAVE SUMINISTROS KEYWORDS (reemplaza la lista completa) ──
+    if (action === 'saveSuministrosItems') {
+      const ss = SpreadsheetApp.openById(SHEET_ID);
+      const sh = _getSuministrosItemsSheet(ss);
+      // Limpiar filas de datos y reescribir la lista completa que manda el front.
+      if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,1).clearContent();
+      const kws = (payload.keywords || []).map(k => (k||'').toString().trim()).filter(Boolean);
+      if (kws.length) sh.getRange(2,1,kws.length,1).setValues(kws.map(k => [k]));
+      return ContentService
+        .createTextOutput(JSON.stringify({ ok: true, count: kws.length }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     // ── SAVE EGRESOS (multi-item) ─────────────────────────────
     if (action === 'saveEgresos') {
       const items = payload.egresos;
@@ -1687,7 +1737,10 @@ function doPost(e) {
       if (!sheet) return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'No Egresos sheet' }))
         .setMimeType(ContentService.MimeType.JSON);
-      const itemCol = eg.item !== undefined ? _egresoItemColIndex(sheet) : 0;
+      // Asegurar columnas Item/FechaFin si el update las va a escribir.
+      if (eg.item !== undefined || eg.fechaFin !== undefined) { _getEgresoSheetEnsured(ss); }
+      const itemCol     = eg.item     !== undefined ? _egresoColIndex(sheet, 'item')     : 0;
+      const fechaFinCol = eg.fechaFin !== undefined ? _egresoColIndex(sheet, 'fechafin') : 0;
       const data = sheet.getDataRange().getValues();
       for (let i = 1; i < data.length; i++) {
         if (data[i][0].toString() === eg.id) {
@@ -1695,7 +1748,8 @@ function doPost(e) {
           if (eg.desc      !== undefined) sheet.getRange(i+1, 3).setValue(eg.desc);
           if (eg.proveedor !== undefined) sheet.getRange(i+1, 7).setValue(eg.proveedor);
           if (eg.cabin     !== undefined) sheet.getRange(i+1, 6).setValue(eg.cabin);
-          if (eg.item      !== undefined && itemCol > 0) sheet.getRange(i+1, itemCol).setValue(eg.item);
+          if (eg.item      !== undefined && itemCol > 0)     sheet.getRange(i+1, itemCol).setValue(eg.item);
+          if (eg.fechaFin  !== undefined && fechaFinCol > 0) sheet.getRange(i+1, fechaFinCol).setValue(eg.fechaFin || '');
           return ContentService
             .createTextOutput(JSON.stringify({ ok: true, status: 'updated' }))
             .setMimeType(ContentService.MimeType.JSON);
