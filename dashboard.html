@@ -2918,12 +2918,22 @@
       <div style="display:flex;justify-content:space-between;gap:12px;"><span style="color:var(--text-muted);">Proveedor</span><span id="sumEgProv" style="text-align:right;"></span></div>
       <div style="display:flex;justify-content:space-between;gap:12px;"><span style="color:var(--text-muted);">Cabaña</span><span id="sumEgCabin" style="text-align:right;"></span></div>
       <div style="display:flex;justify-content:space-between;gap:12px;"><span style="color:var(--text-muted);">Fecha de compra</span><span id="sumEgFecha" style="text-align:right;"></span></div>
-      <div style="display:flex;justify-content:space-between;gap:12px;"><span style="color:var(--text-muted);">Monto</span><span id="sumEgMonto" style="font-weight:700;text-align:right;"></span></div>
+      <div style="display:flex;justify-content:space-between;gap:12px;"><span style="color:var(--text-muted);">Monto factura</span><span id="sumEgMonto" style="font-weight:700;text-align:right;"></span></div>
       <div style="display:flex;justify-content:space-between;gap:12px;"><span style="color:var(--text-muted);">Duración</span><span id="sumEgDuracion" style="text-align:right;"></span></div>
     </div>
 
     <!-- Link externo a la factura real (Drive) -->
     <div id="sumEgFacturaWrap" style="margin-top:12px;"></div>
+
+    <!-- Monto de este item (para facturas que cubren varios items) -->
+    <div style="margin-top:16px;">
+      <label style="display:block;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Monto de <span id="sumEgMontoItemKw">este item</span></label>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:15px;color:var(--text-muted);">$</span>
+        <input type="number" step="0.01" min="0" id="sumEgMontoItem" placeholder="0.00" style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;">
+      </div>
+      <div id="sumEgMontoItemHint" style="font-size:11px;color:var(--text-muted);margin-top:6px;"></div>
+    </div>
 
     <!-- Fecha en que se acabó (editable) -->
     <div style="margin-top:16px;">
@@ -11783,10 +11793,24 @@ function setContabTab(tab) {
 // llega a hoy; si superó la duración típica se pinta 🔴 (toca recomprar).
 let _suministrosKeywords = null;   // cache de la lista (null = no cargada aún)
 let _sumKeywordsLoading = false;
-let _sumBarMeta = {};              // egresoId → { kw, autoEnd, isLast, avg, effEnd } (poblado al renderizar)
+let _sumBarMeta = {};              // barKey → { egresoId, kw, nkw, autoEnd, isLast, avg, effEnd } (poblado al renderizar)
 
 function _sumNormalize(s) {
   return (s || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+// montosItem es un JSON { nkw: monto } que reparte una factura entre varios
+// items. Devuelve la porción asignada a este item (nkw) o null si no hay override.
+function _sumParseMontos(e) {
+  if (!e || !e.montosItem) return {};
+  if (typeof e.montosItem === 'object') return e.montosItem;
+  try { const o = JSON.parse(e.montosItem); return (o && typeof o === 'object') ? o : {}; }
+  catch(_) { return {}; }
+}
+function _sumItemAmount(e, nkw) {
+  const m = _sumParseMontos(e);
+  const v = m[nkw];
+  return (v == null || v === '') ? null : (parseFloat(v) || 0);
 }
 
 async function _loadSuministrosKeywords() {
@@ -11874,9 +11898,14 @@ function _renderSumTimeline(wrap, kws) {
     const nkw = _sumNormalize(kw);
     const ps = egresos
       .filter(e => (e.cat||'') === 'Suministros' && e.date && _sumNormalize(e.desc).includes(nkw))
-      .map(e => ({ id: e.id, date: e.date, amount: parseFloat(e.amount||0), desc: e.desc||'', fechaFin: (e.fechaFin||'').slice(0,10) }))
+      .map(e => {
+        const total = parseFloat(e.amount||0);
+        const ov = _sumItemAmount(e, nkw); // porción asignada a este item (o null)
+        return { id: e.id, date: e.date, amount: (ov != null ? ov : total), amountTotal: total,
+                 hasOverride: ov != null, desc: e.desc||'', fechaFin: (e.fechaFin||'').slice(0,10) };
+      })
       .sort((a,b) => a.date.localeCompare(b.date));
-    return { kw, ps };
+    return { kw, nkw, ps };
   });
 
   // ── Ventana temporal: SIEMPRE el histórico completo (primera compra → hoy
@@ -11948,10 +11977,13 @@ function _renderSumTimeline(wrap, kws) {
         else if (avg && dias >= avg * 0.8) color = '#c0956a';
       }
       const autoEnd = isLast ? todayISO : _addDays(ps[i+1].date, -1);
-      // Meta para el modal de detalle (se abre al clickear la barra o el punto).
-      _sumBarMeta[p.id] = { kw: r.kw, autoEnd, isLast, avg, effEnd: end };
-      const tip = `${p.desc} · ${formatDate(p.date)} → ${formatDate(end)} · $${p.amount.toFixed(2)} · click para ver/editar`;
-      const openCall = `openSumEgresoModal('${p.id}')`;
+      // Meta por barra (clave única) — un mismo egreso puede aparecer en varios
+      // items, así que NO se puede indexar solo por egresoId.
+      const barKey = 'sb_' + r.nkw + '_' + p.id;
+      _sumBarMeta[barKey] = { egresoId: p.id, kw: r.kw, nkw: r.nkw, autoEnd, isLast, avg, effEnd: end };
+      const montoTip = p.hasOverride ? `$${p.amount.toFixed(2)} de $${p.amountTotal.toFixed(2)}` : `$${p.amount.toFixed(2)}`;
+      const tip = `${p.desc} · ${formatDate(p.date)} → ${formatDate(end)} · ${montoTip} · click para ver/editar`;
+      const openCall = `openSumEgresoModal('${barKey}')`;
       // barra de stock (clampeada a la ventana) — clickeable
       bars += `<div onclick="${openCall}" class="sum-bar" title="${escapeHtml(tip)}" style="position:absolute;left:${x1}px;top:${rowH/2-5}px;width:${w}px;height:10px;background:${color};border-radius:5px;opacity:.85;cursor:pointer;"></div>`;
       // gap "sin stock" si fechaFin quedó antes de la próxima compra
@@ -11969,8 +12001,9 @@ function _renderSumTimeline(wrap, kws) {
       }
     });
 
+    const totalGastado = ps.reduce((s,p) => s + (p.amount||0), 0);
     const sub = ps.length
-      ? (ps.length + ' compra' + (ps.length !== 1 ? 's' : '') + (avg ? ' · dura ~' + avg + 'd' : ''))
+      ? (ps.length + ' compra' + (ps.length !== 1 ? 's' : '') + (avg ? ' · ~' + avg + 'd' : '') + ' · $' + totalGastado.toFixed(0))
       : '<span style="color:#c0956a;">sin compras aún</span>';
     rowsHtml += `<div style="display:flex;border-top:1px solid var(--border);min-height:${rowH}px;">
       <div style="position:sticky;left:0;z-index:2;width:${leftW}px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);padding:6px 10px;box-sizing:border-box;">
@@ -12002,13 +12035,14 @@ function _renderSumTimeline(wrap, kws) {
 }
 
 // ── Modal de detalle de compra (se abre al clickear una barra/punto del timeline) ──
-let _sumEgresoModalId = null;
+// Guarda la barra activa: { egresoId, kw, nkw } — el egreso puede estar en varios items.
+let _sumEgresoModalCtx = null;
 
-function openSumEgresoModal(egresoId) {
-  const e = egresos.find(x => x.id === egresoId);
+function openSumEgresoModal(barKey) {
+  const meta = _sumBarMeta[barKey] || {};
+  const e = egresos.find(x => x.id === meta.egresoId);
   if (!e) return;
-  _sumEgresoModalId = egresoId;
-  const meta = _sumBarMeta[egresoId] || {};
+  _sumEgresoModalCtx = { egresoId: e.id, kw: meta.kw, nkw: meta.nkw };
 
   const _addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0,10); };
   const _daysBetween = (a, b) => Math.round((new Date(b+'T12:00:00') - new Date(a+'T12:00:00')) / 86400000);
@@ -12024,7 +12058,8 @@ function openSumEgresoModal(egresoId) {
   document.getElementById('sumEgProv').textContent  = e.proveedor || '—';
   document.getElementById('sumEgCabin').textContent = e.cabin || e.cabana || '—';
   document.getElementById('sumEgFecha').textContent = formatDate(e.date);
-  document.getElementById('sumEgMonto').textContent = '$' + parseFloat(e.amount||0).toFixed(2);
+  const totalFactura = parseFloat(e.amount||0);
+  document.getElementById('sumEgMonto').textContent = '$' + totalFactura.toFixed(2);
 
   // Duración (desde compra hasta el fin efectivo) + comparación con el promedio.
   let durTxt = '—';
@@ -12052,6 +12087,15 @@ function openSumEgresoModal(egresoId) {
     facturaWrap.innerHTML = '<div style="font-size:12px;color:var(--text-muted);font-style:italic;text-align:center;padding:4px 0;">Sin comprobante adjunto</div>';
   }
 
+  // Monto de este item (para facturas que cubren varios items). Prefill con el
+  // override si existe; placeholder = total de la factura.
+  const ov = _sumItemAmount(e, meta.nkw); // porción asignada (o null)
+  document.getElementById('sumEgMontoItemKw').textContent = meta.kw || 'este item';
+  const montoInput = document.getElementById('sumEgMontoItem');
+  montoInput.value = (ov != null ? ov : '');
+  montoInput.placeholder = totalFactura.toFixed(2);
+  _renderSumMontoItemHint(e, meta.nkw, meta.kw, totalFactura, ov);
+
   // Fecha en que se acabó (editable). Prefill con el fin efectivo.
   const input = document.getElementById('sumEgFechaFin');
   input.value = (fechaFin || effEnd || '').slice(0,10);
@@ -12068,37 +12112,82 @@ function openSumEgresoModal(egresoId) {
   document.getElementById('sumEgresoOverlay').classList.add('open');
 }
 
-function closeSumEgresoModal() {
-  document.getElementById('sumEgresoOverlay').classList.remove('open');
-  _sumEgresoModalId = null;
+// Hint del campo "monto de este item": muestra cuánto de la factura queda sin
+// asignar a OTROS items, para ayudar a repartir un voucher entre varios.
+function _renderSumMontoItemHint(e, nkw, kw, total, ov) {
+  const el = document.getElementById('sumEgMontoItemHint');
+  if (!el) return;
+  const montos = _sumParseMontos(e);
+  // Suma de lo asignado a otros items (distintos de este).
+  let otros = 0, nOtros = 0;
+  Object.keys(montos).forEach(k => {
+    if (k === nkw) return;
+    const v = parseFloat(montos[k]);
+    if (!isNaN(v)) { otros += v; nOtros++; }
+  });
+  if (nOtros > 0) {
+    const disp = Math.round((total - otros) * 100) / 100;
+    el.textContent = 'Otros items de esta factura ya suman $' + otros.toFixed(2) +
+      '. Disponible para "' + (kw||'este item') + '": $' + disp.toFixed(2) + '.';
+  } else if (ov != null) {
+    el.textContent = 'Porción asignada a "' + (kw||'este item') + '". Déjalo vacío para usar el total de la factura.';
+  } else {
+    el.textContent = 'Si esta factura cubre varios items, indica cuánto corresponde a "' + (kw||'este item') + '". Vacío = total de la factura.';
+  }
 }
 
-// Guarda la fecha-fin desde el input del modal.
+function closeSumEgresoModal() {
+  document.getElementById('sumEgresoOverlay').classList.remove('open');
+  _sumEgresoModalCtx = null;
+}
+
+// Guarda fecha-fin y monto de este item desde el modal.
 function saveSumEgresoModal() {
-  if (!_sumEgresoModalId) return;
-  const val = (document.getElementById('sumEgFechaFin').value || '').slice(0,10);
-  _persistSumFechaFin(_sumEgresoModalId, val);
+  if (!_sumEgresoModalCtx) return;
+  const { egresoId, nkw } = _sumEgresoModalCtx;
+  const fecha = (document.getElementById('sumEgFechaFin').value || '').slice(0,10);
+  const rawMonto = (document.getElementById('sumEgMontoItem').value || '').trim();
+  const monto = rawMonto === '' ? null : (parseFloat(rawMonto) || 0);
+  _persistSumEgreso(egresoId, { fechaFin: fecha, itemAmount: { nkw, value: monto } });
   closeSumEgresoModal();
 }
 
 // Vuelve la fecha-fin al cálculo automático (borra el override manual).
 function resetSumEgresoFechaFin() {
-  if (!_sumEgresoModalId) return;
-  _persistSumFechaFin(_sumEgresoModalId, '');
+  if (!_sumEgresoModalCtx) return;
+  _persistSumEgreso(_sumEgresoModalCtx.egresoId, { fechaFin: '' });
   closeSumEgresoModal();
 }
 
-// Persiste la fecha de "se terminó" (columna FechaFin del egreso). '' = automático.
-function _persistSumFechaFin(egresoId, date) {
+// Persiste cambios del egreso desde el timeline de Suministros.
+// opts.fechaFin: string ('' = automático). opts.itemAmount: { nkw, value } donde
+// value=null borra la porción de ese item (usa total).
+function _persistSumEgreso(egresoId, opts) {
   const e = egresos.find(x => x.id === egresoId);
   if (!e) return;
-  e.fechaFin = (date || '').slice(0,10);
+  const payload = { id: egresoId };
+
+  if (opts.fechaFin !== undefined) {
+    e.fechaFin = (opts.fechaFin || '').slice(0,10);
+    payload.fechaFin = e.fechaFin;
+  }
+
+  if (opts.itemAmount) {
+    const { nkw, value } = opts.itemAmount;
+    const montos = _sumParseMontos(e);
+    if (value == null) delete montos[nkw];
+    else montos[nkw] = value;
+    const json = Object.keys(montos).length ? JSON.stringify(montos) : '';
+    e.montosItem = json;
+    payload.montosItem = json;
+  }
+
   save();
   renderSuministrosTab();
   if (USE_SHEETS) {
     fetch(SHEETS_API_URL, { method: 'POST',
-      body: JSON.stringify({ action: 'updateEgreso', egreso: { id: egresoId, fechaFin: e.fechaFin } })
-    }).catch(err => console.warn('fechaFin sync', err));
+      body: JSON.stringify({ action: 'updateEgreso', egreso: payload })
+    }).catch(err => console.warn('sum egreso sync', err));
   }
 }
 
