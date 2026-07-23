@@ -11839,30 +11839,18 @@ function _renderSumTimeline(wrap, kws) {
     return { kw, ps };
   });
 
-  // ── Ventana temporal: responde al filtro de período de arriba (zoom) ──
-  // "Todo" (sin filtro) → histórico completo. Un mes / rango / "Últimos N" →
-  // se acota a esa ventana y los puntos se separan (más px por día).
+  // ── Ventana temporal: SIEMPRE el histórico completo (primera compra → hoy
+  // + margen), scrollable de punta a punta. El filtro de período NO recorta:
+  // solo se usa para POSICIONAR el scroll horizontal en esa fecha (ver más
+  // abajo, _sumScrollTarget).
   let minDate = todayISO;
   rows.forEach(r => r.ps.forEach(p => { if (p.date < minDate) minDate = p.date; }));
-  let windowStart, windowEnd;
-  if (selectedRange && selectedRange.from && selectedRange.to) {
-    windowStart = _addDays(selectedRange.from, -2);
-    windowEnd   = _addDays(selectedRange.to, 2);
-  } else if (selectedMonth) {
-    const [my, mm] = selectedMonth.split('-').map(Number);
-    const lastDay = new Date(my, mm, 0).getDate();
-    windowStart = _addDays(selectedMonth + '-01', -2);
-    windowEnd   = _addDays(selectedMonth + '-' + String(lastDay).padStart(2,'0'), 2);
-  } else {
-    // Todo: histórico completo (primera compra → hoy + margen).
-    windowStart = _addDays(minDate, -5);
-    windowEnd   = _addDays(todayISO, 20);
-    if (_daysBetween(windowStart, windowEnd) > 550) windowStart = _addDays(windowEnd, -550);
-  }
+  let windowStart = _addDays(minDate, -6);
+  let windowEnd   = _addDays(todayISO, 20);
+  if (_daysBetween(windowStart, windowEnd) > 900) windowStart = _addDays(windowEnd, -900); // cap ~30 meses
   const totalDays = Math.max(14, _daysBetween(windowStart, windowEnd));
-  // pxPerDay adaptativo: rellena ~1100px cuando la ventana es corta (zoom),
-  // con tope para que no se agrande demasiado ni se comprima ilegible.
-  const pxPerDay = Math.max(3.2, Math.min(34, 1100 / totalDays));
+  // px por día fijo y cómodo para que los puntos se distingan siempre.
+  const pxPerDay = 11;
   const trackW = Math.round(totalDays * pxPerDay);
   const leftW = 160, rowH = 46;
   const inWin = iso => iso >= windowStart && iso <= windowEnd;
@@ -11870,6 +11858,12 @@ function _renderSumTimeline(wrap, kws) {
     const clamped = iso < windowStart ? windowStart : (iso > windowEnd ? windowEnd : iso);
     return Math.round(_daysBetween(windowStart, clamped) * pxPerDay);
   };
+
+  // Fecha a la que scrollear según el filtro de período (posiciona, no recorta).
+  let focusDate = todayISO;
+  if (selectedRange && selectedRange.from) focusDate = selectedRange.from;
+  else if (selectedMonth) focusDate = selectedMonth + '-01';
+  const scrollTargetX = Math.max(0, xOf(focusDate) - 30);
 
   // Header de meses.
   const MES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
@@ -11949,7 +11943,7 @@ function _renderSumTimeline(wrap, kws) {
     </div>`;
   });
 
-  wrap.innerHTML = `<div style="overflow-x:auto;">
+  wrap.innerHTML = `<div id="sumTimelineScroll" style="overflow-x:auto;">
     <div style="min-width:${leftW + trackW}px;">
       <div style="display:flex;border-bottom:1px solid var(--border);">
         <div style="position:sticky;left:0;z-index:3;width:${leftW}px;flex-shrink:0;background:var(--bg);border-right:1px solid var(--border);padding:6px 10px;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;box-sizing:border-box;">Item</div>
@@ -11961,17 +11955,33 @@ function _renderSumTimeline(wrap, kws) {
       ${rowsHtml}
     </div>
   </div>
-  <input type="date" id="sumDatePicker" style="position:fixed;left:-999px;top:-999px;opacity:0;width:1px;height:1px;">`;
+  <input type="date" id="sumDatePicker" style="position:fixed;left:-999px;top:-999px;opacity:0;width:1px;height:1px;pointer-events:none;">`;
+  // Posicionar el scroll horizontal según el filtro de período (sin recortar).
+  const scroller = document.getElementById('sumTimelineScroll');
+  if (scroller) requestAnimationFrame(() => { scroller.scrollLeft = scrollTargetX; });
 }
 
 // Abre un date picker para ajustar la fecha en que se terminó un insumo.
+// Posiciona el input EXACTAMENTE sobre el handle clickeado (usando su rect)
+// para que el calendario nativo se abra pegado al punto, no lejos.
 function editSumFechaFin(egresoId, currentEnd, ev) {
   if (ev) ev.stopPropagation();
   const picker = document.getElementById('sumDatePicker');
   if (!picker) return;
   picker.value = (currentEnd || '').slice(0,10);
   picker.onchange = () => { setSumFechaFin(egresoId, picker.value); picker.onchange = null; };
-  if (ev) { picker.style.left = ev.clientX + 'px'; picker.style.top = ev.clientY + 'px'; }
+  const handle = ev && ev.currentTarget;
+  if (handle && handle.getBoundingClientRect) {
+    const r = handle.getBoundingClientRect();
+    // El input (invisible) se coloca sobre el handle; el calendario se ancla ahí.
+    picker.style.left   = r.left + 'px';
+    picker.style.top    = r.top + 'px';
+    picker.style.width  = r.width + 'px';
+    picker.style.height = r.height + 'px';
+  } else if (ev) {
+    picker.style.left = ev.clientX + 'px';
+    picker.style.top  = ev.clientY + 'px';
+  }
   try { picker.showPicker(); } catch(_) { picker.focus(); picker.click(); }
 }
 
