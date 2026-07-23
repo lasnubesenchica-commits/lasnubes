@@ -2468,8 +2468,11 @@
 
       <!-- Compras de Suministros SIN item (para asignar) -->
       <div id="sumUntaggedWrap" class="contab-panel" style="display:none;">
-        <div class="contab-panel-header"><div class="contab-panel-title">⚠️ Compras de Suministros sin item</div></div>
-        <div style="padding:8px 16px 4px;font-size:12px;color:var(--text-muted);">Asigná un item a estas compras para incluirlas en el seguimiento. Escribe el nombre y presiona Enter.</div>
+        <div class="contab-panel-header" style="justify-content:space-between;">
+          <div class="contab-panel-title">⚠️ Compras de Suministros sin item</div>
+          <button onclick="aplicarSugerenciasSuministros()" style="font-size:12px;font-weight:600;padding:6px 14px;border:1px solid var(--verde-dark);border-radius:8px;background:var(--verde-light,#eef4ea);color:var(--verde-dark);cursor:pointer;">✓ Aplicar sugerencias</button>
+        </div>
+        <div style="padding:8px 16px 4px;font-size:12px;color:var(--text-muted);">El sistema <strong>sugiere</strong> un item desde la descripción (editá el que no sea correcto o borralo si no querés trackearlo). "Aplicar sugerencias" guarda todos de una; o editá uno y presioná Enter para guardarlo solo.</div>
         <div style="overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;font-size:13px;">
             <thead>
@@ -11874,35 +11877,115 @@ function renderSuministrosTab() {
   if (untagWrap && untagBody) {
     if (!sinItem.length) {
       untagWrap.style.display = 'none';
+      untagBody.innerHTML = '';
     } else {
       untagWrap.style.display = '';
       const sorted = sinItem.slice().sort((a,b) => (b.date||'').localeCompare(a.date||''));
-      untagBody.innerHTML = sorted.map(e => `<tr style="border-bottom:1px solid var(--border);">
+      untagBody.innerHTML = sorted.map(e => {
+        const sugerido = _suggestSuministroItem(e.desc || '');
+        return `<tr style="border-bottom:1px solid var(--border);">
         <td style="padding:8px 12px;white-space:nowrap;color:var(--text-muted);font-size:12px;">${formatDate(e.date)}</td>
         <td style="padding:8px 12px;font-size:12px;">${escapeHtml(e.desc||'—')}</td>
         <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;">$${parseFloat(e.amount||0).toFixed(2)}</td>
         <td style="padding:8px 12px;">
-          <input type="text" list="suministroItemsList" placeholder="ej. agua"
-            style="width:100%;font-size:12px;padding:4px 8px;border:1px solid var(--verde);border-radius:6px;background:var(--surface);color:var(--text);"
-            onchange="asignarItemEgreso('${e.id}', this.value)">
+          <input type="text" list="suministroItemsList" placeholder="ej. agua" value="${sugerido.replace(/"/g,'&quot;')}" data-eid="${e.id}"
+            style="width:100%;font-size:12px;padding:4px 8px;border:1px solid ${sugerido ? 'var(--verde)' : 'var(--border)'};border-radius:6px;background:var(--surface);color:var(--text);"
+            onchange="asignarItemEgreso('${e.id}', this.value)"
+            onkeydown="if(event.key==='Enter'){this.blur();}">
         </td>
-      </tr>`).join('');
+      </tr>`; }).join('');
     }
   }
 }
 
 // Asigna (o cambia) el item de un egreso de Suministros y persiste.
-function asignarItemEgreso(id, itemName) {
+// `skipRender` evita re-renderizar en operaciones batch (el caller re-renderiza
+// una sola vez al final).
+function asignarItemEgreso(id, itemName, skipRender) {
   const e = egresos.find(x => x.id === id);
   if (!e) return;
-  e.item = (itemName || '').trim();
+  const nuevo = (itemName || '').trim();
+  if (nuevo === (e.item || '')) return;   // sin cambios → no toca nada
+  e.item = nuevo;
   save();
-  renderSuministrosTab();
+  if (!skipRender) renderSuministrosTab();
   if (USE_SHEETS) {
     fetch(SHEETS_API_URL, { method: 'POST',
       body: JSON.stringify({ action: 'updateEgreso', egreso: { id: e.id, item: e.item } })
     }).catch(err => console.warn('asignar item sync error:', err));
   }
+}
+
+// Aplica en lote todas las sugerencias/valores actualmente en los inputs de la
+// tabla "sin item". Guarda cada uno con valor no vacío y re-renderiza una vez.
+function aplicarSugerenciasSuministros() {
+  const inputs = document.querySelectorAll('#sumUntaggedBody input[data-eid]');
+  let aplicados = 0;
+  inputs.forEach(inp => {
+    const val = (inp.value || '').trim();
+    if (!val) return;
+    const id = inp.getAttribute('data-eid');
+    const e = egresos.find(x => x.id === id);
+    if (e && (e.item || '') !== val) { asignarItemEgreso(id, val, true); aplicados++; }
+  });
+  renderSuministrosTab();
+  showToast(aplicados ? ('✓ ' + aplicados + ' item' + (aplicados!==1?'s':'') + ' asignado' + (aplicados!==1?'s':'')) : 'No había cambios para aplicar');
+}
+
+// Sugerencia de item a partir de la descripción de un egreso de Suministros.
+// Usa un mapa de palabras clave → nombre canónico (para que "3 garrafones de
+// agua" y "garrafón de agua" agrupen igual). Si no matchea ninguna, cae a un
+// fallback: limpia códigos/cantidades/precios y toma las primeras palabras.
+// Nota: para descripciones que mezclan varios items ("gas y agua") sugiere el
+// PRIMERO que detecta — hay que editar a mano si querés separar (un egreso
+// solo puede llevar un item).
+const _SUMINISTRO_KEYWORDS = [
+  [/garrafon|garrafón|\bagua\b/i,        'Agua'],
+  [/tanque|\bgas\b/i,                     'Gas'],
+  [/hielo/i,                              'Hielo'],
+  [/kerosen|keroseno|querosen/i,          'Kerosene'],
+  [/papel\s*hig|higien|higen/i,           'Papel higiénico'],
+  [/servilleta/i,                         'Servilletas'],
+  [/lavavajilla|lavaplato/i,              'Lavavajillas'],
+  [/detergente/i,                         'Detergente'],
+  [/\bcloro\b|lavandina/i,                'Cloro'],
+  [/desinfectante/i,                      'Desinfectante'],
+  [/jab[oó]n/i,                           'Jabón'],
+  [/shampoo|champ[uú]/i,                  'Shampoo'],
+  [/protector.*colch|colch.*protector/i,  'Protector de colchón'],
+  [/forro.*colch|colch.*forro/i,          'Forro de colchón'],
+  [/bolsa/i,                              'Bolsas'],
+  [/caf[eé]/i,                            'Café'],
+  [/fosfor|encendedor|f[oó]sforo/i,       'Fósforos'],
+  [/\bvela\b|velas/i,                     'Velas'],
+  [/carb[oó]n/i,                          'Carbón'],
+  [/le[nñ]a/i,                            'Leña']
+];
+function _suggestSuministroItem(desc) {
+  const d = (desc || '').toString();
+  if (!d.trim()) return '';
+  // Keyword que aparezca PRIMERO en la descripción (posicional). Así en
+  // "3 tanques de gas y 3 garrafones de agua" sugiere "Gas" (el que lidera),
+  // no el orden de la lista.
+  let best = null, bestIdx = Infinity;
+  for (const [re, name] of _SUMINISTRO_KEYWORDS) {
+    const m = d.match(re);
+    if (m && m.index < bestIdx) { best = name; bestIdx = m.index; }
+  }
+  if (best) return best;
+  // Fallback: quitar [códigos], (cantidades @ precio), números y puntuación,
+  // y tomar las primeras 2 palabras significativas en Title Case.
+  let clean = d
+    .replace(/\[[^\]]*\]/g, ' ')        // [CODIGO]
+    .replace(/\([^)]*\)/g, ' ')         // (3 unidades @ 5.99 USD)
+    .replace(/\d+(\.\d+)?/g, ' ')       // números sueltos
+    .replace(/[.,;:/*@#()\[\]"']/g, ' ') // puntuación
+    .replace(/\b(de|del|la|el|los|las|con|para|y|e|o|por|un|una|unos|unas|p)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!clean) return '';
+  const words = clean.split(' ').filter(Boolean).slice(0, 2);
+  return words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 }
 
 function renderEgresosTab() {
