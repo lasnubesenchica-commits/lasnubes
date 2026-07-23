@@ -11808,6 +11808,31 @@ function _sumItemAmount(e, nkw) {
   return (v == null || v === '') ? null : (parseFloat(v) || 0);
 }
 
+// Palabras que NO son items: conectores, artículos, unidades y envases.
+const _SUM_STOP = new Set(['de','del','la','el','los','las','y','e','o','u','un','una','unos','unas','con','sin','para','por','en','a','al','mas','que','su','sus','lo','le','se','x','the',
+  // envases / medidas / cantidades
+  'garrafon','garrafones','tanque','tanques','bolsa','bolsas','caja','cajas','paquete','paquetes','rollo','rollos','unidad','unidades','botella','botellas','litro','litros','galon','galones','kilo','kilos','kg','lb','libra','libras','ml','gr','gramos','docena','docenas','saco','sacos','pack','lata','latas','pieza','piezas','par','juego','set','cubeta','cubetas','tarro','tarros','frasco','frascos','pote','potes','cono','conos','fardo','fardos',
+  // genéricos de factura
+  'compra','factura','pago','total','varios','surtido','insumos','suministros','articulo','articulos','producto','productos','item','items']);
+
+// Sugiere posibles items (keywords) que aparecen en la descripción pero NO están
+// trackeados aún. Devuelve [{ display, nkw }] deduplicado.
+function _sumSuggestUntracked(desc) {
+  const words = (desc || '').split(/[^0-9A-Za-zÀ-ÿ]+/).filter(Boolean);
+  const tracked = (_suministrosKeywords || []).map(_sumNormalize);
+  const seen = {};
+  const out = [];
+  words.forEach(w => {
+    const nw = _sumNormalize(w);
+    if (nw.length <= 2 || /^\d+$/.test(nw) || _SUM_STOP.has(nw) || seen[nw]) return;
+    // Saltar si ya está trackeado (o es parte de una keyword existente).
+    if (tracked.some(nkw => nkw && (nkw.includes(nw) || nw.includes(nkw)))) return;
+    seen[nw] = 1;
+    out.push({ display: w.toLowerCase(), nkw: nw });
+  });
+  return out;
+}
+
 async function _loadSuministrosKeywords() {
   if (_suministrosKeywords !== null || _sumKeywordsLoading) return;
   _sumKeywordsLoading = true;
@@ -12107,16 +12132,19 @@ function openSumEgresoModal(barKey) {
 }
 
 // Estado del repartidor de montos del modal (facturas compartidas por varios items).
-// { egresoId, total, items:[{ nkw, kw, touched }], multi:bool }
+// { egresoId, total, currentNkw, currentKw, items:[{ nkw, kw, touched }], multi:bool }
 let _sumSplitState = null;
 
 // Construye el editor de montos dentro del modal. Detecta TODOS los items
 // (keywords) cuya descripción matchea este egreso; si son ≥2, muestra un campo
 // por item (factura compartida) con reparto equitativo del resto. Si es 1, un
-// solo campo.
-function _buildSumSplitEditor(e, currentNkw, currentKw, total) {
+// solo campo. `overrides` (opcional) { nkw: {value, touched} } pisa los valores
+// iniciales — se usa al re-construir tras agregar un item sugerido, para no
+// perder lo que el usuario ya tecleó.
+function _buildSumSplitEditor(e, currentNkw, currentKw, total, overrides) {
   const wrap = document.getElementById('sumEgSplitWrap');
   if (!wrap) return;
+  overrides = overrides || {};
   const nd = _sumNormalize(e.desc);
   const kws = _suministrosKeywords || [];
   // Keywords que matchean, dedup por forma normalizada.
@@ -12131,29 +12159,39 @@ function _buildSumSplitEditor(e, currentNkw, currentKw, total) {
   if (currentNkw && !seen[currentNkw]) matched.push({ nkw: currentNkw, kw: currentKw });
 
   const montos = _sumParseMontos(e);
+  // Valor/touched inicial de un item: prioriza overrides, si no el guardado.
+  const initOf = nkw => {
+    if (Object.prototype.hasOwnProperty.call(overrides, nkw)) return overrides[nkw];
+    const v = montos[nkw];
+    return { value: (v == null || v === '') ? null : (parseFloat(v) || 0), touched: v != null };
+  };
+
+  // Bloque de sugerencias (palabras de la descripción no trackeadas).
+  const suggestHtml = _sumSuggestBlockHtml(e.desc);
 
   if (matched.length <= 1) {
     // Un solo item — campo simple.
     const only = matched[0] || { nkw: currentNkw, kw: currentKw };
-    const ov = _sumItemAmount(e, only.nkw);
-    _sumSplitState = { egresoId: e.id, total, multi: false, items: [{ nkw: only.nkw, kw: only.kw, touched: ov != null }] };
+    const init = initOf(only.nkw);
+    _sumSplitState = { egresoId: e.id, total, currentNkw, currentKw, multi: false, items: [{ nkw: only.nkw, kw: only.kw, touched: init.touched }] };
     wrap.innerHTML =
       '<label style="display:block;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Monto de ' + escapeHtml(only.kw || 'este item') + '</label>' +
       '<div style="display:flex;align-items:center;gap:8px;">' +
         '<span style="font-size:15px;color:var(--text-muted);">$</span>' +
-        '<input type="number" step="0.01" min="0" id="sumSplitInp_0" oninput="_sumSplitOnInput(0)" value="' + (ov != null ? ov : '') + '" placeholder="' + total.toFixed(2) + '" style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;">' +
+        '<input type="number" step="0.01" min="0" id="sumSplitInp_0" oninput="_sumSplitOnInput(0)" value="' + (init.value != null ? init.value : '') + '" placeholder="' + total.toFixed(2) + '" style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;">' +
       '</div>' +
-      '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Esta factura es de un solo item. Vacío = usa el total ($' + total.toFixed(2) + ').</div>';
+      '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Esta factura es de un solo item. Vacío = usa el total ($' + total.toFixed(2) + ').</div>' +
+      suggestHtml;
     return;
   }
 
   // Factura compartida — un campo por item, reparto equitativo del resto.
-  const items = matched.map(m => ({ nkw: m.nkw, kw: m.kw, touched: montos[m.nkw] != null }));
-  _sumSplitState = { egresoId: e.id, total, multi: true, items };
+  const items = matched.map(m => { const init = initOf(m.nkw); return { nkw: m.nkw, kw: m.kw, touched: init.touched, _init: init.value }; });
+  _sumSplitState = { egresoId: e.id, total, currentNkw, currentKw, multi: true, items };
 
   const rowsHtml = items.map((it, i) => {
     const isCur = it.nkw === currentNkw;
-    const initVal = it.touched ? (parseFloat(montos[it.nkw]) || 0) : '';
+    const initVal = it.touched && it._init != null ? it._init : '';
     return '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;">' +
       '<div style="flex:1;font-size:13px;font-weight:' + (isCur ? '700' : '500') + ';color:' + (isCur ? 'var(--text)' : 'var(--text-muted)') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(it.kw) + (isCur ? ' •' : '') + '</div>' +
       '<span style="font-size:14px;color:var(--text-muted);">$</span>' +
@@ -12165,9 +12203,50 @@ function _buildSumSplitEditor(e, currentNkw, currentKw, total) {
     '<label style="display:block;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px;">Reparto de la factura ($' + total.toFixed(2) + ')</label>' +
     '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">Esta factura cubre varios items. Ajusta cuánto corresponde a cada uno; el resto se reparte por igual entre los que faltan.</div>' +
     rowsHtml +
-    '<div id="sumEgSplitRecon" style="font-size:12px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);"></div>';
+    '<div id="sumEgSplitRecon" style="font-size:12px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);"></div>' +
+    suggestHtml;
 
   _sumSplitRebalance(); // llena los no-tocados con el reparto equitativo
+}
+
+// HTML del bloque de sugerencias: palabras de la descripción que podrían ser
+// items sin trackear. Vacío si no hay candidatas.
+function _sumSuggestBlockHtml(desc) {
+  const cands = _sumSuggestUntracked(desc);
+  if (!cands.length) return '';
+  const chips = cands.map(c =>
+    '<button type="button" onclick="_sumAddSuggestedKeyword(\'' + c.nkw.replace(/'/g, "\\'") + '\',\'' + c.display.replace(/'/g, "\\'") + '\')" ' +
+    'style="font-size:12px;padding:3px 9px;border-radius:14px;border:1px dashed var(--verde);background:var(--verde-light);color:var(--verde-dark);cursor:pointer;font-weight:600;white-space:nowrap;">+ ' + escapeHtml(c.display) + '</button>'
+  ).join(' ');
+  return '<div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border);">' +
+    '<div style="font-size:11px;color:var(--text-muted);margin-bottom:5px;">¿Falta un item por trackear? La descripción también menciona:</div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:5px;">' + chips + '</div>' +
+    '</div>';
+}
+
+// Agrega una palabra sugerida como keyword nueva y reconstruye el editor,
+// preservando lo que el usuario ya tecleó (como valores tocados). El item nuevo
+// queda sin tocar → toma el saldo no asignado.
+function _sumAddSuggestedKeyword(nkw, display) {
+  if (!_sumSplitState) return;
+  // Capturar lo tecleado actualmente como overrides tocados.
+  const overrides = {};
+  _sumSplitState.items.forEach((it, i) => {
+    const el = document.getElementById('sumSplitInp_' + i);
+    if (!el) return;
+    const raw = (el.value || '').trim();
+    overrides[it.nkw] = { value: raw === '' ? null : (parseFloat(raw) || 0), touched: it.touched };
+  });
+  // Agregar la keyword (capitalizada) si no existe.
+  const label = display ? (display.charAt(0).toUpperCase() + display.slice(1)) : nkw;
+  _suministrosKeywords = _suministrosKeywords || [];
+  if (!_suministrosKeywords.some(k => _sumNormalize(k) === nkw)) {
+    _suministrosKeywords.push(label);
+    _saveSuministrosKeywords();
+  }
+  const st = _sumSplitState;
+  const e = egresos.find(x => x.id === st.egresoId);
+  if (e) _buildSumSplitEditor(e, st.currentNkw, st.currentKw, st.total, overrides);
 }
 
 // Al editar un campo: se marca como "tocado" y el resto (no tocados) se reparte
