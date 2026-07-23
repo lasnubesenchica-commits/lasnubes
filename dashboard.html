@@ -2462,7 +2462,7 @@
         <div style="font-size:15px;flex-shrink:0;margin-top:1px;">📦</div>
         <div>
           <div style="font-size:11px;font-weight:600;color:#8a6f1c;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Timeline de suministros</div>
-          <div style="font-size:13px;color:var(--text-muted);line-height:1.5;">Agregá los items que querés seguir (agua, gas, papel higiénico…). El sistema busca esa palabra en la descripción de tus egresos de <strong>Suministros</strong> y arma un timeline: 🟢 barra = tenías stock, ● = compra, y la barra se corta el día antes de la siguiente compra (editable ✎). La última barra llega a hoy; si ya pasó su duración típica se pone 🔴 (toca recomprar). Usá el filtro de período de arriba para hacer <strong>zoom</strong> a un mes o rango y separar los puntos.</div>
+          <div style="font-size:13px;color:var(--text-muted);line-height:1.5;">Agrega los items que quieres seguir (agua, gas, papel higiénico…). El sistema busca esa palabra en la descripción de tus egresos de <strong>Suministros</strong>. La vista <strong>Timeline</strong> arma una línea de tiempo: 🟢 barra = tenías stock, ● = compra, y la barra se corta el día antes de la siguiente compra. La última barra llega a hoy; si ya pasó su duración típica se pone 🔴 (toca recomprar). La vista <strong>Detalle por item</strong> lista las facturas de cada keyword con su total. Toca cualquier barra o fila para ver o editar la factura.</div>
         </div>
       </div>
 
@@ -2471,8 +2471,16 @@
         <div id="sumKeywordChips" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;"></div>
       </div>
 
+      <!-- Toggle de vista -->
+      <div style="display:flex;gap:4px;margin-bottom:12px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:3px;width:fit-content;">
+        <button id="sumViewTimelineBtn" onclick="setSumView('timeline')" style="font-size:12px;font-weight:600;padding:6px 16px;border-radius:8px;border:none;cursor:pointer;background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.06);">📊 Timeline</button>
+        <button id="sumViewDetalleBtn" onclick="setSumView('detalle')" style="font-size:12px;font-weight:600;padding:6px 16px;border-radius:8px;border:none;cursor:pointer;background:transparent;color:var(--text-muted);">📋 Detalle por item</button>
+      </div>
+
       <!-- Timeline -->
       <div id="sumTimelineWrap" style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);"></div>
+      <!-- Detalle (facturas por item) -->
+      <div id="sumDetalleWrap" style="display:none;"></div>
     </div><!-- /contabPanelSuministros -->
 
   </section>
@@ -11789,6 +11797,7 @@ function setContabTab(tab) {
 let _suministrosKeywords = null;   // cache de la lista (null = no cargada aún)
 let _sumKeywordsLoading = false;
 let _sumBarMeta = {};              // barKey → { egresoId, kw, nkw, autoEnd, isLast, avg, effEnd } (poblado al renderizar)
+let _sumView = 'timeline';        // 'timeline' | 'detalle'
 
 function _sumNormalize(s) {
   return (s || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -11899,7 +11908,31 @@ async function renderSuministrosTab() {
         style="font-size:13px;padding:5px 10px;border:1px dashed var(--border);border-radius:999px;background:var(--surface);color:var(--text);width:150px;">
       <button onclick="addSuministroKeyword()" style="border:none;background:var(--verde-dark);color:#fff;border-radius:999px;padding:6px 12px;font-size:12px;cursor:pointer;">Agregar</button>
     </span>`;
-  _renderSumTimeline(wrap, kws);
+
+  const detWrap = document.getElementById('sumDetalleWrap');
+  const view = _sumView || 'timeline';
+  _syncSumViewButtons(view);
+  wrap.style.display    = view === 'timeline' ? '' : 'none';
+  if (detWrap) detWrap.style.display = view === 'detalle' ? '' : 'none';
+  if (view === 'detalle' && detWrap) _renderSumDetalle(detWrap, kws);
+  else _renderSumTimeline(wrap, kws);
+}
+
+// Alterna entre la vista Timeline y la vista Detalle por item.
+function setSumView(v) {
+  _sumView = (v === 'detalle') ? 'detalle' : 'timeline';
+  renderSuministrosTab();
+}
+
+function _syncSumViewButtons(view) {
+  const tl = document.getElementById('sumViewTimelineBtn');
+  const dt = document.getElementById('sumViewDetalleBtn');
+  if (!tl || !dt) return;
+  const on  = 'background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.06);';
+  const off = 'background:transparent;color:var(--text-muted);box-shadow:none;';
+  const base = 'font-size:12px;font-weight:600;padding:6px 16px;border-radius:8px;border:none;cursor:pointer;';
+  tl.style.cssText = base + (view === 'timeline' ? on : off);
+  dt.style.cssText = base + (view === 'detalle' ? on : off);
 }
 
 function _renderSumTimeline(wrap, kws) {
@@ -12052,6 +12085,106 @@ function _renderSumTimeline(wrap, kws) {
   // Posicionar el scroll horizontal según el filtro de período (sin recortar).
   const scroller = document.getElementById('sumTimelineScroll');
   if (scroller) requestAnimationFrame(() => { scroller.scrollLeft = scrollTargetX; });
+}
+
+// Vista Detalle: por cada keyword, la lista de facturas/vouchers asociados con
+// su total. Cada fila abre el mismo modal de edición (reusa _sumBarMeta).
+function _renderSumDetalle(wrap, kws) {
+  const todayISO = new Date().toISOString().slice(0,10);
+  const _d = iso => new Date(iso + 'T12:00:00');
+  const _addDays = (iso, n) => { const d = _d(iso); d.setDate(d.getDate() + n); return d.toISOString().slice(0,10); };
+  const _daysBetween = (a, b) => Math.round((_d(b) - _d(a)) / 86400000);
+
+  if (!kws.length) {
+    wrap.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px;font-style:italic;">Agrega un item arriba para ver el detalle de sus facturas.</div>';
+    return;
+  }
+
+  let secciones = '';
+  let granTotal = 0;
+
+  kws.forEach(kw => {
+    const nkw = _sumNormalize(kw);
+    const ps = egresos
+      .filter(e => (e.cat||'') === 'Suministros' && e.date && _sumNormalize(e.desc).includes(nkw))
+      .map(e => {
+        const total = parseFloat(e.amount||0);
+        const ov = _sumItemAmount(e, nkw);
+        return { id: e.id, date: e.date, amount: (ov != null ? ov : total), amountTotal: total,
+                 hasOverride: ov != null, desc: e.desc||'', fechaFin: (e.fechaFin||'').slice(0,10),
+                 proveedor: e.proveedor||'', urlFoto: e.urlFoto||'' };
+      })
+      .sort((a,b) => a.date.localeCompare(b.date));
+
+    const gaps = []; for (let i = 1; i < ps.length; i++) gaps.push(_daysBetween(ps[i-1].date, ps[i].date));
+    const avg = gaps.length ? Math.round(gaps.reduce((s,x)=>s+x,0)/gaps.length) : null;
+    const totalKw = ps.reduce((s,p) => s + (p.amount||0), 0);
+    granTotal += totalKw;
+
+    // Filas + meta para el modal.
+    let filas = '';
+    ps.forEach((p, i) => {
+      const isLast = i === ps.length - 1;
+      const autoEnd = isLast ? todayISO : _addDays(ps[i+1].date, -1);
+      let effEnd = p.fechaFin || autoEnd;
+      if (effEnd < p.date) effEnd = p.date;
+      const barKey = 'sb_' + nkw + '_' + p.id;
+      _sumBarMeta[barKey] = { egresoId: p.id, kw, nkw, autoEnd, isLast, avg, effEnd };
+
+      const dias = Math.max(0, _daysBetween(p.date, effEnd));
+      let durColor = 'var(--text-muted)';
+      if (isLast && avg) {
+        const d2 = _daysBetween(p.date, todayISO);
+        if (d2 > avg) durColor = '#c0392b';
+        else if (d2 >= avg * 0.8) durColor = '#c0956a';
+      }
+      const urls = (p.urlFoto || '').split('|').map(u => u.trim()).filter(Boolean);
+      const voucher = urls.length
+        ? `<a href="${urls[0]}" target="_blank" onclick="event.stopPropagation();" title="${urls.length>1?urls.length+' comprobantes':'Ver comprobante'}" style="text-decoration:none;font-size:14px;">🧾${urls.length>1?'<span style=\"font-size:10px;\">×'+urls.length+'</span>':''}</a>`
+        : '<span style="color:var(--border);">—</span>';
+      const montoTxt = p.hasOverride
+        ? `$${p.amount.toFixed(2)} <span style="color:var(--text-muted);font-size:11px;">de $${p.amountTotal.toFixed(2)}</span>`
+        : `$${p.amount.toFixed(2)}`;
+
+      filas += `<tr onclick="openSumEgresoModal('${barKey}')" style="border-top:1px solid var(--border);cursor:pointer;" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">
+        <td style="padding:7px 10px;white-space:nowrap;color:var(--text-muted);font-size:12px;">${formatDate(p.date)}</td>
+        <td style="padding:7px 10px;font-size:12px;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.desc||'—')}</td>
+        <td style="padding:7px 10px;font-size:12px;color:var(--text-muted);white-space:nowrap;">${escapeHtml(p.proveedor||'—')}</td>
+        <td style="padding:7px 10px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;">${montoTxt}</td>
+        <td style="padding:7px 10px;text-align:right;white-space:nowrap;color:${durColor};font-size:12px;">${dias}d${isLast && !p.fechaFin ? ' <span style=\"color:var(--text-muted);\">(en curso)</span>' : ''}</td>
+        <td style="padding:7px 10px;text-align:center;">${voucher}</td>
+      </tr>`;
+    });
+
+    const sub = ps.length
+      ? `${ps.length} factura${ps.length!==1?'s':''}${avg ? ' · cada ~'+avg+'d' : ''}`
+      : 'sin compras aún';
+
+    secciones += `<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:12px;background:var(--surface);">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:11px 14px;background:var(--bg);border-bottom:1px solid var(--border);">
+        <div style="font-size:14px;font-weight:700;color:var(--text);">${escapeHtml(kw)}</div>
+        <div style="font-size:12px;color:var(--text-muted);">${sub} &nbsp;·&nbsp; <strong style="color:var(--text);font-size:14px;">$${totalKw.toFixed(2)}</strong></div>
+      </div>
+      ${ps.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
+        <thead><tr style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);text-align:left;">
+          <th style="padding:6px 10px;font-weight:600;">Fecha</th>
+          <th style="padding:6px 10px;font-weight:600;">Descripción</th>
+          <th style="padding:6px 10px;font-weight:600;">Proveedor</th>
+          <th style="padding:6px 10px;font-weight:600;text-align:right;">Monto</th>
+          <th style="padding:6px 10px;font-weight:600;text-align:right;">Duró</th>
+          <th style="padding:6px 10px;font-weight:600;text-align:center;">Voucher</th>
+        </tr></thead>
+        <tbody>${filas}</tbody>
+      </table></div>` : '<div style="padding:14px;font-size:12px;color:var(--text-muted);font-style:italic;">Aún no hay egresos de Suministros que mencionen "'+escapeHtml(kw)+'".</div>'}
+    </div>`;
+  });
+
+  wrap.innerHTML = secciones +
+    `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px;border-top:2px solid var(--border);margin-top:4px;">
+      <div style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600;">Total trackeado (todos los items)</div>
+      <div style="font-size:18px;font-weight:700;color:var(--text);">$${granTotal.toFixed(2)}</div>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);padding:0 14px 8px;">Suma de las porciones asignadas a cada item. Toca una fila para ver o editar la factura.</div>`;
 }
 
 // ── Modal de detalle de compra (se abre al clickear una barra/punto del timeline) ──
