@@ -2058,6 +2058,7 @@
       <button id="contabTabIngresos"  onclick="setContabTab('ingresos')"  style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Ingresos</button>
       <button id="contabTabEgresos"   onclick="setContabTab('egresos')"   style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Egresos</button>
       <button id="contabTabCxC"       onclick="setContabTab('cxc')"       style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Por Cobrar</button>
+      <button id="contabTabSuministros" onclick="setContabTab('suministros')" style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Suministros</button>
     </div>
 
     <!-- Month filter — shared between tabs -->
@@ -2451,6 +2452,39 @@
         </button>
       </div>
     </div><!-- /contabPanelCxC -->
+
+    <!-- TAB: SUMINISTROS (seguimiento de items recurrentes) -->
+    <div id="contabPanelSuministros" style="display:none;">
+      <div style="background:#f3f0e8;border-radius:10px;padding:12px 16px;margin-bottom:20px;display:flex;gap:10px;align-items:flex-start;">
+        <div style="font-size:15px;flex-shrink:0;margin-top:1px;">📦</div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:#8a6f1c;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Seguimiento de suministros</div>
+          <div style="font-size:13px;color:var(--text-muted);line-height:1.5;">Cada compra de la categoría <strong>Suministros</strong> con un <strong>item</strong> etiquetado (agua, hielo, gas…) se agrupa acá para ver cada cuánto la recompras y estimar cuánto te dura. Etiquetá el item al registrar el egreso, o asignalo abajo a compras existentes. Respeta el filtro de período de arriba.</div>
+        </div>
+      </div>
+
+      <div id="sumKpiRow" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;"></div>
+      <div id="sumItemsGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-bottom:24px;"></div>
+
+      <!-- Compras de Suministros SIN item (para asignar) -->
+      <div id="sumUntaggedWrap" class="contab-panel" style="display:none;">
+        <div class="contab-panel-header"><div class="contab-panel-title">⚠️ Compras de Suministros sin item</div></div>
+        <div style="padding:8px 16px 4px;font-size:12px;color:var(--text-muted);">Asigná un item a estas compras para incluirlas en el seguimiento. Escribe el nombre y presiona Enter.</div>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead>
+              <tr style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">
+                <th style="padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);">Fecha</th>
+                <th style="padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);">Descripción</th>
+                <th style="padding:8px 12px;text-align:right;border-bottom:1px solid var(--border);">Monto</th>
+                <th style="padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);width:200px;">Asignar item</th>
+              </tr>
+            </thead>
+            <tbody id="sumUntaggedBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div><!-- /contabPanelSuministros -->
 
   </section>
 
@@ -3194,12 +3228,15 @@
           <label style="font-size:12px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Ítems</label>
           <button type="button" class="btn btn-ghost" style="font-size:11px;padding:3px 10px;" onclick="addEgresoItem()">+ Agregar ítem</button>
         </div>
+        <!-- Datalist compartido: items de Suministros ya usados (autocompletar) -->
+        <datalist id="suministroItemsList"></datalist>
         <div id="eItemsTable" style="border:1px solid var(--border);border-radius:10px;overflow:hidden;">
           <table style="width:100%;border-collapse:collapse;font-size:13px;">
             <thead>
               <tr style="background:var(--bg);">
                 <th style="padding:7px 10px;text-align:left;font-size:11px;font-weight:600;color:var(--text-muted);">Descripción</th>
                 <th style="padding:7px 8px;text-align:left;font-size:11px;font-weight:600;color:var(--text-muted);width:100px;">Categoría</th>
+                <th style="padding:7px 8px;text-align:left;font-size:11px;font-weight:600;color:var(--text-muted);width:110px;" title="Solo para Suministros — trackea cuánto dura cada item">Item</th>
                 <th style="padding:7px 8px;text-align:right;font-size:11px;font-weight:600;color:var(--text-muted);width:80px;">Monto</th>
                 <th style="width:28px;"></th>
               </tr>
@@ -8567,7 +8604,7 @@ async function runOcrFactura(base64, mimeType) {
       document.getElementById('eNumFactura').value = parsed.numFactura;
     if (parsed.items && parsed.items.length > 0) {
       _egresoItems = parsed.items.map(it => ({
-        desc: it.desc || '', monto: parseFloat(it.monto) || 0, categoria: it.categoria || 'General'
+        desc: it.desc || '', monto: parseFloat(it.monto) || 0, categoria: it.categoria || 'General', item: ''
       }));
       renderEgresoItems();
     }
@@ -8584,7 +8621,16 @@ async function runOcrFactura(base64, mimeType) {
 function renderEgresoItems() {
   const tbody = document.getElementById('eItemsTbody');
   if (!tbody) return;
-  tbody.innerHTML = _egresoItems.map((item, i) => `
+  _refreshSuministroItemsDatalist();
+  tbody.innerHTML = _egresoItems.map((item, i) => {
+    const esSuministro = (item.categoria || '') === 'Suministros';
+    const itemInput = esSuministro
+      ? `<input type="text" value="${(item.item||'').replace(/"/g,'&quot;')}" list="suministroItemsList" placeholder="ej. agua, hielo"
+           style="width:100%;font-size:12px;padding:3px 6px;border:1px solid var(--verde);border-radius:6px;background:var(--bg);color:var(--text);"
+           onchange="updateEgresoItem(this)" data-field="item" data-idx="${i}">`
+      : `<input type="text" value="" placeholder="—" disabled title="Solo aplica a Suministros"
+           style="width:100%;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;background:var(--border);color:var(--text-muted);opacity:.5;">`;
+    return `
     <tr style="border-top:1px solid var(--border);" data-idx="${i}">
       <td style="padding:5px 10px;">
         <input type="text" value="${(item.desc||'').replace(/"/g,'&quot;')}"
@@ -8599,6 +8645,7 @@ function renderEgresoItems() {
           ).join('')}
         </select>
       </td>
+      <td style="padding:5px 8px;">${itemInput}</td>
       <td style="padding:5px 8px;">
         <input type="number" value="${item.monto||''}" step="0.01" min="0"
           style="width:100%;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);text-align:right;"
@@ -8608,14 +8655,34 @@ function renderEgresoItems() {
         <button type="button" onclick="removeEgresoItem(${i})"
           style="background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:14px;padding:2px 4px;">✕</button>
       </td>
-    </tr>`).join('');
+    </tr>`; }).join('');
   updateEgresoTotal();
+}
+
+// Items de Suministros ya usados (autocompletar el datalist).
+function _knownSuministroItems() {
+  return [...new Set(
+    egresos.filter(e => (e.cat||'') === 'Suministros' && (e.item||'').trim())
+           .map(e => e.item.trim())
+  )].sort((a,b) => a.localeCompare(b));
+}
+
+function _refreshSuministroItemsDatalist() {
+  const dl = document.getElementById('suministroItemsList');
+  if (!dl) return;
+  dl.innerHTML = _knownSuministroItems().map(it => `<option value="${it.replace(/"/g,'&quot;')}"></option>`).join('');
 }
 
 function updateEgresoItem(el) {
   const idx = parseInt(el.dataset.idx), field = el.dataset.field;
   if (!_egresoItems[idx]) return;
   _egresoItems[idx][field] = field === 'monto' ? parseFloat(el.value)||0 : el.value;
+  // Cambiar categoría hacia/desde Suministros muestra u oculta el campo Item.
+  if (field === 'categoria') {
+    if (_egresoItems[idx].categoria !== 'Suministros') _egresoItems[idx].item = '';
+    renderEgresoItems();
+    return;
+  }
   updateEgresoTotal();
 }
 
@@ -8626,7 +8693,7 @@ function updateEgresoTotal() {
 }
 
 function addEgresoItem() {
-  _egresoItems.push({ desc: '', monto: 0, categoria: 'General' });
+  _egresoItems.push({ desc: '', monto: 0, categoria: 'General', item: '' });
   renderEgresoItems();
   const rows = document.getElementById('eItemsTbody').querySelectorAll('tr');
   if (rows.length) rows[rows.length-1].querySelector('input[type=text]')?.focus();
@@ -8634,7 +8701,7 @@ function addEgresoItem() {
 
 function removeEgresoItem(idx) {
   _egresoItems.splice(idx, 1);
-  if (_egresoItems.length === 0) _egresoItems.push({ desc: '', monto: 0, categoria: 'General' });
+  if (_egresoItems.length === 0) _egresoItems.push({ desc: '', monto: 0, categoria: 'General', item: '' });
   renderEgresoItems();
 }
 
@@ -8643,7 +8710,7 @@ function openEgresoModal() {
   document.getElementById('eDate').value       = new Date().toISOString().slice(0,10);
   document.getElementById('eCabin').value      = 'General';
   document.getElementById('eNumFactura').value = '';
-  _egresoItems = [{ desc: '', monto: 0, categoria: 'General' }];
+  _egresoItems = [{ desc: '', monto: 0, categoria: 'General', item: '' }];
   renderEgresoItems();
   clearFoto();
   document.getElementById('egresoModal').classList.add('open');
@@ -8709,6 +8776,7 @@ async function saveEgreso() {
     desc:     item.desc.trim() + (numFactura ? ' [' + numFactura + ']' : ''),
     amount:   parseFloat(item.monto),
     cat:      item.categoria || 'General',
+    item:     (item.categoria === 'Suministros') ? (item.item || '').trim() : '',
     cabin, proveedor, urlFoto: ''
   }));
 
@@ -8744,6 +8812,7 @@ async function saveEgreso() {
       egresos.push({ ...e, fromSheets: !!USE_SHEETS });
     });
     save(); closeEgresoModal(); renderContabilidad();
+    if (typeof _renderActiveContabTab === 'function') _renderActiveContabTab();
     showToast(validItems.length + ' egreso' +
       (validItems.length !== 1 ? 's' : '') + ' guardado' +
       (validItems.length !== 1 ? 's' : '') + ' ✓');
@@ -11645,25 +11714,28 @@ let _contabTab = 'resumen';
 // Resumen ya se re-renderea vía renderContabilidad() que hace todo el
 // panel principal, no hace falta duplicar acá.
 function _renderActiveContabTab() {
-  if (_contabTab === 'egresos')  renderEgresosTab();
-  if (_contabTab === 'ingresos') renderWidgets7d();
-  if (_contabTab === 'cxc')      renderCxC();
+  if (_contabTab === 'egresos')     renderEgresosTab();
+  if (_contabTab === 'ingresos')    renderWidgets7d();
+  if (_contabTab === 'cxc')         renderCxC();
+  if (_contabTab === 'suministros') renderSuministrosTab();
 }
 
 function setContabTab(tab) {
   _contabTab = tab;
-  const tabs   = ['resumen', 'ingresos', 'egresos', 'cxc'];
+  const tabs   = ['resumen', 'ingresos', 'egresos', 'cxc', 'suministros'];
   const panels = {
-    resumen:  'contabPanelResumen',
-    ingresos: 'contabPanelIngresos',
-    egresos:  'contabPanelEgresos',
-    cxc:      'contabPanelCxC'
+    resumen:     'contabPanelResumen',
+    ingresos:    'contabPanelIngresos',
+    egresos:     'contabPanelEgresos',
+    cxc:         'contabPanelCxC',
+    suministros: 'contabPanelSuministros'
   };
   const btns = {
-    resumen:  'contabTabResumen',
-    ingresos: 'contabTabIngresos',
-    egresos:  'contabTabEgresos',
-    cxc:      'contabTabCxC'
+    resumen:     'contabTabResumen',
+    ingresos:    'contabTabIngresos',
+    egresos:     'contabTabEgresos',
+    cxc:         'contabTabCxC',
+    suministros: 'contabTabSuministros'
   };
   tabs.forEach(t => {
     const panelEl = document.getElementById(panels[t]);
@@ -11675,9 +11747,162 @@ function setContabTab(tab) {
       btnEl.style.color             = active ? 'var(--azul-dark)' : 'var(--text-muted)';
     }
   });
-  if (tab === 'egresos')  renderEgresosTab();
-  if (tab === 'ingresos') renderWidgets7d();
-  if (tab === 'cxc')      renderCxC();
+  _renderActiveContabTab();
+}
+
+// ─── SUMINISTROS: seguimiento de items recurrentes ───────────
+// Agrupa las compras de categoría Suministros por su campo `item` y calcula
+// la cadencia de compra (cada cuánto se recompra) para estimar duración.
+// Respeta el filtro de período compartido (via _matchesSelectedPeriod).
+function renderSuministrosTab() {
+  const grid       = document.getElementById('sumItemsGrid');
+  const kpiRow     = document.getElementById('sumKpiRow');
+  const untagWrap  = document.getElementById('sumUntaggedWrap');
+  const untagBody  = document.getElementById('sumUntaggedBody');
+  if (!grid) return;
+  _refreshSuministroItemsDatalist();
+
+  const sinPago = SIN_PAGO_ORIGINS;
+  // Todas las compras de Suministros (histórico completo — la cadencia se
+  // calcula sobre todo el histórico, no solo el período; el período filtra
+  // qué se destaca). Excluye nada raro: los egresos no tienen origin.
+  const suministros = egresos.filter(e => (e.cat||'') === 'Suministros');
+  const conItem   = suministros.filter(e => (e.item||'').trim());
+  const sinItem   = suministros.filter(e => !(e.item||'').trim());
+
+  // Agrupar por item (normalizado en minúsculas para agrupar; mostramos el
+  // nombre tal cual el más frecuente).
+  const groups = {};
+  conItem.forEach(e => {
+    const key = e.item.trim().toLowerCase();
+    (groups[key] = groups[key] || { rawNames: {}, purchases: [] });
+    groups[key].rawNames[e.item.trim()] = (groups[key].rawNames[e.item.trim()]||0) + 1;
+    groups[key].purchases.push({ date: e.date, amount: parseFloat(e.amount||0), desc: e.desc||'' });
+  });
+
+  const _daysBetween = (a, b) => Math.round((new Date(b+'T12:00:00') - new Date(a+'T12:00:00')) / 86400000);
+  const _todayISO = new Date().toISOString().slice(0,10);
+  const _fmtDias = n => n === 1 ? '1 día' : n + ' días';
+
+  const items = Object.keys(groups).map(key => {
+    const g = groups[key];
+    const name = Object.keys(g.rawNames).sort((a,b) => g.rawNames[b]-g.rawNames[a])[0];
+    const purchases = g.purchases.slice().sort((a,b) => a.date.localeCompare(b.date));
+    const nCompras = purchases.length;
+    const gastoTotal = purchases.reduce((s,p) => s + p.amount, 0);
+    const ultima = purchases[nCompras-1];
+    const primera = purchases[0];
+    // Intervalos entre compras consecutivas.
+    const intervalos = [];
+    for (let i = 1; i < purchases.length; i++) {
+      intervalos.push(_daysBetween(purchases[i-1].date, purchases[i].date));
+    }
+    const intervaloProm = intervalos.length ? Math.round(intervalos.reduce((s,x)=>s+x,0)/intervalos.length) : null;
+    const diasDesdeUltima = _daysBetween(ultima.date, _todayISO);
+    // Progreso hacia la próxima compra estimada.
+    let pct = null, estado = 'ok';
+    if (intervaloProm && intervaloProm > 0) {
+      pct = Math.min(120, Math.round(diasDesdeUltima / intervaloProm * 100));
+      if (pct >= 100)      estado = 'vencido';
+      else if (pct >= 80)  estado = 'pronto';
+    }
+    return { key, name, nCompras, gastoTotal, ultima, primera, intervaloProm, diasDesdeUltima, pct, estado,
+             gastoProm: gastoTotal / nCompras };
+  }).sort((a,b) => {
+    // Ordenar: primero los que tocan recomprar (vencido/pronto), luego por días desde última desc.
+    const rank = { vencido: 0, pronto: 1, ok: 2 };
+    if (rank[a.estado] !== rank[b.estado]) return rank[a.estado] - rank[b.estado];
+    return b.diasDesdeUltima - a.diasDesdeUltima;
+  });
+
+  // ── KPIs resumen ──────────────────────────────────────────
+  const totalItems  = items.length;
+  const tocaRecomprar = items.filter(i => i.estado !== 'ok').length;
+  const gastoSuministros = suministros.filter(e => _matchesSelectedPeriod(e.date)).reduce((s,e)=>s+parseFloat(e.amount||0),0);
+  if (kpiRow) {
+    const kpi = (label, val, sub, color) => `<div style="background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;">
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">${label}</div>
+      <div style="font-size:22px;font-weight:700;color:${color||'var(--text)'};">${val}</div>
+      ${sub ? '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">'+sub+'</div>' : ''}
+    </div>`;
+    kpiRow.innerHTML =
+      kpi('Items rastreados', totalItems, conItem.length + ' compras etiquetadas') +
+      kpi('Toca recomprar', tocaRecomprar, tocaRecomprar ? '⚠️ revisar tarjetas' : '✓ al día', tocaRecomprar ? '#c0392b' : 'var(--verde-dark)') +
+      kpi('Gasto Suministros', '$'+gastoSuministros.toFixed(2), 'en el período filtrado') +
+      kpi('Sin etiquetar', sinItem.length, sinItem.length ? 'asigná item abajo' : 'todo etiquetado', sinItem.length ? '#8a6f1c' : 'var(--verde-dark)');
+  }
+
+  // ── Cards por item ────────────────────────────────────────
+  if (!items.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);font-size:13px;padding:24px;font-style:italic;">
+      Aún no hay items de Suministros etiquetados. Al registrar un egreso de categoría Suministros, escribí el item (agua, hielo, gas…) ${sinItem.length ? 'o asigná item a las compras de abajo.' : '.'}
+    </div>`;
+  } else {
+    const estadoColor = { vencido: '#c0392b', pronto: '#c0956a', ok: 'var(--verde-dark)' };
+    const estadoLabel = { vencido: '🔴 toca recomprar', pronto: '🟡 se acerca', ok: '🟢 al día' };
+    grid.innerHTML = items.map(it => {
+      const barColor = estadoColor[it.estado];
+      const barPct = it.pct != null ? Math.min(100, it.pct) : 0;
+      const cadencia = it.intervaloProm != null
+        ? 'Dura ~<strong>' + _fmtDias(it.intervaloProm) + '</strong>'
+        : '<span style="color:var(--text-muted);">1 sola compra — sin cadencia aún</span>';
+      const proximaEst = it.intervaloProm != null
+        ? (() => { const d = new Date(it.ultima.date+'T12:00:00'); d.setDate(d.getDate()+it.intervaloProm); return formatDate(d.toISOString().slice(0,10)); })()
+        : '—';
+      return `<div style="background:var(--card-bg);border:1px solid var(--border);border-left:4px solid ${barColor};border-radius:12px;padding:14px 16px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px;">
+          <div style="font-size:15px;font-weight:700;color:var(--text);text-transform:capitalize;">${escapeHtml(it.name)}</div>
+          <div style="font-size:10px;font-weight:600;white-space:nowrap;color:${barColor};">${estadoLabel[it.estado]}</div>
+        </div>
+        <div style="font-size:13px;color:var(--text);margin-bottom:8px;">${cadencia}</div>
+        <div style="height:6px;background:var(--border);border-radius:3px;margin-bottom:4px;overflow:hidden;">
+          <div style="width:${barPct}%;height:100%;background:${barColor};border-radius:3px;"></div>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">
+          Última: ${formatDate(it.ultima.date)} · hace ${_fmtDias(it.diasDesdeUltima)}${it.intervaloProm!=null ? ' · próx. estim. '+proximaEst : ''}
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);border-top:1px solid var(--border);padding-top:8px;">
+          <span>${it.nCompras} compra${it.nCompras!==1?'s':''}</span>
+          <span>$${it.gastoTotal.toFixed(2)} total</span>
+          <span>~$${it.gastoProm.toFixed(2)} c/u</span>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Compras sin item (para asignar) ───────────────────────
+  if (untagWrap && untagBody) {
+    if (!sinItem.length) {
+      untagWrap.style.display = 'none';
+    } else {
+      untagWrap.style.display = '';
+      const sorted = sinItem.slice().sort((a,b) => (b.date||'').localeCompare(a.date||''));
+      untagBody.innerHTML = sorted.map(e => `<tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:8px 12px;white-space:nowrap;color:var(--text-muted);font-size:12px;">${formatDate(e.date)}</td>
+        <td style="padding:8px 12px;font-size:12px;">${escapeHtml(e.desc||'—')}</td>
+        <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;">$${parseFloat(e.amount||0).toFixed(2)}</td>
+        <td style="padding:8px 12px;">
+          <input type="text" list="suministroItemsList" placeholder="ej. agua"
+            style="width:100%;font-size:12px;padding:4px 8px;border:1px solid var(--verde);border-radius:6px;background:var(--surface);color:var(--text);"
+            onchange="asignarItemEgreso('${e.id}', this.value)">
+        </td>
+      </tr>`).join('');
+    }
+  }
+}
+
+// Asigna (o cambia) el item de un egreso de Suministros y persiste.
+function asignarItemEgreso(id, itemName) {
+  const e = egresos.find(x => x.id === id);
+  if (!e) return;
+  e.item = (itemName || '').trim();
+  save();
+  renderSuministrosTab();
+  if (USE_SHEETS) {
+    fetch(SHEETS_API_URL, { method: 'POST',
+      body: JSON.stringify({ action: 'updateEgreso', egreso: { id: e.id, item: e.item } })
+    }).catch(err => console.warn('asignar item sync error:', err));
+  }
 }
 
 function renderEgresosTab() {

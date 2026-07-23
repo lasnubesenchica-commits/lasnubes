@@ -33,6 +33,7 @@
 ## Stack relevante
 
 - Hoja `Reservas`: 31 columnas. La #25 es `Tipo` (noche/pasadia/pasadia-largo/early/late, agregada en `migrarColumnasV4`). La #26 es `VoucherURL` (link al voucher en Drive, persistido por `saveVoucherToDrive`). La #27 es `IdHuespedURL`. La #28 es `FechaNacimiento`. La #29 es `CheckoutExtendido` (boolean, cortesía 12:30pm). Las #30 (`HoraEntrada`) y #31 (`HoraSalida`) son overrides horarios opcionales por reserva en formato `HH:MM` (24h); vacío = usa el default del tipo. Cuando están seteados, pisan tanto el default del tipo como `CheckoutExtendido`. `getOrCreateSheet` auto-asegura todas las columnas en cada llamada.
+- Hoja `Egresos`: 9 columnas (ID, Fecha, Descripcion, Monto, Categoria, Cabaña, Proveedor, URLFoto, `Item`). La #9 `Item` es para el seguimiento de Suministros (agua, hielo, gas…): solo se persiste cuando la categoría es `Suministros`. `_getEgresoSheetEnsured` (Parser.gs) auto-migra hojas viejas de 8 columnas agregando el header `Item`. La sub-tab **Suministros** en Contabilidad agrupa las compras por `Item` y calcula la cadencia de recompra ("Dura ~X días") con alerta cuando toca recomprar.
 - Modelo IA: `claude-opus-4-6` para OCR de vouchers/facturas (en `parseVoucherWithClaude` y `parseFacturaEgresoConClaude`). `parseVoucherWithClaude` tiene retry con fallback a Sonnet 4.6.
 - API key Anthropic: en Script Properties (`CLAUDE_API_KEY`), nunca en código cliente.
 
