@@ -1299,6 +1299,9 @@
 
   .modal-overlay.open { display: flex; }
 
+  .sum-bar { transition: filter .12s, transform .12s; }
+  .sum-bar:hover { filter: brightness(1.08) saturate(1.1); transform: scaleY(1.35); opacity: 1 !important; }
+
   .modal {
     display: flex;
     flex-direction: column;
@@ -2897,6 +2900,42 @@
       <button class="btn btn-ghost" onclick="closeCourtesy()">Cerrar</button>
       <button class="btn btn-secondary" id="courtesyRegPasatardeBtn" style="display:none;">🌇 Registrar pasatarde</button>
       <button class="btn btn-primary" id="courtesyOpenResBtn">Ver reserva completa</button>
+    </div>
+  </div>
+</div>
+
+<!-- SUMINISTROS — DETALLE DE COMPRA (barra del timeline) -->
+<div class="modal-overlay" id="sumEgresoOverlay" onclick="if(event.target===this)closeSumEgresoModal()">
+  <div class="modal" style="max-width:420px;padding:28px;">
+    <div class="modal-title" style="font-size:17px;display:flex;align-items:center;gap:8px;">
+      🧾 <span id="sumEgTitle">Detalle de compra</span>
+    </div>
+    <div id="sumEgSubtitle" style="margin-top:4px;font-size:13px;color:var(--text-muted);"></div>
+
+    <!-- Detalles de la factura -->
+    <div style="margin-top:18px;padding:12px 14px;background:var(--bg);border-radius:8px;font-size:13px;line-height:1.7;">
+      <div style="display:flex;justify-content:space-between;gap:12px;"><span style="color:var(--text-muted);">Descripción</span><span id="sumEgDesc" style="font-weight:600;text-align:right;"></span></div>
+      <div style="display:flex;justify-content:space-between;gap:12px;"><span style="color:var(--text-muted);">Proveedor</span><span id="sumEgProv" style="text-align:right;"></span></div>
+      <div style="display:flex;justify-content:space-between;gap:12px;"><span style="color:var(--text-muted);">Cabaña</span><span id="sumEgCabin" style="text-align:right;"></span></div>
+      <div style="display:flex;justify-content:space-between;gap:12px;"><span style="color:var(--text-muted);">Fecha de compra</span><span id="sumEgFecha" style="text-align:right;"></span></div>
+      <div style="display:flex;justify-content:space-between;gap:12px;"><span style="color:var(--text-muted);">Monto</span><span id="sumEgMonto" style="font-weight:700;text-align:right;"></span></div>
+      <div style="display:flex;justify-content:space-between;gap:12px;"><span style="color:var(--text-muted);">Duración</span><span id="sumEgDuracion" style="text-align:right;"></span></div>
+    </div>
+
+    <!-- Link externo a la factura real (Drive) -->
+    <div id="sumEgFacturaWrap" style="margin-top:12px;"></div>
+
+    <!-- Fecha en que se acabó (editable) -->
+    <div style="margin-top:16px;">
+      <label style="display:block;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Fecha en que se acabó el item</label>
+      <input type="date" id="sumEgFechaFin" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;">
+      <div id="sumEgFechaFinHint" style="font-size:11px;color:var(--text-muted);margin-top:6px;"></div>
+    </div>
+
+    <div class="modal-footer" style="margin-top:20px;flex-wrap:wrap;gap:8px;">
+      <button class="btn btn-ghost" onclick="closeSumEgresoModal()">Cerrar</button>
+      <button class="btn btn-secondary" id="sumEgAutoBtn" onclick="resetSumEgresoFechaFin()" style="display:none;">↺ Automático</button>
+      <button class="btn btn-primary" onclick="saveSumEgresoModal()">Guardar</button>
     </div>
   </div>
 </div>
@@ -11744,6 +11783,7 @@ function setContabTab(tab) {
 // llega a hoy; si superó la duración típica se pinta 🔴 (toca recomprar).
 let _suministrosKeywords = null;   // cache de la lista (null = no cargada aún)
 let _sumKeywordsLoading = false;
+let _sumBarMeta = {};              // egresoId → { kw, autoEnd, isLast, avg, effEnd } (poblado al renderizar)
 
 function _sumNormalize(s) {
   return (s || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -11885,6 +11925,7 @@ function _renderSumTimeline(wrap, kws) {
   const hoyLineRow = hoyInWin ? `<div style="position:absolute;left:${hoyX}px;top:0;bottom:0;width:2px;background:#e8792b;z-index:1;"></div>` : '';
 
   // Filas.
+  _sumBarMeta = {};
   let rowsHtml = '';
   rows.forEach(r => {
     const ps = r.ps;
@@ -11906,9 +11947,13 @@ function _renderSumTimeline(wrap, kws) {
         if (avg && dias > avg) color = '#c0392b';
         else if (avg && dias >= avg * 0.8) color = '#c0956a';
       }
-      const tip = `${p.desc} · ${formatDate(p.date)} → ${formatDate(end)} · $${p.amount.toFixed(2)}`;
-      // barra de stock (clampeada a la ventana)
-      bars += `<div title="${escapeHtml(tip)}" style="position:absolute;left:${x1}px;top:${rowH/2-4}px;width:${w}px;height:8px;background:${color};border-radius:4px;opacity:.85;"></div>`;
+      const autoEnd = isLast ? todayISO : _addDays(ps[i+1].date, -1);
+      // Meta para el modal de detalle (se abre al clickear la barra o el punto).
+      _sumBarMeta[p.id] = { kw: r.kw, autoEnd, isLast, avg, effEnd: end };
+      const tip = `${p.desc} · ${formatDate(p.date)} → ${formatDate(end)} · $${p.amount.toFixed(2)} · click para ver/editar`;
+      const openCall = `openSumEgresoModal('${p.id}')`;
+      // barra de stock (clampeada a la ventana) — clickeable
+      bars += `<div onclick="${openCall}" class="sum-bar" title="${escapeHtml(tip)}" style="position:absolute;left:${x1}px;top:${rowH/2-5}px;width:${w}px;height:10px;background:${color};border-radius:5px;opacity:.85;cursor:pointer;"></div>`;
       // gap "sin stock" si fechaFin quedó antes de la próxima compra
       if (!isLast && p.fechaFin) {
         const nextStart = ps[i+1].date;
@@ -11918,13 +11963,9 @@ function _renderSumTimeline(wrap, kws) {
           bars += `<div title="Sin stock ${formatDate(_addDays(end,1))} → ${formatDate(_addDays(nextStart,-1))}" style="position:absolute;left:${gx1}px;top:${rowH/2-3}px;width:${gw}px;height:6px;background:repeating-linear-gradient(45deg,#e57373 0 4px,transparent 4px 8px);border-radius:3px;"></div>`;
         }
       }
-      // punto de compra — solo si la fecha de compra cae dentro de la ventana.
+      // punto de compra — solo si la fecha de compra cae dentro de la ventana. Clickeable.
       if (inWin(p.date)) {
-        bars += `<div title="${escapeHtml(tip)}" style="position:absolute;left:${x1-4}px;top:${rowH/2-5}px;width:10px;height:10px;border-radius:50%;background:${color};border:2px solid var(--surface);box-shadow:0 0 0 1px ${color};"></div>`;
-      }
-      // handle editable del fin — solo si el fin cae dentro de la ventana.
-      if (inWin(end)) {
-        bars += `<div onclick="editSumFechaFin('${p.id}','${end}',event)" title="Ajustar la fecha en que se terminó" style="position:absolute;left:${x2-6}px;top:${rowH/2-7}px;width:13px;height:13px;border-radius:50%;background:var(--surface);border:2px solid ${color};cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:8px;line-height:1;color:${color};">&#9998;</div>`;
+        bars += `<div onclick="${openCall}" title="${escapeHtml(tip)}" style="position:absolute;left:${x1-4}px;top:${rowH/2-5}px;width:10px;height:10px;border-radius:50%;background:${color};border:2px solid var(--surface);box-shadow:0 0 0 1px ${color};cursor:pointer;"></div>`;
       }
     });
 
@@ -11954,39 +11995,101 @@ function _renderSumTimeline(wrap, kws) {
       </div>
       ${rowsHtml}
     </div>
-  </div>
-  <input type="date" id="sumDatePicker" style="position:fixed;left:-999px;top:-999px;opacity:0;width:1px;height:1px;pointer-events:none;">`;
+  </div>`;
   // Posicionar el scroll horizontal según el filtro de período (sin recortar).
   const scroller = document.getElementById('sumTimelineScroll');
   if (scroller) requestAnimationFrame(() => { scroller.scrollLeft = scrollTargetX; });
 }
 
-// Abre un date picker para ajustar la fecha en que se terminó un insumo.
-// Posiciona el input EXACTAMENTE sobre el handle clickeado (usando su rect)
-// para que el calendario nativo se abra pegado al punto, no lejos.
-function editSumFechaFin(egresoId, currentEnd, ev) {
-  if (ev) ev.stopPropagation();
-  const picker = document.getElementById('sumDatePicker');
-  if (!picker) return;
-  picker.value = (currentEnd || '').slice(0,10);
-  picker.onchange = () => { setSumFechaFin(egresoId, picker.value); picker.onchange = null; };
-  const handle = ev && ev.currentTarget;
-  if (handle && handle.getBoundingClientRect) {
-    const r = handle.getBoundingClientRect();
-    // El input (invisible) se coloca sobre el handle; el calendario se ancla ahí.
-    picker.style.left   = r.left + 'px';
-    picker.style.top    = r.top + 'px';
-    picker.style.width  = r.width + 'px';
-    picker.style.height = r.height + 'px';
-  } else if (ev) {
-    picker.style.left = ev.clientX + 'px';
-    picker.style.top  = ev.clientY + 'px';
+// ── Modal de detalle de compra (se abre al clickear una barra/punto del timeline) ──
+let _sumEgresoModalId = null;
+
+function openSumEgresoModal(egresoId) {
+  const e = egresos.find(x => x.id === egresoId);
+  if (!e) return;
+  _sumEgresoModalId = egresoId;
+  const meta = _sumBarMeta[egresoId] || {};
+
+  const _addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0,10); };
+  const _daysBetween = (a, b) => Math.round((new Date(b+'T12:00:00') - new Date(a+'T12:00:00')) / 86400000);
+  const todayISO = new Date().toISOString().slice(0,10);
+
+  const fechaFin = (e.fechaFin || '').slice(0,10);
+  const autoEnd  = meta.autoEnd || (meta.isLast ? todayISO : '');
+  const effEnd   = meta.effEnd || fechaFin || autoEnd;
+
+  document.getElementById('sumEgTitle').textContent    = meta.kw || 'Detalle de compra';
+  document.getElementById('sumEgSubtitle').textContent = 'Compra del ' + formatDate(e.date);
+  document.getElementById('sumEgDesc').textContent  = e.desc || '—';
+  document.getElementById('sumEgProv').textContent  = e.proveedor || '—';
+  document.getElementById('sumEgCabin').textContent = e.cabin || e.cabana || '—';
+  document.getElementById('sumEgFecha').textContent = formatDate(e.date);
+  document.getElementById('sumEgMonto').textContent = '$' + parseFloat(e.amount||0).toFixed(2);
+
+  // Duración (desde compra hasta el fin efectivo) + comparación con el promedio.
+  let durTxt = '—';
+  if (effEnd) {
+    const dias = Math.max(0, _daysBetween(e.date, effEnd));
+    durTxt = '~' + dias + ' día' + (dias !== 1 ? 's' : '');
+    if (meta.isLast && !fechaFin) durTxt += ' (en curso)';
+    if (meta.avg) {
+      const diff = dias - meta.avg;
+      const cmp = Math.abs(diff) <= 2 ? 'en el promedio'
+                : (diff > 0 ? '+' + diff + 'd sobre el promedio' : diff + 'd bajo el promedio');
+      durTxt += ' · prom. ~' + meta.avg + 'd (' + cmp + ')';
+    }
   }
-  try { picker.showPicker(); } catch(_) { picker.focus(); picker.click(); }
+  document.getElementById('sumEgDuracion').textContent = durTxt;
+
+  // Link externo a la factura real (Drive). urlFoto puede traer varias separadas por '|'.
+  const facturaWrap = document.getElementById('sumEgFacturaWrap');
+  const urls = (e.urlFoto || '').split('|').map(u => u.trim()).filter(Boolean);
+  if (urls.length) {
+    facturaWrap.innerHTML = urls.map((u, i) =>
+      `<a href="${u}" target="_blank" class="btn btn-secondary" style="width:100%;box-sizing:border-box;justify-content:center;${i?'margin-top:6px;':''}">🧾 Ver factura${urls.length>1?' '+(i+1):''} en Drive</a>`
+    ).join('');
+  } else {
+    facturaWrap.innerHTML = '<div style="font-size:12px;color:var(--text-muted);font-style:italic;text-align:center;padding:4px 0;">Sin comprobante adjunto</div>';
+  }
+
+  // Fecha en que se acabó (editable). Prefill con el fin efectivo.
+  const input = document.getElementById('sumEgFechaFin');
+  input.value = (fechaFin || effEnd || '').slice(0,10);
+  const hint = document.getElementById('sumEgFechaFinHint');
+  if (fechaFin) {
+    hint.textContent = 'Fecha ajustada manualmente. Usa "Automático" para volver al cálculo por defecto.';
+  } else if (meta.isLast) {
+    hint.textContent = 'Automático: este es el último item, se asume que sigue en uso hasta hoy.';
+  } else {
+    hint.textContent = 'Automático: se asume 1 día antes de la próxima compra (' + (autoEnd ? formatDate(autoEnd) : '—') + ').';
+  }
+  document.getElementById('sumEgAutoBtn').style.display = fechaFin ? '' : 'none';
+
+  document.getElementById('sumEgresoOverlay').classList.add('open');
 }
 
-// Persiste la fecha de "se terminó" (columna FechaFin del egreso).
-function setSumFechaFin(egresoId, date) {
+function closeSumEgresoModal() {
+  document.getElementById('sumEgresoOverlay').classList.remove('open');
+  _sumEgresoModalId = null;
+}
+
+// Guarda la fecha-fin desde el input del modal.
+function saveSumEgresoModal() {
+  if (!_sumEgresoModalId) return;
+  const val = (document.getElementById('sumEgFechaFin').value || '').slice(0,10);
+  _persistSumFechaFin(_sumEgresoModalId, val);
+  closeSumEgresoModal();
+}
+
+// Vuelve la fecha-fin al cálculo automático (borra el override manual).
+function resetSumEgresoFechaFin() {
+  if (!_sumEgresoModalId) return;
+  _persistSumFechaFin(_sumEgresoModalId, '');
+  closeSumEgresoModal();
+}
+
+// Persiste la fecha de "se terminó" (columna FechaFin del egreso). '' = automático.
+function _persistSumFechaFin(egresoId, date) {
   const e = egresos.find(x => x.id === egresoId);
   if (!e) return;
   e.fechaFin = (date || '').slice(0,10);
