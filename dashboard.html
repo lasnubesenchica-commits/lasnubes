@@ -1641,6 +1641,28 @@
     flex-shrink: 0;
   }
 
+  /* Footer del modal de reserva en móvil: los ticks Email/WhatsApp quedaban
+     apretados fuera del área visible junto a los botones. Se ponen en su propia
+     fila completa arriba, y los botones debajo, alineados a la derecha. */
+  @media (max-width: 640px) {
+    #reservaModal .modal-footer {
+      flex-wrap: wrap;
+      padding-left: 16px;
+      padding-right: 16px;
+      position: sticky;
+      bottom: 0;
+      box-shadow: 0 -6px 14px rgba(0,0,0,0.06);
+    }
+    #reservaModal #notificarWrap {
+      width: 100%;
+      order: -1;
+      margin: 0 0 4px 0 !important;
+      justify-content: flex-start;
+      gap: 20px;
+    }
+    #reservaModal .modal-footer .btn { flex: 1 1 0; min-width: 90px; }
+  }
+
   .price-preview {
     background: var(--verde-light);
     border-radius: 10px;
@@ -10994,11 +11016,19 @@ function _buildClienteShareText(r, url, referralCode, referralAmount) {
   }
 
   const isPasadia = (tipo === 'pasatarde' || tipo === 'pasadia');
-  let checkinH = '2:00 pm', checkoutH = '11:00 am';
-  if (tipo === 'early') { checkinH = '9:00 am'; }
-  if (tipo === 'late')  { checkoutH = '4:00 pm'; }
-  if (r.checkoutExtendido && (tipo === 'noche' || tipo === 'early')) {
+  // Horas efectivas: horas custom por reserva (HoraEntrada/HoraSalida) pisan el
+  // default del tipo. Antes estaban hardcodeadas, por lo que una noche con
+  // horario especial (ej. pasatarde convertido a noche: entra 12:30pm, sale 8am)
+  // mostraba 2pm/11am en el mensaje copiado.
+  const _defH = TIPO_DEFAULT_HORAS[tipo] || TIPO_DEFAULT_HORAS.noche;
+  let checkinH  = _fmtHora12(r.horaEntrada || _defH.entrada);
+  let checkoutH;
+  if (r.horaSalida) {
+    checkoutH = _fmtHora12(r.horaSalida);
+  } else if (r.checkoutExtendido && (tipo === 'noche' || tipo === 'early')) {
     checkoutH = '12:30 pm (cortesía)';
+  } else {
+    checkoutH = _fmtHora12(_defH.salida);
   }
 
   let text = '¡Reserva confirmada! 🌿\n\n';
