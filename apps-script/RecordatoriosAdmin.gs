@@ -94,6 +94,8 @@ function _adminGetMovimientosDia(targetDate) {
       comentarios: (r[22] || '').toString().trim(),
       tipo: tipo,
       checkoutExtendido: !!r[28],
+      horaEntrada: (typeof _normalizeHora === 'function') ? _normalizeHora(r[29]) : (r[29] || ''),
+      horaSalida:  (typeof _normalizeHora === 'function') ? _normalizeHora(r[30]) : (r[30] || ''),
       displayCi: displayCi,
       displayCo: displayCo
     };
@@ -148,6 +150,11 @@ function enviarRecordatorioAdminReservasHoy() {
         msg += '\n⏰ ' + (r.tipo === 'pasadia' ? '9am – 5pm' : '12:30pm – 7pm');
       } else if (r.tipo === 'early') {
         msg += '\n⏰ Entrada anticipada 9am';
+      } else if (r.horaEntrada && typeof _formatHora12 === 'function') {
+        // Hora de entrada custom (ej. noche que llega 12:30pm). Añade la salida
+        // si también es custom (ej. check-out temprano al día siguiente).
+        msg += '\n⏰ Entrada ' + _formatHora12(r.horaEntrada) +
+               (r.horaSalida ? ' · sale ' + _formatHora12(r.horaSalida) : '');
       }
       if (r.comentarios) msg += '\n📝 ' + r.comentarios;
     });
@@ -162,6 +169,7 @@ function enviarRecordatorioAdminReservasHoy() {
       const phone = _adminFormatPhone(r.telefono);
       if (phone) msg += '\n💬 ' + phone;
       if (r.tipo === 'late') msg += '\n⏰ Sale 4pm (late check-out)';
+      else if (r.horaSalida && typeof _formatHora12 === 'function') msg += '\n⏰ Sale ' + _formatHora12(r.horaSalida);
     });
   }
 
