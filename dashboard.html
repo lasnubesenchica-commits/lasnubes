@@ -11963,6 +11963,16 @@ function _sumItemAmount(e, nkw) {
   return (v == null || v === '') ? null : (parseFloat(v) || 0);
 }
 
+// ¿El egreso pertenece al item (keyword normalizada)? Match por descripción O
+// por asignación manual en MontosItem (permite agregar un item al reparto de una
+// factura aunque la palabra no esté en la descripción — ej. "escoba" olvidada).
+function _sumMatchesKw(e, nkw) {
+  if (!nkw) return false;
+  if (_sumNormalize(e.desc).includes(nkw)) return true;
+  const m = _sumParseMontos(e);
+  return Object.prototype.hasOwnProperty.call(m, nkw);
+}
+
 // Palabras que NO son items: conectores, artículos, unidades y envases.
 const _SUM_STOP = new Set(['de','del','la','el','los','las','y','e','o','u','un','una','unos','unas','con','sin','para','por','en','a','al','mas','que','su','sus','lo','le','se','x','the',
   // envases / medidas / cantidades
@@ -12096,7 +12106,7 @@ function _renderSumTimeline(wrap, kws) {
   const rows = kws.map(kw => {
     const nkw = _sumNormalize(kw);
     const ps = egresos
-      .filter(e => (e.cat||'') === 'Suministros' && e.date && _sumNormalize(e.desc).includes(nkw))
+      .filter(e => (e.cat||'') === 'Suministros' && e.date && _sumMatchesKw(e, nkw))
       .map(e => {
         const total = parseFloat(e.amount||0);
         const ov = _sumItemAmount(e, nkw); // porción asignada a este item (o null)
@@ -12259,7 +12269,7 @@ function _renderSumDetalle(wrap, kws) {
       if ((e.cat||'') !== 'Suministros' || !e.date) return;
       const nd = _sumNormalize(e.desc);
       const matched = []; const seen = {};
-      allNkw.forEach(n => { if (!seen[n] && nd.includes(n)) { seen[n] = 1; matched.push({ nkw: n, kw: kwByNkw[n] }); } });
+      allNkw.forEach(n => { if (!seen[n] && _sumMatchesKw(e, n)) { seen[n] = 1; matched.push({ nkw: n, kw: kwByNkw[n] }); } });
       if (matched.length >= 2) shared.push({ e, matched });
     });
     shared.sort((a,b) => (b.e.date||'').localeCompare(a.e.date||''));
@@ -12289,6 +12299,9 @@ function _renderSumDetalle(wrap, kws) {
           </div>
           <div style="font-size:11px;color:var(--text-muted);margin:3px 0 1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(e.desc||'')}">${escapeHtml(e.desc||'')}</div>
           ${rows}
+          <div style="margin-top:6px;">
+            <input list="suministroItemsList" placeholder="+ agregar item (ej. escoba)…" onchange="_sumSharedAddItemInput('${egid}', this)" onkeydown="if(event.key==='Enter'){event.preventDefault();_sumSharedAddItemInput('${egid}',this);}" style="width:100%;font-size:12px;padding:6px 9px;border:1px dashed var(--border);border-radius:8px;background:var(--bg);color:var(--text);box-sizing:border-box;">
+          </div>
           <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px;padding-top:7px;border-top:1px dashed var(--border);">
             <div id="shRecon_${egid}" style="font-size:12px;"></div>
             <button onclick="_sumSharedRepartirIgual('${egid}')" title="Repartir el total en partes iguales" style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);cursor:pointer;white-space:nowrap;">⚖️ Equitativo</button>
@@ -12311,7 +12324,7 @@ function _renderSumDetalle(wrap, kws) {
   kws.forEach(kw => {
     const nkw = _sumNormalize(kw);
     const ps = egresos
-      .filter(e => (e.cat||'') === 'Suministros' && e.date && _sumNormalize(e.desc).includes(nkw))
+      .filter(e => (e.cat||'') === 'Suministros' && e.date && _sumMatchesKw(e, nkw))
       .map(e => {
         const total = parseFloat(e.amount||0);
         const ov = _sumItemAmount(e, nkw);
@@ -12464,6 +12477,39 @@ function _sumSharedRepartirIgual(egid) {
   _sumSharedOnChange(egid);
 }
 
+// Agrega un item al reparto de una factura desde el input de texto. Si el item
+// no existe como keyword, lo crea. Útil cuando un item no está en la descripción
+// (ej. una escoba que se olvidó anotar).
+function _sumSharedAddItemInput(egid, inputEl) {
+  const raw = (inputEl.value || '').trim();
+  inputEl.value = '';
+  if (!raw) return;
+  const nkw = _sumNormalize(raw);
+  if (!nkw) return;
+  _suministrosKeywords = _suministrosKeywords || [];
+  if (!_suministrosKeywords.some(k => _sumNormalize(k) === nkw)) {
+    const label = raw.charAt(0).toUpperCase() + raw.slice(1);
+    _suministrosKeywords.push(label);
+    _saveSuministrosKeywords();
+  }
+  _sumSharedAddItem(egid, nkw);
+}
+
+// Suma el item (nkw) al reparto del voucher: conserva lo ya tecleado y agrega el
+// nuevo en $0, luego persiste (re-render lo muestra como fila editable).
+function _sumSharedAddItem(egid, nkw) {
+  const st = _sumSharedState[egid];
+  if (!st || !nkw) return;
+  if (st.items.some(it => it.nkw === nkw)) return; // ya está en el reparto
+  const montoOps = st.items.map((it, i) => {
+    const el = document.getElementById('shInp_' + egid + '_' + i);
+    const raw = el ? (el.value || '').trim() : '';
+    return { nkw: it.nkw, value: raw === '' ? null : (parseFloat(raw) || 0) };
+  });
+  montoOps.push({ nkw, value: 0 });
+  _persistSumEgreso(egid, { montoOps });   // guarda + re-render; el item nuevo aparece
+}
+
 // ── Modal de detalle de compra (se abre al clickear una barra/punto del timeline) ──
 // Guarda la barra activa: { egresoId, kw, nkw } — el egreso puede estar en varios items.
 let _sumEgresoModalCtx = null;
@@ -12563,7 +12609,7 @@ function _buildSumSplitEditor(e, currentNkw, currentKw, total, overrides) {
   kws.forEach(kw => {
     const nkw = _sumNormalize(kw);
     if (!nkw || seen[nkw]) return;
-    if (nd.includes(nkw)) { seen[nkw] = 1; matched.push({ nkw, kw }); }
+    if (_sumMatchesKw(e, nkw)) { seen[nkw] = 1; matched.push({ nkw, kw }); }
   });
   // Asegurar que el item clickeado esté presente aunque cambie la lista.
   if (currentNkw && !seen[currentNkw]) matched.push({ nkw: currentNkw, kw: currentKw });
