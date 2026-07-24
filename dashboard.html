@@ -12018,6 +12018,7 @@ function _sumParseMontos(e) {
 function _sumItemAmount(e, nkw) {
   const m = _sumParseMontos(e);
   const v = m[nkw];
+  if (v === false) return null;   // descartado de este item
   return (v == null || v === '') ? null : (parseFloat(v) || 0);
 }
 
@@ -12033,6 +12034,49 @@ function _sumItemQty(e, nkw) {
   const m = _sumParseCantidades(e);
   const v = m[nkw];
   return (v == null || v === '') ? null : (parseFloat(v) || 0);
+}
+
+// Descarta una factura de un item (cuando el keyword aparece en la descripción
+// por error, ej. "café" en "cafetería reunión"). Marca MontosItem[nkw]=false, lo
+// que la excluye del timeline, del detalle y de los totales de ese item. No borra
+// el egreso ni afecta la contabilidad general. Reversible con _sumRestaurarEnKw.
+function _sumDescartarDeKw(egresoId, nkw, kw) {
+  const e = egresos.find(x => x.id === egresoId);
+  if (!e) return;
+  if (!confirm('¿Descartar esta factura del item "' + (kw || nkw) + '"?\n\n' +
+               'Se quita de este item (útil si contiene la palabra por error). ' +
+               'No borra el egreso ni afecta la contabilidad general.\n\n' +
+               'Se puede restaurar después.')) return;
+  const montos = _sumParseMontos(e);
+  montos[nkw] = false;
+  const cants = _sumParseCantidades(e);
+  delete cants[nkw];
+  e.montosItem     = JSON.stringify(montos);
+  e.cantidadesItem = Object.keys(cants).length ? JSON.stringify(cants) : '';
+  save();
+  renderSuministrosTab();
+  if (USE_SHEETS) {
+    fetch(SHEETS_API_URL, { method: 'POST',
+      body: JSON.stringify({ action: 'updateEgreso', egreso: { id: egresoId, montosItem: e.montosItem, cantidadesItem: e.cantidadesItem } })
+    }).catch(err => console.warn('descartar item', err));
+  }
+}
+
+// Restaura una factura descartada (quita el flag false → vuelve a matchear por
+// descripción/monto).
+function _sumRestaurarEnKw(egresoId, nkw) {
+  const e = egresos.find(x => x.id === egresoId);
+  if (!e) return;
+  const montos = _sumParseMontos(e);
+  delete montos[nkw];   // quitar el false → vuelve a matchear como antes
+  e.montosItem = Object.keys(montos).length ? JSON.stringify(montos) : '';
+  save();
+  renderSuministrosTab();
+  if (USE_SHEETS) {
+    fetch(SHEETS_API_URL, { method: 'POST',
+      body: JSON.stringify({ action: 'updateEgreso', egreso: { id: egresoId, montosItem: e.montosItem } })
+    }).catch(err => console.warn('restaurar item', err));
+  }
 }
 
 // Total de una línea = cantidad × precio unitario. Cantidad vacía/0 = 1 unidad.
@@ -12062,8 +12106,9 @@ function _sumIsNoTimeline(kw) { return _sumNoTimeline.has(_sumNormalize(kw)); }
 // factura aunque la palabra no esté en la descripción — ej. "escoba" olvidada).
 function _sumMatchesKw(e, nkw) {
   if (!nkw) return false;
-  if (_sumNormalize(e.desc).includes(nkw)) return true;
   const m = _sumParseMontos(e);
+  if (m[nkw] === false) return false;   // descartado explícitamente de este item
+  if (_sumNormalize(e.desc).includes(nkw)) return true;
   return Object.prototype.hasOwnProperty.call(m, nkw);
 }
 
@@ -12497,9 +12542,12 @@ function _renderSumDetalle(wrap, kws) {
         <td style="padding:7px 10px;text-align:right;white-space:nowrap;font-size:12px;">${qtyTxt}</td>
         <td style="padding:7px 10px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;">${montoTxt}</td>
         <td style="padding:7px 10px;text-align:right;white-space:nowrap;color:${durColor};font-size:12px;">${dias}d${isLast && !p.fechaFin ? ' <span style=\"color:var(--text-muted);\">(en curso)</span>' : ''}</td>
-        <td style="padding:7px 10px;text-align:center;">${voucher}</td>
+        <td style="padding:7px 10px;text-align:center;white-space:nowrap;">${voucher} <button onclick="event.stopPropagation();_sumDescartarDeKw('${p.id}','${nkw}','${(kw||'').replace(/'/g, "\\'")}')" title="Descartar esta factura de «${escapeHtml(kw)}» (si tiene la palabra por error)" style="border:none;background:transparent;color:var(--text-muted);cursor:pointer;font-size:12px;opacity:.55;line-height:1;padding:0 2px;">✕</button></td>
       </tr>`;
     });
+
+    // Facturas descartadas de este item (MontosItem[nkw]===false) — para restaurar.
+    const descartadas = egresos.filter(e => (e.cat||'') === 'Suministros' && _sumParseMontos(e)[nkw] === false);
 
     const sub = ps.length
       ? `${ps.length} factura${ps.length!==1?'s':''}${totalQty>0 ? ' · '+(Number.isInteger(totalQty)?totalQty:totalQty.toFixed(2))+' uds' : ''}${avg ? ' · cada ~'+avg+'d' : ''}`
@@ -12522,6 +12570,11 @@ function _renderSumDetalle(wrap, kws) {
         </tr></thead>
         <tbody>${filas}</tbody>
       </table></div>` : '<div style="padding:14px;font-size:12px;color:var(--text-muted);font-style:italic;">Aún no hay egresos de Suministros que mencionen "'+escapeHtml(kw)+'".</div>'}
+      ${descartadas.length ? `<div style="padding:8px 14px;border-top:1px dashed var(--border);font-size:11px;color:var(--text-muted);">
+        Descartadas de este item (${descartadas.length}): ${descartadas.map(e =>
+          `<span style="white-space:nowrap;">${escapeHtml((e.desc||'').slice(0,28))} · $${parseFloat(e.amount||0).toFixed(2)} <button onclick="_sumRestaurarEnKw('${e.id}','${nkw}')" title="Restaurar en ${escapeHtml(kw)}" style="border:none;background:transparent;color:var(--verde-dark);cursor:pointer;font-size:11px;font-weight:600;padding:0 2px;">↺ restaurar</button></span>`
+        ).join(' · ')}
+      </div>` : ''}
     </div>`;
   });
 
