@@ -12619,13 +12619,13 @@ function _renderSumDetalle(wrap, kws) {
   const otrosHtml       = otrosKws.map(renderKwCard).join('');
 
   let out = '';
-  // 1) Suministros
+  // 1) Suministros — arriba el panel de Facturas compartidas (colapsable,
+  //    cerrado por defecto), luego las tarjetas de cada keyword normal.
   out += _secHead('📦 Suministros', normalKws.length);
+  if (panelHtml) out += panelHtml;
   out += suministrosHtml || '<div style="padding:6px 2px 8px;font-size:12px;color:var(--text-muted);font-style:italic;">No hay items de suministros. Agrega uno arriba.</div>';
-  // 2) Suministros con Facturas Compartidas (solo si hay vouchers multi-item)
-  if (panelHtml) { out += _secHead('📌 Suministros con Facturas Compartidas'); out += panelHtml; }
-  // 3) Otros Gastos (solo detalle)
-  if (otrosKws.length) { out += _secHead('🧾 Otros Gastos', otrosKws.length); out += otrosHtml; }
+  // 2) Otros Gastos (keywords "solo detalle" / NoTimeline)
+  if (otrosKws.length) { out += _secHead('🧾 Otros', otrosKws.length); out += otrosHtml; }
 
   out += `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px;border-top:2px solid var(--border);margin-top:14px;">
       <div style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600;">Total trackeado (todos los items)</div>
