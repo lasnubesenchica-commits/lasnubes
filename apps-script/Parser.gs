@@ -1908,9 +1908,12 @@ function doPost(e) {
       }
       if (ch.whatsapp) {
         try {
-          const clone = Object.assign({}, r, { telefono: BOT_ADMIN_PHONE });
+          // Celular PERSONAL del admin para vistas previas (NO el número emisor
+          // del bot). Configurable por Script Property; default 6981-2266.
+          const previewPhone = PropertiesService.getScriptProperties().getProperty('PREVIEW_NOTIFY_PHONE') || '50769812266';
+          const clone = Object.assign({}, r, { telefono: previewPhone });
           sendWAReservaConfirmada(clone);
-          result.whatsapp = { ok: true, to: BOT_ADMIN_PHONE };
+          result.whatsapp = { ok: true, to: previewPhone };
         } catch(e) { result.whatsapp = { ok: false, error: e.message }; }
       }
       return ContentService
