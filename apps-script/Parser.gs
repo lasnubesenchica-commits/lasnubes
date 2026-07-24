@@ -1893,6 +1893,30 @@ function doPost(e) {
     // ── SEND EMAILS ───────────────────────────────────────────
     if (action === 'sendCancellationEmail') return sendCancellationEmail(payload.reservation);
     if (action === 'sendConfirmationEmail') return sendConfirmationEmail(payload.reservation, payload.voucherBase64, payload.voucherMimeType);
+    // Vista previa: envía la MISMA confirmación (email + WhatsApp) al admin, no al
+    // cliente. Sirve para revisar cómo le llegará al huésped antes de mandarla.
+    if (action === 'previewConfirmacionSelf') {
+      const r = payload.reservation || {};
+      const ch = payload.channels || { email: true, whatsapp: true };
+      const result = {};
+      if (ch.email) {
+        try {
+          const clone = Object.assign({}, r, { email: REPLY_TO_EMAIL });
+          sendConfirmationEmail(clone, payload.voucherBase64, payload.voucherMimeType, '👁 Vista previa · ');
+          result.email = { ok: true, to: REPLY_TO_EMAIL };
+        } catch(e) { result.email = { ok: false, error: e.message }; }
+      }
+      if (ch.whatsapp) {
+        try {
+          const clone = Object.assign({}, r, { telefono: BOT_ADMIN_PHONE });
+          sendWAReservaConfirmada(clone);
+          result.whatsapp = { ok: true, to: BOT_ADMIN_PHONE };
+        } catch(e) { result.whatsapp = { ok: false, error: e.message }; }
+      }
+      return ContentService
+        .createTextOutput(JSON.stringify({ ok: true, result: result }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
     if (action === 'sendUpdateEmail')       return sendUpdateEmail(payload.reservation, payload.voucherBase64, payload.voucherMimeType);
     if (action === 'sendCheckinReminder')   return sendCheckinReminderEmail(payload.reservation);
 
@@ -2589,15 +2613,15 @@ buildGuiaHTML(r.cabin, meta.tipo, !!r.checkoutExtendido, meta.horaSalidaCustom) 
 '</td></tr></table></td></tr></table></body></html>';
 }
 
-function sendConfirmationEmail(reservation, voucherBase64, voucherMimeType) {
+function sendConfirmationEmail(reservation, voucherBase64, voucherMimeType, subjectPrefix) {
   try {
     const email = reservation.email;
     if (!email) return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'No hay email de huésped' })).setMimeType(ContentService.MimeType.JSON);
     const cabin   = CABIN_NAMES_EMAIL[reservation.cabin] || reservation.cabin;
     const isAbierta = reservation.origin === 'Abierta';
-    const subject = isAbierta
+    const subject = (subjectPrefix || '') + (isAbierta
       ? '📌 Reserva Abierta — Las Nubes'
-      : '✅ Confirmación de reserva — ' + cabin + ' · Las Nubes';
+      : '✅ Confirmación de reserva — ' + cabin + ' · Las Nubes');
 
     // Adjuntar recibo PDF si la reserva tiene voucher (codTransferencia o montoVoucher)
     const attachments = [];
