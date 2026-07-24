@@ -3197,6 +3197,7 @@
         </label>
       </div>
       <button class="btn btn-ghost" id="cancelReservationBtn" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-ghost" id="modalPreviewBtn" onclick="previewConfirmacionAMi()" style="font-size:13px;" title="Enviarte a ti (email + WhatsApp) la confirmación tal como le llegará al cliente, para revisarla antes de mandarla.">👁 Vista previa</button>
       <button class="btn btn-ghost" id="modalWhatsAppBtn" style="display:none;font-size:13px;">💬 Enviar a WhatsApp</button>
       <button class="btn btn-primary" id="saveReservationBtn" onclick="saveReservation()">Guardar reserva</button>
     </div>
@@ -7143,6 +7144,8 @@ function _resetReservaModalFooter() {
   if (cancelBtn) cancelBtn.textContent = 'Cancelar';
   const waBtn = document.getElementById('modalWhatsAppBtn');
   if (waBtn) { waBtn.style.display = 'none'; waBtn.disabled = false; waBtn.textContent = '💬 Enviar a WhatsApp'; }
+  const pvBtn = document.getElementById('modalPreviewBtn');
+  if (pvBtn) { pvBtn.style.display = ''; pvBtn.disabled = false; pvBtn.textContent = '👁 Vista previa'; }
   // Reset campo de codigo de referido
   const rcInput = document.getElementById('fRefCode');
   const rcWrap  = document.getElementById('fRefCodeWrap');
@@ -8364,6 +8367,10 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
   }
   const cancelBtn = document.getElementById('cancelReservationBtn');
   if (cancelBtn) cancelBtn.textContent = 'Cerrar';
+  // Ya guardada (y notificada al cliente si aplica): la vista previa deja de
+  // tener sentido; se oculta para no saturar el footer.
+  const _pvBtn = document.getElementById('modalPreviewBtn');
+  if (_pvBtn) _pvBtn.style.display = 'none';
 
   // Mostrar boton de WhatsApp si la reserva tiene telefono
   const waBtn = document.getElementById('modalWhatsAppBtn');
@@ -10966,6 +10973,73 @@ async function _unmarkLoyalty(email, telefono) {
 function _agenteConfirmaWA(origin, telefono) {
   const ph = (telefono || '').toString().replace(/\D/g, '');
   return ph.length >= 7 && (origin === 'Directa' || origin === 'Referido');
+}
+
+// Arma un objeto reserva desde el formulario (sin persistir), aplicando la misma
+// traducción de fechas y la conversión pasatarde/pasadía→noche que saveReservation.
+// Se usa para la vista previa (enviar la confirmación a uno mismo antes de guardar).
+function _buildFormReservation() {
+  const tipoForm     = (document.getElementById('fTipo') || {}).value || 'noche';
+  const formCheckin  = document.getElementById('fCheckin').value;
+  let   formCheckout = document.getElementById('fCheckout').value;
+  if (tipoForm === 'pasatarde' || tipoForm === 'pasadia') formCheckout = formCheckin;
+  const _stored = _storedFromForm(formCheckin, formCheckout, tipoForm);
+  let checkin = _stored.checkin, checkout = _stored.checkout, tipo = tipoForm;
+  let horaEntrada = ((document.getElementById('fHoraEntrada') || {}).value || '').trim();
+  const horaSalida = ((document.getElementById('fHoraSalida') || {}).value || '').trim();
+  // Conversión un-solo-día → noche (idéntica a saveReservation).
+  if (horaSalida && (tipo === 'pasatarde' || tipo === 'pasadia')) {
+    const _def = TIPO_DEFAULT_HORAS[tipo] || TIPO_DEFAULT_HORAS.noche;
+    const _toMin = s => { const p = String(s).split(':'); return (parseInt(p[0],10)||0)*60 + (parseInt(p[1],10)||0); };
+    const _ent = horaEntrada || _def.entrada;
+    if (_toMin(horaSalida) <= _toMin(_ent)) {
+      checkin = formCheckin; checkout = _addDaysISO(formCheckin, 1);
+      if (!horaEntrada) horaEntrada = _ent;
+      tipo = 'noche';
+    }
+  }
+  return {
+    id: editId || 'preview',
+    name:     document.getElementById('fName').value.trim(),
+    email:    document.getElementById('fEmail').value.trim(),
+    telefono: (document.getElementById('fTelefono').value || '').trim().replace(/^[+=\-@]+\s*/, ''),
+    cabin:    document.getElementById('fCabin').value,
+    checkin, checkout, tipo, horaEntrada, horaSalida,
+    persons:  document.getElementById('fPersons').value,
+    origin:   document.getElementById('fOrigin').value,
+    amount:   parseFloat(document.getElementById('fAmount').value) || 0,
+    deposit:  parseFloat(document.getElementById('fDeposit').value) || 0,
+    checkoutExtendido: !!(document.getElementById('fCheckoutExtendido') || {}).checked
+  };
+}
+
+// Envía la confirmación (email + WhatsApp) a MÍ mismo (admin) para revisarla
+// antes de mandarla al cliente. Usa los datos actuales del formulario.
+async function previewConfirmacionAMi() {
+  const r = _buildFormReservation();
+  if (!r.name || !r.checkin) { showToast('Completa al menos huésped y fechas para previsualizar'); return; }
+  const btn = document.getElementById('modalPreviewBtn');
+  const prev = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Enviando…'; }
+  try {
+    const res = await fetch(SHEETS_API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'previewConfirmacionSelf', reservation: r, channels: { email: true, whatsapp: true } })
+    });
+    const data = await res.json();
+    if (data && data.ok) {
+      const parts = [];
+      if (data.result && data.result.email)    parts.push(data.result.email.ok    ? '📧 email' : '📧 ⚠');
+      if (data.result && data.result.whatsapp) parts.push(data.result.whatsapp.ok ? '💬 WhatsApp' : '💬 ⚠');
+      showToast('👁 Vista previa enviada a ti: ' + (parts.join(' · ') || 'ok'));
+    } else {
+      showToast('⚠ No se pudo enviar la vista previa');
+    }
+  } catch(e) {
+    console.warn('preview a mí', e);
+    showToast('⚠ Error de red enviando la vista previa');
+  }
+  if (btn) { btn.disabled = false; btn.textContent = prev; }
 }
 
 function _buildClienteShareText(r, url, referralCode, referralAmount) {
