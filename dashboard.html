@@ -5113,7 +5113,13 @@ function showDispDetail(id) {
     // Horas efectivas para armar el sufijo cuando hay override manual.
     const _defT = TIPO_DEFAULT_HORAS[tipo] || TIPO_DEFAULT_HORAS.noche;
     const _hE = r.horaEntrada || _defT.entrada;
-    const _hS = r.horaSalida  || (r.checkoutExtendido && (tipo === 'noche' || tipo === 'early') ? '12:30' : _defT.salida);
+    let _hS = r.horaSalida  || (r.checkoutExtendido && (tipo === 'noche' || tipo === 'early') ? '12:30' : _defT.salida);
+    // Guard: en pasatarde/pasadía la salida debe ser posterior a la entrada;
+    // una hora-salida custom inválida se ignora (usa el default del tipo).
+    if (r.horaSalida && (tipo === 'pasatarde' || tipo === 'pasadia')) {
+      const _toMin = s => { const p = String(s).split(':'); return (parseInt(p[0],10)||0)*60 + (parseInt(p[1],10)||0); };
+      if (_toMin(_hS) <= _toMin(_hE)) _hS = _defT.salida;
+    }
     const _rangoEfectivo = _fmtHora12(_hE) + ' – ' + _fmtHora12(_hS);
     if (tipo === 'pasatarde')       duracionLabel = 'Pasatarde ' + _rangoEfectivo;
     else if (tipo === 'pasanoche')  duracionLabel = 'Pasanoche ' + _rangoEfectivo;
@@ -5373,9 +5379,16 @@ function _reservationOccupancySpans(r) {
   const start = customEntrada
     ? at(entradaDay, customEntrada.h, customEntrada.m)
     : at(entradaDay, defEntrada.h, defEntrada.m);
-  const end   = customSalida
+  let end   = customSalida
     ? at(salidaDay,  customSalida.h,  customSalida.m)
     : at(salidaDay,  defSalida.h,     defSalida.m);
+  // Guard: en tipos de un solo día (pasatarde/pasadía) entrada y salida caen el
+  // mismo día, así que la salida DEBE ser posterior a la entrada. Si una hora
+  // de salida custom inválida (ej. 8am en un pasatarde que entra 12:30pm) la
+  // dejaría antes/igual que la entrada, se ignora y se usa el default del tipo.
+  if (customSalida && end <= start && (tipo === 'pasatarde' || tipo === 'pasadia')) {
+    end = at(salidaDay, defSalida.h, defSalida.m);
+  }
   return [{ start, end }];
 }
 
@@ -8102,6 +8115,19 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
   // Horas custom (opcional). "" = usar default del tipo. El backend normaliza.
   const horaEntrada = ((document.getElementById('fHoraEntrada') || {}).value || '').trim();
   const horaSalida  = ((document.getElementById('fHoraSalida')  || {}).value || '').trim();
+  // Guard: en pasatarde/pasadía (un solo día) la salida debe ser posterior a la
+  // entrada. Bloquear un horario imposible (ej. sale 8am, entra 12:30pm) que
+  // rompería la ocupación y el email de confirmación.
+  if (horaSalida && (tipo === 'pasatarde' || tipo === 'pasadia')) {
+    const _defHoras = TIPO_DEFAULT_HORAS[tipo] || TIPO_DEFAULT_HORAS.noche;
+    const _toMin = s => { const p = String(s).split(':'); return (parseInt(p[0],10)||0)*60 + (parseInt(p[1],10)||0); };
+    const _entradaRef = horaEntrada || _defHoras.entrada;
+    if (_toMin(horaSalida) <= _toMin(_entradaRef)) {
+      alert('La hora de salida (' + _fmtHora12(horaSalida) + ') no puede ser anterior o igual a la entrada (' + _fmtHora12(_entradaRef) + ') en un ' + (tipo === 'pasatarde' ? 'pasatarde' : 'pasadía') + ', que ocurre en un solo día.\n\nCorrige la hora de salida o déjala en blanco para usar el default del tipo.');
+      const _hsEl = document.getElementById('fHoraSalida'); if (_hsEl) _hsEl.focus();
+      return;
+    }
+  }
   const reservation = { id, name, email, telefono, pagador, cabin, checkin, checkout, persons, origin, deposit, amount,
                         confirmCode: id, serviceFee: 0, neto: amount,
                         fechaReserva, codTransferencia, montoVoucher, estadoPago, comentarios, tipo, checkoutExtendido,

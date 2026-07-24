@@ -2336,7 +2336,16 @@ function tipoEmailMeta(r) {
   // HoraSalida en la hoja). Pisa el default del tipo y también la cortesía
   // — la intención explícita del admin siempre gana.
   const horaEntradaCustom = _normalizeHora(r.horaEntrada);
-  const horaSalidaCustom  = _normalizeHora(r.horaSalida);
+  let   horaSalidaCustom  = _normalizeHora(r.horaSalida);
+  // Guard: en pasatarde/pasadía entrada y salida caen el mismo día, así que la
+  // salida DEBE ser posterior a la entrada. Una hora-salida custom inválida
+  // (ej. 8am en un pasatarde que entra 12:30pm) se ignora — deja el default del
+  // tipo ('salida 7:00 pm' / 'salida 5:00 pm') en vez de un checkout imposible.
+  if (horaSalidaCustom && (tipo === 'pasatarde' || tipo === 'pasadia')) {
+    const _toMin = s => { const p = String(s).split(':'); return (parseInt(p[0],10)||0)*60 + (parseInt(p[1],10)||0); };
+    const entradaRef = horaEntradaCustom || (tipo === 'pasatarde' ? '12:30' : '09:00');
+    if (_toMin(horaSalidaCustom) <= _toMin(entradaRef)) horaSalidaCustom = '';
+  }
   if (horaEntradaCustom) checkinHora  = 'a partir de las ' + _formatHora12(horaEntradaCustom);
   if (horaSalidaCustom)  checkoutHora = 'antes de las ' + _formatHora12(horaSalidaCustom);
   return {
@@ -3164,7 +3173,14 @@ function _horaPlantilla(tipo, kind, checkoutExtendido, horaEntradaCustom, horaSa
     return '2:00 pm';                          // noche, late
   }
   // checkout
-  const custom = _normalizeHora(horaSalidaCustom);
+  let custom = _normalizeHora(horaSalidaCustom);
+  // Guard: en pasatarde/pasadía la salida debe ser posterior a la entrada; una
+  // hora-salida custom inválida (ej. 8am con entrada 12:30pm) se ignora.
+  if (custom && (t === 'pasatarde' || t === 'pasadia')) {
+    const _toMin = s => { const p = String(s).split(':'); return (parseInt(p[0],10)||0)*60 + (parseInt(p[1],10)||0); };
+    const entradaRef = _normalizeHora(horaEntradaCustom) || (t === 'pasatarde' ? '12:30' : '09:00');
+    if (_toMin(custom) <= _toMin(entradaRef)) custom = '';
+  }
   if (custom) return _formatHora12(custom);
   if (t === 'pasatarde') return '7:00 pm';
   if (t === 'pasanoche') return '12:30 pm';
