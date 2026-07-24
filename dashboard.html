@@ -11942,6 +11942,7 @@ let _suministrosKeywords = null;   // cache de la lista (null = no cargada aún)
 let _sumKeywordsLoading = false;
 let _sumBarMeta = {};              // barKey → { egresoId, kw, nkw, autoEnd, isLast, avg, effEnd } (poblado al renderizar)
 let _sumView = 'timeline';        // 'timeline' | 'detalle'
+let _sumSharedState = {};         // egresoId → { egresoId, total, items:[{nkw,kw,touched,_init}] } (panel de facturas compartidas en Detalle)
 
 function _sumNormalize(s) {
   return (s || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -12244,6 +12245,65 @@ function _renderSumDetalle(wrap, kws) {
     return;
   }
 
+  // ── Panel de facturas compartidas: vouchers cuya descripción matchea ≥2
+  // keywords. Permite repartir el monto entre sus items sin abrir el modal.
+  _sumSharedState = {};
+  const _sharedIds = [];
+  let panelHtml = '';
+  {
+    const kwByNkw = {}; const allNkw = [];
+    kws.forEach(k => { const n = _sumNormalize(k); if (n && !(n in kwByNkw)) { kwByNkw[n] = k; allNkw.push(n); } });
+    const shared = [];
+    egresos.forEach(e => {
+      if ((e.cat||'') !== 'Suministros' || !e.date) return;
+      const nd = _sumNormalize(e.desc);
+      const matched = []; const seen = {};
+      allNkw.forEach(n => { if (!seen[n] && nd.includes(n)) { seen[n] = 1; matched.push({ nkw: n, kw: kwByNkw[n] }); } });
+      if (matched.length >= 2) shared.push({ e, matched });
+    });
+    shared.sort((a,b) => (b.e.date||'').localeCompare(a.e.date||''));
+    if (shared.length) {
+      let cards = '';
+      shared.forEach(({ e, matched }) => {
+        const egid = e.id, total = parseFloat(e.amount||0);
+        const items = matched.map(m => { const ov = _sumItemAmount(e, m.nkw); return { nkw: m.nkw, kw: m.kw, touched: ov != null, _init: ov }; });
+        _sumSharedState[egid] = { egresoId: egid, total, items };
+        _sharedIds.push(egid);
+        const repartida = items.every(it => it.touched);
+        const urls = (e.urlFoto||'').split('|').map(u=>u.trim()).filter(Boolean);
+        const voucher = urls.length ? `<a href="${urls[0]}" target="_blank" onclick="event.stopPropagation();" title="Ver comprobante" style="text-decoration:none;font-size:13px;">🧾</a>` : '';
+        const rows = items.map((it,i) =>
+          `<div style="display:flex;align-items:center;gap:8px;margin-top:5px;">
+            <div style="flex:1;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(it.kw)}</div>
+            <span style="font-size:13px;color:var(--text-muted);">$</span>
+            <input type="number" step="0.01" min="0" id="shInp_${egid}_${i}" oninput="_sumSharedOnInput('${egid}',${i})" onchange="_sumSharedOnChange('${egid}')" value="${it._init!=null?it._init:''}" placeholder="0.00" style="width:88px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-size:13px;box-sizing:border-box;text-align:right;">
+          </div>`).join('');
+        const chip = repartida
+          ? '<span style="font-size:10px;font-weight:600;color:var(--verde-dark);background:var(--verde-light);padding:2px 8px;border-radius:10px;white-space:nowrap;">✓ repartida</span>'
+          : '<span style="font-size:10px;font-weight:600;color:#8a6000;background:#fff3cd;padding:2px 8px;border-radius:10px;white-space:nowrap;">⚠ sin repartir</span>';
+        cards += `<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:8px;background:var(--surface);">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <div style="font-size:12px;color:var(--text-muted);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(e.proveedor||'—')} · <strong style="color:var(--text);">$${total.toFixed(2)}</strong> · ${formatDate(e.date)} ${voucher}</div>
+            ${chip}
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin:3px 0 1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(e.desc||'')}">${escapeHtml(e.desc||'')}</div>
+          ${rows}
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px;padding-top:7px;border-top:1px dashed var(--border);">
+            <div id="shRecon_${egid}" style="font-size:12px;"></div>
+            <button onclick="_sumSharedRepartirIgual('${egid}')" title="Repartir el total en partes iguales" style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);cursor:pointer;white-space:nowrap;">⚖️ Equitativo</button>
+          </div>
+        </div>`;
+      });
+      panelHtml = `<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:14px;background:var(--bg);">
+        <div style="padding:11px 14px;border-bottom:1px solid var(--border);">
+          <div style="font-size:13px;font-weight:700;color:var(--text);">📌 Facturas compartidas (${shared.length})</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Vouchers que cubren varios items. Reparte cuánto corresponde a cada uno; el resto se reparte solo entre los que faltan.</div>
+        </div>
+        <div style="padding:6px 12px 12px;">${cards}</div>
+      </div>`;
+    }
+  }
+
   let secciones = '';
   let granTotal = 0;
 
@@ -12323,12 +12383,84 @@ function _renderSumDetalle(wrap, kws) {
     </div>`;
   });
 
-  wrap.innerHTML = secciones +
+  wrap.innerHTML = panelHtml + secciones +
     `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px;border-top:2px solid var(--border);margin-top:4px;">
       <div style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600;">Total trackeado (todos los items)</div>
       <div style="font-size:18px;font-weight:700;color:var(--text);">$${granTotal.toFixed(2)}</div>
     </div>
     <div style="font-size:11px;color:var(--text-muted);padding:0 14px 8px;">Suma de las porciones asignadas a cada item. Toca una fila para ver o editar la factura.</div>`;
+
+  // Init del panel de compartidas: si hay porciones ya guardadas, autocompleta
+  // el resto; si no hay nada, deja los campos vacíos (recon marca "faltan").
+  _sharedIds.forEach(egid => {
+    const st = _sumSharedState[egid];
+    if (st && st.items.some(it => it.touched)) _sumSharedRebalance(egid);
+    else _sumSharedRecon(egid);
+  });
+}
+
+// ── Panel de facturas compartidas (vista Detalle): reparto inline por voucher ──
+// Al editar un item se marca "tocado" y el resto (no tocados) se reparte el saldo.
+function _sumSharedOnInput(egid, i) {
+  const st = _sumSharedState[egid];
+  if (!st || !st.items[i]) return;
+  st.items[i].touched = true;
+  _sumSharedRebalance(egid);
+}
+
+function _sumSharedRebalance(egid) {
+  const st = _sumSharedState[egid];
+  if (!st) return;
+  const val = i => { const el = document.getElementById('shInp_' + egid + '_' + i); return el ? (parseFloat(el.value) || 0) : 0; };
+  let touchedSum = 0; const untouched = [];
+  st.items.forEach((it, i) => { if (it.touched) touchedSum += val(i); else untouched.push(i); });
+  const remaining = Math.round((st.total - touchedSum) * 100) / 100;
+  if (untouched.length) {
+    const base = Math.floor(Math.max(0, remaining) / untouched.length * 100) / 100;
+    untouched.forEach((idx, j) => {
+      let v = base;
+      if (j === untouched.length - 1) v = Math.round((Math.max(0, remaining) - base * (untouched.length - 1)) * 100) / 100;
+      const el = document.getElementById('shInp_' + egid + '_' + idx);
+      if (el) el.value = v.toFixed(2);
+    });
+  }
+  _sumSharedRecon(egid);
+}
+
+function _sumSharedRecon(egid) {
+  const st = _sumSharedState[egid];
+  const el = document.getElementById('shRecon_' + egid);
+  if (!st || !el) return;
+  let assigned = 0;
+  st.items.forEach((it, i) => { const inp = document.getElementById('shInp_' + egid + '_' + i); assigned += inp ? (parseFloat(inp.value) || 0) : 0; });
+  assigned = Math.round(assigned * 100) / 100;
+  const diff = Math.round((st.total - assigned) * 100) / 100;
+  const ok = Math.abs(diff) < 0.01;
+  const color = ok ? 'var(--verde-dark)' : '#c0392b';
+  el.innerHTML = '<span style="color:var(--text-muted);">Asignado</span> <strong>$' + assigned.toFixed(2) + '</strong>/$' + st.total.toFixed(2) +
+    ' · <span style="color:' + color + ';font-weight:600;">' +
+    (ok ? '✓ cuadra' : (diff > 0 ? 'faltan $' + diff.toFixed(2) : 'exceso $' + Math.abs(diff).toFixed(2))) + '</span>';
+}
+
+// Persiste el reparto del voucher (todos sus items) al salir del campo.
+function _sumSharedOnChange(egid) {
+  const st = _sumSharedState[egid];
+  if (!st) return;
+  const montoOps = st.items.map((it, i) => {
+    const el = document.getElementById('shInp_' + egid + '_' + i);
+    const raw = el ? (el.value || '').trim() : '';
+    return { nkw: it.nkw, value: raw === '' ? null : (parseFloat(raw) || 0) };
+  });
+  _persistSumEgreso(egid, { montoOps });   // re-renderiza el Detalle con lo guardado
+}
+
+// Reparte el total en partes iguales entre todos los items y persiste.
+function _sumSharedRepartirIgual(egid) {
+  const st = _sumSharedState[egid];
+  if (!st) return;
+  st.items.forEach(it => it.touched = false);
+  _sumSharedRebalance(egid);
+  _sumSharedOnChange(egid);
 }
 
 // ── Modal de detalle de compra (se abre al clickear una barra/punto del timeline) ──
