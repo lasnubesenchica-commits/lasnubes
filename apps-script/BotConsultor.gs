@@ -2393,6 +2393,8 @@ function _botArrivalStatus(phone) {
       persons: r[6], origin: r[9],
       tipo: tipo,
       checkoutExtendido: !!r[28],
+      horaEntrada: (typeof _normalizeHora === 'function') ? _normalizeHora(r[29]) : (r[29] || ''),
+      horaSalida:  (typeof _normalizeHora === 'function') ? _normalizeHora(r[30]) : (r[30] || ''),
       displayCheckin: displayCi, displayCheckout: displayCo,
       cabinName: BOT_CABIN_NAMES[r[3]] || r[3]
     };
@@ -2906,12 +2908,11 @@ function _botConfirmacionText(reservation, publicUrl, referralCode, referralAmou
   else                           fechasLine = '📅 ' + meta.checkinFmt + ' → ' + meta.checkoutFmt + ' · ' + meta.estanciaValue + (meta.estanciaValue === 1 ? ' noche' : ' noches');
 
   const isPasadia = (tipo === 'pasatarde' || tipo === 'pasadia');
-  let checkinH = '2:00 pm', checkoutH = '11:00 am';
-  if (tipo === 'early') checkinH = '9:00 am';
-  if (tipo === 'late')  checkoutH = '4:00 pm';
-  if (reservation.checkoutExtendido && (tipo === 'noche' || tipo === 'early')) {
-    checkoutH = '12:30 pm (cortesía)';
-  }
+  // Horas efectivas vía _horaPlantilla: respeta HoraEntrada/HoraSalida custom
+  // (ej. noche que entra 12:30pm y sale 8am) y el guard un-solo-día. Antes
+  // estaban hardcodeadas (2pm/11am).
+  const checkinH  = _horaPlantilla(tipo, 'checkin',  reservation.checkoutExtendido, reservation.horaEntrada);
+  const checkoutH = _horaPlantilla(tipo, 'checkout', reservation.checkoutExtendido, reservation.horaEntrada, reservation.horaSalida);
 
   let text = '¡Reserva confirmada! 🌿\n\n';
   text += '👤 ' + (reservation.name || '') + '\n';
@@ -3305,7 +3306,9 @@ function _botAdminApprove(adminPhone, reservaId) {
         email:    data[i][21],
         telefono: data[i][23],
         tipo:     data[i][24] || 'noche',
-        checkoutExtendido: data[i][28] === true || data[i][28] === 'TRUE' || data[i][28] === 'true' || data[i][28] === 1
+        checkoutExtendido: data[i][28] === true || data[i][28] === 'TRUE' || data[i][28] === 'true' || data[i][28] === 1,
+        horaEntrada: (typeof _normalizeHora === 'function') ? _normalizeHora(data[i][29]) : (data[i][29] || ''),
+        horaSalida:  (typeof _normalizeHora === 'function') ? _normalizeHora(data[i][30]) : (data[i][30] || '')
       };
       // Construir texto rico (espejo de _buildClienteShareText del dashboard) y enviar
       // como session message — el bot acaba de tener interaccion con el cliente,

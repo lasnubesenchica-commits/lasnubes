@@ -404,7 +404,11 @@ function _readReservaById(id) {
         tipo:        r[24] || 'noche',
         idHuespedURL: r[26] || '',
         fechaNacimiento: r[27] || '',
-        checkoutExtendido: r[28] === true || r[28] === 'TRUE' || r[28] === 'true' || r[28] === 1
+        checkoutExtendido: r[28] === true || r[28] === 'TRUE' || r[28] === 'true' || r[28] === 1,
+        // Cols 30/31: horas custom. Sin esto, la página pública (reserva.html)
+        // mostraba el default del tipo (2pm/11am) en vez del horario especial.
+        horaEntrada: (typeof _normalizeHora === 'function') ? _normalizeHora(r[29]) : (r[29] || ''),
+        horaSalida:  (typeof _normalizeHora === 'function') ? _normalizeHora(r[30]) : (r[30] || '')
       };
     }
   }
