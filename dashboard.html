@@ -12427,6 +12427,11 @@ function _renderSumDetalle(wrap, kws) {
     return;
   }
 
+  // Los items "solo detalle" (NoTimeline, ej. Delivery) siempre al fondo,
+  // sin importar el orden en que se agregaron. Sort estable = conserva el
+  // orden relativo dentro de cada grupo.
+  kws = kws.slice().sort((a, b) => (_sumIsNoTimeline(a) ? 1 : 0) - (_sumIsNoTimeline(b) ? 1 : 0));
+
   // ── Panel de facturas compartidas: vouchers cuya descripción matchea ≥2
   // keywords. Permite repartir el monto entre sus items sin abrir el modal.
   _sumSharedState = {};
@@ -12489,10 +12494,10 @@ function _renderSumDetalle(wrap, kws) {
       const sinRepBadge = sinRepartir > 0
         ? ` <span style="font-size:10px;font-weight:600;color:#8a6000;background:#fff3cd;padding:1px 7px;border-radius:9px;">⚠ ${sinRepartir} sin repartir</span>`
         : '';
-      panelHtml = `<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:14px;background:var(--bg);">
-        <div onclick="toggleSumShared()" title="Mostrar/ocultar" style="padding:11px 14px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px;">
+      panelHtml = `<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:12px;background:var(--bg);">
+        <div onclick="toggleSumShared()" title="Mostrar/ocultar" style="padding:12px 14px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px;background:var(--card-bg);">
           <span id="sumSharedChevron" style="font-size:11px;color:var(--text-muted);width:10px;flex-shrink:0;">${open?'▾':'▸'}</span>
-          <div style="font-size:13px;font-weight:700;color:var(--text);">📌 Facturas compartidas (${shared.length})${sinRepBadge}</div>
+          <div style="font-size:14px;font-weight:700;color:var(--text);">📌 Facturas compartidas (${shared.length})${sinRepBadge}</div>
         </div>
         <div id="sumSharedBody" style="display:${open?'':'none'};border-top:1px solid var(--border);">
           <div style="padding:8px 14px 4px;font-size:11px;color:var(--text-muted);">Vouchers que cubren varios items. Reparte cuánto corresponde a cada uno; el resto se reparte solo entre los que faltan.</div>
@@ -12502,10 +12507,10 @@ function _renderSumDetalle(wrap, kws) {
     }
   }
 
-  let secciones = '';
   let granTotal = 0;
 
-  kws.forEach(kw => {
+  // Renderiza la tarjeta de detalle de un item (una keyword). Acumula en granTotal.
+  const renderKwCard = (kw) => {
     const nkw = _sumNormalize(kw);
     const ps = egresos
       .filter(e => (e.cat||'') === 'Suministros' && e.date && _sumMatchesKw(e, nkw))
@@ -12572,7 +12577,7 @@ function _renderSumDetalle(wrap, kws) {
       ? `${ps.length} factura${ps.length!==1?'s':''}${totalQty>0 ? ' · '+(Number.isInteger(totalQty)?totalQty:totalQty.toFixed(2))+' uds' : ''}${avg ? ' · cada ~'+avg+'d' : ''}`
       : 'sin compras aún';
 
-    secciones += `<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:12px;background:var(--surface);">
+    return `<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:12px;background:var(--surface);">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:11px 14px;background:var(--bg);border-bottom:1px solid var(--border);">
         <div style="font-size:14px;font-weight:700;color:var(--text);">${escapeHtml(kw)}${_sumIsNoTimeline(kw)?' <span style="font-size:10px;font-weight:600;color:var(--text-muted);background:#f3ede0;padding:1px 7px;border-radius:9px;vertical-align:middle;">solo detalle</span>':''}</div>
         <div style="font-size:12px;color:var(--text-muted);">${sub} &nbsp;·&nbsp; <strong style="color:var(--text);font-size:14px;">$${totalKw.toFixed(2)}</strong></div>
@@ -12595,14 +12600,40 @@ function _renderSumDetalle(wrap, kws) {
         ).join(' · ')}
       </div>` : ''}
     </div>`;
-  });
+  };
 
-  wrap.innerHTML = panelHtml + secciones +
-    `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px;border-top:2px solid var(--border);margin-top:4px;">
+  // ── Agrupación en 3 secciones marcadas ──────────────────────────────────
+  //   1. Suministros                       → keywords normales (van al timeline)
+  //   2. Suministros con Facturas Compartidas → panel de vouchers multi-item
+  //   3. Otros Gastos                      → keywords "solo detalle" (NoTimeline)
+  const normalKws = kws.filter(kw => !_sumIsNoTimeline(kw));
+  const otrosKws  = kws.filter(kw =>  _sumIsNoTimeline(kw));
+
+  const _secHead = (title, count) => `<div style="display:flex;align-items:center;gap:10px;margin:18px 2px 11px;">
+      <span style="font-size:15px;font-weight:800;color:var(--text);letter-spacing:.01em;">${title}</span>
+      ${count!=null?`<span style="font-size:11px;font-weight:700;color:var(--text-muted);background:var(--card-bg);border:1px solid var(--border);padding:1px 8px;border-radius:9px;">${count}</span>`:''}
+      <div style="flex:1;height:2px;border-radius:2px;background:linear-gradient(90deg,var(--border),transparent);"></div>
+    </div>`;
+
+  const suministrosHtml = normalKws.map(renderKwCard).join('');
+  const otrosHtml       = otrosKws.map(renderKwCard).join('');
+
+  let out = '';
+  // 1) Suministros
+  out += _secHead('📦 Suministros', normalKws.length);
+  out += suministrosHtml || '<div style="padding:6px 2px 8px;font-size:12px;color:var(--text-muted);font-style:italic;">No hay items de suministros. Agrega uno arriba.</div>';
+  // 2) Suministros con Facturas Compartidas (solo si hay vouchers multi-item)
+  if (panelHtml) { out += _secHead('📌 Suministros con Facturas Compartidas'); out += panelHtml; }
+  // 3) Otros Gastos (solo detalle)
+  if (otrosKws.length) { out += _secHead('🧾 Otros Gastos', otrosKws.length); out += otrosHtml; }
+
+  out += `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px;border-top:2px solid var(--border);margin-top:14px;">
       <div style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600;">Total trackeado (todos los items)</div>
       <div style="font-size:18px;font-weight:700;color:var(--text);">$${granTotal.toFixed(2)}</div>
     </div>
     <div style="font-size:11px;color:var(--text-muted);padding:0 14px 8px;">Suma de las porciones asignadas a cada item. Toca una fila para ver o editar la factura.</div>`;
+
+  wrap.innerHTML = out;
 
   // Init del panel de compartidas: si hay porciones ya guardadas, autocompleta
   // el resto; si no hay nada, deja los campos vacíos (recon marca "faltan").
