@@ -11978,6 +11978,25 @@ function _sumItemQty(e, nkw) {
   return (v == null || v === '') ? null : (parseFloat(v) || 0);
 }
 
+// Total de una línea = cantidad × precio unitario. Cantidad vacía/0 = 1 unidad.
+// Redondea a centavos. Es la fuente de verdad que se guarda en MontosItem.
+function _sumLineTotal(qty, unit) {
+  const q = (qty && qty > 0) ? qty : 1;
+  return Math.round(q * (parseFloat(unit) || 0) * 100) / 100;
+}
+// Precio unitario a mostrar a partir del total guardado y la cantidad. Devuelve
+// null si no hay total. Precisión completa para no perder centavos al re-multiplicar.
+function _sumUnitPrice(total, qty) {
+  if (total == null || total === '' || !(parseFloat(total))) return null;
+  const q = (qty && qty > 0) ? qty : 1;
+  return (parseFloat(total) || 0) / q;
+}
+// Número a string sin ceros de más (para prellenar el precio unitario exacto).
+function _sumNumStr(v) {
+  if (v == null || !isFinite(v) || v === 0) return '';
+  return String(+(+v).toFixed(4));
+}
+
 // ¿La keyword es "solo detalle" (no va en el timeline, ej. Delivery)?
 function _sumIsNoTimeline(kw) { return _sumNoTimeline.has(_sumNormalize(kw)); }
 
@@ -12317,19 +12336,22 @@ function _renderSumDetalle(wrap, kws) {
       let cards = '';
       shared.forEach(({ e, matched }) => {
         const egid = e.id, total = parseFloat(e.amount||0);
-        const items = matched.map(m => { const ov = _sumItemAmount(e, m.nkw); const qv = _sumItemQty(e, m.nkw); return { nkw: m.nkw, kw: m.kw, touched: ov != null, _init: ov, _initQty: qv }; });
+        const items = matched.map(m => { const ov = _sumItemAmount(e, m.nkw); const qv = _sumItemQty(e, m.nkw); return { nkw: m.nkw, kw: m.kw, touched: ov != null, _init: ov, _initQty: qv, _initUnit: _sumUnitPrice(ov, qv) }; });
         _sumSharedState[egid] = { egresoId: egid, total, items };
         _sharedIds.push(egid);
         const repartida = items.every(it => it.touched);
         const urls = (e.urlFoto||'').split('|').map(u=>u.trim()).filter(Boolean);
         const voucher = urls.length ? `<a href="${urls[0]}" target="_blank" onclick="event.stopPropagation();" title="Ver comprobante" style="text-decoration:none;font-size:13px;">🧾</a>` : '';
-        const rows = items.map((it,i) =>
-          `<div style="display:flex;align-items:center;gap:6px;margin-top:5px;">
-            <div style="flex:1;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(it.kw)}</div>
-            <input type="number" step="1" min="0" id="shQty_${egid}_${i}" onchange="_sumSharedOnChange('${egid}')" value="${it._initQty!=null?it._initQty:''}" placeholder="cant" title="Cantidad de unidades (opcional)" style="width:48px;padding:7px 6px;border:1px solid var(--border);border-radius:8px;font-size:12px;box-sizing:border-box;text-align:center;color:var(--text-muted);">
-            <span style="font-size:12px;color:var(--text-muted);">×&nbsp;$</span>
-            <input type="number" step="0.01" min="0" id="shInp_${egid}_${i}" oninput="_sumSharedOnInput('${egid}',${i})" onchange="_sumSharedOnChange('${egid}')" value="${it._init!=null?it._init:''}" placeholder="0.00" style="width:82px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-size:13px;box-sizing:border-box;text-align:right;">
-          </div>`).join('');
+        const rows = items.map((it,i) => {
+          const totInit = _sumLineTotal(it._initQty, it._initUnit || 0);
+          return `<div style="display:flex;align-items:center;gap:5px;margin-top:5px;">
+            <div style="flex:1;min-width:0;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(it.kw)}</div>
+            <input type="number" step="1" min="0" id="shQty_${egid}_${i}" oninput="_sumSharedOnInput('${egid}',${i})" onchange="_sumSharedOnChange('${egid}')" value="${it._initQty!=null?it._initQty:''}" placeholder="1" title="Cantidad de unidades" style="width:42px;padding:7px 5px;border:1px solid var(--border);border-radius:8px;font-size:12px;box-sizing:border-box;text-align:center;color:var(--text-muted);">
+            <span style="font-size:11px;color:var(--text-muted);">× $</span>
+            <input type="number" step="0.01" min="0" id="shInp_${egid}_${i}" oninput="_sumSharedOnInput('${egid}',${i})" onchange="_sumSharedOnChange('${egid}')" value="${it._initUnit!=null?_sumNumStr(it._initUnit):''}" placeholder="0.00" title="Precio por unidad" style="width:70px;padding:7px 8px;border:1px solid var(--border);border-radius:8px;font-size:13px;box-sizing:border-box;text-align:right;">
+            <span style="font-size:12px;color:var(--text-muted);white-space:nowrap;">=&nbsp;<strong id="shTot_${egid}_${i}" style="color:var(--text);">$${totInit.toFixed(2)}</strong></span>
+          </div>`;
+        }).join('');
         const chip = repartida
           ? '<span style="font-size:10px;font-weight:600;color:var(--verde-dark);background:var(--verde-light);padding:2px 8px;border-radius:10px;white-space:nowrap;">✓ repartida</span>'
           : '<span style="font-size:10px;font-weight:600;color:#8a6000;background:#fff3cd;padding:2px 8px;border-radius:10px;white-space:nowrap;">⚠ sin repartir</span>';
@@ -12471,20 +12493,26 @@ function _sumSharedOnInput(egid, i) {
   _sumSharedRebalance(egid);
 }
 
+// Helpers para leer cant/precio de una fila del panel.
+function _shQty(egid, i)  { const el = document.getElementById('shQty_' + egid + '_' + i); const q = el ? parseFloat(el.value) : NaN; return (q && q > 0) ? q : 1; }
+function _shUnit(egid, i) { const el = document.getElementById('shInp_' + egid + '_' + i); return el ? (parseFloat(el.value) || 0) : 0; }
+function _shLineTotal(egid, i) { return _sumLineTotal(_shQty(egid, i), _shUnit(egid, i)); }
+
+// Reparte el saldo (total − suma de los tocados) entre los no tocados: a cada
+// uno le fija el PRECIO UNITARIO para que su (cant × precio) = su porción.
 function _sumSharedRebalance(egid) {
   const st = _sumSharedState[egid];
   if (!st) return;
-  const val = i => { const el = document.getElementById('shInp_' + egid + '_' + i); return el ? (parseFloat(el.value) || 0) : 0; };
   let touchedSum = 0; const untouched = [];
-  st.items.forEach((it, i) => { if (it.touched) touchedSum += val(i); else untouched.push(i); });
+  st.items.forEach((it, i) => { if (it.touched) touchedSum += _shLineTotal(egid, i); else untouched.push(i); });
   const remaining = Math.round((st.total - touchedSum) * 100) / 100;
   if (untouched.length) {
     const base = Math.floor(Math.max(0, remaining) / untouched.length * 100) / 100;
     untouched.forEach((idx, j) => {
-      let v = base;
-      if (j === untouched.length - 1) v = Math.round((Math.max(0, remaining) - base * (untouched.length - 1)) * 100) / 100;
+      let share = base;
+      if (j === untouched.length - 1) share = Math.round((Math.max(0, remaining) - base * (untouched.length - 1)) * 100) / 100;
       const el = document.getElementById('shInp_' + egid + '_' + idx);
-      if (el) el.value = v.toFixed(2);
+      if (el) el.value = _sumNumStr(share / _shQty(egid, idx));   // precio unitario = porción / cantidad
     });
   }
   _sumSharedRecon(egid);
@@ -12495,7 +12523,12 @@ function _sumSharedRecon(egid) {
   const el = document.getElementById('shRecon_' + egid);
   if (!st || !el) return;
   let assigned = 0;
-  st.items.forEach((it, i) => { const inp = document.getElementById('shInp_' + egid + '_' + i); assigned += inp ? (parseFloat(inp.value) || 0) : 0; });
+  st.items.forEach((it, i) => {
+    const lt = _shLineTotal(egid, i);
+    assigned += lt;
+    const tot = document.getElementById('shTot_' + egid + '_' + i);
+    if (tot) tot.textContent = '$' + lt.toFixed(2);   // refresca "= $total" en vivo
+  });
   assigned = Math.round(assigned * 100) / 100;
   const diff = Math.round((st.total - assigned) * 100) / 100;
   const ok = Math.abs(diff) < 0.01;
@@ -12505,14 +12538,16 @@ function _sumSharedRecon(egid) {
     (ok ? '✓ cuadra' : (diff > 0 ? 'faltan $' + diff.toFixed(2) : 'exceso $' + Math.abs(diff).toFixed(2))) + '</span>';
 }
 
-// Persiste el reparto del voucher (todos sus items) al salir del campo.
+// Persiste el reparto del voucher al salir del campo. Guarda el TOTAL por item
+// (cant × precio unitario) en MontosItem y la cantidad en CantidadesItem.
 function _sumSharedOnChange(egid) {
   const st = _sumSharedState[egid];
   if (!st) return;
   const montoOps = st.items.map((it, i) => {
-    const el = document.getElementById('shInp_' + egid + '_' + i);
-    const raw = el ? (el.value || '').trim() : '';
-    return { nkw: it.nkw, value: raw === '' ? null : (parseFloat(raw) || 0) };
+    const uEl = document.getElementById('shInp_' + egid + '_' + i);
+    const uRaw = uEl ? (uEl.value || '').trim() : '';
+    // Sin precio unitario → borra la porción del item; con precio → total = cant × precio.
+    return { nkw: it.nkw, value: uRaw === '' ? null : _shLineTotal(egid, i) };
   });
   const qtyOps = st.items.map((it, i) => {
     const el = document.getElementById('shQty_' + egid + '_' + i);
@@ -12555,13 +12590,19 @@ function _sumSharedAddItem(egid, nkw) {
   const st = _sumSharedState[egid];
   if (!st || !nkw) return;
   if (st.items.some(it => it.nkw === nkw)) return; // ya está en el reparto
+  // Conservar lo ya tecleado como TOTALES (cant × precio); qty también.
   const montoOps = st.items.map((it, i) => {
-    const el = document.getElementById('shInp_' + egid + '_' + i);
+    const uEl = document.getElementById('shInp_' + egid + '_' + i);
+    const uRaw = uEl ? (uEl.value || '').trim() : '';
+    return { nkw: it.nkw, value: uRaw === '' ? null : _shLineTotal(egid, i) };
+  });
+  const qtyOps = st.items.map((it, i) => {
+    const el = document.getElementById('shQty_' + egid + '_' + i);
     const raw = el ? (el.value || '').trim() : '';
     return { nkw: it.nkw, value: raw === '' ? null : (parseFloat(raw) || 0) };
   });
   montoOps.push({ nkw, value: 0 });
-  _persistSumEgreso(egid, { montoOps });   // guarda + re-render; el item nuevo aparece
+  _persistSumEgreso(egid, { montoOps, qtyOps });   // guarda + re-render; el item nuevo aparece
 }
 
 // ── Modal de detalle de compra (se abre al clickear una barra/punto del timeline) ──
@@ -12684,32 +12725,37 @@ function _buildSumSplitEditor(e, currentNkw, currentKw, total, overrides) {
     const only = matched[0] || { nkw: currentNkw, kw: currentKw };
     const init = initOf(only.nkw);
     const qi = _sumItemQty(e, only.nkw);
+    const ui = _sumUnitPrice(init.value, qi);
+    const totInit = _sumLineTotal(qi, ui || 0);
     _sumSplitState = { egresoId: e.id, total, currentNkw, currentKw, multi: false, items: [{ nkw: only.nkw, kw: only.kw, touched: init.touched }] };
     wrap.innerHTML =
-      '<label style="display:block;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Cantidad y monto de ' + escapeHtml(only.kw || 'este item') + '</label>' +
+      '<label style="display:block;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Cantidad × precio de ' + escapeHtml(only.kw || 'este item') + '</label>' +
       '<div style="display:flex;align-items:center;gap:8px;">' +
-        '<input type="number" step="1" min="0" id="sumSplitQty_0" value="' + (qi != null ? qi : '') + '" placeholder="cant" title="Cantidad de unidades (opcional)" style="width:64px;padding:9px 8px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;text-align:center;color:var(--text-muted);">' +
-        '<span style="font-size:14px;color:var(--text-muted);">×&nbsp;$</span>' +
-        '<input type="number" step="0.01" min="0" id="sumSplitInp_0" oninput="_sumSplitOnInput(0)" value="' + (init.value != null ? init.value : '') + '" placeholder="' + total.toFixed(2) + '" style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;">' +
+        '<input type="number" step="1" min="0" id="sumSplitQty_0" oninput="_sumSplitOnInput(0)" value="' + (qi != null ? qi : '') + '" placeholder="1" title="Cantidad de unidades" style="width:56px;padding:9px 8px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;text-align:center;color:var(--text-muted);">' +
+        '<span style="font-size:13px;color:var(--text-muted);">× $</span>' +
+        '<input type="number" step="0.01" min="0" id="sumSplitInp_0" oninput="_sumSplitOnInput(0)" value="' + (ui != null ? _sumNumStr(ui) : '') + '" placeholder="' + total.toFixed(2) + '" title="Precio por unidad" style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;text-align:right;">' +
+        '<span style="font-size:13px;color:var(--text-muted);white-space:nowrap;">= <strong id="sumSplitTot_0" style="color:var(--text);">$' + totInit.toFixed(2) + '</strong></span>' +
       '</div>' +
-      '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Cantidad opcional (ej. 3 garrafones). Monto vacío = usa el total ($' + total.toFixed(2) + ').</div>' +
+      '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Precio por unidad × cantidad (ej. 3 × $6). Precio vacío = usa el total ($' + total.toFixed(2) + ').</div>' +
       suggestHtml;
+    _sumSplitUpdateRecon();
     return;
   }
 
-  // Factura compartida — un campo por item, reparto equitativo del resto.
-  const items = matched.map(m => { const init = initOf(m.nkw); return { nkw: m.nkw, kw: m.kw, touched: init.touched, _init: init.value }; });
+  // Factura compartida — cant × precio por item, reparto del resto.
+  const items = matched.map(m => { const init = initOf(m.nkw); const qi = _sumItemQty(e, m.nkw); return { nkw: m.nkw, kw: m.kw, touched: init.touched, _init: init.value, _initQty: qi, _initUnit: _sumUnitPrice(init.value, qi) }; });
   _sumSplitState = { egresoId: e.id, total, currentNkw, currentKw, multi: true, items };
 
   const rowsHtml = items.map((it, i) => {
     const isCur = it.nkw === currentNkw;
-    const initVal = it.touched && it._init != null ? it._init : '';
-    const qi = _sumItemQty(e, it.nkw);
-    return '<div style="display:flex;align-items:center;gap:6px;margin-top:6px;">' +
-      '<div style="flex:1;font-size:13px;font-weight:' + (isCur ? '700' : '500') + ';color:' + (isCur ? 'var(--text)' : 'var(--text-muted)') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(it.kw) + (isCur ? ' •' : '') + '</div>' +
-      '<input type="number" step="1" min="0" id="sumSplitQty_' + i + '" value="' + (qi != null ? qi : '') + '" placeholder="cant" title="Cantidad de unidades (opcional)" style="width:48px;padding:8px 6px;border:1px solid var(--border);border-radius:8px;font-size:12px;box-sizing:border-box;text-align:center;color:var(--text-muted);">' +
-      '<span style="font-size:12px;color:var(--text-muted);">×&nbsp;$</span>' +
-      '<input type="number" step="0.01" min="0" id="sumSplitInp_' + i + '" oninput="_sumSplitOnInput(' + i + ')" value="' + initVal + '" style="width:82px;padding:8px 10px;border:1px solid ' + (isCur ? 'var(--verde)' : 'var(--border)') + ';border-radius:8px;font-size:14px;box-sizing:border-box;text-align:right;">' +
+    const unitVal = it.touched && it._initUnit != null ? _sumNumStr(it._initUnit) : '';
+    const totInit = _sumLineTotal(it._initQty, it._initUnit || 0);
+    return '<div style="display:flex;align-items:center;gap:5px;margin-top:6px;">' +
+      '<div style="flex:1;min-width:0;font-size:13px;font-weight:' + (isCur ? '700' : '500') + ';color:' + (isCur ? 'var(--text)' : 'var(--text-muted)') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(it.kw) + (isCur ? ' •' : '') + '</div>' +
+      '<input type="number" step="1" min="0" id="sumSplitQty_' + i + '" oninput="_sumSplitOnInput(' + i + ')" value="' + (it._initQty != null ? it._initQty : '') + '" placeholder="1" title="Cantidad de unidades" style="width:42px;padding:8px 5px;border:1px solid var(--border);border-radius:8px;font-size:12px;box-sizing:border-box;text-align:center;color:var(--text-muted);">' +
+      '<span style="font-size:11px;color:var(--text-muted);">× $</span>' +
+      '<input type="number" step="0.01" min="0" id="sumSplitInp_' + i + '" oninput="_sumSplitOnInput(' + i + ')" value="' + unitVal + '" title="Precio por unidad" style="width:66px;padding:8px 8px;border:1px solid ' + (isCur ? 'var(--verde)' : 'var(--border)') + ';border-radius:8px;font-size:14px;box-sizing:border-box;text-align:right;">' +
+      '<span style="font-size:12px;color:var(--text-muted);white-space:nowrap;">= <strong id="sumSplitTot_' + i + '" style="color:var(--text);">$' + totInit.toFixed(2) + '</strong></span>' +
     '</div>';
   }).join('');
 
@@ -12765,6 +12811,11 @@ function _sumAddSuggestedKeyword(nkw, display) {
 
 // Al editar un campo: se marca como "tocado" y el resto (no tocados) se reparte
 // el saldo equitativamente.
+// Helpers de fila del modal (cant/precio/total).
+function _spQty(i)  { const el = document.getElementById('sumSplitQty_' + i); const q = el ? parseFloat(el.value) : NaN; return (q && q > 0) ? q : 1; }
+function _spUnit(i) { const el = document.getElementById('sumSplitInp_' + i); return el ? (parseFloat(el.value) || 0) : 0; }
+function _spLineTotal(i) { return _sumLineTotal(_spQty(i), _spUnit(i)); }
+
 function _sumSplitOnInput(i) {
   if (!_sumSplitState || !_sumSplitState.items[i]) return;
   _sumSplitState.items[i].touched = true;
@@ -12772,40 +12823,42 @@ function _sumSplitOnInput(i) {
   else _sumSplitUpdateRecon();
 }
 
-// Reparte el saldo (total − suma de los tocados) equitativamente entre los no
-// tocados y refresca la línea de conciliación.
+// Reparte el saldo (total − suma de los tocados) entre los no tocados fijando su
+// PRECIO UNITARIO para que (cant × precio) = su porción. Refresca la conciliación.
 function _sumSplitRebalance() {
   const st = _sumSplitState;
   if (!st || !st.multi) return;
-  const getVal = i => { const el = document.getElementById('sumSplitInp_' + i); return el ? (parseFloat(el.value) || 0) : 0; };
   let touchedSum = 0;
   const untouched = [];
-  st.items.forEach((it, i) => { if (it.touched) touchedSum += getVal(i); else untouched.push(i); });
+  st.items.forEach((it, i) => { if (it.touched) touchedSum += _spLineTotal(i); else untouched.push(i); });
 
   const remaining = Math.round((st.total - touchedSum) * 100) / 100;
   if (untouched.length) {
-    const share = Math.max(0, remaining) / untouched.length;
-    const base = Math.floor(share * 100) / 100;
+    const base = Math.floor(Math.max(0, remaining) / untouched.length * 100) / 100;
     untouched.forEach((idx, j) => {
-      let v = base;
-      if (j === untouched.length - 1) { // el último absorbe los centavos sobrantes
-        v = Math.round((Math.max(0, remaining) - base * (untouched.length - 1)) * 100) / 100;
-      }
+      let share = base;
+      if (j === untouched.length - 1) share = Math.round((Math.max(0, remaining) - base * (untouched.length - 1)) * 100) / 100;
       const el = document.getElementById('sumSplitInp_' + idx);
-      if (el) el.value = v.toFixed(2);
+      if (el) el.value = _sumNumStr(share / _spQty(idx));
     });
   }
   _sumSplitUpdateRecon();
 }
 
-// Línea "Asignado / Diferencia" con color según cuadre.
+// Línea "Asignado / Diferencia" + refresca el "= $total" de cada fila.
 function _sumSplitUpdateRecon() {
   const st = _sumSplitState;
-  const el = document.getElementById('sumEgSplitRecon');
-  if (!st || !el) return;
+  if (!st) return;
   let assigned = 0;
-  st.items.forEach((it, i) => { const inp = document.getElementById('sumSplitInp_' + i); assigned += inp ? (parseFloat(inp.value) || 0) : 0; });
+  st.items.forEach((it, i) => {
+    const lt = _spLineTotal(i);
+    assigned += lt;
+    const tot = document.getElementById('sumSplitTot_' + i);
+    if (tot) tot.textContent = '$' + lt.toFixed(2);
+  });
   assigned = Math.round(assigned * 100) / 100;
+  const el = document.getElementById('sumEgSplitRecon');
+  if (!el) return;
   const diff = Math.round((st.total - assigned) * 100) / 100;
   const ok = Math.abs(diff) < 0.01;
   const color = ok ? 'var(--verde-dark)' : '#c0392b';
@@ -12837,7 +12890,8 @@ function saveSumEgresoModal() {
     _sumSplitState.items.forEach((it, i) => {
       const el = document.getElementById('sumSplitInp_' + i);
       const raw = el ? (el.value || '').trim() : '';
-      montoOps.push({ nkw: it.nkw, value: raw === '' ? null : (parseFloat(raw) || 0) });
+      // El input es el PRECIO UNITARIO → se guarda el total (cant × precio).
+      montoOps.push({ nkw: it.nkw, value: raw === '' ? null : _spLineTotal(i) });
       const qel = document.getElementById('sumSplitQty_' + i);
       const qraw = qel ? (qel.value || '').trim() : '';
       qtyOps.push({ nkw: it.nkw, value: qraw === '' ? null : (parseFloat(qraw) || 0) });
