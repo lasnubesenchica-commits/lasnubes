@@ -3462,6 +3462,34 @@ function saveFotoEgreso(imageBase64, mimeType, egresoId, fecha) {
   }
 }
 
+// Red de seguridad para fechas de facturas: los recibos panameños usan
+// DD/MM/AAAA, pero a veces el OCR las lee como MM/DD y produce una fecha
+// FUTURA (imposible en una factura real, ej. "08/07/26" = 8-jul leído como
+// 7-ago). Si la fecha parseada es posterior a hoy y al intercambiar día↔mes
+// queda una fecha de calendario válida y pasada, se corrige. Si no se puede
+// corregir con seguridad, se deja tal cual. Determinístico (no depende de TZ).
+function _corregirFechaFuturaFactura(fechaStr) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaStr || '')) return fechaStr || '';
+  const hoy = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd');
+  if (fechaStr <= hoy) return fechaStr; // pasada o de hoy → OK
+  const yr = parseInt(fechaStr.slice(0, 4), 10);
+  const mm = parseInt(fechaStr.slice(5, 7), 10);
+  const dd = parseInt(fechaStr.slice(8, 10), 10);
+  // Intercambiar: el día viejo pasa a mes, el mes viejo pasa a día.
+  const newMonth = dd, newDay = mm;
+  if (newMonth < 1 || newMonth > 12) return fechaStr; // día viejo no es un mes válido
+  const bis = (yr % 4 === 0 && yr % 100 !== 0) || yr % 400 === 0;
+  const diasMes = [31, bis ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (newDay < 1 || newDay > diasMes[newMonth - 1]) return fechaStr; // día inválido para ese mes
+  const swapped = fechaStr.slice(0, 4) + '-' +
+    ('0' + newMonth).slice(-2) + '-' + ('0' + newDay).slice(-2);
+  if (swapped <= hoy) {
+    Logger.log('⚠ Fecha de factura futura ' + fechaStr + ' → ' + swapped + ' (corregida día↔mes)');
+    return swapped;
+  }
+  return fechaStr; // el swap también da futuro → no se puede corregir
+}
+
 function parseFacturaEgresoConClaude(imageBase64, mimeType) {
   try {
     const prompt = `Analiza esta imagen. Puede ser una factura comercial, un comprobante de Yappy, una transferencia ACH, un recibo o cualquier documento de pago.
@@ -3504,7 +3532,9 @@ Responde ÚNICAMENTE con JSON válido, sin texto adicional ni markdown:
   "items": [
     { "desc": "", "monto": 0, "categoria": "General" }
   ]
-}`;
+}
+
+IMPORTANTE — FORMATO DE FECHA (Panamá): los recibos y facturas usan formato DÍA/MES/AÑO (DD/MM/AAAA). Si ves la fecha como número tipo "08/07/26", "08-07-2026" o "080726", interprétala como día 08, mes 07 → 2026-07-08 (8 de julio), NUNCA como 7 de agosto. Además, una factura real jamás tiene fecha futura: si tu lectura da una fecha posterior a hoy, casi seguro invertiste el día y el mes.`;
 
     const payload = {
       model: 'claude-opus-4-6',
@@ -3528,7 +3558,8 @@ Responde ÚNICAMENTE con JSON válido, sin texto adicional ni markdown:
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'No JSON in response' })).setMimeType(ContentService.MimeType.JSON);
     const data = JSON.parse(jsonMatch[0]);
-    return ContentService.createTextOutput(JSON.stringify({ ok: true, proveedor: data.proveedor || '', fecha: data.fecha || '', monto: data.monto || 0, numFactura: data.numFactura || '', items: Array.isArray(data.items) ? data.items : [] })).setMimeType(ContentService.MimeType.JSON);
+    const fechaSegura = _corregirFechaFuturaFactura(data.fecha || '');
+    return ContentService.createTextOutput(JSON.stringify({ ok: true, proveedor: data.proveedor || '', fecha: fechaSegura, monto: data.monto || 0, numFactura: data.numFactura || '', items: Array.isArray(data.items) ? data.items : [] })).setMimeType(ContentService.MimeType.JSON);
   } catch(e) {
     return ContentService.createTextOutput(JSON.stringify({ ok: false, error: e.message })).setMimeType(ContentService.MimeType.JSON);
   }
