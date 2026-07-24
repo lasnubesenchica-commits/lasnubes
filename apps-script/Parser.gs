@@ -3217,7 +3217,12 @@ function enviarRecordatoriosCheckin() {
       estadoPago: data[i][20] || '',
       email:      data[i][21] || '',
       telefono:   data[i][23] || '',
-      tipo:       data[i][24] || 'noche'
+      tipo:       data[i][24] || 'noche',
+      // Cols 29/30/31: cortesía + horas custom. Sin esto, un check-in a las
+      // 12:30pm (ej. pasatarde convertido a noche) se anunciaría al default 2pm.
+      checkoutExtendido: data[i][28] === true || data[i][28] === 'TRUE' || data[i][28] === 'true' || data[i][28] === 1,
+      horaEntrada: _normalizeHora(data[i][29]),
+      horaSalida:  _normalizeHora(data[i][30])
     };
     if (!r.checkin) continue;
     if (r.estadoPago === 'CANCELADA') continue;
@@ -3231,7 +3236,7 @@ function enviarRecordatoriosCheckin() {
         const firstName  = (r.name || '').toString().trim().split(/\s+/)[0] || 'amigo';
         const cabinName  = BOT_CABIN_NAMES[r.cabin] || r.cabin;
         const fechas     = _fechasRangoCorto(meta.displayCheckin, meta.displayCheckout);
-        const checkinHr  = _horaPlantilla(r.tipo, 'checkin');
+        const checkinHr  = _horaPlantilla(r.tipo, 'checkin', r.checkoutExtendido, r.horaEntrada);
         sendWhatsAppTemplate(r.telefono, 'recordator_entrada', 'es_ES',
           [firstName, cabinName, fechas, checkinHr], null, 'ubicacion_' + r.id);
         waSent++;
