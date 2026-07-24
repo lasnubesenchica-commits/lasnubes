@@ -900,6 +900,69 @@ function _egresoColIndex(sheet, name) {
 // Compat: se usaba _egresoItemColIndex en varios lugares.
 function _egresoItemColIndex(sheet) { return _egresoColIndex(sheet, 'item'); }
 
+// ── Dedup de egresos (firma de canasta + códigos de referencia) ──────
+// Normaliza una descripción para comparar: minúsculas, sin acentos, sin
+// códigos de referencia [XXXX], espacios colapsados.
+function _egresoNormDesc(s) {
+  return (s || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/\[[^\]]*\]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+// Extrae códigos de referencia de una descripción: [WLPTY-41210925], [0000012525].
+function _egresoRefCodes(desc) {
+  const out = [];
+  const re = /\[([A-Za-z0-9]{4,}-[A-Za-z0-9]{4,}|[0-9]{6,})\]/g;
+  let m; while ((m = re.exec((desc || '').toString()))) out.push(m[1].toUpperCase());
+  return out;
+}
+// Firma de canasta: multiset ordenado de (descNorm|monto). Ignora fecha,
+// proveedor y códigos de referencia (el proveedor suele venir con grafías
+// distintas — "PriceSmart Panama" vs "PriceSmart Panama S.A."). Una canasta de
+// ≥2 items idénticos en descripción y monto es señal fuerte de la misma factura.
+function _egresoBasketSig(items) {
+  return items.map(it =>
+    _egresoNormDesc(it.desc) + '|' + ((Math.round((parseFloat(it.amount) || 0) * 100) / 100).toFixed(2))
+  ).sort().join('##');
+}
+// Busca si el batch entrante ya existe en la hoja. Devuelve el motivo (string) o
+// null. Detecta: (1) un código de referencia ya presente; (2) una canasta
+// idéntica (mismo proveedor, mismos items+montos) sin importar la fecha (≥2 items).
+function _egresoBatchDuplicate(egresoSheet, items) {
+  if (!items || !items.length) return null;
+  const data = egresoSheet.getDataRange().getValues();
+  const hdr  = data[0].map(h => (h || '').toString().toLowerCase().trim());
+  const iId = hdr.indexOf('id'), iDesc = hdr.indexOf('descripcion'), iMonto = hdr.indexOf('monto'), iProv = hdr.indexOf('proveedor');
+  if (iId < 0 || iDesc < 0) return null;
+
+  const existingCodes = {};   // codigo -> id
+  const groups = {};          // prefijo de id -> [{desc, amount, proveedor}]
+  for (let r = 1; r < data.length; r++) {
+    const id = (data[r][iId] || '').toString();
+    if (!id) continue;
+    const desc = (data[r][iDesc] || '').toString();
+    _egresoRefCodes(desc).forEach(c => { existingCodes[c] = id; });
+    const pfx = id.replace(/_\d+$/, '');
+    (groups[pfx] = groups[pfx] || []).push({ desc: desc, amount: data[r][iMonto], proveedor: iProv >= 0 ? data[r][iProv] : '' });
+  }
+
+  // 1) Código de referencia ya presente.
+  for (let k = 0; k < items.length; k++) {
+    const codes = _egresoRefCodes(items[k].desc);
+    for (let c = 0; c < codes.length; c++) {
+      if (existingCodes[codes[c]]) return 'código de referencia [' + codes[c] + '] ya registrado';
+    }
+  }
+  // 2) Canasta idéntica (solo si ≥2 items, para no bloquear pagos recurrentes de 1 línea).
+  if (items.length >= 2) {
+    const inSig = _egresoBasketSig(items);
+    for (const pfx in groups) {
+      if (groups[pfx].length === items.length && _egresoBasketSig(groups[pfx]) === inSig) {
+        return 'factura idéntica ya registrada (' + ((items[0].proveedor) || '') + ', ' + items.length + ' items)';
+      }
+    }
+  }
+  return null;
+}
+
 // Hoja con la lista de keywords a trackear en el seguimiento de Suministros.
 // Una columna 'Keyword' — el frontend maneja la lista y la reescribe entera.
 function _getSuministrosItemsSheet(ss) {
@@ -1679,6 +1742,16 @@ function doPost(e) {
       const items = payload.egresos;
       const ss = SpreadsheetApp.openById(SHEET_ID);
       const egresoSheet = _getEgresoSheetEnsured(ss);
+      // Rechazo server-side de duplicados (salvo que el usuario fuerce). Atrapa
+      // la MISMA factura re-subida con otra fecha/otro código.
+      if (!payload.force) {
+        const dupReason = _egresoBatchDuplicate(egresoSheet, items);
+        if (dupReason) {
+          return ContentService
+            .createTextOutput(JSON.stringify({ ok: false, status: 'duplicate', reason: dupReason }))
+            .setMimeType(ContentService.MimeType.JSON);
+        }
+      }
       const saved = [];
       items.forEach(eg => {
         egresoSheet.appendRow([

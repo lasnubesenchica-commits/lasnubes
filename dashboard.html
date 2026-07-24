@@ -8829,6 +8829,20 @@ function closeEgresoModal() {
   clearFoto();
 }
 
+// ── Helpers de dedup de egresos (espejo del backend) ──────────────
+function _egNormDesc(s) {
+  return (s || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/\[[^\]]*\]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function _egRefCodes(desc) {
+  const out = []; const re = /\[([A-Za-z0-9]{4,}-[A-Za-z0-9]{4,}|[0-9]{6,})\]/g;
+  let m; while ((m = re.exec((desc || '').toString()))) out.push(m[1].toUpperCase());
+  return out;
+}
+function _egBasketSig(items) {
+  return items.map(it => _egNormDesc(it.desc) + '|' + ((Math.round((parseFloat(it.amount != null ? it.amount : it.monto) || 0) * 100) / 100).toFixed(2))).sort().join('##');
+}
+
 async function saveEgreso() {
   const proveedor  = document.getElementById('eProveedor').value.trim();
   const date       = document.getElementById('eDate').value;
@@ -8851,6 +8865,38 @@ async function saveEgreso() {
       dupGroup = { matches, sum, key: 'N° factura ' + numFactura };
     }
   }
+  if (!dupGroup) {
+    // Código de referencia ya presente ([WLPTY-41210925], [0000012525]…).
+    const inCodes = {};
+    validItems.forEach(it => _egRefCodes(it.desc).forEach(c => inCodes[c] = 1));
+    if (Object.keys(inCodes).length) {
+      const hit = egresos.find(e => _egRefCodes(e.desc).some(c => inCodes[c]));
+      if (hit) {
+        const code = _egRefCodes(hit.desc).find(c => inCodes[c]);
+        const grp = egresos.filter(e => e.desc && e.desc.indexOf('[' + code + ']') !== -1);
+        dupGroup = { matches: grp, sum: grp.reduce((s,e)=>s+parseFloat(e.amount||0),0), key: 'código [' + code + ']' };
+      }
+    }
+  }
+  if (!dupGroup && validItems.length >= 2) {
+    // Huella de canasta: mismos items/montos SIN importar fecha ni proveedor
+    // (atrapa la misma factura re-subida con otra fecha/grafía de proveedor).
+    const inSig = _egBasketSig(validItems.map(i => ({ desc: i.desc, monto: i.monto })));
+    const groups = {};
+    egresos.forEach(e => {
+      const pfx = (e.id || '').toString().replace(/_\d+$/, '');
+      (groups[pfx] = groups[pfx] || []).push(e);
+    });
+    for (const pfx in groups) {
+      if (groups[pfx].length === validItems.length &&
+          _egBasketSig(groups[pfx].map(e => ({ desc: e.desc, monto: e.amount }))) === inSig) {
+        const grp = groups[pfx];
+        const d0 = grp[0].date ? formatDate(grp[0].date) : '';
+        dupGroup = { matches: grp, sum: grp.reduce((s,e)=>s+parseFloat(e.amount||0),0), key: 'factura idéntica' + (grp[0].proveedor ? ' de ' + grp[0].proveedor : '') + (d0 ? ' del ' + d0 : '') };
+        break;
+      }
+    }
+  }
   if (!dupGroup && proveedor) {
     // Fallback: misma fecha + proveedor + monto total exacto (±$0.01)
     const provLower = proveedor.toLowerCase();
@@ -8865,6 +8911,7 @@ async function saveEgreso() {
       }
     }
   }
+  let forceSave = false;
   if (dupGroup) {
     const msg = '⚠️ Posible duplicado detectado.\n\n' +
                 'Ya existe un egreso con: ' + dupGroup.key + '\n' +
@@ -8872,6 +8919,7 @@ async function saveEgreso() {
                 'Nuevo egreso: $' + totalMonto.toFixed(2) + '\n\n' +
                 '¿Guardar de todas formas?';
     if (!confirm(msg)) return;
+    forceSave = true;   // el usuario confirmó → forzar en el servidor
   }
 
   const saveBtn = document.getElementById('eSaveBtn');
@@ -8892,8 +8940,17 @@ async function saveEgreso() {
     let savedIds = egresoList.map(e => e.id);
     if (USE_SHEETS) {
       const res  = await fetch(SHEETS_API_URL, { method: 'POST',
-        body: JSON.stringify({ action: 'saveEgresos', egresos: egresoList }) });
-      const data = await res.json();
+        body: JSON.stringify({ action: 'saveEgresos', egresos: egresoList, force: forceSave }) });
+      let data = await res.json();
+      // El servidor rechazó por duplicado (algo que el chequeo local no atrapó).
+      if (!data.ok && data.status === 'duplicate') {
+        saveBtn.disabled = false; saveBtn.textContent = 'Guardar';
+        if (!confirm('⚠️ El sistema detectó que esto YA existe:\n' + (data.reason || 'factura duplicada') + '\n\n¿Guardar de todas formas?')) return;
+        saveBtn.disabled = true; saveBtn.textContent = 'Guardando...';
+        const res2 = await fetch(SHEETS_API_URL, { method: 'POST',
+          body: JSON.stringify({ action: 'saveEgresos', egresos: egresoList, force: true }) });
+        data = await res2.json();
+      }
       if (!data.ok) throw new Error(data.error || 'Error guardando');
       if (data.ids) savedIds = data.ids;
 
