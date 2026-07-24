@@ -12837,13 +12837,22 @@ function _buildSumSplitEditor(e, currentNkw, currentKw, total, overrides) {
   });
   // Asegurar que el item clickeado esté presente aunque cambie la lista.
   if (currentNkw && !seen[currentNkw]) matched.push({ nkw: currentNkw, kw: currentKw });
+  // Incluir keywords presentes en overrides (items recién agregados que aún no
+  // están en la descripción ni en MontosItem — ej. un "delivery" custom).
+  Object.keys(overrides).forEach(nkw => {
+    if (seen[nkw]) return;
+    seen[nkw] = 1;
+    const kw = (_suministrosKeywords || []).find(k => _sumNormalize(k) === nkw) || nkw;
+    matched.push({ nkw, kw });
+  });
 
   const montos = _sumParseMontos(e);
-  // Valor/touched inicial de un item: prioriza overrides, si no el guardado.
+  // Valor/cantidad/touched inicial de un item: prioriza overrides, si no el guardado.
   const initOf = nkw => {
     if (Object.prototype.hasOwnProperty.call(overrides, nkw)) return overrides[nkw];
     const v = montos[nkw];
-    return { value: (v == null || v === '') ? null : (parseFloat(v) || 0), touched: v != null };
+    const bad = (v == null || v === '' || v === false);
+    return { value: bad ? null : (parseFloat(v) || 0), qty: _sumItemQty(e, nkw), touched: (v != null && v !== false) };
   };
 
   // Bloque de sugerencias (palabras de la descripción no trackeadas).
@@ -12853,7 +12862,7 @@ function _buildSumSplitEditor(e, currentNkw, currentKw, total, overrides) {
     // Un solo item — campo simple.
     const only = matched[0] || { nkw: currentNkw, kw: currentKw };
     const init = initOf(only.nkw);
-    const qi = _sumItemQty(e, only.nkw);
+    const qi = init.qty;
     const ui = _sumUnitPrice(init.value, qi);
     const totInit = _sumLineTotal(qi, ui || 0);
     _sumSplitState = { egresoId: e.id, total, currentNkw, currentKw, multi: false, items: [{ nkw: only.nkw, kw: only.kw, touched: init.touched }] };
@@ -12866,13 +12875,14 @@ function _buildSumSplitEditor(e, currentNkw, currentKw, total, overrides) {
         '<span style="font-size:13px;color:var(--text-muted);white-space:nowrap;">= <strong id="sumSplitTot_0" style="color:var(--text);">$' + totInit.toFixed(2) + '</strong></span>' +
       '</div>' +
       '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Precio por unidad × cantidad (ej. 3 × $6). Precio vacío = usa el total ($' + total.toFixed(2) + ').</div>' +
+      _sumModalAddItemHtml() +
       suggestHtml;
     _sumSplitUpdateRecon();
     return;
   }
 
   // Factura compartida — cant × precio por item, reparto del resto.
-  const items = matched.map(m => { const init = initOf(m.nkw); const qi = _sumItemQty(e, m.nkw); return { nkw: m.nkw, kw: m.kw, touched: init.touched, _init: init.value, _initQty: qi, _initUnit: _sumUnitPrice(init.value, qi) }; });
+  const items = matched.map(m => { const init = initOf(m.nkw); const qi = init.qty; return { nkw: m.nkw, kw: m.kw, touched: init.touched, _init: init.value, _initQty: qi, _initUnit: _sumUnitPrice(init.value, qi) }; });
   _sumSplitState = { egresoId: e.id, total, currentNkw, currentKw, multi: true, items };
 
   const rowsHtml = items.map((it, i) => {
@@ -12893,9 +12903,26 @@ function _buildSumSplitEditor(e, currentNkw, currentKw, total, overrides) {
     '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">Esta factura cubre varios items. Ajusta cuánto corresponde a cada uno; el resto se reparte por igual entre los que faltan.</div>' +
     rowsHtml +
     '<div id="sumEgSplitRecon" style="font-size:12px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);"></div>' +
+    _sumModalAddItemHtml() +
     suggestHtml;
 
   _sumSplitRebalance(); // llena los no-tocados con el reparto equitativo
+}
+
+// Input "+ agregar item" del modal: suma un item al reparto aunque no esté en la
+// descripción (ej. un delivery). Reusa la lógica de agregar keyword sugerida.
+function _sumModalAddItemHtml() {
+  return '<div style="margin-top:8px;">' +
+    '<input list="suministroItemsList" placeholder="+ agregar item (ej. delivery)…" onchange="_sumModalAddItemInput(this)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();_sumModalAddItemInput(this);}" style="width:100%;font-size:12px;padding:6px 9px;border:1px dashed var(--border);border-radius:8px;background:var(--bg);color:var(--text);box-sizing:border-box;">' +
+  '</div>';
+}
+function _sumModalAddItemInput(inputEl) {
+  const raw = (inputEl.value || '').trim();
+  inputEl.value = '';
+  if (!raw) return;
+  const nkw = _sumNormalize(raw);
+  if (!nkw) return;
+  _sumAddSuggestedKeyword(nkw, raw);
 }
 
 // HTML del bloque de sugerencias: palabras de la descripción que podrían ser
@@ -12918,14 +12945,18 @@ function _sumSuggestBlockHtml(desc) {
 // queda sin tocar → toma el saldo no asignado.
 function _sumAddSuggestedKeyword(nkw, display) {
   if (!_sumSplitState) return;
-  // Capturar lo tecleado actualmente como overrides tocados.
+  // Capturar lo tecleado como overrides: value=TOTAL (cant×precio) y la cantidad.
   const overrides = {};
   _sumSplitState.items.forEach((it, i) => {
-    const el = document.getElementById('sumSplitInp_' + i);
-    if (!el) return;
-    const raw = (el.value || '').trim();
-    overrides[it.nkw] = { value: raw === '' ? null : (parseFloat(raw) || 0), touched: it.touched };
+    const uEl = document.getElementById('sumSplitInp_' + i);
+    const uRaw = uEl ? (uEl.value || '').trim() : '';
+    const qEl = document.getElementById('sumSplitQty_' + i);
+    const qRaw = qEl ? (qEl.value || '').trim() : '';
+    overrides[it.nkw] = { value: uRaw === '' ? null : _spLineTotal(i), qty: qRaw === '' ? null : (parseFloat(qRaw) || 0), touched: it.touched };
   });
+  // El item nuevo entra sin tocar (para que aparezca aunque no esté en la
+  // descripción y tome el saldo no asignado en el rebalanceo).
+  if (!overrides[nkw]) overrides[nkw] = { value: null, qty: null, touched: false };
   // Agregar la keyword (capitalizada) si no existe.
   const label = display ? (display.charAt(0).toUpperCase() + display.slice(1)) : nkw;
   _suministrosKeywords = _suministrosKeywords || [];
