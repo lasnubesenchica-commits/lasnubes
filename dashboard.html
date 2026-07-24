@@ -12002,6 +12002,16 @@ let _sumKeywordsLoading = false;
 let _sumBarMeta = {};              // barKey → { egresoId, kw, nkw, autoEnd, isLast, avg, effEnd } (poblado al renderizar)
 let _sumView = 'timeline';        // 'timeline' | 'detalle'
 let _sumSharedState = {};         // egresoId → { egresoId, total, items:[{nkw,kw,touched,_init}] } (panel de facturas compartidas en Detalle)
+let _sumSharedOpen = false;       // panel de facturas compartidas colapsable; default cerrado
+
+// Muestra/oculta el panel de facturas compartidas (sin re-render, conserva foco).
+function toggleSumShared() {
+  _sumSharedOpen = !_sumSharedOpen;
+  const body = document.getElementById('sumSharedBody');
+  const chev = document.getElementById('sumSharedChevron');
+  if (body) body.style.display = _sumSharedOpen ? '' : 'none';
+  if (chev) chev.textContent = _sumSharedOpen ? '▾' : '▸';
+}
 
 function _sumNormalize(s) {
   return (s || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -12436,12 +12446,14 @@ function _renderSumDetalle(wrap, kws) {
     shared.sort((a,b) => (b.e.date||'').localeCompare(a.e.date||''));
     if (shared.length) {
       let cards = '';
+      let sinRepartir = 0;
       shared.forEach(({ e, matched }) => {
         const egid = e.id, total = parseFloat(e.amount||0);
         const items = matched.map(m => { const ov = _sumItemAmount(e, m.nkw); const qv = _sumItemQty(e, m.nkw); return { nkw: m.nkw, kw: m.kw, touched: ov != null, _init: ov, _initQty: qv, _initUnit: _sumUnitPrice(ov, qv) }; });
         _sumSharedState[egid] = { egresoId: egid, total, items };
         _sharedIds.push(egid);
         const repartida = items.every(it => it.touched);
+        if (!repartida) sinRepartir++;
         const urls = (e.urlFoto||'').split('|').map(u=>u.trim()).filter(Boolean);
         const voucher = urls.length ? `<a href="${urls[0]}" target="_blank" onclick="event.stopPropagation();" title="Ver comprobante" style="text-decoration:none;font-size:13px;">🧾</a>` : '';
         const rows = items.map((it,i) => {
@@ -12473,12 +12485,19 @@ function _renderSumDetalle(wrap, kws) {
           </div>
         </div>`;
       });
+      const open = _sumSharedOpen;
+      const sinRepBadge = sinRepartir > 0
+        ? ` <span style="font-size:10px;font-weight:600;color:#8a6000;background:#fff3cd;padding:1px 7px;border-radius:9px;">⚠ ${sinRepartir} sin repartir</span>`
+        : '';
       panelHtml = `<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:14px;background:var(--bg);">
-        <div style="padding:11px 14px;border-bottom:1px solid var(--border);">
-          <div style="font-size:13px;font-weight:700;color:var(--text);">📌 Facturas compartidas (${shared.length})</div>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Vouchers que cubren varios items. Reparte cuánto corresponde a cada uno; el resto se reparte solo entre los que faltan.</div>
+        <div onclick="toggleSumShared()" title="Mostrar/ocultar" style="padding:11px 14px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px;">
+          <span id="sumSharedChevron" style="font-size:11px;color:var(--text-muted);width:10px;flex-shrink:0;">${open?'▾':'▸'}</span>
+          <div style="font-size:13px;font-weight:700;color:var(--text);">📌 Facturas compartidas (${shared.length})${sinRepBadge}</div>
         </div>
-        <div style="padding:6px 12px 12px;">${cards}</div>
+        <div id="sumSharedBody" style="display:${open?'':'none'};border-top:1px solid var(--border);">
+          <div style="padding:8px 14px 4px;font-size:11px;color:var(--text-muted);">Vouchers que cubren varios items. Reparte cuánto corresponde a cada uno; el resto se reparte solo entre los que faltan.</div>
+          <div style="padding:2px 12px 12px;">${cards}</div>
+        </div>
       </div>`;
     }
   }
