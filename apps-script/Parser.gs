@@ -850,7 +850,7 @@ function limpiarFechasInvalidas() {
 // (incluyendo 'Item', añadida para el seguimiento de Suministros). Migra
 // hojas viejas de 8 columnas agregando el header 'Item' en la col 9.
 function _getEgresoSheetEnsured(ss) {
-  const HEADERS = ['ID','Fecha','Descripcion','Monto','Categoria','Cabaña','Proveedor','URLFoto','Item','FechaFin','MontosItem'];
+  const HEADERS = ['ID','Fecha','Descripcion','Monto','Categoria','Cabaña','Proveedor','URLFoto','Item','FechaFin','MontosItem','CantidadesItem'];
   let sheet = ss.getSheetByName('Egresos');
   if (!sheet) {
     sheet = ss.insertSheet('Egresos');
@@ -879,6 +879,11 @@ function _getEgresoSheetEnsured(ss) {
   cur = sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0].map(h => (h||'').toString().toLowerCase().trim());
   if (cur.indexOf('montositem') === -1) {
     sheet.getRange(1, sheet.getLastColumn() + 1).setValue('MontosItem').setFontWeight('bold');
+  }
+  // Releer por si acabamos de agregar MontosItem.
+  cur = sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0].map(h => (h||'').toString().toLowerCase().trim());
+  if (cur.indexOf('cantidadesitem') === -1) {
+    sheet.getRange(1, sheet.getLastColumn() + 1).setValue('CantidadesItem').setFontWeight('bold');
   }
   return sheet;
 }
@@ -1020,7 +1025,8 @@ function doGet(e) {
         urlFoto:   headers.findIndex(h => h.includes('url') || h.includes('foto')),
         item:      headers.indexOf('item'),
         fechaFin:  headers.indexOf('fechafin'),
-        montosItem: headers.indexOf('montositem')
+        montosItem: headers.indexOf('montositem'),
+        cantidadesItem: headers.indexOf('cantidadesitem')
       };
       const egresos = eData.slice(1)
         .filter(r => r[idx.fecha] && r[idx.monto])
@@ -1043,6 +1049,7 @@ function doGet(e) {
                           ? Utilities.formatDate(r[idx.fechaFin], 'America/Panama', 'yyyy-MM-dd')
                           : (r[idx.fechaFin] || '').toString().slice(0,10)) : '',
             montosItem: idx.montosItem >= 0 ? (r[idx.montosItem] || '').toString() : '',
+            cantidadesItem: idx.cantidadesItem >= 0 ? (r[idx.cantidadesItem] || '').toString() : '',
             fromSheets: true
           };
         });
@@ -1765,11 +1772,12 @@ function doPost(e) {
       if (!sheet) return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'No Egresos sheet' }))
         .setMimeType(ContentService.MimeType.JSON);
-      // Asegurar columnas Item/FechaFin/MontosItem si el update las va a escribir.
-      if (eg.item !== undefined || eg.fechaFin !== undefined || eg.montosItem !== undefined) { _getEgresoSheetEnsured(ss); }
+      // Asegurar columnas Item/FechaFin/MontosItem/CantidadesItem si el update las va a escribir.
+      if (eg.item !== undefined || eg.fechaFin !== undefined || eg.montosItem !== undefined || eg.cantidadesItem !== undefined) { _getEgresoSheetEnsured(ss); }
       const itemCol       = eg.item       !== undefined ? _egresoColIndex(sheet, 'item')       : 0;
       const fechaFinCol   = eg.fechaFin   !== undefined ? _egresoColIndex(sheet, 'fechafin')   : 0;
       const montosItemCol = eg.montosItem !== undefined ? _egresoColIndex(sheet, 'montositem') : 0;
+      const cantItemCol   = eg.cantidadesItem !== undefined ? _egresoColIndex(sheet, 'cantidadesitem') : 0;
       const data = sheet.getDataRange().getValues();
       for (let i = 1; i < data.length; i++) {
         if (data[i][0].toString() === eg.id) {
@@ -1780,6 +1788,7 @@ function doPost(e) {
           if (eg.item      !== undefined && itemCol > 0)       sheet.getRange(i+1, itemCol).setValue(eg.item);
           if (eg.fechaFin  !== undefined && fechaFinCol > 0)   sheet.getRange(i+1, fechaFinCol).setValue(eg.fechaFin || '');
           if (eg.montosItem !== undefined && montosItemCol > 0) sheet.getRange(i+1, montosItemCol).setValue(eg.montosItem || '');
+          if (eg.cantidadesItem !== undefined && cantItemCol > 0) sheet.getRange(i+1, cantItemCol).setValue(eg.cantidadesItem || '');
           return ContentService
             .createTextOutput(JSON.stringify({ ok: true, status: 'updated' }))
             .setMimeType(ContentService.MimeType.JSON);

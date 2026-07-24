@@ -11964,6 +11964,20 @@ function _sumItemAmount(e, nkw) {
   return (v == null || v === '') ? null : (parseFloat(v) || 0);
 }
 
+// cantidadesItem es un JSON { nkw: cantidad } paralelo a montosItem: cuántas
+// unidades de ese item trae la factura (ej. 2 escobas). Opcional por item.
+function _sumParseCantidades(e) {
+  if (!e || !e.cantidadesItem) return {};
+  if (typeof e.cantidadesItem === 'object') return e.cantidadesItem;
+  try { const o = JSON.parse(e.cantidadesItem); return (o && typeof o === 'object') ? o : {}; }
+  catch(_) { return {}; }
+}
+function _sumItemQty(e, nkw) {
+  const m = _sumParseCantidades(e);
+  const v = m[nkw];
+  return (v == null || v === '') ? null : (parseFloat(v) || 0);
+}
+
 // ¿La keyword es "solo detalle" (no va en el timeline, ej. Delivery)?
 function _sumIsNoTimeline(kw) { return _sumNoTimeline.has(_sumNormalize(kw)); }
 
@@ -12303,17 +12317,18 @@ function _renderSumDetalle(wrap, kws) {
       let cards = '';
       shared.forEach(({ e, matched }) => {
         const egid = e.id, total = parseFloat(e.amount||0);
-        const items = matched.map(m => { const ov = _sumItemAmount(e, m.nkw); return { nkw: m.nkw, kw: m.kw, touched: ov != null, _init: ov }; });
+        const items = matched.map(m => { const ov = _sumItemAmount(e, m.nkw); const qv = _sumItemQty(e, m.nkw); return { nkw: m.nkw, kw: m.kw, touched: ov != null, _init: ov, _initQty: qv }; });
         _sumSharedState[egid] = { egresoId: egid, total, items };
         _sharedIds.push(egid);
         const repartida = items.every(it => it.touched);
         const urls = (e.urlFoto||'').split('|').map(u=>u.trim()).filter(Boolean);
         const voucher = urls.length ? `<a href="${urls[0]}" target="_blank" onclick="event.stopPropagation();" title="Ver comprobante" style="text-decoration:none;font-size:13px;">🧾</a>` : '';
         const rows = items.map((it,i) =>
-          `<div style="display:flex;align-items:center;gap:8px;margin-top:5px;">
+          `<div style="display:flex;align-items:center;gap:6px;margin-top:5px;">
             <div style="flex:1;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(it.kw)}</div>
-            <span style="font-size:13px;color:var(--text-muted);">$</span>
-            <input type="number" step="0.01" min="0" id="shInp_${egid}_${i}" oninput="_sumSharedOnInput('${egid}',${i})" onchange="_sumSharedOnChange('${egid}')" value="${it._init!=null?it._init:''}" placeholder="0.00" style="width:88px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-size:13px;box-sizing:border-box;text-align:right;">
+            <input type="number" step="1" min="0" id="shQty_${egid}_${i}" onchange="_sumSharedOnChange('${egid}')" value="${it._initQty!=null?it._initQty:''}" placeholder="cant" title="Cantidad de unidades (opcional)" style="width:48px;padding:7px 6px;border:1px solid var(--border);border-radius:8px;font-size:12px;box-sizing:border-box;text-align:center;color:var(--text-muted);">
+            <span style="font-size:12px;color:var(--text-muted);">×&nbsp;$</span>
+            <input type="number" step="0.01" min="0" id="shInp_${egid}_${i}" oninput="_sumSharedOnInput('${egid}',${i})" onchange="_sumSharedOnChange('${egid}')" value="${it._init!=null?it._init:''}" placeholder="0.00" style="width:82px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-size:13px;box-sizing:border-box;text-align:right;">
           </div>`).join('');
         const chip = repartida
           ? '<span style="font-size:10px;font-weight:600;color:var(--verde-dark);background:var(--verde-light);padding:2px 8px;border-radius:10px;white-space:nowrap;">✓ repartida</span>'
@@ -12354,8 +12369,9 @@ function _renderSumDetalle(wrap, kws) {
       .map(e => {
         const total = parseFloat(e.amount||0);
         const ov = _sumItemAmount(e, nkw);
+        const qty = _sumItemQty(e, nkw);
         return { id: e.id, date: e.date, amount: (ov != null ? ov : total), amountTotal: total,
-                 hasOverride: ov != null, desc: e.desc||'', fechaFin: (e.fechaFin||'').slice(0,10),
+                 hasOverride: ov != null, qty: qty, desc: e.desc||'', fechaFin: (e.fechaFin||'').slice(0,10),
                  proveedor: e.proveedor||'', urlFoto: e.urlFoto||'' };
       })
       .sort((a,b) => a.date.localeCompare(b.date));
@@ -12363,6 +12379,7 @@ function _renderSumDetalle(wrap, kws) {
     const gaps = []; for (let i = 1; i < ps.length; i++) gaps.push(_daysBetween(ps[i-1].date, ps[i].date));
     const avg = gaps.length ? Math.round(gaps.reduce((s,x)=>s+x,0)/gaps.length) : null;
     const totalKw = ps.reduce((s,p) => s + (p.amount||0), 0);
+    const totalQty = ps.reduce((s,p) => s + (p.qty||0), 0);
     granTotal += totalKw;
 
     // Filas + meta para el modal.
@@ -12389,11 +12406,16 @@ function _renderSumDetalle(wrap, kws) {
       const montoTxt = p.hasOverride
         ? `$${p.amount.toFixed(2)} <span style="color:var(--text-muted);font-size:11px;">de $${p.amountTotal.toFixed(2)}</span>`
         : `$${p.amount.toFixed(2)}`;
+      // Cantidad + precio unitario (si hay cantidad registrada).
+      const qtyTxt = (p.qty != null && p.qty > 0)
+        ? `${(Number.isInteger(p.qty)?p.qty:p.qty.toFixed(2))} <span style="color:var(--text-muted);font-size:10px;">($${(p.amount/p.qty).toFixed(2)} c/u)</span>`
+        : '<span style="color:var(--border);">—</span>';
 
       filas += `<tr onclick="openSumEgresoModal('${barKey}')" style="border-top:1px solid var(--border);cursor:pointer;" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">
         <td style="padding:7px 10px;white-space:nowrap;color:var(--text-muted);font-size:12px;">${formatDate(p.date)}</td>
-        <td style="padding:7px 10px;font-size:12px;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.desc||'—')}</td>
+        <td style="padding:7px 10px;font-size:12px;max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.desc||'—')}</td>
         <td style="padding:7px 10px;font-size:12px;color:var(--text-muted);white-space:nowrap;">${escapeHtml(p.proveedor||'—')}</td>
+        <td style="padding:7px 10px;text-align:right;white-space:nowrap;font-size:12px;">${qtyTxt}</td>
         <td style="padding:7px 10px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;">${montoTxt}</td>
         <td style="padding:7px 10px;text-align:right;white-space:nowrap;color:${durColor};font-size:12px;">${dias}d${isLast && !p.fechaFin ? ' <span style=\"color:var(--text-muted);\">(en curso)</span>' : ''}</td>
         <td style="padding:7px 10px;text-align:center;">${voucher}</td>
@@ -12401,7 +12423,7 @@ function _renderSumDetalle(wrap, kws) {
     });
 
     const sub = ps.length
-      ? `${ps.length} factura${ps.length!==1?'s':''}${avg ? ' · cada ~'+avg+'d' : ''}`
+      ? `${ps.length} factura${ps.length!==1?'s':''}${totalQty>0 ? ' · '+(Number.isInteger(totalQty)?totalQty:totalQty.toFixed(2))+' uds' : ''}${avg ? ' · cada ~'+avg+'d' : ''}`
       : 'sin compras aún';
 
     secciones += `<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:12px;background:var(--surface);">
@@ -12414,6 +12436,7 @@ function _renderSumDetalle(wrap, kws) {
           <th style="padding:6px 10px;font-weight:600;">Fecha</th>
           <th style="padding:6px 10px;font-weight:600;">Descripción</th>
           <th style="padding:6px 10px;font-weight:600;">Proveedor</th>
+          <th style="padding:6px 10px;font-weight:600;text-align:right;">Cant</th>
           <th style="padding:6px 10px;font-weight:600;text-align:right;">Monto</th>
           <th style="padding:6px 10px;font-weight:600;text-align:right;">Duró</th>
           <th style="padding:6px 10px;font-weight:600;text-align:center;">Voucher</th>
@@ -12491,7 +12514,12 @@ function _sumSharedOnChange(egid) {
     const raw = el ? (el.value || '').trim() : '';
     return { nkw: it.nkw, value: raw === '' ? null : (parseFloat(raw) || 0) };
   });
-  _persistSumEgreso(egid, { montoOps });   // re-renderiza el Detalle con lo guardado
+  const qtyOps = st.items.map((it, i) => {
+    const el = document.getElementById('shQty_' + egid + '_' + i);
+    const raw = el ? (el.value || '').trim() : '';
+    return { nkw: it.nkw, value: raw === '' ? null : (parseFloat(raw) || 0) };
+  });
+  _persistSumEgreso(egid, { montoOps, qtyOps });   // re-renderiza el Detalle con lo guardado
 }
 
 // Reparte el total en partes iguales entre todos los items y persiste.
@@ -12655,14 +12683,16 @@ function _buildSumSplitEditor(e, currentNkw, currentKw, total, overrides) {
     // Un solo item — campo simple.
     const only = matched[0] || { nkw: currentNkw, kw: currentKw };
     const init = initOf(only.nkw);
+    const qi = _sumItemQty(e, only.nkw);
     _sumSplitState = { egresoId: e.id, total, currentNkw, currentKw, multi: false, items: [{ nkw: only.nkw, kw: only.kw, touched: init.touched }] };
     wrap.innerHTML =
-      '<label style="display:block;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Monto de ' + escapeHtml(only.kw || 'este item') + '</label>' +
+      '<label style="display:block;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Cantidad y monto de ' + escapeHtml(only.kw || 'este item') + '</label>' +
       '<div style="display:flex;align-items:center;gap:8px;">' +
-        '<span style="font-size:15px;color:var(--text-muted);">$</span>' +
+        '<input type="number" step="1" min="0" id="sumSplitQty_0" value="' + (qi != null ? qi : '') + '" placeholder="cant" title="Cantidad de unidades (opcional)" style="width:64px;padding:9px 8px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;text-align:center;color:var(--text-muted);">' +
+        '<span style="font-size:14px;color:var(--text-muted);">×&nbsp;$</span>' +
         '<input type="number" step="0.01" min="0" id="sumSplitInp_0" oninput="_sumSplitOnInput(0)" value="' + (init.value != null ? init.value : '') + '" placeholder="' + total.toFixed(2) + '" style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;">' +
       '</div>' +
-      '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Esta factura es de un solo item. Vacío = usa el total ($' + total.toFixed(2) + ').</div>' +
+      '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Cantidad opcional (ej. 3 garrafones). Monto vacío = usa el total ($' + total.toFixed(2) + ').</div>' +
       suggestHtml;
     return;
   }
@@ -12674,10 +12704,12 @@ function _buildSumSplitEditor(e, currentNkw, currentKw, total, overrides) {
   const rowsHtml = items.map((it, i) => {
     const isCur = it.nkw === currentNkw;
     const initVal = it.touched && it._init != null ? it._init : '';
-    return '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;">' +
+    const qi = _sumItemQty(e, it.nkw);
+    return '<div style="display:flex;align-items:center;gap:6px;margin-top:6px;">' +
       '<div style="flex:1;font-size:13px;font-weight:' + (isCur ? '700' : '500') + ';color:' + (isCur ? 'var(--text)' : 'var(--text-muted)') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(it.kw) + (isCur ? ' •' : '') + '</div>' +
-      '<span style="font-size:14px;color:var(--text-muted);">$</span>' +
-      '<input type="number" step="0.01" min="0" id="sumSplitInp_' + i + '" oninput="_sumSplitOnInput(' + i + ')" value="' + initVal + '" style="width:96px;padding:8px 10px;border:1px solid ' + (isCur ? 'var(--verde)' : 'var(--border)') + ';border-radius:8px;font-size:14px;box-sizing:border-box;text-align:right;">' +
+      '<input type="number" step="1" min="0" id="sumSplitQty_' + i + '" value="' + (qi != null ? qi : '') + '" placeholder="cant" title="Cantidad de unidades (opcional)" style="width:48px;padding:8px 6px;border:1px solid var(--border);border-radius:8px;font-size:12px;box-sizing:border-box;text-align:center;color:var(--text-muted);">' +
+      '<span style="font-size:12px;color:var(--text-muted);">×&nbsp;$</span>' +
+      '<input type="number" step="0.01" min="0" id="sumSplitInp_' + i + '" oninput="_sumSplitOnInput(' + i + ')" value="' + initVal + '" style="width:82px;padding:8px 10px;border:1px solid ' + (isCur ? 'var(--verde)' : 'var(--border)') + ';border-radius:8px;font-size:14px;box-sizing:border-box;text-align:right;">' +
     '</div>';
   }).join('');
 
@@ -12800,14 +12832,18 @@ function saveSumEgresoModal() {
   const fecha = (fechaVal !== fechaFinPrefill) ? fechaVal : undefined;
 
   const montoOps = [];
+  const qtyOps = [];
   if (_sumSplitState) {
     _sumSplitState.items.forEach((it, i) => {
       const el = document.getElementById('sumSplitInp_' + i);
       const raw = el ? (el.value || '').trim() : '';
       montoOps.push({ nkw: it.nkw, value: raw === '' ? null : (parseFloat(raw) || 0) });
+      const qel = document.getElementById('sumSplitQty_' + i);
+      const qraw = qel ? (qel.value || '').trim() : '';
+      qtyOps.push({ nkw: it.nkw, value: qraw === '' ? null : (parseFloat(qraw) || 0) });
     });
   }
-  _persistSumEgreso(egresoId, { fechaFin: fecha, montoOps });
+  _persistSumEgreso(egresoId, { fechaFin: fecha, montoOps, qtyOps });
   closeSumEgresoModal();
 }
 
@@ -12821,6 +12857,7 @@ function resetSumEgresoFechaFin() {
 // Persiste cambios del egreso desde el timeline de Suministros.
 // opts.fechaFin: string ('' = automático).
 // opts.montoOps: [{ nkw, value }] — value=null borra la porción de ese item.
+// opts.qtyOps:   [{ nkw, value }] — cantidad (unidades) por item; null borra.
 function _persistSumEgreso(egresoId, opts) {
   const e = egresos.find(x => x.id === egresoId);
   if (!e) return;
@@ -12840,6 +12877,17 @@ function _persistSumEgreso(egresoId, opts) {
     const json = Object.keys(montos).length ? JSON.stringify(montos) : '';
     e.montosItem = json;
     payload.montosItem = json;
+  }
+
+  if (opts.qtyOps && opts.qtyOps.length) {
+    const cants = _sumParseCantidades(e);
+    opts.qtyOps.forEach(({ nkw, value }) => {
+      if (value == null) delete cants[nkw];
+      else cants[nkw] = value;
+    });
+    const json = Object.keys(cants).length ? JSON.stringify(cants) : '';
+    e.cantidadesItem = json;
+    payload.cantidadesItem = json;
   }
 
   save();
