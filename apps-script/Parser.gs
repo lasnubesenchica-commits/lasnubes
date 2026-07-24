@@ -901,11 +901,18 @@ function _getSuministrosItemsSheet(ss) {
   let sh = ss.getSheetByName('SuministrosItems');
   if (!sh) {
     sh = ss.insertSheet('SuministrosItems');
-    sh.getRange(1,1,1,1).setValues([['Keyword']]).setFontWeight('bold');
+    sh.getRange(1,1,1,2).setValues([['Keyword','NoTimeline']]).setFontWeight('bold');
     sh.setFrozenRows(1);
     // Semilla inicial de keywords sugeridos.
     const seed = ['Papel','Café','Agua','Gas','Hielo','Cloro','Desinfectante','Detergente','Jabón','Kerosene'];
     sh.getRange(2,1,seed.length,1).setValues(seed.map(k => [k]));
+    return sh;
+  }
+  // Auto-migración: asegurar la columna 2 NoTimeline (keywords que NO van en el
+  // timeline, ej. Delivery — no es un insumo consumible, solo se ve en Detalle).
+  const hdr = sh.getRange(1,1,1,Math.max(sh.getLastColumn(),1)).getValues()[0];
+  if ((hdr[1]||'').toString().toLowerCase().trim() !== 'notimeline') {
+    sh.getRange(1,2).setValue('NoTimeline').setFontWeight('bold');
   }
   return sh;
 }
@@ -1048,10 +1055,18 @@ function doGet(e) {
     if (action === 'getSuministrosItems') {
       const ss = SpreadsheetApp.openById(SHEET_ID);
       const sh = _getSuministrosItemsSheet(ss);
-      const rows = sh.getLastRow() > 1 ? sh.getRange(2,1,sh.getLastRow()-1,1).getValues() : [];
-      const keywords = rows.map(r => (r[0]||'').toString().trim()).filter(Boolean);
+      const rows = sh.getLastRow() > 1 ? sh.getRange(2,1,sh.getLastRow()-1,2).getValues() : [];
+      const keywords = [];
+      const noTimeline = [];
+      rows.forEach(r => {
+        const kw = (r[0]||'').toString().trim();
+        if (!kw) return;
+        keywords.push(kw);
+        const flag = r[1];
+        if (flag === true || flag === 'TRUE' || flag === 'true' || flag === 1 || flag === '1') noTimeline.push(kw);
+      });
       return ContentService
-        .createTextOutput(JSON.stringify({ ok: true, keywords }))
+        .createTextOutput(JSON.stringify({ ok: true, keywords, noTimeline }))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -1638,9 +1653,15 @@ function doPost(e) {
       const ss = SpreadsheetApp.openById(SHEET_ID);
       const sh = _getSuministrosItemsSheet(ss);
       // Limpiar filas de datos y reescribir la lista completa que manda el front.
-      if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,1).clearContent();
+      if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,2).clearContent();
       const kws = (payload.keywords || []).map(k => (k||'').toString().trim()).filter(Boolean);
-      if (kws.length) sh.getRange(2,1,kws.length,1).setValues(kws.map(k => [k]));
+      // Keywords marcadas "solo detalle / no timeline" (ej. Delivery), sin acentos.
+      const noSet = {};
+      (payload.noTimeline || []).forEach(k => { noSet[(k||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim()] = 1; });
+      if (kws.length) {
+        const norm = k => k.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+        sh.getRange(2,1,kws.length,2).setValues(kws.map(k => [k, noSet[norm(k)] ? true : false]));
+      }
       return ContentService
         .createTextOutput(JSON.stringify({ ok: true, count: kws.length }))
         .setMimeType(ContentService.MimeType.JSON);

@@ -11940,6 +11940,7 @@ function setContabTab(tab) {
 // antes de la próxima compra (o en `fechaFin` si la editaste). La última barra
 // llega a hoy; si superó la duración típica se pinta 🔴 (toca recomprar).
 let _suministrosKeywords = null;   // cache de la lista (null = no cargada aún)
+let _sumNoTimeline = new Set();    // keywords normalizadas "solo detalle" (no van en el timeline, ej. Delivery)
 let _sumKeywordsLoading = false;
 let _sumBarMeta = {};              // barKey → { egresoId, kw, nkw, autoEnd, isLast, avg, effEnd } (poblado al renderizar)
 let _sumView = 'timeline';        // 'timeline' | 'detalle'
@@ -11962,6 +11963,9 @@ function _sumItemAmount(e, nkw) {
   const v = m[nkw];
   return (v == null || v === '') ? null : (parseFloat(v) || 0);
 }
+
+// ¿La keyword es "solo detalle" (no va en el timeline, ej. Delivery)?
+function _sumIsNoTimeline(kw) { return _sumNoTimeline.has(_sumNormalize(kw)); }
 
 // ¿El egreso pertenece al item (keyword normalizada)? Match por descripción O
 // por asignación manual en MontosItem (permite agregar un item al reparto de una
@@ -12006,21 +12010,36 @@ async function _loadSuministrosKeywords() {
       const r = await fetch(SHEETS_API_URL + '?action=getSuministrosItems&_=' + Date.now());
       const j = await r.json();
       _suministrosKeywords = (j && j.ok && Array.isArray(j.keywords)) ? j.keywords : [];
+      _sumNoTimeline = new Set((j && Array.isArray(j.noTimeline) ? j.noTimeline : []).map(_sumNormalize));
     } else {
       let ls = null; try { ls = JSON.parse(localStorage.getItem('ln_sum_keywords') || 'null'); } catch(_) {}
       _suministrosKeywords = Array.isArray(ls) ? ls : ['Papel higiénico','Café','Agua','Gas','Hielo','Cloro','Desinfectante','Detergente','Jabón','Kerosene'];
+      let ln = null; try { ln = JSON.parse(localStorage.getItem('ln_sum_notimeline') || 'null'); } catch(_) {}
+      _sumNoTimeline = new Set(Array.isArray(ln) ? ln.map(_sumNormalize) : []);
     }
   } catch(e) { _suministrosKeywords = []; }
   finally { _sumKeywordsLoading = false; }
 }
 
 function _saveSuministrosKeywords() {
-  try { localStorage.setItem('ln_sum_keywords', JSON.stringify(_suministrosKeywords || [])); } catch(_) {}
+  const noTimeline = (_suministrosKeywords || []).filter(k => _sumNoTimeline.has(_sumNormalize(k)));
+  try {
+    localStorage.setItem('ln_sum_keywords', JSON.stringify(_suministrosKeywords || []));
+    localStorage.setItem('ln_sum_notimeline', JSON.stringify(noTimeline));
+  } catch(_) {}
   if (USE_SHEETS) {
     fetch(SHEETS_API_URL, { method: 'POST',
-      body: JSON.stringify({ action: 'saveSuministrosItems', keywords: _suministrosKeywords || [] })
+      body: JSON.stringify({ action: 'saveSuministrosItems', keywords: _suministrosKeywords || [], noTimeline })
     }).catch(e => console.warn('save keywords', e));
   }
+}
+
+// Alterna si una keyword va en el timeline o es "solo detalle" (ej. Delivery).
+function toggleSumNoTimeline(kw) {
+  const n = _sumNormalize(kw);
+  if (_sumNoTimeline.has(n)) _sumNoTimeline.delete(n); else _sumNoTimeline.add(n);
+  _saveSuministrosKeywords();
+  renderSuministrosTab();
 }
 
 function addSuministroKeyword() {
@@ -12053,11 +12072,18 @@ async function renderSuministrosTab() {
   }
   const kws = _suministrosKeywords || [];
   _refreshSuministroItemsDatalist();
-  chips.innerHTML = kws.map(kw =>
-    `<span style="display:inline-flex;align-items:center;gap:6px;background:var(--card-bg);border:1px solid var(--border);border-radius:999px;padding:5px 6px 5px 12px;font-size:13px;color:var(--text);">
-      ${escapeHtml(kw)}
-      <button onclick="removeSuministroKeyword('${kw.replace(/'/g, "\\'")}')" title="Quitar" style="border:none;background:var(--border);color:var(--text-muted);width:18px;height:18px;border-radius:50%;cursor:pointer;font-size:12px;line-height:1;">&times;</button>
-    </span>`).join('') +
+  chips.innerHTML = kws.map(kw => {
+    const noTl = _sumIsNoTimeline(kw);
+    const esc = kw.replace(/'/g, "\\'");
+    const tglIcon  = noTl ? '📋' : '📊';
+    const tglTitle = noTl ? 'Solo en Detalle (no va en el timeline) · clic para incluirlo en el timeline'
+                          : 'En el timeline · clic para marcarlo como solo-detalle (ej. Delivery)';
+    return `<span style="display:inline-flex;align-items:center;gap:5px;background:${noTl?'#f3ede0':'var(--card-bg)'};border:1px ${noTl?'dashed':'solid'} var(--border);border-radius:999px;padding:5px 6px 5px 12px;font-size:13px;color:var(--text);">
+      ${escapeHtml(kw)}${noTl?'<span style="font-size:10px;color:var(--text-muted);">· solo detalle</span>':''}
+      <button onclick="toggleSumNoTimeline('${esc}')" title="${tglTitle}" style="border:none;background:transparent;cursor:pointer;font-size:12px;line-height:1;padding:0 1px;">${tglIcon}</button>
+      <button onclick="removeSuministroKeyword('${esc}')" title="Quitar" style="border:none;background:var(--border);color:var(--text-muted);width:18px;height:18px;border-radius:50%;cursor:pointer;font-size:12px;line-height:1;">&times;</button>
+    </span>`;
+  }).join('') +
     `<span style="display:inline-flex;align-items:center;gap:4px;">
       <input id="sumKwInput" type="text" placeholder="+ agregar item…" list="suministroItemsList"
         onkeydown="if(event.key==='Enter'){event.preventDefault();addSuministroKeyword();}"
@@ -12071,7 +12097,7 @@ async function renderSuministrosTab() {
   wrap.style.display    = view === 'timeline' ? '' : 'none';
   if (detWrap) detWrap.style.display = view === 'detalle' ? '' : 'none';
   if (view === 'detalle' && detWrap) _renderSumDetalle(detWrap, kws);
-  else _renderSumTimeline(wrap, kws);
+  else _renderSumTimeline(wrap, kws.filter(kw => !_sumIsNoTimeline(kw)));  // timeline excluye "solo detalle" (ej. Delivery)
 }
 
 // Alterna entre la vista Timeline y la vista Detalle por item.
@@ -12380,7 +12406,7 @@ function _renderSumDetalle(wrap, kws) {
 
     secciones += `<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:12px;background:var(--surface);">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:11px 14px;background:var(--bg);border-bottom:1px solid var(--border);">
-        <div style="font-size:14px;font-weight:700;color:var(--text);">${escapeHtml(kw)}</div>
+        <div style="font-size:14px;font-weight:700;color:var(--text);">${escapeHtml(kw)}${_sumIsNoTimeline(kw)?' <span style="font-size:10px;font-weight:600;color:var(--text-muted);background:#f3ede0;padding:1px 7px;border-radius:9px;vertical-align:middle;">solo detalle</span>':''}</div>
         <div style="font-size:12px;color:var(--text-muted);">${sub} &nbsp;·&nbsp; <strong style="color:var(--text);font-size:14px;">$${totalKw.toFixed(2)}</strong></div>
       </div>
       ${ps.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
