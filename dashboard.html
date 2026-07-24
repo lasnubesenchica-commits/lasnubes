@@ -7954,8 +7954,8 @@ async function saveReservation() {
   // Para pasatarde/pasadía, salida debe igual a entrada
   if (tipoForm === 'pasatarde' || tipoForm === 'pasadia') formCheckout = formCheckin;
   const _stored = _storedFromForm(formCheckin, formCheckout, tipoForm);
-  const checkin  = _stored.checkin;
-  const checkout = _stored.checkout;
+  let checkin  = _stored.checkin;
+  let checkout = _stored.checkout;
   const persons  = document.getElementById('fPersons').value;
   const origin   = document.getElementById('fOrigin').value;
   const deposit  = parseFloat(document.getElementById('fDeposit').value) || 0;
@@ -8110,22 +8110,36 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
   const comentarios = document.getElementById('fComentarios').value.trim();
   const notificar   = document.getElementById('fNotificarActualizacion').checked;
   const notificarWA = !!(document.getElementById('fNotificarWhatsApp') || {}).checked;
-  const tipo = (document.getElementById('fTipo') || {}).value || 'noche';
+  let tipo = (document.getElementById('fTipo') || {}).value || 'noche';
   const checkoutExtendido = !!(document.getElementById('fCheckoutExtendido') || {}).checked;
   // Horas custom (opcional). "" = usar default del tipo. El backend normaliza.
-  const horaEntrada = ((document.getElementById('fHoraEntrada') || {}).value || '').trim();
+  let horaEntrada = ((document.getElementById('fHoraEntrada') || {}).value || '').trim();
   const horaSalida  = ((document.getElementById('fHoraSalida')  || {}).value || '').trim();
-  // Guard: en pasatarde/pasadía (un solo día) la salida debe ser posterior a la
-  // entrada. Bloquear un horario imposible (ej. sale 8am, entra 12:30pm) que
-  // rompería la ocupación y el email de confirmación.
+  // Conversión pasatarde/pasadía → noche cuando la hora de salida "rompe" el
+  // concepto de un solo día. Un pasatarde/pasadía ocurre en un día: si el admin
+  // pone una salida ≤ la entrada (ej. sale 8am, entra 12:30pm), esa salida solo
+  // tiene sentido AL DÍA SIGUIENTE → es un hospedaje regular (noche) con
+  // check-out especial temprano. Se convierte automáticamente conservando la
+  // hora de entrada del tipo original y la salida custom (ahora sobre el día
+  // siguiente).
   if (horaSalida && (tipo === 'pasatarde' || tipo === 'pasadia')) {
     const _defHoras = TIPO_DEFAULT_HORAS[tipo] || TIPO_DEFAULT_HORAS.noche;
     const _toMin = s => { const p = String(s).split(':'); return (parseInt(p[0],10)||0)*60 + (parseInt(p[1],10)||0); };
     const _entradaRef = horaEntrada || _defHoras.entrada;
     if (_toMin(horaSalida) <= _toMin(_entradaRef)) {
-      alert('La hora de salida (' + _fmtHora12(horaSalida) + ') no puede ser anterior o igual a la entrada (' + _fmtHora12(_entradaRef) + ') en un ' + (tipo === 'pasatarde' ? 'pasatarde' : 'pasadía') + ', que ocurre en un solo día.\n\nCorrige la hora de salida o déjala en blanco para usar el default del tipo.');
-      const _hsEl = document.getElementById('fHoraSalida'); if (_hsEl) _hsEl.focus();
-      return;
+      // Día real de llegada del huésped (el form está en real-day).
+      const _arrival = formCheckin;
+      checkin  = _arrival;
+      checkout = _addDaysISO(_arrival, 1);   // noche: sale al día siguiente
+      // Conservar la hora de entrada del tipo original (12:30pm pasatarde / 9am
+      // pasadía) como override, para no caer al default de noche (2pm).
+      if (!horaEntrada) horaEntrada = _entradaRef;
+      const _tipoPrev = tipo;
+      tipo = 'noche';
+      const _tipoEl = document.getElementById('fTipo');
+      if (_tipoEl) { _tipoEl.value = 'noche'; _tipoEl.dataset.prevTipo = 'noche'; }
+      showToast('Convertida a hospedaje (noche): la salida ' + _fmtHora12(horaSalida) + ' aplica al día siguiente.');
+      console.log('[convert] ' + _tipoPrev + '→noche por hora-salida ' + horaSalida + ' ≤ entrada ' + _entradaRef + '; checkin=' + checkin + ' checkout=' + checkout);
     }
   }
   const reservation = { id, name, email, telefono, pagador, cabin, checkin, checkout, persons, origin, deposit, amount,
