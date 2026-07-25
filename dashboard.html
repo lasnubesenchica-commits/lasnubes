@@ -12383,27 +12383,21 @@ function _renderSumTimeline(wrap, kws) {
       if (inWin(p.date)) {
         bars += `<div onclick="${openCall}" title="${escapeHtml(tip)}" style="position:absolute;left:${x1-4}px;top:${barTop}px;width:10px;height:10px;border-radius:50%;background:${color};border:2px solid var(--surface);box-shadow:0 0 0 1px ${color};cursor:pointer;"></div>`;
       }
+      // Leyenda de la barra: el total de ESA compra (su porción), con cantidad
+      // si la hay. Anclada al inicio de la barra (punto de compra).
+      const qtyB = (p.qty != null && p.qty > 0) ? ((Number.isInteger(p.qty) ? p.qty : p.qty.toFixed(2)) + ' · ') : '';
+      const leyenda = `${qtyB}$${(p.amount||0).toFixed(2)}`;
+      bars += `<div title="${escapeHtml(leyenda)}" style="position:absolute;left:${x1}px;top:${barTop+18}px;font-size:10px;color:var(--text-muted);white-space:nowrap;">${escapeHtml(leyenda)}</div>`;
     });
 
     const totalGastado = ps.reduce((s,p) => s + (p.amount||0), 0);
     const totalQty     = ps.reduce((s,p) => s + (p.qty||0), 0);
 
-    // Resumen debajo de la barra, alineado al extremo derecho de la línea (fin
-    // de la última compra): "[qty] keyword: $total". La cantidad viene de lo que
-    // el usuario segrega (CantidadesItem); si no hay, se omite y queda solo
-    // "keyword: $total" — sirve de pista de qué falta ajustar.
-    if (ps.length) {
-      const last = ps[ps.length - 1];
-      let lastEnd = last.fechaFin || todayISO;
-      if (lastEnd < last.date) lastEnd = last.date;
-      const lastEndX = xOf(lastEnd);
-      const qtyStr = totalQty > 0 ? (Number.isInteger(totalQty) ? totalQty : totalQty.toFixed(2)) + ' ' : '';
-      const resumen = `${qtyStr}${r.kw}: $${totalGastado.toFixed(2)}`;
-      bars += `<div title="${escapeHtml(resumen)}" style="position:absolute;right:${trackW - lastEndX}px;top:${barTop + 18}px;text-align:right;white-space:nowrap;font-size:11px;color:var(--text-muted);padding-right:3px;">${escapeHtml(resumen)}</div>`;
-    }
-
+    // Bajo el keyword (columna Item): total ACUMULADO del período — cantidad
+    // total (si hay) y monto total del item.
+    const qtyStr = totalQty > 0 ? (Number.isInteger(totalQty) ? totalQty : totalQty.toFixed(2)) : '';
     const sub = ps.length
-      ? (ps.length + ' compra' + (ps.length !== 1 ? 's' : '') + (avg ? ' · ~' + avg + 'd' : '') + ' · $' + totalGastado.toFixed(0))
+      ? (ps.length + ' compra' + (ps.length !== 1 ? 's' : '') + (qtyStr ? ' · ' + qtyStr + ' uds' : '') + (avg ? ' · ~' + avg + 'd' : '') + ' · $' + totalGastado.toFixed(2))
       : '<span style="color:#c0956a;">sin compras aún</span>';
     rowsHtml += `<div style="display:flex;border-top:1px solid var(--border);min-height:${rowH}px;">
       <div style="position:sticky;left:0;z-index:2;width:${leftW}px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);padding:6px 10px;box-sizing:border-box;">
