@@ -6435,25 +6435,39 @@ function _renderWidgetContent(recent, prev, dStartStr, dEndStr, days, isCustom, 
 
   const neto     = arr => arr.reduce((s,r) => s + parseFloat(r.neto || r.amount || 0), 0);
   const recibido = arr => arr.reduce((s,r) => s + montoRecibido(r), 0);
+  // Por cobrar REAL: suma de los faltantes reserva por reserva. NO se netea
+  // contra sobrepagos de otras — antes `total - recibido` permitía que un
+  // voucher inflado tapara una reserva sin cobrar y el widget dijera "cobrado".
+  const porCobrar = arr => arr.reduce((s,r) => {
+    if (SIN_PAGO_ORIGINS.includes(r.origin)) return s;   // cortesías etc. no se cobran
+    const falta = parseFloat(r.neto || r.amount || 0) - montoRecibido(r);
+    return s + (falta > 0.005 ? falta : 0);
+  }, 0);
+  // Reservas que SÍ deberían tener monto (excluye cortesías/bloqueos).
+  const facturables = arr => arr.filter(r => !SIN_PAGO_ORIGINS.includes(r.origin)).length;
 
-  const netoR     = neto(recent),     netoP     = neto(prev);
-  const recibidoR = recibido(recent), recibidoP = recibido(prev);
-  const diffPct   = netoP > 0 ? Math.round((recibidoR - recibidoP) / netoP * 100) : null;
+  const netoR = neto(recent), netoP = neto(prev);
 
   const byOrigin = (arr, orig) => arr.filter(r => r.origin === orig);
   const byCabin  = (arr, cab)  => arr.filter(r => r.cabin  === cab);
 
-  function widget(label, montoTotal, montoRecibido, count, trend, key) {
+  function widget(label, arr, count, trend, key) {
+    const montoTotal    = neto(arr);
+    const montoRecibido = recibido(arr);
+    const pendiente     = porCobrar(arr);
+    const nFact         = facturables(arr);
     const trendHtml = trend !== null
       ? `<div style="font-size:11px;margin-top:4px;color:${trend>=0?'var(--verde-dark)':'#c0392b'};">
-           ${trend>=0?'▲':'▼'} ${Math.abs(trend)}% vs sem. anterior
+           ${trend>=0?'▲':'▼'} ${Math.abs(trend)}% vs período anterior
          </div>`
       : '';
     const isActive = activeWidget === key;
-    const porCobrar = montoTotal - montoRecibido;
-    const subHtml = porCobrar > 0.01
-      ? `<div style="font-size:11px;color:#c0392b;margin-top:2px;">por cobrar $${porCobrar.toFixed(2)}</div>`
-      : `<div style="font-size:11px;color:var(--verde-dark);margin-top:2px;">✓ cobrado</div>`;
+    // 3 estados: hay saldo pendiente · no hay monto registrado · todo cobrado.
+    const subHtml = pendiente > 0.01
+      ? `<div style="font-size:11px;color:#c0392b;margin-top:2px;">por cobrar $${pendiente.toFixed(2)}</div>`
+      : (montoTotal <= 0.005 && nFact > 0
+          ? `<div style="font-size:11px;color:#c0956a;margin-top:2px;" title="Hay reservas sin monto registrado en la hoja">⚠ sin monto registrado</div>`
+          : `<div style="font-size:11px;color:var(--verde-dark);margin-top:2px;">✓ cobrado</div>`);
     return `<div onclick="setWidgetFilter('${key}')" style="background:${isActive?'var(--verde-light)':'var(--surface)'};border:2px solid ${isActive?'var(--verde-dark)':'var(--border)'};border-radius:14px;padding:14px 16px;cursor:pointer;transition:all 0.15s;">
       <div style="font-size:11px;color:${isActive?'var(--verde-dark)':'var(--text-muted)'};text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">${label}</div>
       <div style="font-size:20px;font-family:'Cormorant Garamond',serif;font-weight:600;color:var(--text);">$${montoRecibido.toFixed(2)}</div>
@@ -6469,12 +6483,6 @@ function _renderWidgetContent(recent, prev, dStartStr, dEndStr, days, isCustom, 
   const azulNeto      = neto(byCabin(recent,'azul'));
   const lilaNeto      = neto(byCabin(recent,'lila'));
 
-  const airbnbRec     = recibido(byOrigin(recent,'Airbnb'));
-  const directaRec    = recibido(byOrigin(recent,'Directa'));
-  const verdeRec      = recibido(byCabin(recent,'verde'));
-  const azulRec       = recibido(byCabin(recent,'azul'));
-  const lilaRec       = recibido(byCabin(recent,'lila'));
-
   const airbnbPrev    = neto(byOrigin(prev,'Airbnb'));
   const directaPrev   = neto(byOrigin(prev,'Directa'));
   const verdePrev     = neto(byCabin(prev,'verde'));
@@ -6484,12 +6492,12 @@ function _renderWidgetContent(recent, prev, dStartStr, dEndStr, days, isCustom, 
   const pct = (a,b) => b > 0 ? Math.round((a-b)/b*100) : (a>0 ? 100 : null);
 
   document.getElementById('widgetsRow').innerHTML = [
-    widget('Total',   netoR,       recibidoR,   recent.length+' reservas', diffPct, 'all'),
-    widget('Airbnb',  airbnbNeto,  airbnbRec,   byOrigin(recent,'Airbnb').length+' reservas',  pct(airbnbNeto,airbnbPrev),   'airbnb'),
-    widget('Directas',directaNeto, directaRec,  byOrigin(recent,'Directa').length+' reservas', pct(directaNeto,directaPrev), 'directa'),
-    widget('Paseo',   verdeNeto,   verdeRec,    byCabin(recent,'verde').length+' res.', pct(verdeNeto,verdePrev), 'verde'),
-    widget('Portal',  azulNeto,    azulRec,     byCabin(recent,'azul').length+' res.',  pct(azulNeto,azulPrev),   'azul'),
-    widget('Puente',  lilaNeto,    lilaRec,     byCabin(recent,'lila').length+' res.',  pct(lilaNeto,lilaPrev),   'lila'),
+    widget('Total',   recent,                    recent.length+' reservas', pct(netoR, netoP), 'all'),
+    widget('Airbnb',  byOrigin(recent,'Airbnb'), byOrigin(recent,'Airbnb').length+' reservas',  pct(airbnbNeto,airbnbPrev),   'airbnb'),
+    widget('Directas',byOrigin(recent,'Directa'),byOrigin(recent,'Directa').length+' reservas', pct(directaNeto,directaPrev), 'directa'),
+    widget('Paseo',   byCabin(recent,'verde'),   byCabin(recent,'verde').length+' res.', pct(verdeNeto,verdePrev), 'verde'),
+    widget('Portal',  byCabin(recent,'azul'),    byCabin(recent,'azul').length+' res.',  pct(azulNeto,azulPrev),   'azul'),
+    widget('Puente',  byCabin(recent,'lila'),    byCabin(recent,'lila').length+' res.',  pct(lilaNeto,lilaPrev),   'lila'),
   ].join('');
 
   // Update section label. Priority: caller-provided override (nuevo flujo
@@ -7777,7 +7785,23 @@ async function _saveMultiCabinReservation() {
   // Voucher: uno solo, compartido entre todas las reservas.
   const pv = pendingVoucher;
   const montoVoucherNum = pv ? _voucherMontoNumber(pv.monto) : 0;
-  const montoVoucherStr = montoVoucherNum > 0 ? '$' + montoVoucherNum.toFixed(2) : '';
+
+  // Reparto por hermana. El monto ya se prorratea por noche; el VOUCHER se
+  // reparte en la misma proporción. Antes se copiaba el voucher COMPLETO en
+  // cada hermana, así que un pago único de $150 en 2 cabañas se contaba como
+  // $300 cobrados (inflaba "recibido" en Ingresos y tapaba saldos pendientes).
+  const groupAmounts = groups.map(g => +(g.nights.length * perNight).toFixed(2));
+  const _fix = (arr, target) => {   // el último absorbe el redondeo
+    if (!arr.length) return arr;
+    const s = +arr.reduce((a,v) => a + v, 0).toFixed(2);
+    arr[arr.length-1] = +(arr[arr.length-1] + (target - s)).toFixed(2);
+    return arr;
+  };
+  _fix(groupAmounts, totalAmount);
+  const groupVouchers = _fix(
+    groups.map((g, i) => totalAmount > 0 ? +(montoVoucherNum * groupAmounts[i] / totalAmount).toFixed(2) : 0),
+    montoVoucherNum
+  );
   const sinPago = SIN_PAGO_ORIGINS;
   let estadoBase = '';
   if (origin === 'Airbnb') estadoBase = 'PAGA';
@@ -7790,7 +7814,7 @@ async function _saveMultiCabinReservation() {
     const groupCheckin  = g.nights[0];
     const lastNight     = g.nights[g.nights.length - 1];
     const groupCheckout = _addDaysISO(lastNight, 1);
-    const groupAmount   = +(g.nights.length * perNight).toFixed(2);
+    const groupAmount   = groupAmounts[idx];
     const groupDeposit  = idx === 0 ? deposit : 0;
     const id = groupId + '-' + (idx+1);
     const cabinsList = groups.map(x => CABIN_NAMES[x.cabin] || x.cabin).join(' + ');
@@ -7805,7 +7829,7 @@ async function _saveMultiCabinReservation() {
       confirmCode: id, serviceFee: 0, neto: groupAmount,
       fechaReserva,
       codTransferencia: codNuevo,
-      montoVoucher: pv ? montoVoucherStr : '',
+      montoVoucher: (pv && groupVouchers[idx] > 0) ? '$' + groupVouchers[idx].toFixed(2) : '',
       estadoPago: estadoBase,
       comentarios,
       tipo: 'noche',
@@ -9289,21 +9313,25 @@ function renderContabilidad() {
   document.getElementById('statIngresos').textContent = `$${totalIn.toFixed(2)}`;
 
   // Breakdown por tipo entre las directas (para mostrar mix en el contador)
-  const tipoStats = { noche:0, pasatarde:0, pasadia:0, early:0, late:0 };
-  let tipoIngresos = { noche:0, pasatarde:0, pasadia:0, early:0, late:0 };
+  // Se acumula DINÁMICAMENTE: cualquier tipo entra solo. Antes era un dict fijo
+  // {noche,pasatarde,pasadia,early,late} y el guard `!== undefined` descartaba
+  // en silencio los tipos ausentes (ej. `pasanoche`), dejando reservas fuera del
+  // desglose y del Mix aunque su monto sí sumaba al total de ingresos.
+  const tipoStats = {};
+  let tipoIngresos = {};
   if (origenFilter !== 'Airbnb') {
     filteredDirectas.forEach(r => {
       const t = r.tipo || 'noche';
-      if (tipoStats[t] !== undefined) {
-        tipoStats[t]++;
-        tipoIngresos[t] += parseFloat(r.amount||0);
-      }
+      tipoStats[t]    = (tipoStats[t]    || 0) + 1;
+      tipoIngresos[t] = (tipoIngresos[t] || 0) + parseFloat(r.amount||0);
     });
   }
-  const tipoLabels = { noche:'noche', pasatarde:'pasatarde', pasadia:'pasadía', early:'early', late:'late' };
+  const tipoLabels = { noche:'noche', pasatarde:'pasatarde', pasadia:'pasadía', pasanoche:'pasanoche', early:'early', late:'late' };
+  const TIPO_PLURAL = { noche:1, pasatarde:1, pasadia:1, pasanoche:1 };
   const breakdownParts = Object.keys(tipoStats)
     .filter(k => tipoStats[k] > 0)
-    .map(k => tipoStats[k] + ' ' + tipoLabels[k] + (tipoStats[k]>1 && (k === 'pasadia' || k === 'pasatarde' || k === 'noche') ? 's' : ''));
+    .sort((a,b) => tipoStats[b] - tipoStats[a])
+    .map(k => tipoStats[k] + ' ' + (tipoLabels[k] || k) + (tipoStats[k]>1 && TIPO_PLURAL[k] ? 's' : ''));
 
   const totalCount = (origenFilter !== 'Directa' ? filteredPagos.length : 0)
                    + (origenFilter !== 'Airbnb'  ? filteredDirectas.length : 0);
@@ -9382,14 +9410,18 @@ function renderContabilidad() {
         noche:           { label:'Noches',           color:'#6a9e62' },
         pasatarde:       { label:'Pasatarde',  color:'#f59e0b' },
         pasadia:         { label:'Pasadía',    color:'#ea580c' },
+        pasanoche:       { label:'Pasanoche',  color:'#0891b2' },
         early:           { label:'Early check-in',   color:'#6366f1' },
         late:            { label:'Late check-out',   color:'#ec4899' }
       };
       const fmt = v => '$' + v.toLocaleString('es-PA',{minimumFractionDigits:0,maximumFractionDigits:0});
-      mixGrid.innerHTML = Object.keys(tipoMeta)
+      // Se itera sobre los tipos PRESENTES (no sobre tipoMeta) para que un tipo
+      // nuevo/desconocido siempre se muestre, con estilo neutro de fallback.
+      mixGrid.innerHTML = Object.keys(tipoStats)
         .filter(k => tipoStats[k] > 0)
+        .sort((a,b) => (tipoIngresos[b]||0) - (tipoIngresos[a]||0))
         .map(k => {
-          const m = tipoMeta[k];
+          const m = tipoMeta[k] || { label: k, color:'#94a3b8' };
           const c = tipoStats[k];
           const r = tipoIngresos[k];
           const pctRev = totalDirRev > 0 ? Math.round(r / totalDirRev * 100) : 0;
