@@ -2484,16 +2484,14 @@
       <!-- Widgets: mayores gastos por item (Suministros / Servicios) -->
       <div id="sumTopWidgets" style="margin-bottom:14px;"></div>
 
-      <!-- Leyenda colapsable (sutil, cerrada por defecto) -->
+      <!-- Palabras clave (keywords + explicación), colapsable, cerrado por defecto -->
       <details style="margin-bottom:14px;background:var(--bg);border:1px solid var(--border);border-radius:10px;">
-        <summary style="cursor:pointer;padding:8px 14px;font-size:12px;color:var(--text-muted);user-select:none;">ℹ️ ¿Cómo funciona el tracker de suministros?</summary>
-        <div style="font-size:13px;color:var(--text-muted);line-height:1.5;padding:0 14px 12px;">Agrega los items que quieres seguir (agua, gas, papel higiénico…). El sistema busca esa palabra en la descripción de tus egresos de <strong>Suministros</strong> y <strong>Servicios</strong>. La vista <strong>Timeline</strong> arma una línea de tiempo: 🟢 barra = tenías stock, ● = compra, y la barra se corta el día antes de la siguiente compra. La última barra llega a hoy; si ya pasó su duración típica se pone 🔴 (toca recomprar). La vista <strong>Detalle por item</strong> lista las facturas de cada keyword con su total. Toca cualquier barra o fila para ver o editar la factura.</div>
+        <summary style="cursor:pointer;padding:8px 14px;font-size:12px;font-weight:600;color:var(--text-muted);user-select:none;">🔑 Palabras clave<span id="sumKwCount" style="font-weight:400;"></span></summary>
+        <div style="padding:2px 14px 12px;">
+          <div id="sumKeywordChips" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;"></div>
+          <div style="font-size:12.5px;color:var(--text-muted);line-height:1.5;border-top:1px dashed var(--border);padding-top:10px;">Agrega los items que quieres seguir (agua, gas, papel higiénico…). El sistema busca esa palabra en la descripción de tus egresos de <strong>Suministros</strong> y <strong>Servicios</strong>. La vista <strong>Timeline</strong> arma una línea de tiempo: 🟢 barra = tenías stock, ● = compra, y la barra se corta el día antes de la siguiente compra. La última barra llega a hoy; si ya pasó su duración típica se pone 🔴 (toca recomprar). La vista <strong>Detalle por item</strong> lista las facturas de cada keyword con su total. Toca cualquier barra o fila para ver o editar la factura.</div>
+        </div>
       </details>
-
-      <!-- Gestor de keywords -->
-      <div style="margin-bottom:14px;">
-        <div id="sumKeywordChips" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;"></div>
-      </div>
 
       <!-- Toggle de vista + total sin cuadrar (esquina superior derecha) -->
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
@@ -12342,6 +12340,8 @@ async function renderSuministrosTab() {
   }
   const kws = _suministrosKeywords || [];
   _refreshSuministroItemsDatalist();
+  const kwCountEl = document.getElementById('sumKwCount');
+  if (kwCountEl) kwCountEl.textContent = kws.length ? ` (${kws.length})` : '';
   chips.innerHTML = kws.map(kw => {
     const noTl = _sumIsNoTimeline(kw);
     const esc = kw.replace(/'/g, "\\'");
