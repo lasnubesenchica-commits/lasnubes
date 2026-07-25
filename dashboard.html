@@ -12533,10 +12533,12 @@ function _renderSumTimeline(wrap, kws) {
       laneRight[lane] = x1 + estW;
       if (lane > maxLane) maxLane = lane;
       const legTop = barTop + 18 + lane * 14;
-      if (lane > 0) {                                          // hilito punto → leyenda escalonada
-        bars += `<div style="position:absolute;left:${x1}px;top:${barTop+10}px;width:1px;height:${legTop - (barTop+10)}px;background:var(--border);"></div>`;
+      if (lane > 0) {                                          // hilito punto → leyenda escalonada (con el color de la compra)
+        bars += `<div style="position:absolute;left:${x1-1}px;top:${barTop+9}px;width:2px;height:${legTop - (barTop+9) + 1}px;background:${color};opacity:.45;border-radius:1px;"></div>`;
       }
-      bars += `<div title="${escapeHtml(legendText)}" style="position:absolute;left:${x1}px;top:${legTop}px;font-size:10px;color:var(--text-muted);white-space:nowrap;">${check}${escapeHtml(leyenda)}</div>`;
+      // un puntito del color de la compra antepone la leyenda escalonada para reforzar el vínculo
+      const dot = lane > 0 ? `<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:${color};vertical-align:middle;margin-right:4px;"></span>` : '';
+      bars += `<div title="${escapeHtml(legendText)}" style="position:absolute;left:${x1}px;top:${legTop}px;font-size:10px;color:var(--text-muted);white-space:nowrap;">${dot}${check}${escapeHtml(leyenda)}</div>`;
     });
 
     // Alto del row: crece si hubo leyendas escalonadas en sub-líneas.
