@@ -12473,12 +12473,13 @@ function _renderSumTimeline(wrap, kws) {
     const avg = gaps.length ? Math.round(gaps.reduce((s,x)=>s+x,0)/gaps.length) : null;
 
     let bars = '';
-    // Apilado de leyendas por cluster: cuando varias compras caen muy juntas
-    // (sus puntos a menos de _CLUSTER_GAP px) sus leyendas se apilan en una
-    // lista vertical alineada a la izquierda del grupo, cada una con su puntito
-    // de color, en vez de encimarse en diagonal.
-    const _CLUSTER_GAP = 62;
-    let _clusterStartX = -1e9, _clusterLane = 0, maxLane = 0;
+    // Gantt multi-línea: cada compra ocupa una "lane" (sub-línea) dentro del row.
+    // Si dos compras se solaparían (su barra o su leyenda), la segunda baja a la
+    // lane de abajo, empezando en su propia fecha, con su leyenda debajo de SU
+    // barra. Asignación greedy: la lane más alta libre.
+    const laneRight = [];        // borde derecho ocupado por lane (barra o leyenda, lo que llegue más lejos)
+    const _laneH = 24;           // alto por lane (barra + leyenda)
+    let maxLane = 0;
     ps.forEach((p, i) => {
       const isLast = i === ps.length - 1;
       let end = p.fechaFin || (isLast ? todayISO : _addDays(ps[i+1].date, -1));
@@ -12501,49 +12502,42 @@ function _renderSumTimeline(wrap, kws) {
       const montoTip = p.hasOverride ? `$${p.amount.toFixed(2)} de $${p.amountTotal.toFixed(2)}` : `$${p.amount.toFixed(2)}`;
       const tip = `${p.desc} · ${formatDate(p.date)} → ${formatDate(end)} · ${montoTip} · click para ver/editar`;
       const openCall = `openSumEgresoModal('${barKey}')`;
-      // barra de stock (clampeada a la ventana) — clickeable
-      bars += `<div onclick="${openCall}" class="sum-bar" title="${escapeHtml(tip)}" style="position:absolute;left:${x1}px;top:${barTop}px;width:${w}px;height:10px;background:${color};border-radius:5px;opacity:.85;cursor:pointer;"></div>`;
-      // gap "sin stock" si fechaFin quedó antes de la próxima compra
-      if (!isLast && p.fechaFin) {
-        const nextStart = ps[i+1].date;
-        if (end < _addDays(nextStart, -1)) {
-          const gx1 = xOf(_addDays(end, 1)), gx2 = xOf(_addDays(nextStart, -1));
-          const gw = Math.max(2, gx2 - gx1);
-          bars += `<div title="Sin stock ${formatDate(_addDays(end,1))} → ${formatDate(_addDays(nextStart,-1))}" style="position:absolute;left:${gx1}px;top:${barTop+2}px;width:${gw}px;height:6px;background:repeating-linear-gradient(45deg,#e57373 0 4px,transparent 4px 8px);border-radius:3px;"></div>`;
-        }
-      }
-      // punto de compra — solo si la fecha de compra cae dentro de la ventana. Clickeable.
-      if (inWin(p.date)) {
-        bars += `<div onclick="${openCall}" title="${escapeHtml(tip)}" style="position:absolute;left:${x1-4}px;top:${barTop}px;width:10px;height:10px;border-radius:50%;background:${color};border:2px solid var(--surface);box-shadow:0 0 0 1px ${color};cursor:pointer;"></div>`;
-      }
-      // Leyenda de la barra: total de ESA compra "[qty] × $monto" (la cantidad
-      // siempre, aunque sea 1). Se antepone un ganchito ✓ si la factura está
-      // verificada. Cuando varias compras caen muy juntas, sus leyendas se
-      // apilan en una lista vertical alineada a la izquierda del grupo (cada una
-      // con su puntito de color), en vez de encimarse.
+      // Texto de la leyenda (se calcula antes para medir su ancho y asignar lane).
       const qtyVal = (p.qty != null && p.qty > 0) ? p.qty : 1;
       const qtyStr = Number.isInteger(qtyVal) ? qtyVal : qtyVal.toFixed(2);
       const leyenda = `${qtyStr} × $${(p.amount||0).toFixed(2)}`;
       const verificado = _sumEgresoVerificado({ desc: p.desc, montosItem: p.montosItem }, allNkw);
       const check = verificado ? '<span style="color:#5a8a52;font-weight:700;">✓</span> ' : '';
       const legendText = (verificado ? '✓ ' : '') + leyenda;
-      // Asignar lane + x de la leyenda según cluster.
-      let lane, lx, enCluster;
-      if (x1 - _clusterStartX < _CLUSTER_GAP) {          // sigue el cluster actual → apila debajo
-        _clusterLane++; lane = _clusterLane; lx = _clusterStartX; enCluster = true;
-      } else {                                            // compra aislada / arranca cluster nuevo
-        _clusterStartX = x1; _clusterLane = 0; lane = 0; lx = x1;
-        const nx = (i + 1 < ps.length) ? xOf(ps[i+1].date) : Infinity;
-        enCluster = (nx - x1 < _CLUSTER_GAP);             // ¿la próxima compra cae dentro del grupo?
-      }
+      const estW = legendText.length * 6 + 12;             // ancho aproximado del texto de la leyenda
+      // Lane: la más alta libre donde no choque la barra ni la leyenda con lo ya puesto.
+      const occRight = Math.max(x2, x1 + estW);
+      let lane = 0;
+      while (lane < laneRight.length && laneRight[lane] + 4 > x1) lane++;
+      laneRight[lane] = occRight;
       if (lane > maxLane) maxLane = lane;
-      const legTop = barTop + 18 + lane * 14;
-      const dot = enCluster ? `<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:${color};vertical-align:middle;margin-right:5px;"></span>` : '';
-      bars += `<div title="${escapeHtml(legendText)}" style="position:absolute;left:${lx}px;top:${legTop}px;font-size:10px;color:var(--text-muted);white-space:nowrap;">${dot}${check}${escapeHtml(leyenda)}</div>`;
+      const barY = barTop + lane * _laneH;
+      // barra de stock (clampeada a la ventana) — clickeable
+      bars += `<div onclick="${openCall}" class="sum-bar" title="${escapeHtml(tip)}" style="position:absolute;left:${x1}px;top:${barY}px;width:${w}px;height:10px;background:${color};border-radius:5px;opacity:.85;cursor:pointer;"></div>`;
+      // gap "sin stock" si fechaFin quedó antes de la próxima compra
+      if (!isLast && p.fechaFin) {
+        const nextStart = ps[i+1].date;
+        if (end < _addDays(nextStart, -1)) {
+          const gx1 = xOf(_addDays(end, 1)), gx2 = xOf(_addDays(nextStart, -1));
+          const gw = Math.max(2, gx2 - gx1);
+          bars += `<div title="Sin stock ${formatDate(_addDays(end,1))} → ${formatDate(_addDays(nextStart,-1))}" style="position:absolute;left:${gx1}px;top:${barY+2}px;width:${gw}px;height:6px;background:repeating-linear-gradient(45deg,#e57373 0 4px,transparent 4px 8px);border-radius:3px;"></div>`;
+        }
+      }
+      // punto de compra — solo si la fecha de compra cae dentro de la ventana. Clickeable.
+      if (inWin(p.date)) {
+        bars += `<div onclick="${openCall}" title="${escapeHtml(tip)}" style="position:absolute;left:${x1-4}px;top:${barY}px;width:10px;height:10px;border-radius:50%;background:${color};border:2px solid var(--surface);box-shadow:0 0 0 1px ${color};cursor:pointer;"></div>`;
+      }
+      // Leyenda debajo de SU barra, empezando en la fecha de la compra.
+      bars += `<div title="${escapeHtml(legendText)}" style="position:absolute;left:${x1}px;top:${barY+12}px;font-size:10px;color:var(--text-muted);white-space:nowrap;">${check}${escapeHtml(leyenda)}</div>`;
     });
 
-    // Alto del row: crece si hubo leyendas escalonadas en sub-líneas.
-    const rowHeight = Math.max(rowH, barTop + 18 + (maxLane + 1) * 14 + 4);
+    // Alto del row: crece con el número de sub-líneas (lanes) usadas.
+    const rowHeight = Math.max(rowH, barTop + maxLane * _laneH + 26);
 
     const totalGastado = ps.reduce((s,p) => s + (p.amount||0), 0);
     const totalQty     = ps.reduce((s,p) => s + (p.qty||0), 0);
