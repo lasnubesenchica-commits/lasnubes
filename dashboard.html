@@ -12050,6 +12050,20 @@ function _sumItemQty(e, nkw) {
   return (v == null || v === '') ? null : (parseFloat(v) || 0);
 }
 
+// ¿Este egreso está "verificado" (cuadrado)? Para el ganchito ✓ del timeline.
+//  - Factura de UN solo item (matchea 1 keyword): siempre true, no hay nada
+//    que verificar (fue un yappy directo a un item).
+//  - Factura COMPARTIDA (matchea ≥2 keywords): true solo si TODOS los items
+//    matcheados ya tienen su porción repartida (`_sumItemAmount != null`),
+//    igual criterio que el chip "✓ repartida" del panel de compartidas.
+// `allNkw` = keywords trackeadas normalizadas. `e` puede ser el egreso o un
+// objeto liviano { desc, montosItem }.
+function _sumEgresoVerificado(e, allNkw) {
+  const matched = (allNkw || []).filter(n => _sumMatchesKw(e, n));
+  if (matched.length <= 1) return true;                 // un solo item → nada que verificar
+  return matched.every(n => _sumItemAmount(e, n) != null); // compartida → cuadra si todos repartidos
+}
+
 // Descarta una factura de un item (cuando el keyword aparece en la descripción
 // por error, ej. "café" en "cafetería reunión"). Marca MontosItem[nkw]=false, lo
 // que la excluye del timeline, del detalle y de los totales de ese item. No borra
@@ -12277,6 +12291,10 @@ function _renderSumTimeline(wrap, kws) {
     return;
   }
 
+  // Todas las keywords trackeadas (no solo las del timeline) → para detectar si
+  // una factura es compartida (matchea ≥2 items) al calcular el ganchito ✓.
+  const allNkw = (_suministrosKeywords || []).map(_sumNormalize).filter(Boolean);
+
   // Compras por keyword (búsqueda en descripción, sin acentos).
   const rows = kws.map(kw => {
     const nkw = _sumNormalize(kw);
@@ -12286,7 +12304,7 @@ function _renderSumTimeline(wrap, kws) {
         const total = parseFloat(e.amount||0);
         const ov = _sumItemAmount(e, nkw); // porción asignada a este item (o null)
         return { id: e.id, date: e.date, amount: (ov != null ? ov : total), amountTotal: total,
-                 hasOverride: ov != null, qty: _sumItemQty(e, nkw), desc: e.desc||'', fechaFin: (e.fechaFin||'').slice(0,10) };
+                 hasOverride: ov != null, qty: _sumItemQty(e, nkw), desc: e.desc||'', montosItem: e.montosItem, fechaFin: (e.fechaFin||'').slice(0,10) };
       })
       .sort((a,b) => a.date.localeCompare(b.date));
     return { kw, nkw, ps };
@@ -12383,11 +12401,17 @@ function _renderSumTimeline(wrap, kws) {
       if (inWin(p.date)) {
         bars += `<div onclick="${openCall}" title="${escapeHtml(tip)}" style="position:absolute;left:${x1-4}px;top:${barTop}px;width:10px;height:10px;border-radius:50%;background:${color};border:2px solid var(--surface);box-shadow:0 0 0 1px ${color};cursor:pointer;"></div>`;
       }
-      // Leyenda de la barra: el total de ESA compra (su porción), con cantidad
-      // si la hay. Anclada al inicio de la barra (punto de compra).
-      const qtyB = (p.qty != null && p.qty > 0) ? ((Number.isInteger(p.qty) ? p.qty : p.qty.toFixed(2)) + ' · ') : '';
-      const leyenda = `${qtyB}$${(p.amount||0).toFixed(2)}`;
-      bars += `<div title="${escapeHtml(leyenda)}" style="position:absolute;left:${x1}px;top:${barTop+18}px;font-size:10px;color:var(--text-muted);white-space:nowrap;">${escapeHtml(leyenda)}</div>`;
+      // Leyenda de la barra: total de ESA compra "[qty] × $monto" (la cantidad
+      // siempre, aunque sea 1). Se antepone un ganchito ✓ si la factura está
+      // verificada: las de un solo item siempre; las compartidas solo si ya
+      // están cuadradas (todos los items repartidos). Sin ganchito = falta
+      // repartir esa factura compartida.
+      const qtyVal = (p.qty != null && p.qty > 0) ? p.qty : 1;
+      const qtyStr = Number.isInteger(qtyVal) ? qtyVal : qtyVal.toFixed(2);
+      const leyenda = `${qtyStr} × $${(p.amount||0).toFixed(2)}`;
+      const verificado = _sumEgresoVerificado({ desc: p.desc, montosItem: p.montosItem }, allNkw);
+      const check = verificado ? '<span style="color:#5a8a52;font-weight:700;">✓</span> ' : '';
+      bars += `<div title="${escapeHtml((verificado ? '✓ ' : '') + leyenda)}" style="position:absolute;left:${x1}px;top:${barTop+18}px;font-size:10px;color:var(--text-muted);white-space:nowrap;">${check}${escapeHtml(leyenda)}</div>`;
     });
 
     const totalGastado = ps.reduce((s,p) => s + (p.amount||0), 0);
