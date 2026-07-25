@@ -276,3 +276,69 @@ function reporteVouchersInflados() {
   }
   Logger.log('Total: ' + n + ' reserva(s), exceso $' + exceso.toFixed(2));
 }
+
+// ── D) Igualar Monto al Voucher (vouchers inflados NO multi-cabaña) ──
+//  Para reservas donde el huésped pagó MÁS de lo que dice el Monto. Casi
+//  siempre significa que la reserva valía lo del voucher pero se cargó
+//  incompleta (ej. un pago que cubría 2 noches/cabañas y se registró una sola,
+//  o un early check-in donde el pago incluía también la noche).
+//  Deja la reserva cuadrada: Monto = Neto = Voucher y estado PAGA.
+//
+//  ⚠️ OJO: si algún día un huésped deja PROPINA o hace un sobrepago genuino,
+//  este script lo convertiría en ingreso. Correr SIEMPRE el preview primero y
+//  verificar caso por caso con reporteVouchersInflados().
+
+function _detectarMontoMenorQueVoucher_() {
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  var data  = sheet.getDataRange().getValues();
+  var out = [];
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][_R.ORIGEN] || '') === 'Airbnb') continue;
+    if (String(data[i][_R.ESTADO] || '') === 'CANCELADA') continue;
+    if (String(data[i][_R.ID] || '').indexOf('MC-') === 0) continue;  // esas van por el bloque A
+    var monto = _cleanMoney_(data[i][_R.MONTO]);
+    var vou   = _cleanMoney_(data[i][_R.MONTOVOUCHER]);
+    if (monto <= 0 || vou <= monto + 0.005) continue;
+    out.push({
+      row: i + 1,
+      nombre: String(data[i][1] || ''),
+      monto: monto,
+      neto: _cleanMoney_(data[i][_R.NETO]),
+      voucher: vou,
+      estado: String(data[i][_R.ESTADO] || '')
+    });
+  }
+  return out;
+}
+
+function previewIgualarMontoAlVoucher() {
+  var items = _detectarMontoMenorQueVoucher_();
+  if (!items.length) { Logger.log('✓ No hay reservas con Monto < Voucher.'); return; }
+  var extra = 0;
+  Logger.log('=== Igualar Monto al Voucher: ' + items.length + ' reserva(s) ===');
+  items.forEach(function(x) {
+    extra += x.voucher - x.monto;
+    Logger.log('   fila ' + x.row + ' ' + x.nombre.slice(0, 26) +
+               ' | Monto $' + x.monto.toFixed(2) + ' → $' + x.voucher.toFixed(2) +
+               ' · Neto $' + x.neto.toFixed(2) + ' → $' + x.voucher.toFixed(2) +
+               ' · Estado ' + (x.estado || '(vacío)') + ' → PAGA');
+  });
+  Logger.log('Ingreso adicional a reconocer: +$' + extra.toFixed(2));
+  Logger.log('Si todos son cargas incompletas (no propinas), corré igualarMontoAlVoucher()');
+}
+
+function igualarMontoAlVoucher() {
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  var items = _detectarMontoMenorQueVoucher_();
+  if (!items.length) { Logger.log('✓ Nada que corregir.'); return; }
+  var extra = 0;
+  items.forEach(function(x) {
+    sheet.getRange(x.row, _R.MONTO  + 1).setValue(x.voucher);
+    sheet.getRange(x.row, _R.NETO   + 1).setValue(x.voucher);
+    sheet.getRange(x.row, _R.ESTADO + 1).setValue('PAGA');
+    extra += x.voucher - x.monto;
+    Logger.log('✏️  fila ' + x.row + ' ' + x.nombre.slice(0, 26) + ' → $' + x.voucher.toFixed(2) + ' PAGA');
+  });
+  SpreadsheetApp.flush();
+  Logger.log('✓ ' + items.length + ' reserva(s) igualada(s). Ingreso adicional: +$' + extra.toFixed(2));
+}
