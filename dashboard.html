@@ -12588,7 +12588,8 @@ function _renderSumTimeline(wrap, kws) {
       // verificada (un solo item siempre; compartida solo si cuadra).
       const qtyVal = (p.qty != null && p.qty > 0) ? p.qty : 1;
       const qtyStr = Number.isInteger(qtyVal) ? qtyVal : qtyVal.toFixed(2);
-      const leyenda = `${qtyStr} × $${(p.amount||0).toFixed(2)}`;
+      const diasBarra = Math.max(0, _daysBetween(p.date, end));  // días que duró (o lleva durando la última)
+      const leyenda = `${qtyStr} × $${(p.amount||0).toFixed(2)} (${diasBarra}d)`;
       const verificado = _sumEgresoVerificado({ desc: p.desc, montosItem: p.montosItem }, allNkw);
       const check = verificado ? '<span style="color:#5a8a52;font-weight:700;">✓</span> ' : '';
       bars += `<div title="${escapeHtml((verificado ? '✓ ' : '') + leyenda)}" style="position:absolute;left:${x1}px;top:${barTop+18}px;font-size:10px;color:var(--text-muted);white-space:nowrap;">${check}${escapeHtml(leyenda)}</div>`;
