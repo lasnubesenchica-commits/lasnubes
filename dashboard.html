@@ -2504,6 +2504,14 @@
 
       <!-- Timeline -->
       <div id="sumTimelineWrap" style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);"></div>
+      <!-- Leyenda de colores de la última barra (semáforo de recompra) -->
+      <div id="sumTimelineLegend" style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;margin-top:8px;padding:0 4px;font-size:11px;color:var(--text-muted);line-height:1.5;">
+        <span style="font-weight:600;">Color de la última barra:</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:14px;height:8px;border-radius:3px;background:#6a9e62;display:inline-block;flex-shrink:0;"></span> Dentro de lo normal</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:14px;height:8px;border-radius:3px;background:#c0956a;display:inline-block;flex-shrink:0;"></span> Ya casi (≥80% de su ciclo típico)</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:14px;height:8px;border-radius:3px;background:#c0392b;display:inline-block;flex-shrink:0;"></span> Pasó su duración típica · toca recomprar</span>
+        <span style="opacity:.8;">Las barras anteriores siempre van verdes.</span>
+      </div>
       <!-- Detalle (facturas por item) -->
       <div id="sumDetalleWrap" style="display:none;"></div>
     </div><!-- /contabPanelSuministros -->
@@ -12365,6 +12373,8 @@ async function renderSuministrosTab() {
   const view = _sumView || 'timeline';
   _syncSumViewButtons(view);
   wrap.style.display    = view === 'timeline' ? '' : 'none';
+  const legEl = document.getElementById('sumTimelineLegend');
+  if (legEl) legEl.style.display = view === 'timeline' ? 'flex' : 'none';
   if (detWrap) detWrap.style.display = view === 'detalle' ? '' : 'none';
   if (view === 'detalle' && detWrap) _renderSumDetalle(detWrap, kws);
   else _renderSumTimeline(wrap, kws.filter(kw => !_sumIsNoTimeline(kw)));  // timeline excluye "solo detalle" (ej. Delivery)
