@@ -12286,7 +12286,7 @@ function _renderSumTimeline(wrap, kws) {
         const total = parseFloat(e.amount||0);
         const ov = _sumItemAmount(e, nkw); // porción asignada a este item (o null)
         return { id: e.id, date: e.date, amount: (ov != null ? ov : total), amountTotal: total,
-                 hasOverride: ov != null, desc: e.desc||'', fechaFin: (e.fechaFin||'').slice(0,10) };
+                 hasOverride: ov != null, qty: _sumItemQty(e, nkw), desc: e.desc||'', fechaFin: (e.fechaFin||'').slice(0,10) };
       })
       .sort((a,b) => a.date.localeCompare(b.date));
     return { kw, nkw, ps };
@@ -12305,7 +12305,7 @@ function _renderSumTimeline(wrap, kws) {
   // px por día fijo y cómodo para que los puntos se distingan siempre.
   const pxPerDay = 11;
   const trackW = Math.round(totalDays * pxPerDay);
-  const leftW = 160, rowH = 46;
+  const leftW = 160, rowH = 58, barTop = 15; // rowH más alto: deja espacio para el resumen bajo la barra
   const inWin = iso => iso >= windowStart && iso <= windowEnd;
   const xOf = iso => {
     const clamped = iso < windowStart ? windowStart : (iso > windowEnd ? windowEnd : iso);
@@ -12369,23 +12369,39 @@ function _renderSumTimeline(wrap, kws) {
       const tip = `${p.desc} · ${formatDate(p.date)} → ${formatDate(end)} · ${montoTip} · click para ver/editar`;
       const openCall = `openSumEgresoModal('${barKey}')`;
       // barra de stock (clampeada a la ventana) — clickeable
-      bars += `<div onclick="${openCall}" class="sum-bar" title="${escapeHtml(tip)}" style="position:absolute;left:${x1}px;top:${rowH/2-5}px;width:${w}px;height:10px;background:${color};border-radius:5px;opacity:.85;cursor:pointer;"></div>`;
+      bars += `<div onclick="${openCall}" class="sum-bar" title="${escapeHtml(tip)}" style="position:absolute;left:${x1}px;top:${barTop}px;width:${w}px;height:10px;background:${color};border-radius:5px;opacity:.85;cursor:pointer;"></div>`;
       // gap "sin stock" si fechaFin quedó antes de la próxima compra
       if (!isLast && p.fechaFin) {
         const nextStart = ps[i+1].date;
         if (end < _addDays(nextStart, -1)) {
           const gx1 = xOf(_addDays(end, 1)), gx2 = xOf(_addDays(nextStart, -1));
           const gw = Math.max(2, gx2 - gx1);
-          bars += `<div title="Sin stock ${formatDate(_addDays(end,1))} → ${formatDate(_addDays(nextStart,-1))}" style="position:absolute;left:${gx1}px;top:${rowH/2-3}px;width:${gw}px;height:6px;background:repeating-linear-gradient(45deg,#e57373 0 4px,transparent 4px 8px);border-radius:3px;"></div>`;
+          bars += `<div title="Sin stock ${formatDate(_addDays(end,1))} → ${formatDate(_addDays(nextStart,-1))}" style="position:absolute;left:${gx1}px;top:${barTop+2}px;width:${gw}px;height:6px;background:repeating-linear-gradient(45deg,#e57373 0 4px,transparent 4px 8px);border-radius:3px;"></div>`;
         }
       }
       // punto de compra — solo si la fecha de compra cae dentro de la ventana. Clickeable.
       if (inWin(p.date)) {
-        bars += `<div onclick="${openCall}" title="${escapeHtml(tip)}" style="position:absolute;left:${x1-4}px;top:${rowH/2-5}px;width:10px;height:10px;border-radius:50%;background:${color};border:2px solid var(--surface);box-shadow:0 0 0 1px ${color};cursor:pointer;"></div>`;
+        bars += `<div onclick="${openCall}" title="${escapeHtml(tip)}" style="position:absolute;left:${x1-4}px;top:${barTop}px;width:10px;height:10px;border-radius:50%;background:${color};border:2px solid var(--surface);box-shadow:0 0 0 1px ${color};cursor:pointer;"></div>`;
       }
     });
 
     const totalGastado = ps.reduce((s,p) => s + (p.amount||0), 0);
+    const totalQty     = ps.reduce((s,p) => s + (p.qty||0), 0);
+
+    // Resumen debajo de la barra, alineado al extremo derecho de la línea (fin
+    // de la última compra): "[qty] keyword: $total". La cantidad viene de lo que
+    // el usuario segrega (CantidadesItem); si no hay, se omite y queda solo
+    // "keyword: $total" — sirve de pista de qué falta ajustar.
+    if (ps.length) {
+      const last = ps[ps.length - 1];
+      let lastEnd = last.fechaFin || todayISO;
+      if (lastEnd < last.date) lastEnd = last.date;
+      const lastEndX = xOf(lastEnd);
+      const qtyStr = totalQty > 0 ? (Number.isInteger(totalQty) ? totalQty : totalQty.toFixed(2)) + ' ' : '';
+      const resumen = `${qtyStr}${r.kw}: $${totalGastado.toFixed(2)}`;
+      bars += `<div title="${escapeHtml(resumen)}" style="position:absolute;right:${trackW - lastEndX}px;top:${barTop + 18}px;text-align:right;white-space:nowrap;font-size:11px;color:var(--text-muted);padding-right:3px;">${escapeHtml(resumen)}</div>`;
+    }
+
     const sub = ps.length
       ? (ps.length + ' compra' + (ps.length !== 1 ? 's' : '') + (avg ? ' · ~' + avg + 'd' : '') + ' · $' + totalGastado.toFixed(0))
       : '<span style="color:#c0956a;">sin compras aún</span>';
