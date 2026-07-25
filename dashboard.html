@@ -12110,6 +12110,7 @@ function _sumListaUncuadradas() {
     if (matched.length < 2) return;                      // no es compartida
     const total = parseFloat(e.amount || 0);
     const assigned = _sumAssignedTotal(e);
+    if (assigned <= 0) return;                            // sin repartir aún (no iniciada) → no cuenta como "sin cuadrar"
     const gap = Math.round((total - assigned) * 100) / 100;
     if (Math.abs(gap) < 0.01) return;                    // cuadra
     out.push({ id: e.id, date: e.date, desc: e.desc || '', proveedor: e.proveedor || '',
@@ -12135,8 +12136,7 @@ function openSumUncuadradas() {
   if (totEl) totEl.textContent = '$' + total.toFixed(2);
   if (body) {
     body.innerHTML = list.length ? list.map(x => {
-      const gapLabel = x.assigned <= 0 ? 'sin repartir'
-        : (x.gap > 0 ? 'faltan $' + x.gap.toFixed(2) : 'exceso $' + (-x.gap).toFixed(2));
+      const gapLabel = x.gap > 0 ? 'faltan $' + x.gap.toFixed(2) : 'exceso $' + (-x.gap).toFixed(2);
       return `<div onclick="_sumOpenReparto('${x.id}')" title="Abrir el reparto de esta factura" style="cursor:pointer;padding:10px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--surface);" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background='var(--surface)'">
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
           <div style="font-size:13px;color:var(--text);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(x.desc || '—')}</div>
