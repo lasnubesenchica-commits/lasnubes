@@ -9062,6 +9062,14 @@ function setPeriod(preset) {
       label: preset === 'last3' ? 'Últimos 3 meses' : 'Últimos 6 meses'
     };
     _customRangeOpen = false;
+  } else if (preset === 'ytd') {
+    // Año a la fecha: 1-ene del año en curso → hoy.
+    selectedMonth = null;
+    selectedRange = {
+      from: now.getFullYear() + '-01-01', to: _fmtDate(now),
+      presetKey: 'ytd', label: 'YTD'
+    };
+    _customRangeOpen = false;
   } else if (preset === 'customToggle') {
     // Abre/cierra el popover sin aplicar rango. Se aplica con _applyCustomRange.
     _customRangeOpen = !_customRangeOpen;
@@ -9203,13 +9211,16 @@ function renderContabilidad() {
     return `<div class="${cls.join(' ')}" onclick="${onclick}"${t}>${label}</div>`;
   };
 
-  // Filtro de período: un botón por cada mes desde ENERO del año en curso
-  // hasta "Este mes" (el mes actual), y al final "Custom…" para cualquier otro
-  // rango. El mes actual se rotula "Este mes" y va tinteado como preset; los
-  // demás meses van con tono neutro. Para meses de años anteriores → Custom.
+  // Filtro de período: "YTD" (año a la fecha) primero, luego un botón por cada
+  // mes desde ENERO del año en curso hasta "Este mes" (el mes actual), y al
+  // final "Custom…" para cualquier otro rango. El mes actual se rotula "Este
+  // mes" y va tinteado como preset; los demás meses van con tono neutro. Para
+  // meses de años anteriores → Custom.
   let chipsHtml = '';
   const _yr    = _now.getFullYear();
   const _curMo = _now.getMonth(); // 0-based
+  chipsHtml += _chip('YTD', _rangeKey === 'ytd', `setPeriod('ytd')`,
+                     { preset: true, title: `Año a la fecha (1-ene ${_yr} → hoy)` });
   for (let mo = 0; mo <= _curMo; mo++) {
     const mStr  = _yr + '-' + String(mo + 1).padStart(2, '0');
     const isCur = mo === _curMo;
