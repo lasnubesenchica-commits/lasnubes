@@ -2485,7 +2485,7 @@
         <div style="font-size:15px;flex-shrink:0;margin-top:1px;">📦</div>
         <div>
           <div style="font-size:11px;font-weight:600;color:#8a6f1c;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Timeline de suministros</div>
-          <div style="font-size:13px;color:var(--text-muted);line-height:1.5;">Agrega los items que quieres seguir (agua, gas, papel higiénico…). El sistema busca esa palabra en la descripción de tus egresos de <strong>Suministros</strong>. La vista <strong>Timeline</strong> arma una línea de tiempo: 🟢 barra = tenías stock, ● = compra, y la barra se corta el día antes de la siguiente compra. La última barra llega a hoy; si ya pasó su duración típica se pone 🔴 (toca recomprar). La vista <strong>Detalle por item</strong> lista las facturas de cada keyword con su total. Toca cualquier barra o fila para ver o editar la factura.</div>
+          <div style="font-size:13px;color:var(--text-muted);line-height:1.5;">Agrega los items que quieres seguir (agua, gas, papel higiénico…). El sistema busca esa palabra en la descripción de tus egresos de <strong>Suministros</strong> y <strong>Servicios</strong>. La vista <strong>Timeline</strong> arma una línea de tiempo: 🟢 barra = tenías stock, ● = compra, y la barra se corta el día antes de la siguiente compra. La última barra llega a hoy; si ya pasó su duración típica se pone 🔴 (toca recomprar). La vista <strong>Detalle por item</strong> lista las facturas de cada keyword con su total. Toca cualquier barra o fila para ver o editar la factura.</div>
         </div>
       </div>
 
@@ -12110,7 +12110,7 @@ function _sumListaUncuadradas() {
   const allNkw = (_suministrosKeywords || []).map(_sumNormalize).filter(Boolean);
   const out = [];
   (egresos || []).forEach(e => {
-    if ((e.cat || '') !== 'Suministros' || !e.date || !_matchesSelectedPeriod(e.date)) return;
+    if (!_sumCatOk(e) || !e.date || !_matchesSelectedPeriod(e.date)) return;
     const matched = allNkw.filter(n => _sumMatchesKw(e, n));
     if (matched.length < 2) return;                      // no es compartida
     // Solo es un descuadre REAL si TODOS los items matcheados ya tienen su
@@ -12231,6 +12231,13 @@ function _sumIsNoTimeline(kw) { return _sumNoTimeline.has(_sumNormalize(kw)); }
 // ¿El egreso pertenece al item (keyword normalizada)? Match por descripción O
 // por asignación manual en MontosItem (permite agregar un item al reparto de una
 // factura aunque la palabra no esté en la descripción — ej. "escoba" olvidada).
+// Categorías que el tracker de Suministros escanea: insumos consumibles
+// (Suministros) + servicios recurrentes (Servicios, ej. recolección de basura,
+// delivery, mensajería). La basura recolección va en Servicios porque es un
+// servicio, no un insumo.
+const _SUM_CATS = ['Suministros', 'Servicios'];
+function _sumCatOk(e) { return _SUM_CATS.indexOf((e && e.cat) || '') >= 0; }
+
 function _sumMatchesKw(e, nkw) {
   if (!nkw) return false;
   const m = _sumParseMontos(e);
@@ -12408,7 +12415,7 @@ function _renderSumTimeline(wrap, kws) {
   const rows = kws.map(kw => {
     const nkw = _sumNormalize(kw);
     const ps = egresos
-      .filter(e => (e.cat||'') === 'Suministros' && e.date && _matchesSelectedPeriod(e.date) && _sumMatchesKw(e, nkw))
+      .filter(e => _sumCatOk(e) && e.date && _matchesSelectedPeriod(e.date) && _sumMatchesKw(e, nkw))
       .map(e => {
         const total = parseFloat(e.amount||0);
         const ov = _sumItemAmount(e, nkw); // porción asignada a este item (o null)
@@ -12588,7 +12595,7 @@ function _renderSumDetalle(wrap, kws) {
     kws.forEach(k => { const n = _sumNormalize(k); if (n && !(n in kwByNkw)) { kwByNkw[n] = k; allNkw.push(n); } });
     const shared = [];
     egresos.forEach(e => {
-      if ((e.cat||'') !== 'Suministros' || !e.date || !_matchesSelectedPeriod(e.date)) return;
+      if (!_sumCatOk(e) || !e.date || !_matchesSelectedPeriod(e.date)) return;
       const nd = _sumNormalize(e.desc);
       const matched = []; const seen = {};
       allNkw.forEach(n => { if (!seen[n] && _sumMatchesKw(e, n)) { seen[n] = 1; matched.push({ nkw: n, kw: kwByNkw[n] }); } });
@@ -12659,7 +12666,7 @@ function _renderSumDetalle(wrap, kws) {
   const renderKwCard = (kw) => {
     const nkw = _sumNormalize(kw);
     const ps = egresos
-      .filter(e => (e.cat||'') === 'Suministros' && e.date && _matchesSelectedPeriod(e.date) && _sumMatchesKw(e, nkw))
+      .filter(e => _sumCatOk(e) && e.date && _matchesSelectedPeriod(e.date) && _sumMatchesKw(e, nkw))
       .map(e => {
         const total = parseFloat(e.amount||0);
         const ov = _sumItemAmount(e, nkw);
@@ -12717,7 +12724,7 @@ function _renderSumDetalle(wrap, kws) {
     });
 
     // Facturas descartadas de este item (MontosItem[nkw]===false) — para restaurar.
-    const descartadas = egresos.filter(e => (e.cat||'') === 'Suministros' && e.date && _matchesSelectedPeriod(e.date) && _sumParseMontos(e)[nkw] === false);
+    const descartadas = egresos.filter(e => _sumCatOk(e) && e.date && _matchesSelectedPeriod(e.date) && _sumParseMontos(e)[nkw] === false);
 
     const sub = ps.length
       ? `${ps.length} factura${ps.length!==1?'s':''}${totalQty>0 ? ' · '+(Number.isInteger(totalQty)?totalQty:totalQty.toFixed(2))+' uds' : ''}${avg ? ' · cada ~'+avg+'d' : ''}`
@@ -12771,7 +12778,7 @@ function _renderSumDetalle(wrap, kws) {
   if (panelHtml) out += panelHtml;
   out += suministrosHtml || '<div style="padding:6px 2px 8px;font-size:12px;color:var(--text-muted);font-style:italic;">No hay items de suministros. Agrega uno arriba.</div>';
   // 2) Otros Gastos (keywords "solo detalle" / NoTimeline)
-  if (otrosKws.length) { out += _secHead('🧾 Otros', otrosKws.length); out += otrosHtml; }
+  if (otrosKws.length) { out += _secHead('🧾 Servicios', otrosKws.length); out += otrosHtml; }
 
   out += `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px;border-top:2px solid var(--border);margin-top:14px;">
       <div style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600;">Total trackeado (todos los items)</div>
