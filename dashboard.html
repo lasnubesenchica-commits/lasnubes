@@ -2494,10 +2494,13 @@
         <div id="sumKeywordChips" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;"></div>
       </div>
 
-      <!-- Toggle de vista -->
-      <div style="display:flex;gap:4px;margin-bottom:12px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:3px;width:fit-content;">
-        <button id="sumViewTimelineBtn" onclick="setSumView('timeline')" style="font-size:12px;font-weight:600;padding:6px 16px;border-radius:8px;border:none;cursor:pointer;background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.06);">📊 Timeline</button>
-        <button id="sumViewDetalleBtn" onclick="setSumView('detalle')" style="font-size:12px;font-weight:600;padding:6px 16px;border-radius:8px;border:none;cursor:pointer;background:transparent;color:var(--text-muted);">📋 Detalle por item</button>
+      <!-- Toggle de vista + total sin cuadrar (esquina superior derecha) -->
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+        <div style="display:flex;gap:4px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:3px;width:fit-content;">
+          <button id="sumViewTimelineBtn" onclick="setSumView('timeline')" style="font-size:12px;font-weight:600;padding:6px 16px;border-radius:8px;border:none;cursor:pointer;background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.06);">📊 Timeline</button>
+          <button id="sumViewDetalleBtn" onclick="setSumView('detalle')" style="font-size:12px;font-weight:600;padding:6px 16px;border-radius:8px;border:none;cursor:pointer;background:transparent;color:var(--text-muted);">📋 Detalle por item</button>
+        </div>
+        <div id="sumUncuadradasBadge"></div>
       </div>
 
       <!-- Timeline -->
@@ -2972,6 +2975,22 @@
       <button class="btn btn-ghost" onclick="closeSumEgresoModal()">Cerrar</button>
       <button class="btn btn-secondary" id="sumEgAutoBtn" onclick="resetSumEgresoFechaFin()" style="display:none;">↺ Automático</button>
       <button class="btn btn-primary" onclick="saveSumEgresoModal()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- SUMINISTROS — FACTURAS SIN CUADRAR (lightbox informativo) -->
+<div class="modal-overlay" id="sumUncuadradasOverlay" onclick="if(event.target===this)closeSumUncuadradas()">
+  <div class="modal" style="max-width:460px;padding:24px;">
+    <div class="modal-title" style="font-size:17px;display:flex;align-items:center;gap:8px;color:#c0392b;">
+      ⚠ Facturas sin cuadrar
+    </div>
+    <div style="margin-top:4px;font-size:13px;color:var(--text-muted);">
+      Compartidas del período cuya suma repartida no llega (o pasa) el total. Total sin cuadrar: <strong id="sumUncuadradasTotal" style="color:#c0392b;">$0.00</strong>. Toca una para abrir su reparto.
+    </div>
+    <div id="sumUncuadradasBody" style="margin-top:16px;max-height:52vh;overflow-y:auto;"></div>
+    <div class="modal-footer" style="margin-top:18px;">
+      <button class="btn btn-ghost" onclick="closeSumUncuadradas()">Cerrar</button>
     </div>
   </div>
 </div>
@@ -12050,18 +12069,89 @@ function _sumItemQty(e, nkw) {
   return (v == null || v === '') ? null : (parseFloat(v) || 0);
 }
 
+// Suma de las porciones asignadas en MontosItem (números; ignora los sentinels
+// `false` de descartado). Es el "Asignado $X" que muestra el modal de reparto.
+function _sumAssignedTotal(e) {
+  const m = _sumParseMontos(e);
+  let s = 0;
+  for (const k in m) {
+    const v = m[k];
+    if (v === false || v == null || v === '') continue;
+    const n = parseFloat(v);
+    if (!isNaN(n)) s += n;
+  }
+  return s;
+}
+
 // ¿Este egreso está "verificado" (cuadrado)? Para el ganchito ✓ del timeline.
 //  - Factura de UN solo item (matchea 1 keyword): siempre true, no hay nada
 //    que verificar (fue un yappy directo a un item).
-//  - Factura COMPARTIDA (matchea ≥2 keywords): true solo si TODOS los items
-//    matcheados ya tienen su porción repartida (`_sumItemAmount != null`),
-//    igual criterio que el chip "✓ repartida" del panel de compartidas.
+//  - Factura COMPARTIDA (matchea ≥2 keywords): cuadra si la suma de porciones
+//    asignadas (MontosItem) == el total de la factura (mismo criterio que el
+//    "Asignado / Total · cuadra" del modal). Si falta o sobra → no cuadra.
 // `allNkw` = keywords trackeadas normalizadas. `e` puede ser el egreso o un
-// objeto liviano { desc, montosItem }.
+// objeto liviano { desc, montosItem, amount }.
 function _sumEgresoVerificado(e, allNkw) {
   const matched = (allNkw || []).filter(n => _sumMatchesKw(e, n));
   if (matched.length <= 1) return true;                 // un solo item → nada que verificar
-  return matched.every(n => _sumItemAmount(e, n) != null); // compartida → cuadra si todos repartidos
+  const total = parseFloat(e.amount || 0);
+  return Math.abs(total - _sumAssignedTotal(e)) < 0.01; // compartida → cuadra si asignado == total
+}
+
+// Lista de facturas COMPARTIDAS del período que NO cuadran (asignado ≠ total).
+// Cada una con su brecha (`gap` = total − asignado; + = faltan, − = exceso).
+// Alimenta el badge "Sin cuadrar: $X" y su lightbox.
+function _sumListaUncuadradas() {
+  const allNkw = (_suministrosKeywords || []).map(_sumNormalize).filter(Boolean);
+  const out = [];
+  (egresos || []).forEach(e => {
+    if ((e.cat || '') !== 'Suministros' || !e.date || !_matchesSelectedPeriod(e.date)) return;
+    const matched = allNkw.filter(n => _sumMatchesKw(e, n));
+    if (matched.length < 2) return;                      // no es compartida
+    const total = parseFloat(e.amount || 0);
+    const assigned = _sumAssignedTotal(e);
+    const gap = Math.round((total - assigned) * 100) / 100;
+    if (Math.abs(gap) < 0.01) return;                    // cuadra
+    out.push({ id: e.id, date: e.date, desc: e.desc || '', proveedor: e.proveedor || '',
+               total, assigned, gap });
+  });
+  out.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  return out;
+}
+
+// Abre el modal de reparto de un egreso desde la lista de "sin cuadrar".
+function _sumOpenReparto(egresoId) {
+  const key = Object.keys(_sumBarMeta).find(k => _sumBarMeta[k] && _sumBarMeta[k].egresoId === egresoId);
+  closeSumUncuadradas();
+  if (key) openSumEgresoModal(key);
+}
+
+// Lightbox con las facturas compartidas del período que no cuadran.
+function openSumUncuadradas() {
+  const list = _sumListaUncuadradas();
+  const total = list.reduce((s, x) => s + Math.abs(x.gap), 0);
+  const totEl = document.getElementById('sumUncuadradasTotal');
+  const body  = document.getElementById('sumUncuadradasBody');
+  if (totEl) totEl.textContent = '$' + total.toFixed(2);
+  if (body) {
+    body.innerHTML = list.length ? list.map(x => {
+      const gapLabel = x.assigned <= 0 ? 'sin repartir'
+        : (x.gap > 0 ? 'faltan $' + x.gap.toFixed(2) : 'exceso $' + (-x.gap).toFixed(2));
+      return `<div onclick="_sumOpenReparto('${x.id}')" title="Abrir el reparto de esta factura" style="cursor:pointer;padding:10px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--surface);" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background='var(--surface)'">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+          <div style="font-size:13px;color:var(--text);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(x.desc || '—')}</div>
+          <div style="font-size:12px;font-weight:700;color:#c0392b;white-space:nowrap;">${gapLabel}</div>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(x.proveedor || '—')} · ${formatDate(x.date)} · asignado $${x.assigned.toFixed(2)} / $${x.total.toFixed(2)}</div>
+      </div>`;
+    }).join('') : '<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px;">Todo cuadrado 🎉</div>';
+  }
+  const ov = document.getElementById('sumUncuadradasOverlay');
+  if (ov) ov.classList.add('open');
+}
+function closeSumUncuadradas() {
+  const ov = document.getElementById('sumUncuadradasOverlay');
+  if (ov) ov.classList.remove('open');
 }
 
 // Descarta una factura de un item (cuando el keyword aparece en la descripción
@@ -12261,6 +12351,16 @@ async function renderSuministrosTab() {
   if (detWrap) detWrap.style.display = view === 'detalle' ? '' : 'none';
   if (view === 'detalle' && detWrap) _renderSumDetalle(detWrap, kws);
   else _renderSumTimeline(wrap, kws.filter(kw => !_sumIsNoTimeline(kw)));  // timeline excluye "solo detalle" (ej. Delivery)
+
+  // Badge "Sin cuadrar: $X" (esquina superior derecha). Suma de las brechas de
+  // las facturas compartidas del período que no cuadran; clic abre el lightbox.
+  const badge = document.getElementById('sumUncuadradasBadge');
+  if (badge) {
+    const totalUncuadr = _sumListaUncuadradas().reduce((s, x) => s + Math.abs(x.gap), 0);
+    badge.innerHTML = totalUncuadr >= 0.01
+      ? `<div onclick="openSumUncuadradas()" title="Ver las facturas que no cuadran" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:#fdecea;border:1px solid #f5c6cb;color:#c0392b;font-size:12px;font-weight:700;padding:6px 13px;border-radius:999px;">⚠ Sin cuadrar: $${totalUncuadr.toFixed(2)}</div>`
+      : '';
+  }
 }
 
 // Alterna entre la vista Timeline y la vista Detalle por item.
