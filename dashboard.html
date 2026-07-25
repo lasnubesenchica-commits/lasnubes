@@ -12108,9 +12108,13 @@ function _sumListaUncuadradas() {
     if ((e.cat || '') !== 'Suministros' || !e.date || !_matchesSelectedPeriod(e.date)) return;
     const matched = allNkw.filter(n => _sumMatchesKw(e, n));
     if (matched.length < 2) return;                      // no es compartida
+    // Solo es un descuadre REAL si TODOS los items matcheados ya tienen su
+    // porción asignada pero la suma no llega/pasa el total (como el residuo de
+    // $0.30). Si algún item falta por asignar, el modal reparte el sobrante
+    // entre los que faltan → cuadra: eso es reparto pendiente, no descuadre.
+    if (!matched.every(n => _sumItemAmount(e, n) != null)) return;
     const total = parseFloat(e.amount || 0);
     const assigned = _sumAssignedTotal(e);
-    if (assigned <= 0) return;                            // sin repartir aún (no iniciada) → no cuenta como "sin cuadrar"
     const gap = Math.round((total - assigned) * 100) / 100;
     if (Math.abs(gap) < 0.01) return;                    // cuadra
     out.push({ id: e.id, date: e.date, desc: e.desc || '', proveedor: e.proveedor || '',
