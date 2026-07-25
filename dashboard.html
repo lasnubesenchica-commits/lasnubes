@@ -12473,10 +12473,12 @@ function _renderSumTimeline(wrap, kws) {
     const avg = gaps.length ? Math.round(gaps.reduce((s,x)=>s+x,0)/gaps.length) : null;
 
     let bars = '';
-    // Sub-líneas (lanes) para leyendas: cuando varias compras caen muy juntas
-    // sus leyendas se solaparían, así que cada una baja a una lane libre.
-    const laneRight = [];   // borde derecho ocupado por la última leyenda de cada lane
-    let maxLane = 0;
+    // Apilado de leyendas por cluster: cuando varias compras caen muy juntas
+    // (sus puntos a menos de _CLUSTER_GAP px) sus leyendas se apilan en una
+    // lista vertical alineada a la izquierda del grupo, cada una con su puntito
+    // de color, en vez de encimarse en diagonal.
+    const _CLUSTER_GAP = 62;
+    let _clusterStartX = -1e9, _clusterLane = 0, maxLane = 0;
     ps.forEach((p, i) => {
       const isLast = i === ps.length - 1;
       let end = p.fechaFin || (isLast ? todayISO : _addDays(ps[i+1].date, -1));
@@ -12516,29 +12518,28 @@ function _renderSumTimeline(wrap, kws) {
       }
       // Leyenda de la barra: total de ESA compra "[qty] × $monto" (la cantidad
       // siempre, aunque sea 1). Se antepone un ganchito ✓ si la factura está
-      // verificada: las de un solo item siempre; las compartidas solo si ya
-      // están cuadradas (todos los items repartidos). Sin ganchito = falta
-      // repartir esa factura compartida. Si dos compras caen muy juntas, la
-      // segunda leyenda baja a una sub-línea (lane) y un hilito la conecta con
-      // su punto, para que no se encimen.
+      // verificada. Cuando varias compras caen muy juntas, sus leyendas se
+      // apilan en una lista vertical alineada a la izquierda del grupo (cada una
+      // con su puntito de color), en vez de encimarse.
       const qtyVal = (p.qty != null && p.qty > 0) ? p.qty : 1;
       const qtyStr = Number.isInteger(qtyVal) ? qtyVal : qtyVal.toFixed(2);
       const leyenda = `${qtyStr} × $${(p.amount||0).toFixed(2)}`;
       const verificado = _sumEgresoVerificado({ desc: p.desc, montosItem: p.montosItem }, allNkw);
       const check = verificado ? '<span style="color:#5a8a52;font-weight:700;">✓</span> ' : '';
       const legendText = (verificado ? '✓ ' : '') + leyenda;
-      const estW = legendText.length * 6 + 10;                 // ancho aproximado del texto
-      let lane = 0;
-      while (lane < laneRight.length && laneRight[lane] + 4 > x1) lane++;
-      laneRight[lane] = x1 + estW;
+      // Asignar lane + x de la leyenda según cluster.
+      let lane, lx, enCluster;
+      if (x1 - _clusterStartX < _CLUSTER_GAP) {          // sigue el cluster actual → apila debajo
+        _clusterLane++; lane = _clusterLane; lx = _clusterStartX; enCluster = true;
+      } else {                                            // compra aislada / arranca cluster nuevo
+        _clusterStartX = x1; _clusterLane = 0; lane = 0; lx = x1;
+        const nx = (i + 1 < ps.length) ? xOf(ps[i+1].date) : Infinity;
+        enCluster = (nx - x1 < _CLUSTER_GAP);             // ¿la próxima compra cae dentro del grupo?
+      }
       if (lane > maxLane) maxLane = lane;
       const legTop = barTop + 18 + lane * 14;
-      if (lane > 0) {                                          // hilito punto → leyenda escalonada (con el color de la compra)
-        bars += `<div style="position:absolute;left:${x1-1}px;top:${barTop+9}px;width:2px;height:${legTop - (barTop+9) + 1}px;background:${color};opacity:.45;border-radius:1px;"></div>`;
-      }
-      // un puntito del color de la compra antepone la leyenda escalonada para reforzar el vínculo
-      const dot = lane > 0 ? `<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:${color};vertical-align:middle;margin-right:4px;"></span>` : '';
-      bars += `<div title="${escapeHtml(legendText)}" style="position:absolute;left:${x1}px;top:${legTop}px;font-size:10px;color:var(--text-muted);white-space:nowrap;">${dot}${check}${escapeHtml(leyenda)}</div>`;
+      const dot = enCluster ? `<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:${color};vertical-align:middle;margin-right:5px;"></span>` : '';
+      bars += `<div title="${escapeHtml(legendText)}" style="position:absolute;left:${lx}px;top:${legTop}px;font-size:10px;color:var(--text-muted);white-space:nowrap;">${dot}${check}${escapeHtml(leyenda)}</div>`;
     });
 
     // Alto del row: crece si hubo leyendas escalonadas en sub-líneas.
