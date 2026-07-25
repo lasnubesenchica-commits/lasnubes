@@ -12473,6 +12473,10 @@ function _renderSumTimeline(wrap, kws) {
     const avg = gaps.length ? Math.round(gaps.reduce((s,x)=>s+x,0)/gaps.length) : null;
 
     let bars = '';
+    // Sub-líneas (lanes) para leyendas: cuando varias compras caen muy juntas
+    // sus leyendas se solaparían, así que cada una baja a una lane libre.
+    const laneRight = [];   // borde derecho ocupado por la última leyenda de cada lane
+    let maxLane = 0;
     ps.forEach((p, i) => {
       const isLast = i === ps.length - 1;
       let end = p.fechaFin || (isLast ? todayISO : _addDays(ps[i+1].date, -1));
@@ -12514,14 +12518,29 @@ function _renderSumTimeline(wrap, kws) {
       // siempre, aunque sea 1). Se antepone un ganchito ✓ si la factura está
       // verificada: las de un solo item siempre; las compartidas solo si ya
       // están cuadradas (todos los items repartidos). Sin ganchito = falta
-      // repartir esa factura compartida.
+      // repartir esa factura compartida. Si dos compras caen muy juntas, la
+      // segunda leyenda baja a una sub-línea (lane) y un hilito la conecta con
+      // su punto, para que no se encimen.
       const qtyVal = (p.qty != null && p.qty > 0) ? p.qty : 1;
       const qtyStr = Number.isInteger(qtyVal) ? qtyVal : qtyVal.toFixed(2);
       const leyenda = `${qtyStr} × $${(p.amount||0).toFixed(2)}`;
       const verificado = _sumEgresoVerificado({ desc: p.desc, montosItem: p.montosItem }, allNkw);
       const check = verificado ? '<span style="color:#5a8a52;font-weight:700;">✓</span> ' : '';
-      bars += `<div title="${escapeHtml((verificado ? '✓ ' : '') + leyenda)}" style="position:absolute;left:${x1}px;top:${barTop+18}px;font-size:10px;color:var(--text-muted);white-space:nowrap;">${check}${escapeHtml(leyenda)}</div>`;
+      const legendText = (verificado ? '✓ ' : '') + leyenda;
+      const estW = legendText.length * 6 + 10;                 // ancho aproximado del texto
+      let lane = 0;
+      while (lane < laneRight.length && laneRight[lane] + 4 > x1) lane++;
+      laneRight[lane] = x1 + estW;
+      if (lane > maxLane) maxLane = lane;
+      const legTop = barTop + 18 + lane * 14;
+      if (lane > 0) {                                          // hilito punto → leyenda escalonada
+        bars += `<div style="position:absolute;left:${x1}px;top:${barTop+10}px;width:1px;height:${legTop - (barTop+10)}px;background:var(--border);"></div>`;
+      }
+      bars += `<div title="${escapeHtml(legendText)}" style="position:absolute;left:${x1}px;top:${legTop}px;font-size:10px;color:var(--text-muted);white-space:nowrap;">${check}${escapeHtml(leyenda)}</div>`;
     });
+
+    // Alto del row: crece si hubo leyendas escalonadas en sub-líneas.
+    const rowHeight = Math.max(rowH, barTop + 18 + (maxLane + 1) * 14 + 4);
 
     const totalGastado = ps.reduce((s,p) => s + (p.amount||0), 0);
     const totalQty     = ps.reduce((s,p) => s + (p.qty||0), 0);
@@ -12532,7 +12551,7 @@ function _renderSumTimeline(wrap, kws) {
     const sub = ps.length
       ? (ps.length + ' compra' + (ps.length !== 1 ? 's' : '') + (qtyStr ? ' · ' + qtyStr + ' uds' : '') + (avg ? ' · ~' + avg + 'd' : '') + ' · $' + totalGastado.toFixed(2))
       : '<span style="color:#c0956a;">sin compras aún</span>';
-    rowsHtml += `<div style="display:flex;border-top:1px solid var(--border);min-height:${rowH}px;">
+    rowsHtml += `<div style="display:flex;border-top:1px solid var(--border);min-height:${rowHeight}px;">
       <div style="position:sticky;left:0;z-index:2;width:${leftW}px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);padding:6px 10px;box-sizing:border-box;">
         <div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.kw)}</div>
         <div style="font-size:10px;color:var(--text-muted);">${sub}</div>
