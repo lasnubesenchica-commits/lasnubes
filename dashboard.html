@@ -9176,15 +9176,13 @@ function renderContabilidad() {
     ...egresos.map(e => e.date?.slice(0,7)).filter(Boolean)
   ])].sort().reverse();
 
-  // Solo en el PRIMER render auto-elegimos el mes actual como default.
-  // A partir de ahí respetamos la selección explícita del usuario, incluido
-  // `null` (chip "Todo") que muestra todos los meses juntos.
+  // Solo en el PRIMER render auto-elegimos "Este mes" (mes actual) como
+  // default. A partir de ahí respetamos la selección explícita del usuario.
   if (!_selectedMonthInitialized) {
     _selectedMonthInitialized = true;
-    if (!selectedMonth) {
+    if (!selectedMonth && !selectedRange) {
       const now = new Date();
-      const thisMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
-      selectedMonth = allMonths.includes(thisMonth) ? thisMonth : (allMonths[0] || null);
+      selectedMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
     }
   }
 
@@ -9205,31 +9203,26 @@ function renderContabilidad() {
     return `<div class="${cls.join(' ')}" onclick="${onclick}"${t}>${label}</div>`;
   };
 
-  // Grupo 1 — presets rápidos (cubren los casos frecuentes). Van tinteados
-  // verde suave para leerse como una "familia" distinta a los meses
-  // específicos.
+  // Filtro de período: un botón por cada mes desde ENERO del año en curso
+  // hasta "Este mes" (el mes actual), y al final "Custom…" para cualquier otro
+  // rango. El mes actual se rotula "Este mes" y va tinteado como preset; los
+  // demás meses van con tono neutro. Para meses de años anteriores → Custom.
   let chipsHtml = '';
-  chipsHtml += _chip('Todo',          _isTodo,                       `setPeriod('todo')`,       { preset: true });
-  chipsHtml += _chip('Este mes',      selectedMonth === _thisMonth,  `setPeriod('thisMonth')`,  { preset: true });
-  chipsHtml += _chip('Mes anterior',  selectedMonth === _prevMonth,  `setPeriod('lastMonth')`,  { preset: true });
-  chipsHtml += _chip('Últimos 3',     _rangeKey === 'last3',         `setPeriod('last3')`,      { preset: true });
-  chipsHtml += _chip('Últimos 6',     _rangeKey === 'last6',         `setPeriod('last6')`,      { preset: true });
+  const _yr    = _now.getFullYear();
+  const _curMo = _now.getMonth(); // 0-based
+  for (let mo = 0; mo <= _curMo; mo++) {
+    const mStr  = _yr + '-' + String(mo + 1).padStart(2, '0');
+    const isCur = mo === _curMo;
+    const label = isCur ? 'Este mes' : `${MONTHS[mo]} ${_yr}`;
+    chipsHtml += _chip(label, selectedMonth === mStr, `setPeriod('${mStr}')`,
+                       { preset: isCur, title: isCur ? `${MONTHS[mo]} ${_yr}` : '' });
+  }
+  chipsHtml += '<div class="month-chip-divider" aria-hidden="true"></div>';
   const customLabel = _rangeKey === 'custom'
     ? '📅 ' + (selectedRange.from + ' → ' + selectedRange.to)
     : 'Custom…';
   chipsHtml += _chip(customLabel, _rangeKey === 'custom' || _customRangeOpen, `setPeriod('customToggle')`,
                      { preset: true, title: _rangeKey === 'custom' ? 'Click para cambiar el rango' : 'Elegir rango personalizado' });
-
-  // Separador visual — los meses específicos van a la derecha (o abajo
-  // en móvil por flex-wrap) con tono neutro.
-  const specificMonths = allMonths.filter(m => m !== _thisMonth && m !== _prevMonth);
-  if (specificMonths.length) {
-    chipsHtml += '<div class="month-chip-divider" aria-hidden="true"></div>';
-    specificMonths.forEach(m => {
-      const [y, mo] = m.split('-');
-      chipsHtml += _chip(`${MONTHS[parseInt(mo)-1]} ${y}`, selectedMonth === m, `setPeriod('${m}')`);
-    });
-  }
   mf.innerHTML = chipsHtml;
 
   // Popover del rango custom: visible solo cuando el chip está en modo
@@ -12277,7 +12270,7 @@ function _renderSumTimeline(wrap, kws) {
   const rows = kws.map(kw => {
     const nkw = _sumNormalize(kw);
     const ps = egresos
-      .filter(e => (e.cat||'') === 'Suministros' && e.date && _sumMatchesKw(e, nkw))
+      .filter(e => (e.cat||'') === 'Suministros' && e.date && _matchesSelectedPeriod(e.date) && _sumMatchesKw(e, nkw))
       .map(e => {
         const total = parseFloat(e.amount||0);
         const ov = _sumItemAmount(e, nkw); // porción asignada a este item (o null)
@@ -12442,7 +12435,7 @@ function _renderSumDetalle(wrap, kws) {
     kws.forEach(k => { const n = _sumNormalize(k); if (n && !(n in kwByNkw)) { kwByNkw[n] = k; allNkw.push(n); } });
     const shared = [];
     egresos.forEach(e => {
-      if ((e.cat||'') !== 'Suministros' || !e.date) return;
+      if ((e.cat||'') !== 'Suministros' || !e.date || !_matchesSelectedPeriod(e.date)) return;
       const nd = _sumNormalize(e.desc);
       const matched = []; const seen = {};
       allNkw.forEach(n => { if (!seen[n] && _sumMatchesKw(e, n)) { seen[n] = 1; matched.push({ nkw: n, kw: kwByNkw[n] }); } });
@@ -12513,7 +12506,7 @@ function _renderSumDetalle(wrap, kws) {
   const renderKwCard = (kw) => {
     const nkw = _sumNormalize(kw);
     const ps = egresos
-      .filter(e => (e.cat||'') === 'Suministros' && e.date && _sumMatchesKw(e, nkw))
+      .filter(e => (e.cat||'') === 'Suministros' && e.date && _matchesSelectedPeriod(e.date) && _sumMatchesKw(e, nkw))
       .map(e => {
         const total = parseFloat(e.amount||0);
         const ov = _sumItemAmount(e, nkw);
@@ -12571,7 +12564,7 @@ function _renderSumDetalle(wrap, kws) {
     });
 
     // Facturas descartadas de este item (MontosItem[nkw]===false) — para restaurar.
-    const descartadas = egresos.filter(e => (e.cat||'') === 'Suministros' && _sumParseMontos(e)[nkw] === false);
+    const descartadas = egresos.filter(e => (e.cat||'') === 'Suministros' && e.date && _matchesSelectedPeriod(e.date) && _sumParseMontos(e)[nkw] === false);
 
     const sub = ps.length
       ? `${ps.length} factura${ps.length!==1?'s':''}${totalQty>0 ? ' · '+(Number.isInteger(totalQty)?totalQty:totalQty.toFixed(2))+' uds' : ''}${avg ? ' · cada ~'+avg+'d' : ''}`
