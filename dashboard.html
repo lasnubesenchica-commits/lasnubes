@@ -12069,18 +12069,23 @@ function _sumItemQty(e, nkw) {
   return (v == null || v === '') ? null : (parseFloat(v) || 0);
 }
 
-// Suma de las porciones asignadas en MontosItem (números; ignora los sentinels
-// `false` de descartado). Es el "Asignado $X" que muestra el modal de reparto.
+// Suma de las porciones asignadas SOLO a los items actualmente trackeados que
+// matchean la factura (ignora los sentinels `false` de descartado Y las
+// porciones HUÉRFANAS de keywords ya borrados —ej. "agua" borrada que dejó su
+// monto en MontosItem). Es exactamente el "Asignado $X" que muestra el modal:
+// el modal solo reparte entre keywords trackeados, así que la reconciliación
+// del badge debe usar el mismo conjunto o dará "exceso" fantasma.
 function _sumAssignedTotal(e) {
-  const m = _sumParseMontos(e);
+  const seen = {};
   let s = 0;
-  for (const k in m) {
-    const v = m[k];
-    if (v === false || v == null || v === '') continue;
-    const n = parseFloat(v);
-    if (!isNaN(n)) s += n;
-  }
-  return s;
+  (_suministrosKeywords || []).forEach(kw => {
+    const n = _sumNormalize(kw);
+    if (!n || seen[n]) return;
+    seen[n] = 1;
+    const v = _sumItemAmount(e, n);   // porción trackeada (null si no asignada o descartada)
+    if (v != null) s += v;
+  });
+  return Math.round(s * 100) / 100;
 }
 
 // ¿Este egreso está "verificado" (cuadrado)? Para el ganchito ✓ del timeline.
