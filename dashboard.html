@@ -2481,13 +2481,14 @@
 
     <!-- TAB: SUMINISTROS (timeline de consumo por item) -->
     <div id="contabPanelSuministros" style="display:none;">
-      <div style="background:#f3f0e8;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start;">
-        <div style="font-size:15px;flex-shrink:0;margin-top:1px;">📦</div>
-        <div>
-          <div style="font-size:11px;font-weight:600;color:#8a6f1c;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Timeline de suministros</div>
-          <div style="font-size:13px;color:var(--text-muted);line-height:1.5;">Agrega los items que quieres seguir (agua, gas, papel higiénico…). El sistema busca esa palabra en la descripción de tus egresos de <strong>Suministros</strong> y <strong>Servicios</strong>. La vista <strong>Timeline</strong> arma una línea de tiempo: 🟢 barra = tenías stock, ● = compra, y la barra se corta el día antes de la siguiente compra. La última barra llega a hoy; si ya pasó su duración típica se pone 🔴 (toca recomprar). La vista <strong>Detalle por item</strong> lista las facturas de cada keyword con su total. Toca cualquier barra o fila para ver o editar la factura.</div>
-        </div>
-      </div>
+      <!-- Widgets: mayores gastos por item (Suministros / Servicios) -->
+      <div id="sumTopWidgets" style="margin-bottom:14px;"></div>
+
+      <!-- Leyenda colapsable (sutil, cerrada por defecto) -->
+      <details style="margin-bottom:14px;background:var(--bg);border:1px solid var(--border);border-radius:10px;">
+        <summary style="cursor:pointer;padding:8px 14px;font-size:12px;color:var(--text-muted);user-select:none;">ℹ️ ¿Cómo funciona el tracker de suministros?</summary>
+        <div style="font-size:13px;color:var(--text-muted);line-height:1.5;padding:0 14px 12px;">Agrega los items que quieres seguir (agua, gas, papel higiénico…). El sistema busca esa palabra en la descripción de tus egresos de <strong>Suministros</strong> y <strong>Servicios</strong>. La vista <strong>Timeline</strong> arma una línea de tiempo: 🟢 barra = tenías stock, ● = compra, y la barra se corta el día antes de la siguiente compra. La última barra llega a hoy; si ya pasó su duración típica se pone 🔴 (toca recomprar). La vista <strong>Detalle por item</strong> lista las facturas de cada keyword con su total. Toca cualquier barra o fila para ver o editar la factura.</div>
+      </details>
 
       <!-- Gestor de keywords -->
       <div style="margin-bottom:14px;">
@@ -12368,6 +12369,8 @@ async function renderSuministrosTab() {
   if (view === 'detalle' && detWrap) _renderSumDetalle(detWrap, kws);
   else _renderSumTimeline(wrap, kws.filter(kw => !_sumIsNoTimeline(kw)));  // timeline excluye "solo detalle" (ej. Delivery)
 
+  _renderSumTopWidgets();
+
   // Badge "Sin cuadrar: $X" (esquina superior derecha). Suma de las brechas de
   // las facturas compartidas del período que no cuadran; clic abre el lightbox.
   const badge = document.getElementById('sumUncuadradasBadge');
@@ -12377,6 +12380,59 @@ async function renderSuministrosTab() {
       ? `<div onclick="openSumUncuadradas()" title="Ver las facturas que no cuadran" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:#fdecea;border:1px solid #f5c6cb;color:#c0392b;font-size:12px;font-weight:700;padding:6px 13px;border-radius:999px;">⚠ Sin cuadrar: $${totalUncuadr.toFixed(2)}</div>`
       : '';
   }
+}
+
+// Widgets superiores: mayores gastos por item del período, separados en
+// Suministros (insumos) y Servicios (NoTimeline). Respeta el filtro de período.
+function _renderSumTopWidgets() {
+  const el = document.getElementById('sumTopWidgets');
+  if (!el) return;
+  const items = (_suministrosKeywords || []).map(kw => {
+    const nkw = _sumNormalize(kw);
+    let total = 0;
+    (egresos || []).forEach(e => {
+      if (!_sumCatOk(e) || !e.date || !_matchesSelectedPeriod(e.date)) return;
+      if (!_sumMatchesKw(e, nkw)) return;
+      const ov = _sumItemAmount(e, nkw);
+      total += (ov != null ? ov : parseFloat(e.amount || 0));
+    });
+    return { kw, total: Math.round(total * 100) / 100, servicio: _sumIsNoTimeline(kw) };
+  }).filter(x => x.total > 0.005);
+
+  const sumis = items.filter(x => !x.servicio).sort((a, b) => b.total - a.total);
+  const servs = items.filter(x =>  x.servicio).sort((a, b) => b.total - a.total);
+
+  const card = (titulo, icono, list, color) => {
+    const totalGrupo = list.reduce((s, x) => s + x.total, 0);
+    const max = list.length ? list[0].total : 1;
+    const rows = list.length
+      ? list.slice(0, 5).map(x => {
+          const pct = Math.max(4, Math.round((x.total / max) * 100));
+          return `<div style="margin-top:9px;">
+            <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--text);">
+              <span style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(x.kw)}</span>
+              <strong style="white-space:nowrap;font-variant-numeric:tabular-nums;">$${x.total.toFixed(2)}</strong>
+            </div>
+            <div style="height:6px;background:var(--bg);border-radius:3px;margin-top:3px;overflow:hidden;">
+              <div style="height:100%;width:${pct}%;background:${color};border-radius:3px;"></div>
+            </div>
+          </div>`;
+        }).join('')
+      : '<div style="margin-top:8px;font-size:12px;color:var(--text-muted);font-style:italic;">Sin gastos en el período.</div>';
+    return `<div style="flex:1;min-width:230px;border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:var(--surface);">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+        <div style="font-size:13px;font-weight:700;color:var(--text);">${icono} ${titulo}</div>
+        <div style="font-size:13px;font-weight:700;color:${color};font-variant-numeric:tabular-nums;">$${totalGrupo.toFixed(2)}</div>
+      </div>
+      ${rows}
+    </div>`;
+  };
+
+  if (!sumis.length && !servs.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div style="display:flex;gap:12px;flex-wrap:wrap;">
+      ${card('Mayores gastos · Suministros', '📦', sumis, '#6a9e62')}
+      ${card('Mayores gastos · Servicios', '🧾', servs, '#c0956a')}
+    </div>`;
 }
 
 // Alterna entre la vista Timeline y la vista Detalle por item.
