@@ -287,17 +287,31 @@ function sendWAReservaConfirmada(reservation) {
  *   {{detalle}}  "12 ago 2026 → 13 ago 2026 · 1 noche" o "Fechas a coordinar"
  *   {{link}}     link publico de la reserva (o lasnubes.cloud)
  *
- * Texto sugerido para dar de alta en Meta Business Manager:
+ * Texto sugerido para dar de alta en Meta Business Manager (copiar tal cual —
+ * el cierre "Estaremos atentos" tiene que vivir en el body de la plantilla,
+ * porque Meta no permite inyectar texto libre fuera de los parametros):
  *   🎁 Hola {{nombre}}! Tienes un regalo en Las Nubes de parte de {{de}}.
+ *
  *   Cabaña: {{cabana}}
  *   {{detalle}}
- *   Todo está cubierto — no tienes nada que pagar. Escríbenos para coordinar
- *   los detalles: {{link}}
+ *
+ *   Todo está cubierto — no tienes nada que pagar.
+ *
+ *   Para verificar disponibilidad y coordinar las fechas de tu reserva
+ *   escríbenos al WhatsApp 6981-2266. Estaremos atentos 🙏
+ *
+ *   {{link}}
  *
  * Mientras Meta no la apruebe, cae de vuelta a 'confirmacion_reserva' con los
- * parametros adaptados al regalo (sin montos) para que el aviso salga igual.
+ * parametros adaptados al regalo (sin montos). Como ahí el body es fijo y no
+ * lleva la invitación, esta se agrega al param de texto libre — ver
+ * REGALO_WA_COORDINAR_CORTO abajo.
  * NUNCA incluye tarifa, abono ni saldo.
  */
+// Versión compacta de la invitación para meterla en un param de plantilla.
+// Meta rechaza parámetros con saltos de línea o tabs, así que va en una línea.
+const REGALO_WA_COORDINAR_CORTO = 'escríbenos al WhatsApp 6981-2266 para verificar disponibilidad y coordinar tus fechas. Estaremos atentos 🙏';
+
 function sendWARegaloCertificado(reservation) {
   if (!reservation) throw new Error('WA: reservation requerida');
   if (!reservation.telefono) throw new Error('WA: reservation sin telefono');
@@ -352,7 +366,9 @@ function sendWARegaloCertificado(reservation) {
     return sendWhatsAppTemplate(reservation.telefono, 'confirmacion_reserva', 'es_PA', {
       nombre:        nombre,
       cabana:        '🎁 ' + cabin + ' — regalo de ' + de,
-      fechas:        detalle + (sinFecha ? ' (escríbenos para coordinar)' : ''),
+      // El body de 'confirmacion_reserva' es fijo y no trae la invitación a
+      // coordinar, así que va aquí (único param de texto libre suficiente).
+      fechas:        detalle + ' · ' + REGALO_WA_COORDINAR_CORTO,
       personas:      personasStr,
       checkin_hora:  sinFecha ? 'a coordinar' : _horaPlantilla(reservation.tipo, 'checkin',  false, reservation.horaEntrada),
       checkout_hora: sinFecha ? 'a coordinar' : _horaPlantilla(reservation.tipo, 'checkout', reservation.checkoutExtendido, null, reservation.horaSalida),
