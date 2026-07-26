@@ -1456,17 +1456,30 @@ function repararAlteracionesHuerfanas(dryRun) {
     const hue   = norm(filas[ci][2]);
     const cab   = norm(filas[ci][3]);
 
-    let mejor = -1;
+    // "%{GUEST_NAME}": Airbnb no sustituyó la variable de plantilla. Sin nombre
+    // se empareja por cercanía temporal, y solo si hay UN candidato.
+    const sinNombre = _altNombreInutil(filas[ci][2]);
+    let mejor = -1, candidatos = 0;
     solicitudes.forEach(si => {
       if (usada[si]) return;
-      if (norm(filas[si][2]) !== hue) return;
+      if (!sinNombre && norm(filas[si][2]) !== hue) return;
       const cabS = norm(filas[si][3]);
       if (cab && cabS && cabS !== cab) return;
       const fs = _altTs(filas[si][0]);
       if (!fs || fs > fconf) return;
-      if (_altDiasEntre(fs, fconf) > ALT_VENTANA_DIAS) return;
+      const gapMin = _altDiasEntre(fs, fconf) * 1440;
+      if (sinNombre ? gapMin > ALT_FALLBACK_MIN : gapMin > ALT_VENTANA_DIAS * 1440) return;
+      candidatos++;
       if (mejor < 0 || fs > _altTs(filas[mejor][0])) mejor = si;
     });
+
+    if (sinNombre && candidatos !== 1) {
+      Logger.log('⚠ ' + (cod || '(sin código)') + ': confirmación sin nombre utilizable y '
+        + candidatos + ' candidato(s) por cercanía. No se arriesga a emparejar.');
+      mejor = -1;
+    } else if (sinNombre && mejor >= 0) {
+      Logger.log('(nombre sin sustituir en el email; emparejado por cercanía temporal)');
+    }
 
     if (mejor < 0) {
       sinPareja++;
@@ -1527,7 +1540,7 @@ function _altPreviewCambios(resData, cod, cambios) {
   if (!cambios.length) { out.push('sin detalle de cambios; no se aplicaría nada.'); return out; }
 
   cambios.forEach(c => {
-    const que = (c.que || '').toUpperCase();
+    const que = _altNormQue(c.que);          // sin tildes: "HUÉSPEDES" → "HUESPEDES"
     if (que.indexOf('VIAJERO') === 0 || que.indexOf('HUESPED') === 0) {
       const n = parseInt((String(c.despues).match(/(\d+)/) || [])[1], 10);
       if (n > 0) {
