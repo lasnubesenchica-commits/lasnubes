@@ -289,8 +289,12 @@ function _buildPublicDTO(r) {
   const fullName    = (r.name || '').toString().trim();
   const primerNomb  = fullName.split(/\s+/)[0] || fullName;
 
-  const total      = parseFloat(r.amount)  || 0;
-  const deposit    = parseFloat(r.deposit) || 0;
+  // Certificado de regalo: el beneficiario NO debe ver plata (ni tarifa, ni
+  // abono, ni saldo). Se anulan los montos antes de armar el payload; reserva.html
+  // ya oculta la fila Total y la tarjeta de saldo cuando vienen en cero/null.
+  const regalo     = (typeof _parseRegalo === 'function') ? _parseRegalo(r) : { esRegalo: false, de: '', mensaje: '' };
+  const total      = regalo.esRegalo ? 0 : (parseFloat(r.amount)  || 0);
+  const deposit    = regalo.esRegalo ? 0 : (parseFloat(r.deposit) || 0);
   const saldo      = total - deposit;
   const hasSaldo   = total > 0 && saldo > 0;
   const personas   = parseInt(r.persons, 10) || null;
@@ -372,7 +376,9 @@ function _buildPublicDTO(r) {
     accesoExtra:   props.getProperty('CHECKIN_ACCESO_EXTRA')  || '',
     whatsappContact: 'https://wa.me/' + waNum,
     referralCode:    referralCode,
-    referralAmount:  20
+    referralAmount:  20,
+    // Regalo: banner "de parte de X" + dedicatoria en la página pública.
+    regalo:          regalo.esRegalo ? { de: regalo.de, mensaje: regalo.mensaje } : null
   };
 }
 
@@ -408,7 +414,11 @@ function _readReservaById(id) {
         // Cols 30/31: horas custom. Sin esto, la página pública (reserva.html)
         // mostraba el default del tipo (2pm/11am) en vez del horario especial.
         horaEntrada: (typeof _normalizeHora === 'function') ? _normalizeHora(r[29]) : (r[29] || ''),
-        horaSalida:  (typeof _normalizeHora === 'function') ? _normalizeHora(r[30]) : (r[30] || '')
+        horaSalida:  (typeof _normalizeHora === 'function') ? _normalizeHora(r[30]) : (r[30] || ''),
+        // Col 33: certificado de regalo. Sin esto la página pública mostraría
+        // la tarifa y el saldo al beneficiario del regalo.
+        regalo:      r[32] || '',
+        pagador:     r[14] || ''
       };
     }
   }

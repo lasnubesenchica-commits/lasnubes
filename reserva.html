@@ -72,6 +72,10 @@
   }
   .badge.cancel { background: #fde2dc; color: #8b2e1a; }
   .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; padding: 11px 0; border-bottom: 1px solid var(--border); }
+  /* `.row { display:flex }` le gana a la regla del user-agent para [hidden], así
+     que las filas con el atributo hidden (rowTotal, rowPersonas) se seguían
+     dibujando vacías. Este reset hace que hidden funcione de verdad. */
+  [hidden] { display: none !important; }
   .row:last-child { border-bottom: none; }
   .row .label { font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); padding-top: 2px; }
   .row .value { font-size: 15px; text-align: right; font-weight: 400; }
@@ -85,6 +89,11 @@
 
   .saldo-card { background: #fff7e6; border-color: #f0d99a; }
   .saldo-amount { font-size: 26px; font-weight: 500; color: #8a6000; font-family: 'Cormorant Garamond', serif; }
+
+  .regalo-card { background: linear-gradient(135deg, #fdf8f0, #f7ecd9); border-color: #ecd9b8; }
+  .regalo-eyebrow { font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; color: #8a6a2f; font-weight: 600; margin-bottom: 4px; }
+  .regalo-de { font-size: 22px; font-weight: 500; color: #3a3530; font-family: 'Cormorant Garamond', serif; }
+  .regalo-msg { margin-top: 12px; padding: 12px 14px; background: #fff; border: 1px solid #ecd9b8; border-radius: 10px; font-style: italic; color: #6b6560; line-height: 1.6; }
 
   .ref-card { background: linear-gradient(135deg, #eef4f8, #dee9f1); border-color: #a8c5d8; text-align: center; }
   .ref-code {
@@ -305,6 +314,8 @@
       <div class="nombre" id="heroSub"></div>
       <div id="estadoBadge"></div>
     </div>
+
+    <div id="regaloCard"></div>
 
     <div class="card">
       <h2>Detalles de tu estadía</h2>
@@ -583,6 +594,29 @@ function renderReferral(r) {
   }
 }
 
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Certificado de regalo: banner "de parte de X" + dedicatoria. El backend
+// manda r.regalo = null en reservas normales (y ya anuló total/abono/saldo
+// cuando es regalo, así que la fila Total y la tarjeta de saldo no se pintan).
+function renderRegalo(r) {
+  const card = $('regaloCard');
+  if (!card) return;
+  if (!r.regalo) { card.innerHTML = ''; return; }
+  const de  = (r.regalo.de || '').toString();
+  const msg = (r.regalo.mensaje || '').toString();
+  card.innerHTML = '<div class="card regalo-card">'
+    + '<div class="regalo-eyebrow">&#127873; Regalo de parte de</div>'
+    + '<div class="regalo-de">' + esc(de || 'alguien que te quiere') + '</div>'
+    + (msg ? '<div class="regalo-msg">&ldquo;' + esc(msg) + '&rdquo;</div>' : '')
+    + '<p class="muted-text" style="margin-top:12px;">Todo está cubierto. No tienes nada que pagar.</p>'
+    + '</div>';
+}
+
 function renderSaldo(r) {
   const card = $('saldoCard');
   if (!r.saldo || r.saldo <= 0) { card.innerHTML = ''; return; }
@@ -655,6 +689,7 @@ function render(r) {
     show('rowTotal');
   }
 
+  renderRegalo(r);
   renderKeybox(r);
   renderSaldo(r);
   renderGuide(r);

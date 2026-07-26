@@ -306,7 +306,7 @@ function getOrCreateSheet() {
 
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
-    sheet.getRange(1, 1, 1, 32).setValues([[
+    sheet.getRange(1, 1, 1, 33).setValues([[
       'ID', 'Nombre', 'Cabaña', 'CabañaCodigo',
       'Entrada', 'Salida', 'Personas',
       'Monto', 'Abono', 'Origen', 'CodConfirmacion',
@@ -314,16 +314,16 @@ function getOrCreateSheet() {
       'FechaPago', 'MontoPagado', 'CodTransferencia', 'MontoVoucher', 'EstadoPago',
       'Email', 'Comentarios', 'Telefono', 'Tipo', 'VoucherURL',
       'IdHuespedURL', 'FechaNacimiento', 'CheckoutExtendido',
-      'HoraEntrada', 'HoraSalida', 'VouchersMeta'
+      'HoraEntrada', 'HoraSalida', 'VouchersMeta', 'Regalo'
     ]]);
-    sheet.getRange(1, 1, 1, 32).setFontWeight('bold');
+    sheet.getRange(1, 1, 1, 33).setFontWeight('bold');
     sheet.setFrozenRows(1);
   } else {
     // Auto-asegurar columnas Tipo (25), VoucherURL (26), IdHuespedURL (27),
     // FechaNacimiento (28), CheckoutExtendido (29), HoraEntrada (30),
-    // HoraSalida (31), VouchersMeta (32).
+    // HoraSalida (31), VouchersMeta (32), Regalo (33).
     // Idempotente: cada llamada rellena lo que falte.
-    if (sheet.getLastColumn() < 32) {
+    if (sheet.getLastColumn() < 33) {
       const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
       if (!headers.includes('Tipo')) {
         sheet.getRange(1, 25).setValue('Tipo');
@@ -356,6 +356,10 @@ function getOrCreateSheet() {
       if (!headers.includes('VouchersMeta')) {
         sheet.getRange(1, 32).setValue('VouchersMeta');
         sheet.getRange(1, 32).setFontWeight('bold');
+      }
+      if (!headers.includes('Regalo')) {
+        sheet.getRange(1, 33).setValue('Regalo');
+        sheet.getRange(1, 33).setFontWeight('bold');
       }
     }
   }
@@ -1303,7 +1307,10 @@ function doGet(e) {
         // JSON array con un entry por voucher subido: {monto, cod, fecha, url}.
         // Vacío en reservas viejas — el frontend degrada al par
         // VoucherURL / CodTransferencia.
-        vouchersMeta:     r[31] || ''
+        vouchersMeta:     r[31] || '',
+        // JSON {de, mensaje} cuando la reserva es un certificado de regalo.
+        // Vacío = reserva normal. Ver _parseRegalo().
+        regalo:           r[32] || ''
       }));
 
     return ContentService
@@ -1535,6 +1542,9 @@ function doPost(e) {
         const ho = _normalizeHora(r.horaSalida);
         if (hi) sheet.getRange(sheet.getLastRow(), 30).setValue(hi);
         if (ho) sheet.getRange(sheet.getLastRow(), 31).setValue(ho);
+        // Col 33 (Regalo) — JSON {de, mensaje} si es certificado de regalo.
+        const regaloCell = _serializeRegalo(r.regalo, r.pagador);
+        if (regaloCell) sheet.getRange(sheet.getLastRow(), 33).setValue(regaloCell);
       } catch(appendErr) {
         Logger.log('  ✗ appendRow THREW: ' + appendErr.message + ' stack: ' + appendErr.stack);
         logDebugEntry('saveReservation-FAIL', { id: r.id, error: appendErr.message, stack: appendErr.stack ? String(appendErr.stack).slice(0, 400) : '' });
@@ -1634,6 +1644,9 @@ function doPost(e) {
           // borrar el override al editar.
           sheet.getRange(row, 30).setValue(_normalizeHora(r.horaEntrada));
           sheet.getRange(row, 31).setValue(_normalizeHora(r.horaSalida));
+          // Col 33 (Regalo) — setear siempre para permitir desmarcar el regalo
+          // al editar. Vacío = reserva normal.
+          sheet.getRange(row, 33).setValue(_serializeRegalo(r.regalo, r.pagador));
 
           if (payload.fechaAnterior) {
             const fa   = payload.fechaAnterior;
@@ -2059,7 +2072,7 @@ function doPost(e) {
           // del bot). Configurable por Script Property; default 6981-2266.
           const previewPhone = PropertiesService.getScriptProperties().getProperty('PREVIEW_NOTIFY_PHONE') || '50769812266';
           const clone = Object.assign({}, r, { telefono: previewPhone });
-          sendWAReservaConfirmada(clone);
+          sendWAAvisoReserva(clone);
           result.whatsapp = { ok: true, to: previewPhone };
         } catch(e) { result.whatsapp = { ok: false, error: e.message }; }
       }
@@ -2082,7 +2095,7 @@ function doPost(e) {
     // ── SEND WHATSAPP ─────────────────────────────────────────
     if (action === 'sendWAConfirmacion') {
       try {
-        const result = sendWAReservaConfirmada(payload.reservation);
+        const result = sendWAAvisoReserva(payload.reservation);
         return ContentService
           .createTextOutput(JSON.stringify({ ok: true, result: result }))
           .setMimeType(ContentService.MimeType.JSON);
@@ -2452,6 +2465,56 @@ function _formatHora12(hhmm) {
   return h + ':' + (mn < 10 ? '0' + mn : String(mn)) + ' ' + ampm;
 }
 
+// ═══════════════════════════════════════════════════════════
+//  Certificados de regalo
+// ═══════════════════════════════════════════════════════════
+//
+// Un certificado de regalo es una reserva normal (con su `tipo`, su `origen` y
+// su plata registrada como ingreso) donde QUIEN PAGA y QUIEN DISFRUTA son
+// personas distintas:
+//   - `pagador`             → quien compró el regalo
+//   - `name`/`email`/`telefono` → el beneficiario, a quien le llegan los avisos
+// La marca vive en la col 33 `Regalo` como JSON `{de, mensaje}`; vacío = reserva
+// normal. `de` es el nombre que se muestra como remitente del regalo (default:
+// `pagador`) y `mensaje` es la dedicatoria opcional.
+//
+// Es un flag ORTOGONAL al `tipo` y al `origen` a propósito: un regalo sigue
+// siendo una noche/pasadía y sigue entrando por Directa/Referido. Combinado con
+// origen `Abierta` da el caso "regalo sin fecha, a coordinar por el beneficiario".
+
+// Normaliza la celda 33 a { esRegalo, de, mensaje }. Tolera JSON corrupto y
+// acepta que `regalo` venga ya como objeto (payloads del dashboard).
+function _parseRegalo(r) {
+  const vacio = { esRegalo: false, de: '', mensaje: '' };
+  if (!r) return vacio;
+  let obj = r.regalo;
+  if (!obj) return vacio;
+  if (typeof obj === 'string') {
+    const raw = obj.trim();
+    if (!raw) return vacio;
+    try { obj = JSON.parse(raw); } catch(_) { return vacio; }
+  }
+  if (!obj || typeof obj !== 'object') return vacio;
+  // `esRegalo:false` explícito gana sobre la presencia del objeto.
+  if (obj.esRegalo === false) return vacio;
+  return {
+    esRegalo: true,
+    de:      (obj.de      || r.pagador || '').toString().trim(),
+    mensaje: (obj.mensaje || '').toString().trim()
+  };
+}
+
+// Inverso de _parseRegalo: arma la celda 33. Devuelve '' si no es regalo.
+function _serializeRegalo(regalo, pagadorFallback) {
+  const g = _parseRegalo({ regalo: regalo, pagador: pagadorFallback });
+  if (!g.esRegalo) return '';
+  return JSON.stringify({ de: g.de, mensaje: g.mensaje });
+}
+
+function esReservaRegalo(r) {
+  return _parseRegalo(r).esRegalo;
+}
+
 function tipoEmailMeta(r) {
   const tipo = (r.tipo || 'noche').toString();
   const checkinStored  = r.checkin instanceof Date  ? Utilities.formatDate(r.checkin,  'America/Panama', 'yyyy-MM-dd') : r.checkin.toString().slice(0,10);
@@ -2644,6 +2707,100 @@ function buildEmailHTMLAbierta(r) {
 '</td></tr></table></td></tr></table></body></html>';
 }
 
+// Email de CERTIFICADO DE REGALO para el beneficiario.
+//
+// Deliberadamente NO lleva ningún monto: ni tarifa, ni abono, ni saldo, ni
+// recibo adjunto (eso lo bloquea sendConfirmationEmail). Quien recibe un regalo
+// no debe enterarse de lo que costó.
+//
+// Tampoco repite el manual completo de la cabaña: es un certificado, no la
+// confirmación operativa. Cuando el beneficiario define fechas, el admin manda
+// la confirmación normal (que sí trae guía de acceso, tiendita, etc.).
+function buildEmailHTMLRegalo(r) {
+  const g       = _parseRegalo(r);
+  const cabin   = CABIN_NAMES_EMAIL[r.cabin] || r.cabin || '';
+  const color   = CABIN_COLORS_EMAIL[r.cabin] || '#6a9e62';
+  const oro     = '#b5893f';
+  const nombre  = (r.name || '').toString().trim();
+  const primer  = nombre.split(/\s+/)[0] || nombre;
+  // Sin fecha definida: el regalo se emite y el beneficiario coordina después.
+  const sinFecha = (r.origin === 'Abierta') || !r.checkin || !r.checkout;
+  const meta     = sinFecha ? null : tipoEmailMeta(r);
+  const personas = parseInt(r.persons, 10) || 0;
+
+  const waRedimir = 'https://wa.me/50769812266?text=' + encodeURIComponent(
+    'Hola! Tengo un certificado de regalo de Las Nubes a nombre de ' + nombre + ' y quisiera coordinar las fechas.');
+  let publicLink = '';
+  try { if (r.id) publicLink = getPublicReservaUrl(r.id); } catch(e) { Logger.log('no publicLink regalo: ' + e.message); }
+
+  // Qué incluye el regalo — mismas filas que la confirmación pero SIN "Total".
+  const filaEstancia = meta
+    ? '<tr>' +
+      '<td style="padding:20px 24px;border-top:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Check-in</p><p style="margin:0;font-size:15px;color:#3a3530;font-weight:500;">' + meta.checkinFmt + '</p><p style="margin:4px 0 0;font-size:12px;color:#8a8078;">' + meta.checkinHora + '</p></td>' +
+      '<td style="padding:20px 24px;border-top:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Check-out</p><p style="margin:0;font-size:15px;color:#3a3530;font-weight:500;">' + meta.checkoutFmt + '</p><p style="margin:4px 0 0;font-size:12px;color:#8a8078;">' + meta.checkoutHora + '</p></td>' +
+      '</tr><tr>' +
+      '<td colspan="2" style="padding:20px 24px;border-top:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">' + meta.estanciaLabel + '</p><p style="margin:0;font-size:17px;font-weight:600;color:#3a3530;">' + meta.estanciaValue + '</p></td>' +
+      '</tr>'
+    : '<tr><td colspan="2" style="padding:20px 24px;border-top:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Fechas</p><p style="margin:0;font-size:15px;color:#3a3530;font-weight:500;">A coordinar</p><p style="margin:4px 0 0;font-size:12px;color:#8a8078;">Escríbenos cuando tengas tus fechas listas.</p></td></tr>';
+
+  return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>' +
+'<body style="margin:0;padding:0;background:#f5f3f0;font-family:\'Helvetica Neue\',Helvetica,Arial,sans-serif;">' +
+'<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f3f0;padding:32px 16px;"><tr><td align="center">' +
+'<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">' +
+'<tr><td style="background:' + oro + ';border-radius:16px 16px 0 0;padding:36px 40px;text-align:center;">' +
+'<p style="margin:0 0 6px;font-size:12px;color:rgba(255,255,255,0.8);letter-spacing:2px;text-transform:uppercase;">&#127873; Certificado de regalo</p>' +
+'<h1 style="margin:0;font-size:32px;font-weight:300;color:#ffffff;font-family:Georgia,serif;">Las <em>Nubes</em></h1>' +
+'<p style="margin:10px 0 0;font-size:15px;color:rgba(255,255,255,0.9);">Buenos Aires, Chame · Panamá Oeste</p>' +
+'</td></tr>' +
+'<tr><td style="background:#ffffff;padding:36px 40px;">' +
+'<p style="margin:0 0 8px;font-size:16px;color:#3a3530;line-height:1.6;">Hola <strong>' + primer + '</strong>,</p>' +
+'<p style="margin:0 0 22px;font-size:16px;color:#3a3530;line-height:1.6;">Te regalaron una estadía en Las Nubes. Este correo es tu certificado &mdash; guárdalo.</p>' +
+// Tarjeta del regalo: de parte de + dedicatoria
+'<table width="100%" cellpadding="0" cellspacing="0" style="background:#fdf8f0;border:1px solid #ecd9b8;border-left:4px solid ' + oro + ';border-radius:10px;margin-bottom:24px;"><tr><td style="padding:20px 24px;">' +
+'<p style="margin:0 0 4px;font-size:11px;color:#8a6a2f;text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">De parte de</p>' +
+'<p style="margin:0;font-size:19px;font-weight:600;color:#3a3530;font-family:Georgia,serif;">' + (g.de || 'alguien que te quiere') + '</p>' +
+(g.mensaje
+  ? '<p style="margin:14px 0 0;padding:12px 16px;background:#ffffff;border:1px solid #ecd9b8;border-radius:8px;font-size:14px;color:#6b6560;line-height:1.65;font-style:italic;">&ldquo;' + g.mensaje + '&rdquo;</p>'
+  : '') +
+'</td></tr></table>' +
+// Qué incluye
+'<p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#3a3530;">Tu regalo incluye</p>' +
+'<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f8f6;border-radius:12px;border:1px solid #e8e4de;margin-bottom:24px;">' +
+'<tr>' +
+'<td style="padding:20px 24px;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Cabaña</p><p style="margin:0;font-size:17px;font-weight:600;color:' + color + ';">' + (cabin || 'Las Nubes') + '</p></td>' +
+'<td style="padding:20px 24px;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Personas</p><p style="margin:0;font-size:17px;font-weight:600;color:#3a3530;">' + (personas || '—') + '</p></td>' +
+'</tr>' + filaEstancia +
+'</table>' +
+'<p style="margin:0 0 20px;font-size:13px;color:#6b6560;line-height:1.7;">&#10003; Todo está cubierto por quien te lo regaló. No tienes nada que pagar.</p>' +
+// CTA
+(sinFecha
+  ? '<p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#3a3530;">Cómo hacerlo efectivo</p>' +
+    '<p style="margin:0 0 16px;font-size:13px;color:#6b6560;line-height:1.7;">Escríbenos por WhatsApp con las fechas que te gustarían y coordinamos disponibilidad, cabaña y detalles de tu llegada.</p>' +
+    '<table cellpadding="0" cellspacing="0" style="margin-bottom:24px;"><tr><td>' +
+    '<a href="' + waRedimir + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:14px;font-weight:600;padding:12px 24px;border-radius:8px;text-decoration:none;">&#128172; Coordinar mis fechas</a>' +
+    '</td></tr></table>' +
+    '<p style="margin:0 0 8px;font-size:13px;color:#6b6560;line-height:1.6;">O al número: <strong>+507 6981-2266</strong></p>'
+  : (publicLink
+      ? '<table cellpadding="0" cellspacing="0" style="margin-bottom:20px;"><tr><td>' +
+        '<a href="' + publicLink + '" target="_blank" style="display:inline-block;background:' + color + ';color:#ffffff;font-size:14px;font-weight:600;padding:12px 24px;border-radius:8px;text-decoration:none;">&#128279; Ver los detalles de tu estadía</a>' +
+        '</td></tr></table>'
+      : '') +
+    '<p style="margin:0 0 8px;font-size:13px;color:#6b6560;line-height:1.6;">Cualquier duda, escríbenos por WhatsApp al <strong>+507 6981-2266</strong>.</p>') +
+'<hr style="border:none;border-top:1px solid #e8e4de;margin:28px 0;">' +
+// Teaser de la experiencia — sin precios
+'<h2 style="margin:0 0 16px;font-size:17px;font-weight:600;color:#3a3530;">Lo que te espera</h2>' +
+'<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;"><tr><td style="vertical-align:top;padding-right:12px;font-size:22px;width:36px;">&#9728;&#65039;</td><td><p style="margin:0 0 3px;font-size:14px;font-weight:600;color:#3a3530;">Cabaña solar, privacidad total</p><p style="margin:0;font-size:13px;color:#6b6560;line-height:1.6;">Energía 100% solar y uso exclusivo de todas las instalaciones para ti y tus acompañantes.</p></td></tr></table>' +
+'<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;"><tr><td style="vertical-align:top;padding-right:12px;font-size:22px;width:36px;">&#127859;</td><td><p style="margin:0 0 3px;font-size:14px;font-weight:600;color:#3a3530;">Cocina equipada y área de BBQ</p><p style="margin:0;font-size:13px;color:#6b6560;line-height:1.6;">Con café, azúcar, especias básicas y cooler grande. Solo traes hielo y tus alimentos.</p></td></tr></table>' +
+'<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;"><tr><td style="vertical-align:top;padding-right:12px;font-size:22px;width:36px;">&#127956;&#65039;</td><td><p style="margin:0 0 3px;font-size:14px;font-weight:600;color:#3a3530;">Montaña, cascadas y playa cerca</p><p style="margin:0;font-size:13px;color:#6b6560;line-height:1.6;">Cascada dentro del proyecto, Los Cajones de Chame, Cerro Campana y las playas de Coronado a 15–20 minutos.</p></td></tr></table>' +
+'<a href="https://lasnubes.cloud" target="_blank" style="color:' + color + ';font-size:13px;font-weight:500;text-decoration:none;border-bottom:1px solid ' + color + ';">Conocer Las Nubes &rarr;</a>' +
+'</td></tr>' +
+'<tr><td style="background:#3a3530;border-radius:0 0 16px 16px;padding:24px 40px;text-align:center;">' +
+'<p style="margin:0 0 8px;font-size:18px;font-weight:300;color:#ffffff;font-family:Georgia,serif;">Las <em>Nubes</em></p>' +
+'<p style="margin:0 0 12px;font-size:12px;color:rgba(255,255,255,0.6);">Buenos Aires, Chame · En las faldas de Chicá · Panamá Oeste</p>' +
+'<a href="https://wa.me/50769812266" style="color:rgba(255,255,255,0.8);font-size:13px;text-decoration:none;">&#128172; WhatsApp: +507 6981-2266</a>' +
+'</td></tr></table></td></tr></table></body></html>';
+}
+
 // Banner para reservas multi-cabaña: se inserta arriba del bloque de detalles
 // cuando r.multiCabin trae un array con las N estadías hermanas.
 function _multiCabinBannerHTML(r) {
@@ -2677,6 +2834,9 @@ function _multiCabinBannerHTML(r) {
 }
 
 function buildEmailHTML(r) {
+  // El regalo se evalúa ANTES de Abierta: un regalo sin fecha debe recibir el
+  // certificado, no el email genérico de reserva abierta.
+  if (esReservaRegalo(r)) return buildEmailHTMLRegalo(r);
   if (r.origin === 'Abierta') return buildEmailHTMLAbierta(r);
   const cabin       = CABIN_NAMES_EMAIL[r.cabin] || r.cabin;
   const color       = CABIN_COLORS_EMAIL[r.cabin] || '#6a9e62';
@@ -2769,14 +2929,19 @@ function sendConfirmationEmail(reservation, voucherBase64, voucherMimeType, subj
     if (!email) return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'No hay email de huésped' })).setMimeType(ContentService.MimeType.JSON);
     const cabin   = CABIN_NAMES_EMAIL[reservation.cabin] || reservation.cabin;
     const isAbierta = reservation.origin === 'Abierta';
-    const subject = (subjectPrefix || '') + (isAbierta
-      ? '📌 Reserva Abierta — Las Nubes'
-      : '✅ Confirmación de reserva — ' + cabin + ' · Las Nubes');
+    const isRegalo  = esReservaRegalo(reservation);
+    const subject = (subjectPrefix || '') + (isRegalo
+      ? '🎁 Tienes un regalo en Las Nubes'
+      : (isAbierta
+        ? '📌 Reserva Abierta — Las Nubes'
+        : '✅ Confirmación de reserva — ' + cabin + ' · Las Nubes'));
 
-    // Adjuntar recibo PDF si la reserva tiene voucher (codTransferencia o montoVoucher)
+    // Adjuntar recibo PDF si la reserva tiene voucher (codTransferencia o montoVoucher).
+    // En un REGALO no se adjunta nada: ni recibo ni voucher — el beneficiario no
+    // debe ver cuánto pagó quien se lo regaló.
     const attachments = [];
     const montoVoucherNum = reservation.montoVoucher ? parseFloat(String(reservation.montoVoucher).replace(/[^\d.]/g, '')) || 0 : 0;
-    const hasVoucher = !!(reservation.codTransferencia || montoVoucherNum > 0);
+    const hasVoucher = !isRegalo && !!(reservation.codTransferencia || montoVoucherNum > 0);
     Logger.log('🧾 sendConfirmationEmail · hasVoucher=' + hasVoucher + ' codT=' + (reservation.codTransferencia || 'null') + ' montoVoucher=' + (reservation.montoVoucher || 'null') + ' voucherBytes=' + (voucherBase64 ? voucherBase64.length : 0));
     const debug = { hasVoucher, codT: reservation.codTransferencia || null, montoVoucher: reservation.montoVoucher || null };
     if (hasVoucher && !isAbierta) {
@@ -2792,7 +2957,7 @@ function sendConfirmationEmail(reservation, voucherBase64, voucherMimeType, subj
     }
 
     // Adjuntar voucher original (imagen) si el dashboard lo envió
-    if (voucherBase64 && voucherMimeType) {
+    if (voucherBase64 && voucherMimeType && !isRegalo) {
       try {
         const ext = voucherMimeType.includes('png') ? '.png' : voucherMimeType.includes('gif') ? '.gif' : voucherMimeType.includes('webp') ? '.webp' : '.jpg';
         const safeName = ((reservation.name || 'huesped').toString())
@@ -3161,13 +3326,20 @@ function sendUpdateEmail(reservation, voucherBase64, voucherMimeType) {
     const deposit     = parseFloat(reservation.deposit) || 0;
     const saldo       = (amount - deposit).toFixed(2);
     const hasSaldo    = deposit > 0 && parseFloat(saldo) > 0;
-    const subject     = 'Actualización de reserva — ' + cabin + ' · Las Nubes';
-    const html = buildUpdateEmailHTML(reservation, cabin, color, formatDateES(checkinStr), formatDateES(checkoutStr), nightCount(checkinStr, checkoutStr), amount, deposit, saldo, hasSaldo, reservation.comentarios || '', googleCalLink(reservation));
+    // En un REGALO no se manda el email de actualización (habla de montos,
+    // abonos y saldo): se reenvía el certificado, que no lleva plata.
+    const isRegalo    = esReservaRegalo(reservation);
+    const subject     = isRegalo
+      ? '🎁 Tu regalo en Las Nubes — actualizado'
+      : 'Actualización de reserva — ' + cabin + ' · Las Nubes';
+    const html = isRegalo
+      ? buildEmailHTMLRegalo(reservation)
+      : buildUpdateEmailHTML(reservation, cabin, color, formatDateES(checkinStr), formatDateES(checkoutStr), nightCount(checkinStr, checkoutStr), amount, deposit, saldo, hasSaldo, reservation.comentarios || '', googleCalLink(reservation));
 
     // Si la edicion incluye un voucher nuevo, generar recibo PDF y adjuntar
-    // (mismo flujo que sendConfirmationEmail).
+    // (mismo flujo que sendConfirmationEmail). Nunca en un regalo.
     const attachments = [];
-    if (voucherBase64 && voucherMimeType) {
+    if (voucherBase64 && voucherMimeType && !isRegalo) {
       try {
         const receipt = generateReceiptPDF(reservation);
         attachments.push(receipt.blob);
