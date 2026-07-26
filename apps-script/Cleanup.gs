@@ -1429,6 +1429,33 @@ function _correccionesAirbnb_() {
       checkin: '2025-08-03', checkout: '2025-08-04',
       fechaPago: '2025-08-27', montoPagado:  82.93, estadoPago: 'PAGA' },
 
+    // ── Las 5 cancelaciones que la fila no reflejaba ─────────────
+    // Las destapó el chequeo G de verificarSaludAirbnb() cruzando la hoja
+    // Cancelaciones contra Reservas. Se parten en dos grupos según el export:
+    //
+    //   CON penalización cobrada (aparecen en el export, Airbnb pagó):
+    //     Lena  HMF4R5HH49 · $75.29 neto, payout 14-abr-2026
+    //     Paige HMMP54CHQ3 · $87.30 neto, payout 15-ene-2026 (su monto venía
+    //           inflado: $103.74 en la hoja contra $90.00 de bruto real)
+    //
+    //   SIN cobro (no están en ningún export → cancelación libre, $0):
+    //     Anna HMBKBXNSRR · Colton HMZZHYA985 · Abraham HM9DNW4QZ2
+    //
+    // A los tres sin cobro no se les toca el monto: al quedar CANCELADA salen de
+    // la ocupación y de "por cobrar", que es lo que corresponde — son $548.10
+    // que nunca se debieron. Abraham queda sin cabaña y así está bien: no está
+    // en el export porque nunca se concretó, y una cancelada no ocupa nada.
+    { cod: 'HMF4R5HH49', quien: 'Lena Wiedmann', neto: 75.29, estadoPago: 'CANCELADA',
+      comentario: 'Cancelada. Airbnb pagó la penalización ($75.29 neto, payout del 14-abr-2026).' },
+    { cod: 'HMMP54CHQ3', quien: 'Paige', monto: 90.00, neto: 87.30, estadoPago: 'CANCELADA',
+      comentario: 'Cancelada. Airbnb pagó la penalización ($87.30 neto, payout del 15-ene-2026).' },
+    { cod: 'HMBKBXNSRR', quien: 'Anna',    estadoPago: 'CANCELADA',
+      comentario: 'Cancelada sin cobro: no figura en el export de Airbnb, no hubo penalización.' },
+    { cod: 'HMZZHYA985', quien: 'Colton',  estadoPago: 'CANCELADA',
+      comentario: 'Cancelada sin cobro: no figura en el export de Airbnb, no hubo penalización.' },
+    { cod: 'HM9DNW4QZ2', quien: 'Abraham', estadoPago: 'CANCELADA',
+      comentario: 'Cancelada sin cobro: no figura en el export de Airbnb, no hubo penalización. Quedó sin cabaña asignada y no hay con qué determinarla; al estar cancelada no afecta la ocupación.' },
+
     { cod: 'HMP5R5WYAF', quien: 'Kenneth', estadoPago: 'CANCELADA',
       comentario: 'Cancelada por el huésped el 8-may-2026. Sin reembolso por política, Airbnb pagó la penalización ($92.10). La noche la retomó David Sauceda (directa).' }
   ];
@@ -1742,8 +1769,12 @@ function verificarSaludAirbnb() {
   });
 
   // ── C) Cabaña asignada ─────────────────────────────────────
-  // Sin cabaña la reserva no aparece en la ocupación de ninguna.
+  // Sin cabaña la reserva no aparece en la ocupación de ninguna, y esa noche
+  // queda libre en el calendario para venderla de nuevo. Las CANCELADAS se
+  // saltean: no ocupan nada, así que su cabaña es irrelevante (Abraham no está
+  // en ningún export justamente porque fue una cancelación sin cobro).
   filas.forEach(f => {
+    if (String(f.r[_R.ESTADO] || '').trim().toUpperCase() === 'CANCELADA') return;
     if (!String(f.r[2] || '').trim() || !String(f.r[3] || '').trim())
       P('alta', 'sin cabaña', 'fila ' + f.n + ' · ' + f.r[1] + ' · ' + iso(f.r[_R.ENTRADA]));
   });
