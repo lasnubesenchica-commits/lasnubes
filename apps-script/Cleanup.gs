@@ -1167,7 +1167,7 @@ function buscarReservasAirbnbDuplicadas() {
   Logger.log('═══ RESERVAS DE AIRBNB DUPLICADAS ═══');
   if (!dups.length) { Logger.log('✓ No hay estadías de Airbnb con más de una fila activa.'); return []; }
 
-  let conSintetica = 0;
+  let conSintetica = 0, mismoCodigo = 0, choqueFechas = 0;
   dups.forEach(g => {
     Logger.log('');
     Logger.log('⚠ ' + g[0].cabana + ' · ' + g[0].entrada + '→' + g[0].salida + ' · ' + g.length + ' filas:');
@@ -1179,15 +1179,75 @@ function buscarReservasAirbnbDuplicadas() {
     });
     const buena = g.filter(f => !esSintetico(f.cod) && f.fechaPago);
     const mala  = g.filter(f => esSintetico(f.cod) && !f.fechaPago);
+    // Distinguir los dos problemas que caen en el mismo grupo:
+    //  · MISMO código HM en las dos filas → es LA MISMA reserva cargada dos
+    //    veces. Duplicado inequívoco, y encima el ingreso se cuenta doble.
+    //  · Códigos HM DISTINTOS → son dos reservas reales de Airbnb. Que choquen
+    //    en cabaña+fechas casi siempre significa que una tiene las FECHAS mal
+    //    en la hoja (año equivocado por el bug viejo de parseFecha, o una
+    //    modificación de Airbnb que no se reflejó), no que sobre una fila.
+    const codsHM = g.map(f => f.cod.toUpperCase()).filter(c => /^HM/.test(c));
+    const mismoCod = codsHM.length === g.length && new Set(codsHM).size === 1;
     if (buena.length === 1 && mala.length) {
       conSintetica++;
       Logger.log('   → La buena es la fila ' + buena[0].fila + ' (' + buena[0].cod + ', cobrada).');
       Logger.log('     Sobra: fila ' + mala.map(f => f.fila).join(', ') + '. Borrala o marcala CANCELADA.');
+    } else if (mismoCod) {
+      mismoCodigo++;
+      Logger.log('   → DUPLICADO SEGURO: las ' + g.length + ' filas tienen el MISMO código ('
+        + codsHM[0] + '), o sea la misma reserva cargada dos veces.');
+      Logger.log('     ⚠ El ingreso se está contando DOBLE. Dejá una sola: la del monto que');
+      Logger.log('       coincide con Airbnb (revisá el export) y borrá la otra.');
     } else {
-      Logger.log('   → Revisar a mano: no hay una sola candidata obvia.');
+      choqueFechas++;
+      Logger.log('   → NO es un duplicado: son reservas DISTINTAS (' + codsHM.join(' vs ') + ').');
+      Logger.log('     Dos reservas no pueden ocupar la misma cabaña la misma noche, así que');
+      Logger.log('     casi seguro una tiene las FECHAS mal en la hoja. Comparalas contra el');
+      Logger.log('     export de Airbnb y corregí la fila equivocada (no borres ninguna).');
     }
   });
   Logger.log('');
-  Logger.log(dups.length + ' estadía(s) duplicada(s) · ' + conSintetica + ' con una fila sintética sobrante y clara.');
+  Logger.log('RESUMEN · ' + dups.length + ' grupo(s):');
+  Logger.log('   ' + conSintetica + ' con fila sintética sobrante (borrar la sintética)');
+  Logger.log('   ' + mismoCodigo + ' con el MISMO código HM repetido (duplicado real, ingreso doble)');
+  Logger.log('   ' + choqueFechas + ' con códigos distintos (NO son duplicados: fechas mal en una fila)');
   return dups;
+}
+
+// ── Borrar filas de Reservas por número ──────────────────────
+// Poné acá los números de fila que buscarReservasAirbnbDuplicadas() marcó como
+// sobrantes y corré borrarFilasReservas() (dry-run) para revisar, después
+// borrarFilasReservasESCRIBIR().
+//
+// Borra de MAYOR a MENOR a propósito: al eliminar una fila todas las de abajo
+// suben un lugar, así que borrar en orden ascendente hace que los números
+// siguientes apunten a la fila equivocada.
+var FILAS_A_BORRAR = [];   // ej. [69, 98, 480, 482, 490]
+
+function borrarFilasReservas(dryRun) {
+  if (dryRun === undefined) dryRun = true;   // default seguro (ver runners)
+  const filas = (FILAS_A_BORRAR || []).slice().filter(n => n > 1).sort((a, b) => b - a);
+  if (!filas.length) { Logger.log('FILAS_A_BORRAR está vacío. Editá la constante arriba.'); return 0; }
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+  Logger.log('═══ ' + (dryRun ? 'DRY-RUN · ' : '') + 'BORRAR FILAS DE RESERVAS ═══');
+  let n = 0;
+  filas.forEach(f => {
+    const r = data[f - 1];
+    if (!r || !r[_R.ID]) { Logger.log('   ⚠ fila ' + f + ': vacía o inexistente, se salta.'); return; }
+    Logger.log((dryRun ? '   [dry] ' : '   ✓ ') + 'fila ' + f + ' · ' + r[1] + ' · ' + r[3]
+      + ' · cod=' + (r[_R.COD] || '(vacío)') + ' · monto=' + r[_R.MONTO]
+      + ' · pagado=' + (r[17] || 0));
+    if (!dryRun) sheet.deleteRow(f);
+    n++;
+  });
+  if (!dryRun) SpreadsheetApp.flush();
+  Logger.log('');
+  Logger.log((dryRun ? '[dry-run] ' : '') + n + ' fila(s) ' + (dryRun ? 'se borrarían' : 'borradas')
+    + ' (de mayor a menor, para no correr los índices).');
+  return n;
+}
+
+function borrarFilasReservasESCRIBIR() {
+  return borrarFilasReservas(false);
 }
