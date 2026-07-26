@@ -2706,6 +2706,19 @@ function buildEmailHTMLAbierta(r) {
 '</td></tr></table></td></tr></table></body></html>';
 }
 
+// Número de contacto y cierre que se repiten en el certificado de regalo y en
+// la plantilla de WhatsApp. Fuente única para no desincronizar los canales.
+const REGALO_WA_NUMERO = '+507 6981-2266';
+const REGALO_COORDINAR_TXT = 'Para verificar disponibilidad y coordinar las fechas de tu reserva escríbenos al WhatsApp ' + REGALO_WA_NUMERO + '. Estaremos atentos 🙏';
+// Con fechas ya puestas no tiene sentido pedirle "coordinar las fechas", así que
+// la invitación se reformula sin perder el cierre.
+const REGALO_DUDAS_TXT = 'Si necesitas ajustar las fechas o tienes cualquier duda, escríbenos al WhatsApp ' + REGALO_WA_NUMERO + '. Estaremos atentos 🙏';
+
+function _regaloCoordinarHTML(sinFecha) {
+  const txt = sinFecha ? REGALO_COORDINAR_TXT : REGALO_DUDAS_TXT;
+  return '<p style="margin:0 0 16px;font-size:13px;color:#6b6560;line-height:1.7;">' + txt + '</p>';
+}
+
 // Email de CERTIFICADO DE REGALO para el beneficiario.
 //
 // Deliberadamente NO lleva ningún monto: ni tarifa, ni abono, ni saldo, ni
@@ -2773,17 +2786,16 @@ function buildEmailHTMLRegalo(r) {
 // CTA
 (sinFecha
   ? '<p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#3a3530;">Cómo hacerlo efectivo</p>' +
-    '<p style="margin:0 0 16px;font-size:13px;color:#6b6560;line-height:1.7;">Escríbenos por WhatsApp con las fechas que te gustarían y coordinamos disponibilidad, cabaña y detalles de tu llegada.</p>' +
+    _regaloCoordinarHTML(true) +
     '<table cellpadding="0" cellspacing="0" style="margin-bottom:24px;"><tr><td>' +
     '<a href="' + waRedimir + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:14px;font-weight:600;padding:12px 24px;border-radius:8px;text-decoration:none;">&#128172; Coordinar mis fechas</a>' +
-    '</td></tr></table>' +
-    '<p style="margin:0 0 8px;font-size:13px;color:#6b6560;line-height:1.6;">O al número: <strong>+507 6981-2266</strong></p>'
+    '</td></tr></table>'
   : (publicLink
       ? '<table cellpadding="0" cellspacing="0" style="margin-bottom:20px;"><tr><td>' +
         '<a href="' + publicLink + '" target="_blank" style="display:inline-block;background:' + color + ';color:#ffffff;font-size:14px;font-weight:600;padding:12px 24px;border-radius:8px;text-decoration:none;">&#128279; Ver los detalles de tu estadía</a>' +
         '</td></tr></table>'
       : '') +
-    '<p style="margin:0 0 8px;font-size:13px;color:#6b6560;line-height:1.6;">Cualquier duda, escríbenos por WhatsApp al <strong>+507 6981-2266</strong>.</p>') +
+    _regaloCoordinarHTML(false)) +
 '<hr style="border:none;border-top:1px solid #e8e4de;margin:28px 0;">' +
 // Teaser de la experiencia — sin precios
 '<h2 style="margin:0 0 16px;font-size:17px;font-weight:600;color:#3a3530;">Lo que te espera</h2>' +
