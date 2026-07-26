@@ -907,21 +907,57 @@ function diagnosticarVouchersSinArchivo() {
 // Escribe las URLs que diagnosticarVouchersSinArchivo() encontró en Drive.
 // Solo toca filas cuya columna VoucherURL está VACÍA y cuyo archivo no está
 // enlazado en ninguna otra fila. Idempotente.
+// Timestamp que saveVoucherToDrive pone al final del nombre del archivo
+// (cabin_nombre_checkin_YYYYMMDD_HHMMSS.ext). Sirve para quedarse con la subida
+// más reciente cuando hay varias.
+function _vhTimestamp(nombreArchivo) {
+  const m = (nombreArchivo || '').match(/(\d{8}_\d{6})/);
+  return m ? m[1] : '';
+}
+
+// Escribe las URLs que diagnosticarVouchersSinArchivo() encontró en Drive.
+//
+// Solo toca filas cuya columna VoucherURL está VACÍA, saltea los matches
+// "probables" (los deja para revisión manual) y **enlaza como máximo tantos
+// archivos como códigos de transferencia tenga la fila**: varias reservas
+// tienen 2-3 archivos con el mismo id porque el voucher se re-subió, y escribir
+// todos haría que el modal muestre "Pagos registrados (3)" para un solo pago.
+// Se prefieren las subidas más recientes. Idempotente.
+//
+// Correr primero con vincularVouchersHuerfanos(true) para ver qué haría.
 function vincularVouchersHuerfanos(dryRun) {
   const rec   = diagnosticarVouchersSinArchivo();
   const sheet = getOrCreateSheet();
-  let n = 0;
+  let n = 0, sobrantes = 0;
+  Logger.log('');
+  Logger.log('═══ ' + (dryRun ? 'DRY-RUN · ' : '') + 'VINCULAR VOUCHERS ═══');
   rec.recuperable.forEach(x => {
     if (x.urls > 0) return;                     // ya tiene alguna URL: no pisar
     if (x.via === 'huesped (probable)') {
-      Logger.log('… fila ' + x.fila + ' (' + x.nombre + ') es solo PROBABLE, se salta. Revisar a mano: ' + x.urlsDrive);
+      Logger.log('… fila ' + x.fila + ' (' + x.nombre + ') match solo PROBABLE, se salta. Revisar a mano: ' + x.urlsDrive);
       return;
     }
-    Logger.log((dryRun ? '[dry] ' : '✓ ') + 'fila ' + x.fila + ' · ' + x.nombre + ' → ' + x.urlsDrive);
-    if (!dryRun) sheet.getRange(x.fila, 26).setValue(x.urlsDrive);
+    const todos  = x.urlsDrive.split(' | ');
+    const nombres = x.archivos.split(', ');
+    // Ordenar por timestamp del nombre, más reciente primero
+    const orden = nombres.map((nom, k) => ({ nom: nom, url: todos[k], ts: _vhTimestamp(nom) }))
+      .sort((a, b) => b.ts < a.ts ? -1 : (b.ts > a.ts ? 1 : 0));
+    const cupo  = Math.max(1, x.cods.split(',').length - x.urls);
+    const elegidos = orden.slice(0, cupo);
+    if (orden.length > cupo) {
+      sobrantes++;
+      Logger.log('   ⚠ fila ' + x.fila + ' (' + x.nombre + ') tiene ' + orden.length
+        + ' archivos para ' + cupo + ' pago(s); se enlaza(n) el/los más reciente(s). Resto: '
+        + orden.slice(cupo).map(f => f.nom).join(', '));
+    }
+    const valor = elegidos.map(f => f.url).join('|');
+    Logger.log((dryRun ? '[dry] ' : '✓ ') + 'fila ' + x.fila + ' · ' + x.nombre + ' → ' + elegidos.map(f => f.nom).join(', '));
+    if (!dryRun) sheet.getRange(x.fila, 26).setValue(valor);
     n++;
   });
   if (!dryRun) SpreadsheetApp.flush();
-  Logger.log((dryRun ? '[dry-run] ' : '') + n + ' fila(s) ' + (dryRun ? 'se vincularían' : 'vinculadas') + '.');
+  Logger.log('');
+  Logger.log((dryRun ? '[dry-run] ' : '') + n + ' fila(s) ' + (dryRun ? 'se vincularían' : 'vinculadas')
+    + ' · ' + sobrantes + ' con archivos de sobra (revisar si hubo re-subidas).');
   return n;
 }
