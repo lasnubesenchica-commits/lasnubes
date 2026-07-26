@@ -1409,6 +1409,26 @@ function _correccionesAirbnb_() {
     // solo: hay que escribirlo desde acá. Al quedar CANCELADA se resuelve además
     // el choque del 9-may en azul con la directa de David Sauceda, que tomó esa
     // noche al liberarse — el mismo patrón de Aneea y Jennifer.
+    // ── Filas de 2025 que quedaron SIN CABAÑA ───────────────────
+    // Las destapó verificarSaludAirbnb(). Sin cabaña no aparecen en la ocupación
+    // de ninguna, así que el calendario muestra esas noches libres y se pueden
+    // vender dos veces — es exactamente lo que pasó con Maria Celeste y Mairanis.
+    // El export las pone a las seis en Portal (azul). Falta ABRAHAM
+    // (HM9DNW4QZ2), que no aparece en ningún export: revisar a mano.
+    { cod: 'HM25N8TDMC', quien: 'Nadia',     cabin: 'azul', monto:  90.00, neto:  87.30,
+      fechaPago: '2025-11-17', montoPagado:  87.30, estadoPago: 'PAGA' },
+    { cod: 'HMWTRTFQFD', quien: 'Jair',      cabin: 'azul', monto:  90.00, neto:  87.30,
+      fechaPago: '2025-09-24', montoPagado:  87.30, estadoPago: 'PAGA' },
+    { cod: 'HM49BTRKJY', quien: 'Ricardo',   cabin: 'azul', monto:  85.50, neto:  82.93,
+      fechaPago: '2025-09-24', montoPagado:  82.93, estadoPago: 'PAGA' },
+    { cod: 'HMKD48NX88', quien: 'Monserrat', cabin: 'azul', monto:  90.00, neto:  87.30,
+      fechaPago: '2025-10-09', montoPagado:  87.30, estadoPago: 'PAGA' },
+    { cod: 'HMYFQ2WYP5', quien: 'John',      cabin: 'azul', monto: 180.00, neto: 174.60,
+      fechaPago: '2025-09-01', montoPagado: 174.60, estadoPago: 'PAGA' },
+    { cod: 'HMB248EDD9', quien: 'Giselle',   cabin: 'azul', monto:  85.50, neto:  82.93,
+      checkin: '2025-08-03', checkout: '2025-08-04',
+      fechaPago: '2025-08-27', montoPagado:  82.93, estadoPago: 'PAGA' },
+
     { cod: 'HMP5R5WYAF', quien: 'Kenneth', estadoPago: 'CANCELADA',
       comentario: 'Cancelada por el huésped el 8-may-2026. Sin reembolso por política, Airbnb pagó la penalización ($92.10). La noche la retomó David Sauceda (directa).' }
   ];
@@ -1662,3 +1682,220 @@ function _altPreviewCambios(resData, cod, cambios) {
 
 function repararAlteracionesReporte() { return repararAlteracionesHuerfanas(true); }
 function repararAlteracionesAPLICAR() { return repararAlteracionesHuerfanas(false); }
+
+// ═══════════════════════════════════════════════════════════
+//  Chequeo de salud de los datos de Airbnb
+// ═══════════════════════════════════════════════════════════
+//
+// Contesta "¿está todo bien?" con invariantes en vez de con una revisión a ojo.
+// No escribe nada nunca: solo reporta. Correr después de cualquier tanda de
+// arreglos y de vez en cuando (o dejarlo en un trigger semanal).
+//
+// Cada chequeo nació de un problema real de la auditoría de jul-2026, así que si
+// alguno vuelve a dar positivo es una regresión concreta, no una sospecha.
+function verificarSaludAirbnb() {
+  const ss   = SpreadsheetApp.openById(SHEET_ID);
+  const hoja = getOrCreateSheet();
+  const data = hoja.getDataRange().getValues();
+  const hoy  = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd');
+
+  const iso = v => v instanceof Date
+    ? Utilities.formatDate(v, 'America/Panama', 'yyyy-MM-dd')
+    : String(v || '').trim().slice(0, 10);
+  const num = v => _cleanMoney_(v);
+
+  // `impacto` (opcional) es el monto en juego, para sumarlo por categoría: en un
+  // hallazgo sistémico de 167 filas el total importa más que el detalle.
+  const problemas = [];   // { sev, que, detalle, impacto }
+  const P = (sev, que, detalle, impacto) =>
+    problemas.push({ sev: sev, que: que, detalle: detalle, impacto: impacto || 0 });
+
+  // Filas de Airbnb activas (con su número de fila real).
+  const filas = [];
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    if (String(r[_R.ORIGEN] || '').trim() !== 'Airbnb') continue;
+    filas.push({ n: i + 1, r: r });
+  }
+
+  // ── A) Código de confirmación válido ───────────────────────
+  // Una fila sin HM real no cruza con los payouts, sale "sin cobrar" y hace que
+  // la reconciliación inserte un duplicado (pasó con Yarisel, Yuliany, Kj).
+  filas.forEach(f => {
+    const c = String(f.r[_R.COD] || '').trim();
+    if (!c)                       P('alta', 'sin código HM',      'fila ' + f.n + ' · ' + f.r[1]);
+    else if (/^(airbnb_|csv_)/i.test(c)) P('alta', 'código sintético', 'fila ' + f.n + ' · ' + f.r[1] + ' · ' + c);
+    else if (!/^HM[A-Z0-9]{8}$/i.test(c)) P('media', 'código raro',  'fila ' + f.n + ' · ' + f.r[1] + ' · ' + c);
+  });
+
+  // ── B) Códigos HM repetidos ────────────────────────────────
+  // Mismo código en dos filas = ingreso contado DOBLE.
+  const porCod = {};
+  filas.forEach(f => {
+    const c = String(f.r[_R.COD] || '').trim().toUpperCase();
+    if (/^HM[A-Z0-9]{8}$/.test(c)) (porCod[c] = porCod[c] || []).push(f);
+  });
+  Object.keys(porCod).forEach(c => {
+    if (porCod[c].length < 2) return;
+    P('alta', 'código HM duplicado', c + ' en filas ' + porCod[c].map(f => f.n).join(', ')
+      + ' (' + porCod[c].map(f => '$' + num(f.r[_R.MONTO])).join(' / ') + ')');
+  });
+
+  // ── C) Cabaña asignada ─────────────────────────────────────
+  // Sin cabaña la reserva no aparece en la ocupación de ninguna.
+  filas.forEach(f => {
+    if (!String(f.r[2] || '').trim() || !String(f.r[3] || '').trim())
+      P('alta', 'sin cabaña', 'fila ' + f.n + ' · ' + f.r[1] + ' · ' + iso(f.r[_R.ENTRADA]));
+  });
+
+  // ── D) Neto coherente con el monto ─────────────────────────
+  // La comisión de Airbnb es 3% hasta el 23-dic-2025 y 15.5% desde el 24.
+  // Un neto IGUAL al monto significa que nunca se calculó (le pasó a Mairanis).
+  filas.forEach(f => {
+    const mo = num(f.r[_R.MONTO]), ne = num(f.r[_R.NETO]);
+    if (!mo || !ne) return;
+    const ref  = iso(f.r[15]) || iso(f.r[_R.ENTRADA]);
+    const pct  = ref && ref < '2025-12-24' ? 0.03 : 0.155;
+    const esp  = Math.round(mo * (1 - pct) * 100) / 100;
+    if (Math.abs(ne - mo) < 0.01 && mo > 0)
+      P('media', 'neto igual al monto (nunca se calculó la comisión)',
+        'fila ' + f.n + ' · ' + f.r[1] + ' · $' + mo + ' → debería ser ~$' + esp.toFixed(2),
+        mo - esp);
+    else if (Math.abs(ne - esp) > 1.00)
+      P('baja', 'neto no cuadra con la comisión', 'fila ' + f.n + ' · ' + f.r[1]
+        + ' · monto $' + mo + ' neto $' + ne + ' esperado ~$' + esp.toFixed(2), ne - esp);
+  });
+
+  // ── E) Estadías ya pasadas sin cobro registrado ────────────
+  filas.forEach(f => {
+    const co  = iso(f.r[5]);
+    const est = String(f.r[_R.ESTADO] || '').trim().toUpperCase();
+    if (!co || co >= hoy) return;
+    if (est === 'PAGA' || est === 'CANCELADA') return;
+    P('media', 'estadía pasada sin cobro registrado', 'fila ' + f.n + ' · ' + f.r[1]
+      + ' · salió ' + co + ' · estado "' + (est || 'vacío') + '" · $' + num(f.r[_R.MONTO]),
+      num(f.r[_R.MONTO]));
+  });
+
+  // ── F) Alteraciones aceptadas que no se aplicaron ───────────
+  const alt = ss.getSheetByName('Alteraciones');
+  if (alt) {
+    const ad = alt.getDataRange().getValues();
+    for (let k = 1; k < ad.length; k++) {
+      const estado = String(ad[k][6] || '');
+      if (estado === 'aceptada' && String(ad[k][10] || '') !== 'si')
+        P('media', 'alteración aceptada sin aplicar', (ad[k][9] || '?') + ' · ' + (ad[k][2] || '?')
+          + ' · ' + _altTs(ad[k][0]) + ' · ' + String(ad[k][5] || '').slice(0, 90));
+      if (estado === 'aceptada_sin_detalle')
+        P('baja', 'confirmación sin pareja', (ad[k][9] || '?') + ' · ' + (ad[k][2] || '?')
+          + ' · ' + _altTs(ad[k][7]));
+    }
+  } else P('baja', 'falta la hoja Alteraciones', 'nunca corrió syncAirbnbUpdates()');
+
+  // ── G) Cancelaciones que la fila no refleja ────────────────
+  // Este es el canario del bug en que actualizarEstadoPagoAirbnb pisaba el
+  // CANCELADA en cada corrida. Si vuelve a aparecer, volvió la regresión.
+  const can = ss.getSheetByName('Cancelaciones');
+  if (can) {
+    const cd = can.getDataRange().getValues();
+    for (let k = 1; k < cd.length; k++) {
+      const cod = String(cd[k][2] || '').trim().toUpperCase();
+      if (!cod) continue;
+      (porCod[cod] || []).forEach(f => {
+        if (String(f.r[_R.ESTADO] || '').trim().toUpperCase() !== 'CANCELADA')
+          P('alta', 'cancelada en Airbnb pero no en la fila', cod + ' · fila ' + f.n + ' · '
+            + f.r[1] + ' · estado "' + (f.r[_R.ESTADO] || 'vacío') + '"');
+      });
+    }
+  }
+
+  // ── H) Dos noches vendidas en la misma cabaña ──────────────
+  // Solo entre reservas de tipo `noche` (o sin tipo), donde el rango es
+  // inequívoco. Las pasadías/pasatardes bloquean días de cortesía a propósito,
+  // así que compararlas produciría falsas alarmas.
+  const noches = {};
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    const est = String(r[_R.ESTADO] || '').trim().toUpperCase();
+    const org = String(r[_R.ORIGEN] || '').trim();
+    const tipo = String(r[24] || '').trim().toLowerCase();
+    if (est === 'CANCELADA' || org === 'Abierta') continue;
+    if (tipo && tipo !== 'noche') continue;
+    const cab = String(r[3] || '').trim();
+    let ci = iso(r[_R.ENTRADA]), co = iso(r[5]);
+    if (!cab || !ci || !co || co <= ci) continue;
+    let d = new Date(ci + 'T12:00:00');
+    const fin = new Date(co + 'T12:00:00');
+    while (d < fin) {
+      const k = cab + '|' + Utilities.formatDate(d, 'America/Panama', 'yyyy-MM-dd');
+      (noches[k] = noches[k] || []).push('fila ' + (i + 1) + ' ' + String(r[1]).slice(0, 18)
+        + ' [' + (org || '?') + ']');
+      d = new Date(d.getTime() + 86400000);
+    }
+  }
+  Object.keys(noches).sort().forEach(k => {
+    if (noches[k].length < 2) return;
+    P('alta', 'noche vendida dos veces', k.replace('|', ' · ') + ' → ' + noches[k].join('  vs  '));
+  });
+
+  // ── Reporte ────────────────────────────────────────────────
+  const orden = { alta: 0, media: 1, baja: 2 };
+  problemas.sort((a, b) => orden[a.sev] - orden[b.sev] || a.que.localeCompare(b.que));
+  const cuenta = { alta: 0, media: 0, baja: 0 };
+  problemas.forEach(p => cuenta[p.sev]++);
+
+  Logger.log('═══ SALUD DE LOS DATOS DE AIRBNB · ' + hoy + ' ═══');
+  Logger.log(filas.length + ' reservas de Airbnb revisadas');
+  Logger.log('');
+  if (!problemas.length) {
+    Logger.log('✅ Sin problemas. Los 8 chequeos pasaron:');
+    Logger.log('   código HM válido · sin duplicados · con cabaña · neto coherente');
+    Logger.log('   estadías pasadas cobradas · alteraciones aplicadas');
+    Logger.log('   cancelaciones reflejadas · ninguna noche vendida dos veces');
+    return 0;
+  }
+  // Se listan hasta MAX_DETALLE por categoría. Un hallazgo sistémico de 167
+  // filas no se lee fila por fila: ahí lo que importa es el total, y listarlas
+  // todas sepulta los 4 hallazgos que sí hay que atender uno por uno.
+  const MAX_DETALLE = 8;
+  const ICONO = { alta: '🔴', media: '🟠', baja: '🟡' };
+  const grupos = [];
+  problemas.forEach(p => {
+    let g = grupos.filter(x => x.que === p.que)[0];
+    if (!g) { g = { que: p.que, sev: p.sev, items: [], impacto: 0 }; grupos.push(g); }
+    g.items.push(p.detalle);
+    g.impacto += p.impacto;
+  });
+
+  grupos.forEach(g => {
+    Logger.log('');
+    Logger.log(ICONO[g.sev] + ' ' + g.que.toUpperCase() + '  (' + g.items.length + ')'
+      + (Math.abs(g.impacto) >= 1 ? '  ·  en juego: $' + g.impacto.toFixed(2) : ''));
+    g.items.slice(0, MAX_DETALLE).forEach(d => Logger.log('     ' + d));
+    if (g.items.length > MAX_DETALLE)
+      Logger.log('     … y ' + (g.items.length - MAX_DETALLE) + ' más (mismo patrón)');
+  });
+
+  Logger.log('');
+  Logger.log('─────────────────────────────────────────');
+  Logger.log('🔴 ' + cuenta.alta + ' grave(s) · 🟠 ' + cuenta.media + ' media(s) · 🟡 ' + cuenta.baja + ' leve(s)');
+  Logger.log('🔴 = afecta plata u ocupación, revisar uno por uno.');
+  Logger.log('🟠 = revisar el patrón; si son muchas suele ser una condición histórica.');
+  Logger.log('🟡 = informativo.');
+  return problemas.length;
+}
+
+// Chequeo semanal: lunes a las 8am Panamá. El resultado queda en el log de
+// ejecuciones del editor (Ejecuciones → verificarSaludAirbnb).
+function instalarTriggerSaludAirbnb() {
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'verificarSaludAirbnb') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('verificarSaludAirbnb')
+    .timeBased()
+    .onWeekDay(ScriptApp.WeekDay.MONDAY)
+    .atHour(8)
+    .inTimezone('America/Panama')
+    .create();
+  Logger.log('✓ Trigger creado: verificarSaludAirbnb los lunes @ 8am America/Panama');
+}
