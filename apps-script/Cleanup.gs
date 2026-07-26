@@ -662,8 +662,11 @@ function diagnosticarEmailReserva(query, soloClaves) {
 //  que falten, sin depender de la ventana del sync.
 //
 //  Ignora los códigos en Blacklist (cancelados) y los que ya están en la hoja.
-//  USO: reconciliarReservasAirbnb()          → solo reporta
-//       reconciliarReservasAirbnb(true)      → además los inserta
+//  Por default solo mira estadías del AÑO EN CURSO (filtra por check-in, no por
+//  fecha del email, para que entre una reserva hecha en 2025 con estadía 2026).
+//  USO: reconciliarReservasAirbnb()                    → reporta (año en curso)
+//       reconciliarReservasAirbnb(true)                → además las inserta
+//       reconciliarReservasAirbnb(false, '2025-01-01') → otro corte de fecha
 // ═══════════════════════════════════════════════════════════
 
 function _codsBlacklist_() {
@@ -679,13 +682,18 @@ function _codsBlacklist_() {
   return out;
 }
 
-function reconciliarReservasAirbnb(insertar) {
+function reconciliarReservasAirbnb(insertar, desdeISO) {
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
   var enHoja = _codsExistentes_();
   var black  = _codsBlacklist_();
   var threads = GmailApp.search('from:automated@airbnb.com subject:"Reserva confirmada:" newer_than:400d');
 
-  var faltan = [], yaEstan = 0, blacklisted = 0, noParse = 0;
+  // Filtro por fecha de ESTADÍA (check-in), no por fecha del email: así entra
+  // una reserva hecha en 2025 cuya estadía cae en 2026. Default = 1-ene del año
+  // en curso, para no arrastrar el histórico previo al arranque de la hoja.
+  var desde = desdeISO || (new Date().getFullYear() + '-01-01');
+
+  var faltan = [], yaEstan = 0, blacklisted = 0, noParse = 0, viejas = 0;
   threads.forEach(function(t) {
     t.getMessages().forEach(function(m) {
       var body = m.getPlainBody();
@@ -698,13 +706,15 @@ function reconciliarReservasAirbnb(insertar) {
       var r = null;
       try { r = parseAirbnbEmail(body, m.getId(), fecha); } catch (e) {}
       if (!r) { noParse++; Logger.log('⚠ no parsea: ' + cod + ' (' + fecha + ')'); return; }
+      if (String(r.checkin || '') < desde) { viejas++; return; }   // fuera del período pedido
       faltan.push({ cod: cod, emailFecha: fecha, r: r });
     });
   });
 
-  Logger.log('=== Reconciliación de reservas Airbnb ===');
+  Logger.log('=== Reconciliación de reservas Airbnb (estadías desde ' + desde + ') ===');
   Logger.log('  ya en la hoja: ' + yaEstan + ' | en blacklist: ' + blacklisted +
-             ' | no parsean: ' + noParse + ' | FALTAN: ' + faltan.length);
+             ' | no parsean: ' + noParse + ' | anteriores a ' + desde + ': ' + viejas +
+             ' | FALTAN: ' + faltan.length);
   faltan.sort(function(a, b) { return a.emailFecha < b.emailFecha ? -1 : 1; });
   faltan.forEach(function(x) {
     Logger.log('   ' + x.emailFecha + ' ' + x.cod + ' ' + String(x.r.name).slice(0, 22) +
