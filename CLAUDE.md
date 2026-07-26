@@ -39,6 +39,8 @@
 - Modelo IA: `claude-opus-4-6` para OCR de vouchers/facturas (en `parseVoucherWithClaude` y `parseFacturaEgresoConClaude`). `parseVoucherWithClaude` tiene retry con fallback a Sonnet 4.6.
 - API key Anthropic: en Script Properties (`CLAUDE_API_KEY`), nunca en código cliente.
 
+- **Mini-timeline de ocupación del modal** (`renderMiniTimeline`): NO son 3 días completos. Es una ventana operativa de **32h contiguas**: el día ancla **desde las 6am** (se ve quién sale esa mañana y la entrada del día) + el día siguiente **hasta las 2pm** (la salida, la ventana de limpieza y si entra alguien antes de las 2pm). Constantes `DAY_FROM_H=6` / `NEXT_TO_H=14`; los tramos se describen con `winFromH`/`winToH`/`winStart`/`winEnd`/`winH`/`winTop`. Como los dos tramos son contiguos en el tiempo (24h del día 0 == 0h del día 1), `dtToPx` es lineal sobre `rangeStart`. **El borde de las 2pm es inclusivo** (`s.start > rangeEnd`, y `dayEndX = dayEnd + 1ms` en el último tramo): si no, la noche que entra justo a las 2pm desaparecía y con ella el cálculo de su ventana de limpieza. Un bloque que arranca en el borde se dibuja como franja fina clampeada a `TOTAL_H`.
+
 ## Modelo de datos para tipos de reserva
 
 Cada reserva se almacena con un rango de bloqueo (checkin/checkout) y un `tipo`. El frontend tiene dos representaciones:
