@@ -4672,13 +4672,36 @@ function getIcalForCabin(cabin) {
     const data  = sheet.getDataRange().getValues();
     const rows  = data.slice(1).filter(r => r[0]);
 
-    const ORIGENES_ICAL = ['directa', 'cortesia', 'colaboracion'];
+    // El criterio va al revés que antes: TODO lo que ocupa la cabaña bloquea,
+    // salvo lo que explícitamente no ocupa. La lista blanca vieja era
+    // ['directa','cortesia','colaboracion'] y dejaba tres agujeros graves:
+    //
+    //  · `mantenimiento` y `personal` no se le informaban a Airbnb, así que
+    //    Airbnb podía vender una noche que ya estaba tomada por trabajo o por
+    //    uso propio.
+    //  · `referido` tampoco, aunque ocupa la cabaña igual.
+    //  · `airbnb` se excluía por parecer redundante —Airbnb ya conoce sus
+    //    propias reservas— y ahí estuvo el daño real: una reserva de origen
+    //    Airbnb cuyas FECHAS Airbnb no conoce. Mairanis no pudo venir el 19-21
+    //    jun, se le honró el crédito para el 7-9 ago y esa fila quedó con origen
+    //    Airbnb (el pago entró por ahí). El feed la omitió, Airbnb siguió
+    //    mostrando agosto libre y Tesis reservó el 8 → doble booking.
+    //
+    // La asimetría decide: bloquear de más cuesta, como mucho, una noche vacía
+    // que se libera en la próxima corrida; bloquear de menos cuesta dos huéspedes
+    // pagando la misma noche.
+    //
+    // También se excluyen las CANCELADA, que antes seguían bloqueando el
+    // calendario para siempre.
+    const ORIGENES_SIN_FECHA = ['abierta'];   // reserva sin fechas: nada que bloquear
     const reservas = rows.filter(r => {
       const cabinCode = r[3] ? r[3].toString().toLowerCase() : '';
-      const origen    = r[9] ? r[9].toString().toLowerCase() : '';
-      const cabinOk   = !cabin || cabinCode === cabin.toLowerCase();
-      const origenOk  = ORIGENES_ICAL.includes(origen);
-      return cabinOk && origenOk;
+      const origen    = r[9] ? r[9].toString().toLowerCase().trim() : '';
+      const estado    = r[20] ? r[20].toString().trim().toUpperCase() : '';
+      if (!cabin ? false : cabinCode !== cabin.toLowerCase()) return false;
+      if (estado === 'CANCELADA') return false;
+      if (ORIGENES_SIN_FECHA.indexOf(origen) >= 0) return false;
+      return true;
     });
 
     const now = Utilities.formatDate(new Date(), 'UTC', "yyyyMMdd'T'HHmmss'Z'");

@@ -1998,3 +1998,85 @@ function instalarTriggerSaludAirbnb() {
     .create();
   Logger.log('✓ Trigger creado: verificarSaludAirbnb los lunes @ 8am America/Panama');
 }
+
+// ═══════════════════════════════════════════════════════════
+//  Mover una reserva de Las Nubes a la hoja Malaya
+// ═══════════════════════════════════════════════════════════
+//
+// Caso Frank Guilarte (29-30 may 2026, azul, $110): fue un doble booking por
+// error y la reserva se le cedió a Malaya, pasándole el pago. Para Las Nubes es
+// como si nunca hubiera entrado — pero sí existió como referido, así que va a la
+// hoja Malaya en vez de borrarse sin más.
+//
+// Dry-run por defecto: sin argumentos NO escribe (borra una fila de Reservas).
+// Para ejecutar de verdad: moverAMalayaESCRIBIR().
+var MOVER_A_MALAYA = '1779577897186';   // id o CodConfirmacion de la reserva
+
+function moverReservaAMalaya(codOrId, dryRun) {
+  if (dryRun !== false) dryRun = true;
+  const clave = String(codOrId || MOVER_A_MALAYA || '').trim();
+  if (!clave) { Logger.log('Editá MOVER_A_MALAYA arriba con el id o código de la reserva.'); return 0; }
+
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+  const iso   = v => v instanceof Date
+    ? Utilities.formatDate(v, 'America/Panama', 'yyyy-MM-dd')
+    : String(v || '').trim().slice(0, 10);
+
+  let fila = -1;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][_R.ID] || '').trim() === clave ||
+        String(data[i][_R.COD] || '').trim() === clave) { fila = i + 1; break; }
+  }
+  if (fila < 0) { Logger.log('⚠ No se encontró ninguna reserva con id/código ' + clave); return 0; }
+
+  const r  = data[fila - 1];
+  const ci = iso(r[_R.ENTRADA]), co = iso(r[5]);
+  if (!ci || !co) { Logger.log('⚠ La fila ' + fila + ' no tiene fechas; no se puede migrar.'); return 0; }
+
+  const noches   = Math.round((new Date(co + 'T12:00:00') - new Date(ci + 'T12:00:00')) / 86400000);
+  const comision = _malayaCalculateCommission(ci, co);
+  const monto    = _cleanMoney_(r[_R.MONTO]);
+
+  Logger.log('═══ ' + (dryRun ? 'DRY-RUN · ' : '') + 'MOVER A MALAYA ═══');
+  Logger.log('  Reservas fila ' + fila + ' · ' + r[1] + ' · ' + r[2]);
+  Logger.log('    ' + ci + ' → ' + co + '  (' + noches + ' noche' + (noches === 1 ? '' : 's') + ')');
+  Logger.log('    monto $' + monto.toFixed(2) + ' · personas ' + (r[6] || '?')
+    + ' · tel ' + (r[23] || '(sin teléfono)') + ' · ' + (r[21] || '(sin email)'));
+  Logger.log('    comisión calculada: $' + comision.toFixed(2)
+    + '  ← si esta cesión NO se cobró como referido, poné 0 a mano en la hoja Malaya');
+  Logger.log('  → se agrega a la hoja Malaya como "completada" y se BORRA de Reservas.');
+
+  if (dryRun) {
+    Logger.log('');
+    Logger.log('Nada se escribió. Para ejecutar: moverAMalayaESCRIBIR()');
+    return 0;
+  }
+
+  // Mismo orden de columnas que usa _malayaCreateReserva al hacer appendRow.
+  _malayaSheet().appendRow([
+    'LN-' + String(r[_R.ID] || '').trim(),        // id, prefijado para saber de dónde vino
+    String(r[1] || '(sin nombre)'),               // huésped
+    String(r[23] || ''),                          // teléfono
+    ci, co, noches,
+    r[6] || 2,                                    // personas
+    monto, comision,
+    'Referido', 'completada',
+    true,                                         // airbnb_blocked: ya pasó, no hay nada que verificar
+    iso(r[15]) || ci,                             // fecha_reserva
+    'Cedida a Malaya: doble booking por error en ' + (r[2] || 'Las Nubes')
+      + ' el ' + ci + '. El pago del huésped ($' + monto.toFixed(2) + ') se le pasó a Malaya. '
+      + 'Venía de Reservas con id ' + (r[_R.ID] || '?') + '.',
+    String(r[25] || ''),                          // voucherURL
+    String(r[21] || '')                           // email
+  ]);
+  sheet.deleteRow(fila);
+  SpreadsheetApp.flush();
+  Logger.log('');
+  Logger.log('✓ Agregada a Malaya y borrada de Reservas (fila ' + fila + ').');
+  Logger.log('  OJO: los números de fila de Reservas se corrieron. Volvé a correr');
+  Logger.log('  verificarSaludAirbnb() antes de usar cualquier lista de filas.');
+  return 1;
+}
+
+function moverAMalayaESCRIBIR() { return moverReservaAMalaya(MOVER_A_MALAYA, false); }
