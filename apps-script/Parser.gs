@@ -670,6 +670,24 @@ function markDriveFileProcessed(fileId, fileName, status) {
 // ═══════════════════════════════════════════════════════════
 //  Sync Pagos Airbnb
 // ═══════════════════════════════════════════════════════════
+
+// Extrae un monto "$1.234,56 USD" de una línea RESPETANDO EL SIGNO.
+// Airbnb usa montos negativos para los "Ajustes de la resolución" (reembolsos
+// al huésped), ej. "-$99,00 USD". El regex anterior solo capturaba los dígitos,
+// así que un ajuste de -$99 se acreditaba como +$99 y el código quedaba
+// sobrecontado por el DOBLE del ajuste (ej. HMWC8N44BR: real $68.31 → $266.31,
+// descuadrando ese payout en $198). Devuelve null si la línea no trae monto.
+function _montoUSDConSigno_(linea) {
+  const s = String(linea || '');
+  const m = s.match(/(-\s*)?\$\s*(-\s*)?([\d.]+,\d{2})\s*\)?\s*USD/);
+  if (!m) return null;
+  const v = parseFloat(m[3].replace(/\./g, '').replace(',', '.'));
+  if (isNaN(v)) return null;
+  // Negativo si hay "-" antes o después del "$", o si viene entre paréntesis.
+  const neg = !!m[1] || !!m[2] || /\(\s*-?\s*\$/.test(s);
+  return neg ? -v : v;
+}
+
 function syncAirbnbPayouts() {
   const ss = SpreadsheetApp.openById(SHEET_ID);
 
@@ -757,11 +775,10 @@ function syncAirbnbPayouts() {
         let monto = 0;
         for (let j = i - 1; j >= Math.max(0, i - 6); j--) {
           if (lines[j].indexOf('Total pagado') >= 0 || lines[j].indexOf('Total paid') >= 0) continue;
-          const m = lines[j].match(/\$([\d.]+,\d{2})\s*USD/);
-          if (m) {
-            monto = parseFloat(m[1].replace(/\./g, '').replace(',', '.')) || 0;
-            if (monto > 0) break;
-          }
+          const v = _montoUSDConSigno_(lines[j]);
+          // `!== 0` (no `> 0`): un ajuste negativo es un monto válido y debe
+          // acumularse con su signo para que el código quede neteado.
+          if (v !== null && v !== 0) { monto = v; break; }
         }
 
         montosPorCodigo[code] = parseFloat(((montosPorCodigo[code] || 0) + monto).toFixed(2));
@@ -3800,7 +3817,14 @@ function actualizarEstadoPagoAirbnb() {
     if (!pago) continue;
     const estadoActual    = resData[i][20] ? resData[i][20].toString().trim() : '';
     const fechaPagoActual = resData[i][16] ? resData[i][16].toString().trim() : '';
-    if (estadoActual === 'PAGA' && fechaPagoActual) continue;
+    const montoActual     = parseFloat(resData[i][17]) || 0;
+    // Antes bastaba con estar PAGA para saltear la fila. Pero Airbnb puede
+    // pagar una misma reserva en VARIOS payouts (estadías largas): al llegar el
+    // 2º cobro la reserva ya estaba PAGA y `MontoPagado` se quedaba con el
+    // parcial (ej. LARS $47.10 de $271.24, GORAN $84.60 de $213.45). Ahora solo
+    // se saltea si además el monto ya coincide con la suma acumulada.
+    if (estadoActual === 'PAGA' && fechaPagoActual &&
+        Math.abs(montoActual - pago.montoPagado) < 0.01) continue;
     const row = i + 1;
     reservasSheet.getRange(row, 17).setValue(pago.fechaPago);
     reservasSheet.getRange(row, 18).setValue(pago.montoPagado);

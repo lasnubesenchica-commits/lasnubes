@@ -447,3 +447,107 @@ function corregirVouchersPendientes() {
   SpreadsheetApp.flush();
   Logger.log('✓ ' + n + ' fila(s) corregida(s). Ingreso sobrecontado eliminado: $' + ajuste.toFixed(2));
 }
+
+// ═══════════════════════════════════════════════════════════
+//  F) CARGAR RESERVAS AIRBNB FALTANTES (auditoría 26-jul-2026)
+//
+//  El cruce del export oficial de Airbnb contra la hoja `Reservas` mostró
+//  reservas que SÍ fueron cobradas (aparecen en la hoja `Pagos`) pero que
+//  nunca se registraron. Todas son de "Paseo por Las Nubes", lo que sugiere
+//  que el parser de emails falló con ese formato.
+//
+//  Los montos salen del export de Airbnb:
+//    Monto/Neto = "Ingresos brutos"  (lo que pagó el huésped)
+//    MontoPagado = "Monto"           (lo que Airbnb depositó, ya neto de su comisión)
+//
+//  Es idempotente: saltea los códigos que ya existan.
+//  USO: previewReservasAirbnbFaltantes() → insertarReservasAirbnbFaltantes()
+// ═══════════════════════════════════════════════════════════
+
+function _reservasAirbnbFaltantes_() {
+  // cod, huésped, cabaña, código de cabaña, entrada, salida, noches,
+  // bruto (lo que pagó el huésped), neto (lo que depositó Airbnb),
+  // fechaReserva, fechaPago (payout donde se cobró)
+  return [
+    { cod:'HMQRAW8CA5', nombre:'Anna Van Mondfrans', cabana:'Paseo por Las Nubes', code:'verde',
+      entrada:'2026-01-07', salida:'2026-01-10', noches:3, bruto:261.00, neto:253.17,
+      fechaReserva:'2025-11-15', fechaPago:'2026-01-15' },
+    { cod:'HMBACCYQM9', nombre:'Yuliany Guerrero',   cabana:'Paseo por Las Nubes', code:'verde',
+      entrada:'2026-03-16', salida:'2026-03-18', noches:2, bruto:178.20, neto:150.58,
+      fechaReserva:'2026-02-22', fechaPago:'2026-03-26' },
+    { cod:'HMD4ESKMPX', nombre:'Kj Thomas',          cabana:'Paseo por Las Nubes', code:'verde',
+      entrada:'2026-03-18', salida:'2026-03-21', noches:3, bruto:276.30, neto:233.47,
+      fechaReserva:'2026-02-22', fechaPago:'2026-03-26' },
+    { cod:'HMBBQXQ3QD', nombre:'Yarisel Rangel',     cabana:'Paseo por Las Nubes', code:'verde',
+      entrada:'2026-06-05', salida:'2026-06-06', noches:1, bruto:169.00, neto:142.80,
+      fechaReserva:'2026-05-27', fechaPago:'2026-06-17' },
+    { cod:'HMEQYEZS85', nombre:'Mairanis Lopez',     cabana:'Paseo por Las Nubes', code:'verde',
+      entrada:'2026-06-19', salida:'2026-06-21', noches:2, bruto:196.20, neto:165.79,
+      fechaReserva:'2026-05-18', fechaPago:'2026-06-22' }
+  ];
+}
+
+function _codsExistentes_() {
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  const data  = sheet.getDataRange().getValues();
+  const set   = {};
+  for (var i = 1; i < data.length; i++) {
+    var c = String(data[i][_R.COD] || '').trim();
+    if (c) set[c] = true;
+  }
+  return set;
+}
+
+function previewReservasAirbnbFaltantes() {
+  const ex = _codsExistentes_();
+  const items = _reservasAirbnbFaltantes_();
+  var nuevos = 0, bruto = 0;
+  Logger.log('=== Reservas Airbnb faltantes ===');
+  items.forEach(function(x) {
+    if (ex[x.cod]) { Logger.log('   ✓ ' + x.cod + ' ya existe — se saltea'); return; }
+    nuevos++; bruto += x.bruto;
+    Logger.log('   + ' + x.cod + ' ' + x.nombre + ' · ' + x.cabana +
+               ' · ' + x.entrada + '→' + x.salida + ' (' + x.noches + 'n)' +
+               ' · bruto $' + x.bruto.toFixed(2) + ' · depositado $' + x.neto.toFixed(2) +
+               ' · payout ' + x.fechaPago);
+  });
+  Logger.log(nuevos ? ('A insertar: ' + nuevos + ' reserva(s), bruto $' + bruto.toFixed(2) +
+                       '. Corré insertarReservasAirbnbFaltantes()')
+                    : '✓ No hay nada que insertar.');
+}
+
+function insertarReservasAirbnbFaltantes() {
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  const ex    = _codsExistentes_();
+  const nCols = sheet.getLastColumn();
+  var insertados = 0;
+  _reservasAirbnbFaltantes_().forEach(function(x) {
+    if (ex[x.cod]) { Logger.log('~ ' + x.cod + ' ya existe, se saltea'); return; }
+    var fila = new Array(nCols);
+    for (var k = 0; k < nCols; k++) fila[k] = '';
+    fila[_R.ID]           = Utilities.getUuid().replace(/-/g, '').substring(0, 16);
+    fila[1]               = x.nombre;                 // Nombre
+    fila[2]               = x.cabana;                 // Cabaña
+    fila[3]               = x.code;                   // CabañaCodigo
+    fila[_R.ENTRADA]      = x.entrada;                // Entrada
+    fila[5]               = x.salida;                 // Salida
+    fila[6]               = 2;                        // Personas (Airbnb no lo trae acá)
+    fila[_R.MONTO]        = x.bruto;                  // Monto = lo que pagó el huésped
+    fila[8]               = 0;                        // Abono
+    fila[_R.ORIGEN]       = 'Airbnb';
+    fila[_R.COD]          = x.cod;                    // CodConfirmacion
+    fila[11]              = 0;                        // Service Fee
+    fila[_R.NETO]         = x.bruto;                  // Neto (convención: Monto == Neto en Airbnb)
+    fila[15]              = x.fechaReserva;           // FechaReserva
+    fila[_R.FECHAPAGO]    = x.fechaPago;
+    fila[_R.MONTOPAGADO]  = x.neto;                   // lo realmente depositado por Airbnb
+    fila[_R.ESTADO]       = 'PAGA';
+    fila[24]              = 'noche';                  // Tipo
+    fila[_R.COMENT]       = '[Cargada por auditoría 26-jul-2026 desde el export de Airbnb]';
+    sheet.appendRow(fila);
+    insertados++;
+    Logger.log('✏️  insertada ' + x.cod + ' ' + x.nombre + ' $' + x.bruto.toFixed(2));
+  });
+  SpreadsheetApp.flush();
+  Logger.log('✓ ' + insertados + ' reserva(s) insertada(s).');
+}
