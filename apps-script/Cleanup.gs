@@ -932,7 +932,6 @@ function vincularVouchersHuerfanos(dryRun) {
   Logger.log('');
   Logger.log('═══ ' + (dryRun ? 'DRY-RUN · ' : '') + 'VINCULAR VOUCHERS ═══');
   rec.recuperable.forEach(x => {
-    if (x.urls > 0) return;                     // ya tiene alguna URL: no pisar
     if (x.via === 'huesped (probable)') {
       Logger.log('… fila ' + x.fila + ' (' + x.nombre + ') match solo PROBABLE, se salta. Revisar a mano: ' + x.urlsDrive);
       return;
@@ -942,7 +941,11 @@ function vincularVouchersHuerfanos(dryRun) {
     // Ordenar por timestamp del nombre, más reciente primero
     const orden = nombres.map((nom, k) => ({ nom: nom, url: todos[k], ts: _vhTimestamp(nom) }))
       .sort((a, b) => b.ts < a.ts ? -1 : (b.ts > a.ts ? 1 : 0));
-    const cupo  = Math.max(1, x.cods.split(',').length - x.urls);
+    // Cupo = cuántos archivos le faltan a esta fila. Cuando ya tiene alguna URL
+    // (2 códigos y 1 archivo, p.ej.) se AGREGA la que falta en vez de saltearla:
+    // saltearlas dejaba el pago sin archivo justamente en las filas mixtas.
+    const cupo = Math.max(0, x.cods.split(',').length - x.urls);
+    if (cupo === 0) return;
     const elegidos = orden.slice(0, cupo);
     if (orden.length > cupo) {
       sobrantes++;
@@ -950,8 +953,13 @@ function vincularVouchersHuerfanos(dryRun) {
         + ' archivos para ' + cupo + ' pago(s); se enlaza(n) el/los más reciente(s). Resto: '
         + orden.slice(cupo).map(f => f.nom).join(', '));
     }
-    const valor = elegidos.map(f => f.url).join('|');
-    Logger.log((dryRun ? '[dry] ' : '✓ ') + 'fila ' + x.fila + ' · ' + x.nombre + ' → ' + elegidos.map(f => f.nom).join(', '));
+    // Preservar lo que ya estuviera en la celda y anexar lo nuevo.
+    const previas = (sheet.getRange(x.fila, 26).getValue() || '').toString()
+      .split('|').map(u => u.trim()).filter(Boolean);
+    const valor = previas.concat(elegidos.map(f => f.url)).join('|');
+    Logger.log((dryRun ? '[dry] ' : '✓ ') + 'fila ' + x.fila + ' · ' + x.nombre
+      + (previas.length ? ' (+' + elegidos.length + ' a ' + previas.length + ' existente(s))' : '')
+      + ' → ' + elegidos.map(f => f.nom).join(', '));
     if (!dryRun) sheet.getRange(x.fila, 26).setValue(valor);
     n++;
   });
