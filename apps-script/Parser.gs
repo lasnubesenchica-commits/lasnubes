@@ -179,9 +179,10 @@ function syncAirbnbUpdates() {
         if ((filas[k][6] || '').toString() !== 'solicitada') continue;
         if (norm(filas[k][2]) !== norm(huesped)) continue;
         if (cab.nombre && norm(filas[k][3]) !== norm(cab.nombre)) continue;
-        if ((filas[k][0] || '').toString() > fecha) continue;
+        // _altTs: la celda puede volver como Date, no como el string que escribimos.
+        if (_altTs(filas[k][0]) > fecha) continue;
         if (_altDiasEntre(filas[k][0], fecha) > ALT_VENTANA_DIAS) continue;
-        if (mejor < 0 || (filas[k][0] || '') > (filas[mejor][0] || '')) mejor = k;
+        if (mejor < 0 || _altTs(filas[k][0]) > _altTs(filas[mejor][0])) mejor = k;
       }
 
       if (mejor < 0) {
@@ -215,6 +216,7 @@ function syncAirbnbUpdates() {
   let vencidas = 0;
   for (let k = 1; k < finales.length; k++) {
     if ((finales[k][6] || '').toString() !== 'solicitada') continue;
+    if (!_altTs(finales[k][0])) continue;                    // sin fecha no se cierra a ciegas
     if (_altDiasEntre(finales[k][0], ahora) <= ALT_VENTANA_DIAS) continue;
     altSheet.getRange(k + 1, 7).setValue('sin_confirmacion');
     vencidas++;
@@ -225,12 +227,30 @@ function syncAirbnbUpdates() {
     + vencidas + ' solicitud(es) cerrada(s) sin confirmar');
 }
 
-// Días entre dos timestamps 'yyyy-MM-dd HH:mm' (o 'yyyy-MM-dd'). Si alguno no
-// parsea devuelve Infinity, así que el que compara descarta el par en vez de
-// tomarlo por bueno.
+// Timestamp de la hoja → 'yyyy-MM-dd HH:mm'.
+//
+// IMPRESCINDIBLE. Escribimos la fecha como string con Utilities.formatDate, pero
+// Sheets la reconoce como fecha y la guarda como VALOR: al releer con
+// getValues() vuelve un objeto Date, no el string. Y ahí las dos defensas del
+// emparejamiento fallaban en silencio:
+//   · el orden se comparaba como string, y "Sat Mar 28 2026 22:40:00 GMT-0500"
+//     es MAYOR que "2026-03-28 22:43" (la 'S' pesa más que el '2'), así que toda
+//     solicitud parecía posterior a su confirmación → par descartado;
+//   · _altDiasEntre no podía parsear ese formato → Infinity → fuera de ventana.
+// Resultado: en el backfill inicial ninguna de las 26 alteraciones históricas se
+// emparejó (todas quedaron 'sin_confirmacion' / 'aceptada_sin_detalle') aunque
+// varias tenían la confirmación a 2 o 3 minutos de la solicitud.
+function _altTs(v) {
+  if (!v) return '';
+  if (v instanceof Date) return Utilities.formatDate(v, 'America/Panama', 'yyyy-MM-dd HH:mm');
+  return String(v).trim();
+}
+
+// Días entre dos timestamps. Acepta Date o string. Si alguno no parsea devuelve
+// Infinity, así que el que compara descarta el par en vez de tomarlo por bueno.
 function _altDiasEntre(a, b) {
   const p = s => {
-    const t = String(s == null ? '' : s).trim().replace(' ', 'T');
+    const t = _altTs(s).replace(' ', 'T');
     if (!t) return null;
     const d = new Date(t.length === 10 ? t + 'T00:00:00' : t);
     return isNaN(d.getTime()) ? null : d.getTime();
