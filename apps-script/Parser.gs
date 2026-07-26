@@ -65,11 +65,14 @@ function syncAirbnbReservations() {
 //
 // Airbnb manda DOS emails por cada cambio, y ninguno alcanza solo:
 //
-//   1) X-Template: STAY_RESERVATION_ALTERATION_REQUESTED
-//      Asunto "<Huésped> quiere hacer un cambio en su reserva".
+//   1) La SOLICITUD. Asunto "<Huésped> quiere hacer un cambio en su reserva".
 //      Trae el DETALLE ("VIAJEROS ORIGINALES 3 viajeros, 1 mascota /
 //      VIAJEROS SOLICITADOS 4 viajeros") pero NO el código HM: solo un id de
 //      alteración que no sirve para cruzar con la hoja.
+//      OJO: el X-Template de este email tiene DOS formas según la época —
+//      STAY_RESERVATION_ALTERATION_REQUESTED y, en minúsculas,
+//      reservation/alteration/alteration_requested. Por eso se busca por
+//      ASUNTO; filtrar por header perdería la mitad de los emails en silencio.
 //
 //   2) X-Template: ALTERATION_ACCEPTED
 //      Asunto "Reserva actualizada". Trae el CÓDIGO HM en el link al
