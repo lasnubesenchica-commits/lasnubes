@@ -1427,6 +1427,18 @@ function _correccionesAirbnb_() {
       checkin: '2025-08-03', checkout: '2025-08-04',
       fechaPago: '2025-08-27', montoPagado:  82.93, estadoPago: 'PAGA' },
 
+    // ── Dos montos viejos confirmados contra el export ───────────
+    // No los agarra corregirMontosInfladosAirbnb() porque su ratio no es el
+    // 1.1412 de la tarifa de servicio: acá el monto quedó por DEBAJO de lo que
+    // Airbnb pagó, así que hubo un cargo extra.
+    //   Zulay   HM83ZQKJKW · subió a 4 viajeros → bruto real $165.30 (export).
+    //   Nidemis HMPW3RYYNE · el export tiene DOS líneas, $99.00 de la reserva y
+    //           $30.00 de una resolución. El bruto es $99.00; el neto se queda en
+    //           $113.65 porque la resolución se paga sin comisión, y por eso el
+    //           chequeo la va a seguir marcando como 🟡 — está bien así.
+    { cod: 'HM83ZQKJKW', quien: 'Zulay Valles',   monto: 165.30 },
+    { cod: 'HMPW3RYYNE', quien: 'Nidemis Mordock', monto:  99.00 },
+
     // ── Cobros de 2025 que quedaron fuera de la ventana ──────────
     // 24 reservas de 2025 cuyo payout quedó fuera de la ventana de
     // syncAirbnbPayouts, así que sus códigos no están en la hoja Pagos y
@@ -2192,3 +2204,81 @@ function recalcularNetosAirbnb(dryRun) {
 }
 
 function recalcularNetosAirbnbESCRIBIR() { return recalcularNetosAirbnb(false); }
+
+// ═══════════════════════════════════════════════════════════
+//  Montos inflados de 2025 · derivados del payout
+// ═══════════════════════════════════════════════════════════
+//
+// El email de Airbnb de 2025 traía el total que paga el HUÉSPED (con su tarifa
+// de servicio), no el bruto del anfitrión: exactamente +14.12%. Una vez que el
+// Neto tiene el valor real del payout, el bruto verdadero se puede DERIVAR sin
+// necesidad del export:  bruto = neto / (1 − comisión).
+//
+// Se corrige SOLO cuando el ratio monto/derivado da 1.1412 clavado. Esa firma es
+// autoevidente: es la tarifa de servicio del huésped y nada más da ese número.
+//
+// Todo lo demás se reporta pero NO se toca, porque la derivación se rompe si el
+// payout incluye una resolución. Caso testigo: Nidemis Mordock tiene DOS líneas
+// en el export —$99.00 de la reserva y $30.00 de una resolución— y el $30 no
+// lleva comisión. La fórmula habría dado $134.50 cuando el bruto real es $99.
+//
+// Dry-run por defecto. Para escribir: corregirMontosInfladosESCRIBIR().
+const TARIFA_SERVICIO_HUESPED_2025 = 1.1412;
+
+function corregirMontosInfladosAirbnb(dryRun) {
+  if (dryRun !== false) dryRun = true;
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+  const iso = v => v instanceof Date
+    ? Utilities.formatDate(v, 'America/Panama', 'yyyy-MM-dd')
+    : String(v || '').trim().slice(0, 10);
+
+  const corregir = [], revisar = [];
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    if (String(r[_R.ORIGEN] || '').trim() !== 'Airbnb') continue;
+    const monto  = _cleanMoney_(r[_R.MONTO]);
+    const pagado = _cleanMoney_(r[_R.MONTOPAGADO]);
+    if (!monto || pagado <= 0) continue;
+    const ref = iso(r[_R.FECHAPAGO]) || iso(r[15]) || iso(r[_R.ENTRADA]);
+    const pct = ref && ref < '2025-12-24' ? 0.03 : 0.155;
+    const derivado = Math.round(pagado / (1 - pct) * 100) / 100;
+    if (Math.abs(monto - derivado) < 0.5) continue;          // ya está bien
+    const ratio = monto / derivado;
+    const item = { fila: i + 1, quien: r[1], monto: monto, pagado: pagado,
+                   derivado: derivado, ratio: ratio, pct: pct };
+    if (Math.abs(ratio - TARIFA_SERVICIO_HUESPED_2025) < 0.002) corregir.push(item);
+    else revisar.push(item);
+  }
+
+  Logger.log('═══ ' + (dryRun ? 'DRY-RUN · ' : '') + 'MONTOS INFLADOS DE AIRBNB ═══');
+  Logger.log('');
+  Logger.log(corregir.length + ' fila(s) con la firma exacta del +14.12% (tarifa de servicio del');
+  Logger.log('huésped). El bruto real se deriva del payout, no se estima:');
+  corregir.slice(0, 12).forEach(x => Logger.log('     fila ' + x.fila + ' · ' + x.quien
+    + ' · $' + x.monto.toFixed(2) + ' → $' + x.derivado.toFixed(2)
+    + '   (neto $' + x.pagado.toFixed(2) + ' ÷ ' + (1 - x.pct).toFixed(3) + ')'));
+  if (corregir.length > 12) Logger.log('     … y ' + (corregir.length - 12) + ' más');
+
+  if (revisar.length) {
+    Logger.log('');
+    Logger.log('⚠ ' + revisar.length + ' fila(s) que NO se tocan: el ratio no es 1.1412, así que la');
+    Logger.log('  derivación no es de fiar (un cargo de resolución en el payout la rompe).');
+    revisar.forEach(x => Logger.log('     fila ' + x.fila + ' · ' + x.quien
+      + ' · monto $' + x.monto.toFixed(2) + ' · neto $' + x.pagado.toFixed(2)
+      + ' · derivaría $' + x.derivado.toFixed(2) + ' · ratio ' + x.ratio.toFixed(4)));
+  }
+
+  if (dryRun) {
+    Logger.log('');
+    Logger.log('Nada se escribió. Para ejecutar: corregirMontosInfladosESCRIBIR()');
+    return 0;
+  }
+  corregir.forEach(x => sheet.getRange(x.fila, _R.MONTO + 1).setValue(x.derivado));
+  SpreadsheetApp.flush();
+  Logger.log('');
+  Logger.log('✓ ' + corregir.length + ' monto(s) corregido(s).');
+  return corregir.length;
+}
+
+function corregirMontosInfladosESCRIBIR() { return corregirMontosInfladosAirbnb(false); }
