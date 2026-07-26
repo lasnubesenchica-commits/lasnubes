@@ -4487,17 +4487,24 @@ function actualizarEstadoPagoAirbnb() {
     const estadoActual    = resData[i][20] ? resData[i][20].toString().trim() : '';
     const fechaPagoActual = resData[i][16] ? resData[i][16].toString().trim() : '';
     const montoActual     = parseFloat(resData[i][17]) || 0;
+    // CANCELADA no se pisa. En una cancelación con penalización Airbnb IGUAL
+    // paga, así que el código aparece en un payout y esta función volvía a
+    // marcar PAGA en CADA corrida de syncCompleto, deshaciendo lo que había
+    // escrito syncCancelacionesAirbnb. Aneea y Jennifer se marcaron CANCELADA a
+    // mano y a las pocas horas ya estaban PAGA otra vez. Los datos del cobro sí
+    // se guardan —la plata entró— pero el estado se preserva.
+    const esCancelada = estadoActual === 'CANCELADA';
     // Antes bastaba con estar PAGA para saltear la fila. Pero Airbnb puede
     // pagar una misma reserva en VARIOS payouts (estadías largas): al llegar el
     // 2º cobro la reserva ya estaba PAGA y `MontoPagado` se quedaba con el
     // parcial (ej. LARS $47.10 de $271.24, GORAN $84.60 de $213.45). Ahora solo
     // se saltea si además el monto ya coincide con la suma acumulada.
-    if (estadoActual === 'PAGA' && fechaPagoActual &&
+    if ((estadoActual === 'PAGA' || esCancelada) && fechaPagoActual &&
         Math.abs(montoActual - pago.montoPagado) < 0.01) continue;
     const row = i + 1;
     reservasSheet.getRange(row, 17).setValue(pago.fechaPago);
     reservasSheet.getRange(row, 18).setValue(pago.montoPagado);
-    reservasSheet.getRange(row, 21).setValue('PAGA');
+    if (!esCancelada) reservasSheet.getRange(row, 21).setValue('PAGA');
     actualizados++;
   }
   Logger.log('actualizarEstadoPagoAirbnb completado. Actualizadas: ' + actualizados);
