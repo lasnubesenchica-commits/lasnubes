@@ -19,7 +19,7 @@ function syncAirbnbReservations() {
   const processed = getProcessedIds(sheet);
 
   const threads = GmailApp.search(
-    'from:automated@airbnb.com subject:"Reserva confirmada:" newer_than:90d'
+    'from:automated@airbnb.com subject:"Reserva confirmada:" newer_than:365d'
   );
 
   let added = 0;
@@ -55,7 +55,7 @@ function syncAirbnbUpdates() {
   const sheet = getOrCreateSheet();
 
   const threads = GmailApp.search(
-    'from:automated@airbnb.com subject:"Reserva actualizada" newer_than:90d'
+    'from:automated@airbnb.com subject:"Reserva actualizada" newer_than:365d'
   );
 
   const ss            = SpreadsheetApp.openById(SHEET_ID);
@@ -138,15 +138,15 @@ function parseAirbnbEmail(body, msgId, msgDate) {
 
     const fechasMatch = body.match(/Llegada\s+Salida\s+(\w+,?\s+\d{1,2}\s+\w+)\s+(\w+,?\s+\d{1,2}\s+\w+)/i);
     if (fechasMatch) {
-      checkin  = parseFecha(fechasMatch[1]);
-      checkout = parseFecha(fechasMatch[2]);
+      checkin  = parseFecha(fechasMatch[1], msgDate);
+      checkout = parseFecha(fechasMatch[2], msgDate);
     }
 
     if (!checkin || !checkout) {
       const llegadaSalidaBlock = body.match(/Llegada[\s\S]{0,80}?Salida[\s\S]{0,200}?(\w+,?\s+\d{1,2}\s+\w+)[\s\S]{0,80}?(\w+,?\s+\d{1,2}\s+\w+)/i);
       if (llegadaSalidaBlock) {
-        const d1 = parseFecha(llegadaSalidaBlock[1]);
-        const d2 = parseFecha(llegadaSalidaBlock[2]);
+        const d1 = parseFecha(llegadaSalidaBlock[1], msgDate);
+        const d2 = parseFecha(llegadaSalidaBlock[2], msgDate);
         if (d1 && d2 && d1 !== d2) {
           checkin  = d1;
           checkout = d2;
@@ -177,15 +177,15 @@ function parseAirbnbEmail(body, msgId, msgDate) {
       const uniqueDates = [...new Set(allDates)];
 
       if (uniqueDates.length >= 2) {
-        checkin  = parseFecha(uniqueDates[0]);
-        checkout = parseFecha(uniqueDates[1]);
+        checkin  = parseFecha(uniqueDates[0], msgDate);
+        checkout = parseFecha(uniqueDates[1], msgDate);
         if (checkin && checkout && checkin === checkout) {
           const d = new Date(checkout + 'T12:00:00');
           d.setDate(d.getDate() + (nochesEsperadas || 1));
           checkout = d.toISOString().slice(0, 10);
         }
       } else if (uniqueDates.length === 1) {
-        checkin = parseFecha(uniqueDates[0]);
+        checkin = parseFecha(uniqueDates[0], msgDate);
         if (checkin) {
           const d = new Date(checkin + 'T12:00:00');
           d.setDate(d.getDate() + (nochesEsperadas || 1));
@@ -197,7 +197,7 @@ function parseAirbnbEmail(body, msgId, msgDate) {
     if (!checkin) {
       const subjectMatch = body.match(/LLEGA EL\s+(\d{1,2}\s+\w+)/i);
       if (subjectMatch) {
-        checkin = parseFecha(subjectMatch[1]);
+        checkin = parseFecha(subjectMatch[1], msgDate);
         if (checkin) {
           const d = new Date(checkin + 'T12:00:00');
           d.setDate(d.getDate() + 1);
@@ -251,13 +251,31 @@ function parseAirbnbEmail(body, msgId, msgDate) {
 }
 
 // ─── EXTRACTOR DE FECHAS ────────────────────────────────────
-function parseFecha(str) {
+// Deduce el AÑO de una estadía a partir de la fecha en que se hizo la reserva.
+// Regla: la estadía es SIEMPRE posterior (o igual) a la fecha de reserva, así
+// que se toma el año de la fecha base y se suma 1 solo si ese día ya pasó.
+// Es determinístico: no depende de cuándo corra el sync.
+function _anioParaEstadia_(monthNum, dayNum, baseISO) {
+  const base = new Date(baseISO + 'T00:00:00');
+  if (isNaN(base.getTime())) return null;
+  let y = base.getFullYear();
+  if (new Date(y, monthNum - 1, dayNum, 12, 0, 0) < base) y++;
+  return y;
+}
+
+// `baseISO` = fecha del email (yyyy-MM-dd). Si no se pasa, cae al método viejo
+// basado en la fecha de HOY — que es justamente el que produce años erróneos
+// cuando el sync corre tarde o se reprocesa un email viejo (ej. re-parsear en
+// julio una estadía de marzo devolvía el año siguiente).
+function parseFecha(str, baseISO) {
   if (!str) return null;
   const match = str.match(/(\d{1,2})\s+(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)/i);
   if (!match) return null;
   const day   = match[1].padStart(2, '0');
   const month = monthToNum(match[2]);
-  const year  = getCurrentYear(parseInt(month));
+  let year = null;
+  if (baseISO) year = _anioParaEstadia_(parseInt(month, 10), parseInt(match[1], 10), baseISO);
+  if (!year)   year = getCurrentYear(parseInt(month));
   return `${year}-${month}-${day}`;
 }
 

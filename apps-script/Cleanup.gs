@@ -651,3 +651,118 @@ function diagnosticarEmailReserva(query, soloClaves) {
     }
   });
 }
+
+// ═══════════════════════════════════════════════════════════
+//  H) RECONCILIACIÓN DE RESERVAS AIRBNB (red de seguridad)
+//
+//  `syncAirbnbReservations` solo mira una ventana de emails recientes. Si una
+//  reserva no se registra dentro de esa ventana (trigger caído, error puntual),
+//  el email queda fuera del rango y NUNCA se reintenta: se pierde para siempre.
+//  Esto compara TODOS los emails de reserva contra la hoja y reporta/carga los
+//  que falten, sin depender de la ventana del sync.
+//
+//  Ignora los códigos en Blacklist (cancelados) y los que ya están en la hoja.
+//  USO: reconciliarReservasAirbnb()          → solo reporta
+//       reconciliarReservasAirbnb(true)      → además los inserta
+// ═══════════════════════════════════════════════════════════
+
+function _codsBlacklist_() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sh = ss.getSheetByName('Blacklist');
+  var out = {};
+  if (!sh) return out;
+  var d = sh.getDataRange().getValues();
+  for (var i = 1; i < d.length; i++) {
+    var c = String(d[i][0] || '').trim();
+    if (c) out[c.replace(/\.0$/, '')] = true;
+  }
+  return out;
+}
+
+function reconciliarReservasAirbnb(insertar) {
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  var enHoja = _codsExistentes_();
+  var black  = _codsBlacklist_();
+  var threads = GmailApp.search('from:automated@airbnb.com subject:"Reserva confirmada:" newer_than:400d');
+
+  var faltan = [], yaEstan = 0, blacklisted = 0, noParse = 0;
+  threads.forEach(function(t) {
+    t.getMessages().forEach(function(m) {
+      var body = m.getPlainBody();
+      var cm = body.match(/\b(HM[A-Z0-9]{8})\b/);
+      var cod = cm ? cm[1] : null;
+      if (!cod) return;
+      if (enHoja[cod]) { yaEstan++; return; }
+      if (black[cod])  { blacklisted++; return; }
+      var fecha = Utilities.formatDate(m.getDate(), 'America/Panama', 'yyyy-MM-dd');
+      var r = null;
+      try { r = parseAirbnbEmail(body, m.getId(), fecha); } catch (e) {}
+      if (!r) { noParse++; Logger.log('⚠ no parsea: ' + cod + ' (' + fecha + ')'); return; }
+      faltan.push({ cod: cod, emailFecha: fecha, r: r });
+    });
+  });
+
+  Logger.log('=== Reconciliación de reservas Airbnb ===');
+  Logger.log('  ya en la hoja: ' + yaEstan + ' | en blacklist: ' + blacklisted +
+             ' | no parsean: ' + noParse + ' | FALTAN: ' + faltan.length);
+  faltan.sort(function(a, b) { return a.emailFecha < b.emailFecha ? -1 : 1; });
+  faltan.forEach(function(x) {
+    Logger.log('   ' + x.emailFecha + ' ' + x.cod + ' ' + String(x.r.name).slice(0, 22) +
+               ' · ' + x.r.cabin + ' · ' + x.r.checkin + '→' + x.r.checkout + ' · $' + x.r.amount);
+  });
+
+  if (!insertar) {
+    Logger.log(faltan.length ? 'Para insertarlas: reconciliarReservasAirbnb(true)' : '✓ Nada que reconciliar.');
+    return;
+  }
+  var n = 0;
+  faltan.forEach(function(x) {
+    try { appendReservation(sheet, x.r); n++; Logger.log('✏️  insertada ' + x.cod); }
+    catch (e) { Logger.log('✗ error insertando ' + x.cod + ': ' + e.message); }
+  });
+  SpreadsheetApp.flush();
+  Logger.log('✓ ' + n + ' reserva(s) insertada(s).');
+}
+
+// ── I) Reserva guardada con ID sintético en vez del código de Airbnb ──
+//  Lourdes Morales quedó con ID `airbnb_19f3fae432b7c17d` en vez de
+//  `HMKFCXHCQJ`, así que no cruzaba con la hoja Pagos ni con el email.
+//  Genérico: recibe pares {idActual, codReal} y escribe CodConfirmacion.
+function _codsSinteticosACorregir_() {
+  return [ { idActual: 'airbnb_19f3fae432b7c17d', codReal: 'HMKFCXHCQJ', quien: 'Lourdes Morales' } ];
+}
+
+function previewCorregirCodsSinteticos() {
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  var data  = sheet.getDataRange().getValues();
+  _codsSinteticosACorregir_().forEach(function(x) {
+    var hallado = false;
+    for (var i = 1; i < data.length; i++) {
+      var id  = String(data[i][_R.ID]  || '').trim();
+      var cod = String(data[i][_R.COD] || '').trim();
+      if (id !== x.idActual && cod !== x.idActual) continue;
+      hallado = true;
+      Logger.log('  fila ' + (i + 1) + ' ' + x.quien + ' | CodConfirmacion: "' + cod + '" → "' + x.codReal + '"' +
+                 (cod === x.codReal ? '  (ya corregida)' : ''));
+    }
+    if (!hallado) Logger.log('  ⚠ no se encontró la fila de ' + x.quien + ' (' + x.idActual + ')');
+  });
+}
+
+function corregirCodsSinteticos() {
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  var data  = sheet.getDataRange().getValues();
+  var n = 0;
+  _codsSinteticosACorregir_().forEach(function(x) {
+    for (var i = 1; i < data.length; i++) {
+      var id  = String(data[i][_R.ID]  || '').trim();
+      var cod = String(data[i][_R.COD] || '').trim();
+      if ((id !== x.idActual && cod !== x.idActual) || cod === x.codReal) continue;
+      sheet.getRange(i + 1, _R.COD + 1).setValue(x.codReal);
+      n++;
+      Logger.log('✏️  fila ' + (i + 1) + ' ' + x.quien + ' → ' + x.codReal);
+    }
+  });
+  SpreadsheetApp.flush();
+  Logger.log('✓ ' + n + ' código(s) corregido(s). Corré actualizarEstadoPagoAirbnb() para traer su monto.');
+}
