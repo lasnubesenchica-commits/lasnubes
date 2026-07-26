@@ -1118,7 +1118,10 @@ function diagnosticarEmailAqui() {
 
 // ── Reconciliar reservas de Airbnb ───────────────────────────
 // Solo reporta las faltantes; para insertarlas, reconciliarAirbnbINSERTAR().
-var RECONCILIAR_DESDE = '';   // ej. '2026-01-01'; vacío = año en curso
+// Puesto en 2025 para recuperar a Michelle (HM5N4SPEJR, 7-8 ago 2025), que el
+// reporte de alteraciones destapó como faltante: está en el export de Airbnb
+// ($81.00) pero no tiene fila en Reservas.
+var RECONCILIAR_DESDE = '2025-01-01';   // vacío = año en curso
 function reconciliarAirbnbReporte() {
   return reconciliarReservasAirbnb(false, RECONCILIAR_DESDE || undefined);
 }
@@ -1330,7 +1333,12 @@ function _correccionesAirbnb_() {
     { cod: 'HMN4XNR44T', quien: 'Mario De León', cabin: 'azul',  monto: 85.50, neto: 82.93,
       fechaPago: '2025-09-24', montoPagado: 82.93, estadoPago: 'PAGA' },
     { cod: 'HMNYXJNQTH', quien: 'Dianeth Rueda', cabin: 'verde', monto: 90.00, neto: 87.30,
-      fechaPago: '2025-09-24', montoPagado: 87.30, estadoPago: 'PAGA' }
+      fechaPago: '2025-09-24', montoPagado: 87.30, estadoPago: 'PAGA' },
+    // Otra víctima del bug viejo de parseFecha: la hoja lo tenía en dic-2026
+    // cuando el export dice dic-2025. Lo destapó el reporte de alteraciones, que
+    // mostró una reserva de 2026-12 colgada de un cambio de nov-2025.
+    { cod: 'HMQSNRTXYZ', quien: 'Gilberto Alexander Mitchell Rios',
+      checkin: '2025-12-20', checkout: '2025-12-21', monto: 121.50, neto: 117.85 }
   ];
 }
 
@@ -1448,7 +1456,7 @@ function repararAlteracionesHuerfanas(dryRun) {
   confirmaciones.sort((a, b) => _altTs(filas[a][7]).localeCompare(_altTs(filas[b][7])));
 
   const usada = {};
-  let pares = 0, sinPareja = 0, aplicados = 0;
+  let pares = 0, sinPareja = 0, aplicados = 0, pendientesSinFila = 0;
 
   confirmaciones.forEach(ci => {
     const fconf = _altTs(filas[ci][7]) || _altTs(filas[ci][0]);
@@ -1501,14 +1509,24 @@ function repararAlteracionesHuerfanas(dryRun) {
 
     if (!dryRun) {
       const res = _altAplicarCambios(resSheet, resData, cod, cambios, fconf);
-      altSheet.getRange(mejor + 1, 7).setValue('aceptada');
-      altSheet.getRange(mejor + 1, 8).setValue(fconf);
-      altSheet.getRange(mejor + 1, 9).setValue(filas[ci][8]);
-      altSheet.getRange(mejor + 1, 10).setValue(cod);
-      altSheet.getRange(mejor + 1, 11).setValue(res.aplicado ? 'si' : 'parcial');
-      altSheet.getRange(ci + 1, 7).setValue('emparejada');     // deja de contar como huérfana
-      if (res.filaEncontrada) aplicados++;
-      Logger.log('    → ' + res.detalle);
+      if (!res.filaEncontrada) {
+        // Todavía no existe la reserva (ej. HM5N4SPEJR / Michelle, que falta
+        // importar). NO se consume el par: si lo marcáramos procesado, cuando la
+        // fila aparezca la alteración ya no se reintentaría nunca.
+        usada[mejor] = false;
+        pares--;
+        pendientesSinFila++;
+        Logger.log('    → sin fila con ese código; el par queda pendiente para reintentar.');
+      } else {
+        altSheet.getRange(mejor + 1, 7).setValue('aceptada');
+        altSheet.getRange(mejor + 1, 8).setValue(fconf);
+        altSheet.getRange(mejor + 1, 9).setValue(filas[ci][8]);
+        altSheet.getRange(mejor + 1, 10).setValue(cod);
+        altSheet.getRange(mejor + 1, 11).setValue(res.aplicado ? 'si' : 'parcial');
+        altSheet.getRange(ci + 1, 7).setValue('emparejada');   // deja de contar como huérfana
+        aplicados++;
+        Logger.log('    → ' + res.detalle);
+      }
     }
     Logger.log('');
   });
@@ -1518,7 +1536,8 @@ function repararAlteracionesHuerfanas(dryRun) {
   Logger.log((dryRun ? '[dry-run] ' : '') + pares + ' par(es) '
     + (dryRun ? 'se emparejarían' : 'emparejados')
     + (dryRun ? '' : ' · ' + aplicados + ' aplicado(s) a Reservas')
-    + ' · ' + sinPareja + ' confirmación(es) siguen sin pareja.');
+    + ' · ' + sinPareja + ' confirmación(es) siguen sin pareja'
+    + (pendientesSinFila ? ' · ' + pendientesSinFila + ' pendiente(s) porque falta la reserva' : '') + '.');
   if (dryRun) Logger.log('Nada se escribió. Si el reporte se ve bien: repararAlteracionesAPLICAR()');
   return pares;
 }
