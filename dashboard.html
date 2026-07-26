@@ -2161,12 +2161,6 @@
       </div>
     </div>
 
-    <!-- Origen breakdown (only in Consolidado) -->
-    <div id="origenBreakdown" style="margin-bottom:20px; padding:14px 18px; background:var(--card-bg); border:1px solid var(--border); border-radius:12px;">
-      <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;font-weight:600;">Egresos por categoría — % sobre ingresos</div>
-      <div id="breakdownCatGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;"></div>
-    </div>
-
     <!-- Mix de producto (Directas) — visible solo si hay reservas directas en el período -->
     <div id="mixProductoCard" style="display:none;margin-bottom:20px; padding:14px 18px; background:var(--card-bg); border:1px solid var(--border); border-radius:12px;">
       <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;font-weight:600;">Mix de producto — Directas</div>
@@ -9358,44 +9352,6 @@ function renderContabilidad() {
   updateRentabilidad();
 
   // Origen breakdown
-  // ── Egresos por categoría — % sobre ingresos ──────────────────────────
-  const catGrid = document.getElementById('breakdownCatGrid');
-  if (catGrid) {
-    const CAT_COLORS = {
-      'Limpieza':     '#6a9e62',
-      'Mantenimiento':'#5a85b0',
-      'Suministros':  '#e9a84c',
-      'Servicios':    '#3a9e8e',
-      'Prestamo':     '#8060b0',
-      'General':      '#8a8078',
-      'Otro':         '#c0956a',
-    };
-    // Group filteredEgr by category
-    const byCat = {};
-    filteredEgr.forEach(e => {
-      const cat = e.cat || 'Otro';
-      byCat[cat] = (byCat[cat] || 0) + parseFloat(e.amount || 0);
-    });
-    const sorted = Object.entries(byCat).sort((a,b) => b[1] - a[1]);
-    if (!sorted.length) {
-      catGrid.innerHTML = '<div style="font-size:13px;color:var(--text-muted);">Sin egresos en este período</div>';
-    } else {
-      catGrid.innerHTML = sorted.map(([cat, monto]) => {
-        const pct    = totalIn > 0 ? (monto / totalIn * 100) : 0;
-        const color  = CAT_COLORS[cat] || '#8a8078';
-        const barW   = Math.min(100, pct).toFixed(1);
-        return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;">
-          <div style="font-size:11px;font-weight:600;color:${color};text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">${cat}</div>
-          <div style="font-size:18px;font-weight:700;color:var(--text);line-height:1;">${pct.toFixed(1)}<span style="font-size:12px;font-weight:400;">%</span></div>
-          <div style="margin:6px 0 4px;height:3px;background:var(--border);border-radius:3px;">
-            <div style="height:3px;width:${barW}%;background:${color};border-radius:3px;transition:width .4s;"></div>
-          </div>
-          <div style="font-size:11px;color:var(--text-muted);">$${monto.toFixed(2)}</div>
-        </div>`;
-      }).join('');
-    }
-  }
-
   // ── Mix de producto (Directas por tipo) ────────────────────────────
   const mixCard = document.getElementById('mixProductoCard');
   const mixGrid = document.getElementById('mixProductoGrid');
