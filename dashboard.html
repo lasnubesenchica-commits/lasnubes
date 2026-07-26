@@ -3549,7 +3549,7 @@ async function syncFromSheets() {
     if (data && data.reservations) {
       sheetsReservations = data.reservations.map(r => {
         const gross  = parseFloat(r.amount || 0);
-        const origin = r.origin || 'Airbnb';
+        const origin = _canonOrigin(r.origin);
         // Solo aplicar comisión Airbnb a reservas de Airbnb
         let fee, neto, tasa, estimado;
         if (origin !== 'Airbnb') {
@@ -3724,6 +3724,19 @@ const CABINS = {
 // Origenes que no generan cobro (cortesía, colaboraciones, uso interno, abiertas).
 // 'Abierta' incluye reservas sin fechas confirmadas (no aplican para cobro).
 const SIN_PAGO_ORIGINS = ['Cortesia', 'Colaboracion', 'Personal', 'Mantenimiento', 'Abierta'];
+
+// Normaliza el Origen que viene de la hoja a la grafía canónica de las opciones
+// del select. Sin esto, una celda con espacios (`'Directa '`) o distinta
+// capitalización (`'directa'`) fallaba las comparaciones exactas: el dropzone de
+// vouchers desaparecía y el <select> quedaba en blanco, así que al guardar se
+// escribía un origen vacío.
+const ORIGINS_CANON = ['Directa','Referido','Airbnb','Cortesia','Colaboracion','Personal','Mantenimiento','Abierta','Otro'];
+function _canonOrigin(raw) {
+  const s = (raw || '').toString().trim();
+  if (!s) return 'Airbnb';
+  const lower = s.toLowerCase();
+  return ORIGINS_CANON.find(o => o.toLowerCase() === lower) || s;
+}
 
 const RATES = { weekday: 90, weekend: 110 }; // Vie/Sáb = 110
 
@@ -7602,7 +7615,7 @@ function editReservation(id) {
   toggleRegalo();
   clearVoucher();
   renderVouchersRegistrados(r);
-  document.getElementById('voucherSection').style.display = ['Directa','Referido'].includes(r.origin) ? 'block' : 'none';
+  document.getElementById('voucherSection').style.display = _puedeSubirVoucher(r.origin, _rg.esRegalo) ? 'block' : 'none';
   // Multi-cabaña: en edición se oculta (solo aplica a nuevas reservas)
   const _mcChk = document.getElementById('fMultiCabin');
   if (_mcChk) { _mcChk.checked = false; toggleMultiCabin(); }
@@ -8068,10 +8081,11 @@ function togglePromoTarifa() {
 
 function handleOriginChange() {
   const origin = document.getElementById('fOrigin').value;
-  const isDirecta  = (origin === 'Directa' || origin === 'Referido');
   const isAbierta  = (origin === 'Abierta');
-  document.getElementById('voucherSection').style.display = isDirecta ? 'block' : 'none';
-  if (!isDirecta) clearVoucher();
+  // Un regalo lleva pago aunque el origen sea Abierta → el dropzone se mantiene.
+  const puedeVoucher = _puedeSubirVoucher(origin, !!(document.getElementById('fEsRegalo') || {}).checked);
+  document.getElementById('voucherSection').style.display = puedeVoucher ? 'block' : 'none';
+  if (!puedeVoucher) clearVoucher();
   const cero = ['Cortesia', 'Colaboracion', 'Personal', 'Mantenimiento'];
   if (cero.includes(origin)) {
     document.getElementById('fAmount').value = '0.00';
@@ -11470,6 +11484,17 @@ function _parseRegaloLocal(r) {
 
 function esReservaRegalo(r) { return _parseRegaloLocal(r).esRegalo; }
 
+// ¿Se puede subir voucher en esta reserva? Solo los orígenes que llevan pago.
+// - Tolera basura en la celda Origen de la hoja (espacios, mayúsculas): antes
+//   un 'Directa ' con espacio al final hacía desaparecer el dropzone.
+// - Un CERTIFICADO DE REGALO siempre lleva pago (lo pagó el padrino), así que
+//   habilita el dropzone incluso con origen 'Abierta' (regalo sin fecha).
+const VOUCHER_ORIGINS = ['directa', 'referido'];
+function _puedeSubirVoucher(origin, esRegalo) {
+  if (esRegalo) return true;
+  return VOUCHER_ORIGINS.includes((origin || '').toString().trim().toLowerCase());
+}
+
 // Lee el bloque de regalo del formulario. Devuelve '' si el check está apagado
 // (así el backend limpia la celda al desmarcar).
 function _buildRegaloFromForm() {
@@ -11491,6 +11516,13 @@ function toggleRegalo() {
     lab.innerHTML = on
       ? 'Email <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— del beneficiario</span>'
       : 'Email <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— confirmación</span>';
+  }
+  // Marcar/desmarcar regalo puede habilitar el dropzone: un regalo con origen
+  // Abierta igual lleva el voucher del padrino.
+  const vs = document.getElementById('voucherSection');
+  if (vs) {
+    const _or = (document.getElementById('fOrigin') || {}).value;
+    vs.style.display = _puedeSubirVoucher(_or, on) ? 'block' : 'none';
   }
   _updateRegaloHint();
 }
