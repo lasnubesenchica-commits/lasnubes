@@ -5406,8 +5406,12 @@ function _reservationOccupancySpans(r) {
   // hora custom de entrada). En early/pasadia el huésped entra ci+1 aunque
   // el storage bloquee ci por cortesía.
   const entradaDay = (tipo === 'early' || tipo === 'pasadia') ? _addDaysISO(ci, 1) : ci;
-  // Día real de salida (para hora custom de salida).
-  const salidaDay = (tipo === 'pasatarde') ? ci
+  // Día real de salida (para hora custom de salida). En pasatarde/pasadía la
+  // salida cae el MISMO día que la entrada: son de un solo día. Antes `pasadia`
+  // caía al default `co`, que en su storage (ci = día−1, co = día+1) apunta al
+  // día SIGUIENTE — el bloque de ocupación se dibujaba cruzando la noche
+  // (ej. "vie 24 jul 9am → sáb 25 jul 5pm" en vez de terminar el vie a las 5pm).
+  const salidaDay = (tipo === 'pasatarde' || tipo === 'pasadia') ? entradaDay
                   : (tipo === 'late')      ? _addDaysISO(co, -1)
                   :                          co;
   // Defaults del tipo (sin cortesía).
