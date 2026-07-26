@@ -135,6 +135,9 @@ function syncAirbnbUpdates() {
 // decimal cuando aparecen los dos.
 function _montoAirbnbANumero(raw) {
   let t = String(raw == null ? '' : raw).trim().replace(/\s/g, '');
+  // Sacar separadores colgando en los extremos (ej. "92,10." con el punto de la
+  // oración), que corren el cálculo de cuál es el decimal.
+  t = t.replace(/^[.,]+/, '').replace(/[.,]+$/, '');
   if (!t) return 0;
   const iComa = t.lastIndexOf(','), iPunto = t.lastIndexOf('.');
   if (iComa >= 0 && iPunto >= 0) {
@@ -4195,7 +4198,7 @@ function syncCancelacionesAirbnb() {
   let cancelSheet = ss.getSheetByName('Cancelaciones');
   if (!cancelSheet) {
     cancelSheet = ss.insertSheet('Cancelaciones');
-    const headers = ['FechaCancelacion', 'EmailId', 'CodConfirmacion', 'Huesped', 'Cabana', 'FechasReserva', 'CanceladoPor'];
+    const headers = ['FechaCancelacion', 'EmailId', 'CodConfirmacion', 'Huesped', 'Cabana', 'FechasReserva', 'CanceladoPor', 'PenalizacionCobrada'];
     cancelSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     cancelSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
   }
@@ -4203,8 +4206,12 @@ function syncCancelacionesAirbnb() {
   const cancelData   = cancelSheet.getDataRange().getValues().slice(1);
   const processedIds = new Set(cancelData.map(r => r[1].toString()));
 
+  // La búsqueda vieja era subject:"Cancelada: reserva". En Gmail los dos puntos
+  // son separador de operador y dentro de una frase entrecomillada el parseo es
+  // impredecible, así que la query podía no matchear nada. Se busca por palabras
+  // sueltas, que además cubre las variantes en inglés.
   const threads = GmailApp.search(
-    'from:automated@airbnb.com (subject:"Cancelada: reserva" OR subject:"Reservation cancelled") newer_than:365d'
+    'from:automated@airbnb.com (subject:Cancelada OR subject:cancelled OR subject:canceled) newer_than:365d'
   );
 
   const resData = reservasSheet.getDataRange().getValues();
@@ -4246,9 +4253,38 @@ function syncCancelacionesAirbnb() {
 
       if (!confirmCode) { Logger.log('⚠ No se pudo extraer código: ' + subject); return; }
 
-      let canceladoPor = 'Huésped';
-      if (/host|anfitri[oó]n|you cancelled|t[uú] cancel/i.test(body)) canceladoPor = 'Anfitrión';
-      else if (/airbnb cancelled|airbnb cancel/i.test(body)) canceladoPor = 'Airbnb';
+      // OJO: la heurística vieja probaba /host/i contra el CUERPO, y todos los
+      // enlaces de Airbnb contienen "hosting/reservations/details/...", así que
+      // CUALQUIER cancelación del huésped se atribuía al anfitrión.
+      // El header X-Template es inequívoco
+      // (CANCELLATIONS_RESERVATION_CANCELED_BY_GUEST_TO_HOST); el cuerpo queda
+      // como respaldo, ahora con frases que no aparecen en las URLs.
+      let canceladoPor = '';
+      try {
+        const tpl = (msg.getRawContent().match(/^X-Template:\s*(.+)$/mi) || [])[1] || '';
+        if      (/BY_GUEST/i.test(tpl))  canceladoPor = 'Huésped';
+        else if (/BY_HOST/i.test(tpl))   canceladoPor = 'Anfitrión';
+        else if (/BY_AIRBNB/i.test(tpl)) canceladoPor = 'Airbnb';
+      } catch(_) {}
+      // El texto plano de Airbnb viene con saltos de línea DENTRO de las frases
+      // ("tu cobro se ha\nactualizado a $92,10"), así que cualquier regex de
+      // varias palabras tiene que correr sobre el cuerpo con los espacios
+      // normalizados. Si no, no matchea nada y falla en silencio.
+      const bodyN = body.replace(/\s+/g, ' ');
+
+      if (!canceladoPor) {
+        if      (/\b(has cancelado|cancelaste|you cancelled|you canceled)\b/i.test(bodyN)) canceladoPor = 'Anfitrión';
+        else if (/airbnb\s+(ha\s+)?cancel/i.test(bodyN))                                   canceladoPor = 'Airbnb';
+        else canceladoPor = 'Huésped';
+      }
+
+      // "De acuerdo con tu política de cancelación, tu cobro se ha actualizado a
+      // $92,10." Es la penalización que Airbnb igual paga — el dato que tuvimos
+      // que deducir a mano para Aneea y Jennifer. Ojo con el decimal europeo.
+      // El grupo tiene que terminar en dígito: con [\d.,]+ se comía el punto
+      // final de la oración y "92,10." se interpretaba como 9210.
+      const cobroM = bodyN.match(/cobro se ha actualizado a\s*\$\s*([\d.,]*\d)/i);
+      const penalizacion = cobroM ? _montoAirbnbANumero(cobroM[1]) : null;
 
       const fechasMatch   = subject.match(/\(del?\s+(.+?)\)/i);
       const fechasReserva = fechasMatch ? fechasMatch[1] : '';
@@ -4265,9 +4301,29 @@ function syncCancelacionesAirbnb() {
           reservasSheet.getRange(rowNum, colEstado + 1).setValue('CANCELADA');
           cancelados++;
         }
+        // Dejar el motivo y la penalización en Comentarios (col 23). NO se toca
+        // monto ni neto a propósito: el ajuste de plata queda a criterio del
+        // admin. Contabilidad ya cuenta lo de Airbnb desde la hoja Pagos, así
+        // que el ingreso no se pierde por marcarla cancelada.
+        const nota = '✕ Cancelada por ' + canceladoPor + ' el ' + fechaCancelacion
+          + (penalizacion != null
+              ? '. Airbnb pagó la penalización: $' + penalizacion.toFixed(2) + '.'
+              : '. Sin penalización indicada en el email.');
+        try {
+          const cAct = (resData[rowNum-1][22] || '').toString().trim();
+          if (cAct.indexOf('✕ Cancelada por') < 0) {
+            reservasSheet.getRange(rowNum, 23).setValue(cAct ? cAct + '\n' + nota : nota);
+          }
+        } catch(cErr) { Logger.log('⚠ No se pudo escribir el comentario de cancelación: ' + cErr); }
+        Logger.log('✕ ' + confirmCode + ' (' + huesped + ') → CANCELADA · ' + nota);
+      } else {
+        // La cancelación puede llegar antes de que la reserva se haya
+        // sincronizado. Queda registrada en la hoja para no perderla.
+        Logger.log('⚠ ' + confirmCode + ': cancelación registrada pero no hay fila con ese código todavía.');
       }
 
-      cancelSheet.appendRow([fechaCancelacion, msgId, confirmCode, huesped, cabana, fechasReserva, canceladoPor]);
+      cancelSheet.appendRow([fechaCancelacion, msgId, confirmCode, huesped, cabana, fechasReserva, canceladoPor,
+        penalizacion != null ? penalizacion : '']);
       processedIds.add(msgId);
     });
   });
