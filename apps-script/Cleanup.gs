@@ -926,6 +926,11 @@ function _vhTimestamp(nombreArchivo) {
 //
 // Correr primero con vincularVouchersHuerfanos(true) para ver qué haría.
 function vincularVouchersHuerfanos(dryRun) {
+  // Default SEGURO: sin argumentos hace dry-run. El editor de Apps Script corre
+  // las funciones sin parámetros, así que un default "escribir" convertía el
+  // botón Run en una escritura silenciosa. Para escribir de verdad:
+  // vincularVouchersHuerfanosESCRIBIR().
+  if (dryRun === undefined) dryRun = true;
   const rec   = diagnosticarVouchersSinArchivo();
   const sheet = getOrCreateSheet();
   let n = 0, sobrantes = 0;
@@ -1064,4 +1069,44 @@ function diagnosticarPagoAirbnb(query) {
     }
   });
   return { filas: filas, pagos: hits };
+}
+
+
+// ═══════════════════════════════════════════════════════════
+//  Atajos para el editor de Apps Script
+// ═══════════════════════════════════════════════════════════
+//
+// El editor corre las funciones SIN argumentos (no hay dónde escribirlos), así
+// que las que necesitan uno se manejan desde acá: editá la constante y corré la
+// función de abajo, que aparece en el desplegable como cualquier otra.
+
+// ── ¿Por qué una reserva de Airbnb sale sin cobrar? ──────────
+// Poné el nombre del huésped o el código HM… y corré diagnosticarPagoAqui().
+var DIAG_PAGO_QUERY = 'Yarisel';
+function diagnosticarPagoAqui() {
+  return diagnosticarPagoAirbnb(DIAG_PAGO_QUERY);
+}
+
+// ── Vincular vouchers huérfanos ──────────────────────────────
+// vincularVouchersHuerfanos() ya hace dry-run por defecto (no escribe).
+// Esta es la que escribe de verdad.
+function vincularVouchersHuerfanosESCRIBIR() {
+  return vincularVouchersHuerfanos(false);
+}
+
+// ── Diagnóstico del email de una reserva ─────────────────────
+var DIAG_EMAIL_QUERY = '';
+function diagnosticarEmailAqui() {
+  if (!DIAG_EMAIL_QUERY) { Logger.log('Editá DIAG_EMAIL_QUERY arriba con el nombre o código a buscar.'); return; }
+  return diagnosticarEmailReserva(DIAG_EMAIL_QUERY, false);
+}
+
+// ── Reconciliar reservas de Airbnb ───────────────────────────
+// Solo reporta las faltantes; para insertarlas, reconciliarAirbnbINSERTAR().
+var RECONCILIAR_DESDE = '';   // ej. '2026-01-01'; vacío = año en curso
+function reconciliarAirbnbReporte() {
+  return reconciliarReservasAirbnb(false, RECONCILIAR_DESDE || undefined);
+}
+function reconciliarAirbnbINSERTAR() {
+  return reconciliarReservasAirbnb(true, RECONCILIAR_DESDE || undefined);
 }
