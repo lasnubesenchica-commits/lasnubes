@@ -1255,6 +1255,21 @@ var FILAS_A_BORRAR = [
   { fila: 527, id: '19a444362ce49803', cod: 'HMTKZY43CH', monto: 236.32 }   // Sabrina (dup de la 112)
 ];
 
+// ── Mairanis: la fila vieja con código sintético ─────────────
+// `airbnb_19e3be8ea9ba8b8e` es exactamente la trampa documentada: la
+// reconciliación busca por código, no encontró HMEQYEZS85 y lo insertó de nuevo
+// (fila 537). Ahora hay dos filas para la misma estadía del 19-21 jun. La 537
+// tiene el código HM real y el payout de $165.79, así que se conserva; esta se
+// borra. Mientras exista, cualquier reconciliación futura puede volver a
+// duplicarla. Está como origen "Abierta", así que no ocupa ni suma ingreso: el
+// riesgo de borrarla es nulo.
+// OJO: correr borrarFilasReservas() de nuevo DESPUÉS de haber borrado los 5
+// anteriores, no en la misma tanda — los índices ya se corrieron. Verificar el
+// número con verificarSaludAirbnb() (chequeo "misma persona y fechas").
+var FILAS_A_BORRAR_MAIRANIS = [
+  { fila: 316, id: 'airbnb_19e3be8ea9ba8b8e', cod: 'airbnb_19e3be8ea9ba8b8e', monto: 196.2 }
+];
+
 function borrarFilasReservas(dryRun) {
   if (dryRun === undefined) dryRun = true;   // default seguro (ver runners)
   const items = (FILAS_A_BORRAR || [])
@@ -1445,6 +1460,19 @@ function _correccionesAirbnb_() {
     // la ocupación y de "por cobrar", que es lo que corresponde — son $548.10
     // que nunca se debieron. Abraham queda sin cabaña y así está bien: no está
     // en el export porque nunca se concretó, y una cancelada no ocupa nada.
+    // ── Mairanis: crédito honrado en otras fechas ────────────────
+    // No pudo venir el 19-21 jun por salud. Airbnb liberó el calendario y esas
+    // dos noches se revendieron directo (Santiago el 19, Marilyn el 20). El
+    // crédito se honró para el 7-9 ago y esa estadía ya está registrada aparte
+    // (fila 395, $0, "Pagada el 20 de junio via Airbnb").
+    // Por eso la fila del código HM va CANCELADA: es el mecanismo que la saca de
+    // la ocupación —si no, esas noches figuran vendidas dos veces— sin perder el
+    // ingreso, que Contabilidad toma de la hoja Pagos ($165.79 del payout del
+    // 22-jun). Ojo: el widget de Ingresos sí resta ese monto, porque suma reserva
+    // por reserva y excluye las canceladas.
+    { cod: 'HMEQYEZS85', quien: 'Mairanis Lopez', neto: 165.79, estadoPago: 'CANCELADA',
+      comentario: 'No pudo venir por salud. Airbnb liberó el 19-21 jun y esas noches se revendieron directo (Santiago 19, Marilyn 20). El crédito se honró para el 7-9 ago, registrado aparte. Airbnb pagó $165.79 (payout del 22-jun).' },
+
     { cod: 'HMF4R5HH49', quien: 'Lena Wiedmann', neto: 75.29, estadoPago: 'CANCELADA',
       comentario: 'Cancelada. Airbnb pagó la penalización ($75.29 neto, payout del 14-abr-2026).' },
     { cod: 'HMMP54CHQ3', quien: 'Paige', monto: 90.00, neto: 87.30, estadoPago: 'CANCELADA',
@@ -1766,6 +1794,46 @@ function verificarSaludAirbnb() {
     if (porCod[c].length < 2) return;
     P('alta', 'código HM duplicado', c + ' en filas ' + porCod[c].map(f => f.n).join(', ')
       + ' (' + porCod[c].map(f => '$' + num(f.r[_R.MONTO])).join(' / ') + ')');
+  });
+
+  // ── B2) Códigos sintéticos en CUALQUIER origen ─────────────
+  // Un `airbnb_<hash>` es la semilla de un duplicado futuro: la reconciliación
+  // busca por código, no encuentra el HM real y lo inserta de nuevo. Pasó con
+  // Mairanis, cuya fila vieja estaba como origen "Abierta" con código sintético
+  // y por eso se escapó de los chequeos A y B, que solo mira(ba)n origen Airbnb.
+  for (let i = 1; i < data.length; i++) {
+    const c = String(data[i][_R.COD] || '').trim();
+    if (!/^(airbnb_|csv_)/i.test(c)) continue;
+    if (String(data[i][_R.ORIGEN] || '').trim() === 'Airbnb') continue;   // ya lo vio el chequeo A
+    // Solo importa si el sufijo parece un msgId de Gmail (lleva letras
+    // hexadecimales): eso significa que la fila SÍ nació de un email de Airbnb y
+    // su HM real está sin registrar, así que la reconciliación lo va a insertar
+    // otra vez. Un sufijo de puros dígitos es un timestamp local —hay 21 filas
+    // Directa/Cortesía así, de una migración vieja— que no cruza con ningún HM y
+    // no puede duplicar nada.
+    if (!/[a-f]/i.test(c.replace(/^(airbnb_|csv_)+/i, ''))) continue;
+    P('alta', 'código sintético de un email de Airbnb (semilla de duplicado)',
+      'fila ' + (i + 1) + ' · ' + data[i][1] + ' · origen ' + (data[i][_R.ORIGEN] || '?') + ' · ' + c);
+  }
+
+  // ── B3) Misma persona, mismas fechas, misma cabaña ─────────
+  // Atrapa el duplicado que B no ve porque una de las dos filas no tiene código
+  // HM válido. Se compara sin importar el origen, que es justo donde se escondía
+  // la fila de Mairanis.
+  const porEstadia = {};
+  for (let i = 1; i < data.length; i++) {
+    const nom = String(data[i][1] || '').toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z]+/g, '');
+    const ci = iso(data[i][_R.ENTRADA]), co = iso(data[i][5]), cab = String(data[i][3] || '').trim();
+    if (!nom || !ci || !co) continue;
+    const k = nom + '|' + cab + '|' + ci + '|' + co;
+    (porEstadia[k] = porEstadia[k] || []).push(i + 1);
+  }
+  Object.keys(porEstadia).forEach(k => {
+    if (porEstadia[k].length < 2) return;
+    const p = k.split('|');
+    P('alta', 'misma persona y fechas en dos filas', p[0] + ' · ' + (p[1] || 'sin cabaña')
+      + ' · ' + p[2] + '→' + p[3] + ' · filas ' + porEstadia[k].join(', '));
   });
 
   // ── C) Cabaña asignada ─────────────────────────────────────
