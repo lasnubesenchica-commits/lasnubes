@@ -100,7 +100,7 @@ function borrarEgresosDuplicados() {
 // ═══════════════════════════════════════════════════════════
 
 // Índices 0-based en la hoja Reservas (mismo mapeo que getReservations).
-var _R = { ID:0, ENTRADA:4, MONTO:7, ORIGEN:9, COD:10, NETO:12,
+var _R = { ID:0, ENTRADA:4, MONTO:7, ORIGEN:9, COD:10, NETO:12, COD_TRANSF:18,
            FECHAPAGO:16, MONTOPAGADO:17, MONTOVOUCHER:19, ESTADO:20, COMENT:22 };
 
 function _cleanMoney_(v) {
@@ -341,4 +341,109 @@ function igualarMontoAlVoucher() {
   });
   SpreadsheetApp.flush();
   Logger.log('✓ ' + items.length + ' reserva(s) igualada(s). Ingreso adicional: +$' + extra.toFixed(2));
+}
+
+// ═══════════════════════════════════════════════════════════
+//  E) CORRECCIONES PENDIENTES DE VOUCHER (auditoría 26-jul-2026)
+//
+//  Casos donde el MontoVoucher quedó inflado. En los 4 el monto realmente
+//  recibido por esa reserva es su propio `Monto` (y ya coincide con el `Abono`
+//  que se corrigió a mano) — lo que falta es bajar el voucher, porque
+//  `montoRecibido()` le da PRIORIDAD al voucher sobre el abono:
+//      mv > 0 ? mv : deposit      → mientras el voucher esté inflado, el abono
+//                                   corregido a mano NO tiene efecto.
+//
+//   1-2) KEITLYN (multi-cabaña MC-1783376570702): pago único $150 en 2 cabañas.
+//        El voucher se copió completo en ambas filas → $75 c/u.
+//   3)   Yaricel Peralta: 2 reservas mismas fechas (Puente + Portal, $75 c/u),
+//        un solo voucher de $150 cargado en la fila de Puente → $75.
+//   4)   Gisela Nuñez: mismo voucher subido dos veces (codTransferencia trae
+//        `LVMXW-69443745` repetido) y el sistema acumuló → $300 en vez de $200.
+//        Se baja a $200 y se deduplican los códigos.
+//
+//  Es idempotente: si una fila ya está corregida, la saltea.
+//  USO: previewCorreccionesVoucherPendientes() → corregirVouchersPendientes()
+// ═══════════════════════════════════════════════════════════
+
+function _idsVoucherPendientes_() {
+  return ['MC-1783376570702-1', 'MC-1783376570702-2', '1774551742898', '1776205252012'];
+}
+
+// Deduplica la lista `A|B|A` → `A|B` conservando el orden.
+function _dedupCods_(s) {
+  var parts = String(s || '').split('|');
+  var seen = {}, out = [];
+  for (var i = 0; i < parts.length; i++) {
+    var p = parts[i].trim();
+    if (!p) continue;
+    var k = p.replace(/^#/, '').toUpperCase();
+    if (seen[k]) continue;
+    seen[k] = 1; out.push(p);
+  }
+  return out.join('|');
+}
+
+function _analizarVoucherPendientes_() {
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  var data  = sheet.getDataRange().getValues();
+  var want  = {}; _idsVoucherPendientes_().forEach(function(id) { want[id] = true; });
+  var out = [];
+  for (var i = 1; i < data.length; i++) {
+    var id = String(data[i][_R.ID] || '');
+    if (!want[id]) continue;
+    var monto   = _cleanMoney_(data[i][_R.MONTO]);
+    var voucher = _cleanMoney_(data[i][_R.MONTOVOUCHER]);
+    var cods    = String(data[i][_R.COD_TRANSF] || '');
+    var codsNew = _dedupCods_(cods);
+    out.push({
+      row: i + 1, id: id, nombre: String(data[i][1] || ''),
+      cabana: String(data[i][2] || ''),
+      monto: monto, voucher: voucher, abono: _cleanMoney_(data[i][8]),
+      nuevoVoucher: monto,                       // el recibido real de ESTA reserva
+      cods: cods, codsNew: codsNew,
+      yaOk: voucher <= monto + 0.005,
+      cambiaCods: codsNew !== cods
+    });
+  }
+  return out;
+}
+
+function previewCorreccionesVoucherPendientes() {
+  var items = _analizarVoucherPendientes_();
+  if (!items.length) { Logger.log('⚠️ No se encontró ninguna de las filas objetivo (¿IDs cambiados?).'); return; }
+  var falta = 0;
+  Logger.log('=== Correcciones de voucher pendientes ===');
+  items.forEach(function(x) {
+    if (x.yaOk && !x.cambiaCods) {
+      Logger.log('   ✓ fila ' + x.row + ' ' + x.nombre.slice(0, 22) + ' — ya corregida (voucher $' + x.voucher.toFixed(2) + ')');
+      return;
+    }
+    falta++;
+    Logger.log('   fila ' + x.row + ' ' + x.nombre.slice(0, 22) + ' · ' + x.cabana.slice(0, 18));
+    if (!x.yaOk) {
+      Logger.log('        MontoVoucher $' + x.voucher.toFixed(2) + ' → $' + x.nuevoVoucher.toFixed(2) +
+                 '   (Monto $' + x.monto.toFixed(2) + ' · Abono $' + x.abono.toFixed(2) + ')');
+    }
+    if (x.cambiaCods) Logger.log('        códigos: ' + x.cods + ' → ' + x.codsNew);
+  });
+  Logger.log(falta ? ('Pendientes: ' + falta + '. Corré corregirVouchersPendientes()') : '✓ Todo corregido.');
+}
+
+function corregirVouchersPendientes() {
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  var items = _analizarVoucherPendientes_();
+  if (!items.length) { Logger.log('⚠️ No se encontró ninguna de las filas objetivo.'); return; }
+  var n = 0, ajuste = 0;
+  items.forEach(function(x) {
+    var toco = false;
+    if (!x.yaOk) {
+      sheet.getRange(x.row, _R.MONTOVOUCHER + 1).setValue('$' + x.nuevoVoucher.toFixed(2));
+      ajuste += x.voucher - x.nuevoVoucher;
+      toco = true;
+    }
+    if (x.cambiaCods) { sheet.getRange(x.row, _R.COD_TRANSF + 1).setValue(x.codsNew); toco = true; }
+    if (toco) { n++; Logger.log('✏️  fila ' + x.row + ' ' + x.nombre.slice(0, 22) + ' → voucher $' + x.nuevoVoucher.toFixed(2)); }
+  });
+  SpreadsheetApp.flush();
+  Logger.log('✓ ' + n + ' fila(s) corregida(s). Ingreso sobrecontado eliminado: $' + ajuste.toFixed(2));
 }
