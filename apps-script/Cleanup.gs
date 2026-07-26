@@ -1030,9 +1030,16 @@ function diagnosticarPagoAirbnb(query) {
   const hits  = [];
   pagos.forEach((row, k) => {
     const codes = (row[5] || '').toString().toUpperCase();
-    if (cods.some(c => codes.indexOf(c) >= 0) || (q.indexOf('HM') === 0 && codes.indexOf(q) >= 0)) {
+    const codsDeEsteRow = cods.filter(c => codes.indexOf(c) >= 0);
+    if (codsDeEsteRow.length || (q.indexOf('HM') === 0 && codes.indexOf(q) >= 0)) {
       hits.push({ fila: k + 2, fechaCobro: iso(row[0]), montoNeto: row[4],
-        codes: (row[5] || '').toString(), montos: (row[6] || '').toString() });
+        codes: (row[5] || '').toString(), montos: (row[6] || '').toString(),
+        // Qué códigos de LAS filas encontradas aparecen en este payout. Sin esto
+        // el veredicto atribuía el cobro a todas las filas del resultado, y con
+        // una reserva duplicada (una con código sintético y otra con el HM real)
+        // decía que la sintética "solo necesita actualizarse" — falso, su código
+        // no está en ningún payout.
+        paraCods: codsDeEsteRow });
     }
   });
   Logger.log('');
@@ -1060,8 +1067,16 @@ function diagnosticarPagoAirbnb(query) {
       Logger.log('   fila ' + f.fila + ': origen es "' + f.origen + '", no "Airbnb" → actualizarEstadoPagoAirbnb la ignora.');
     } else if (!f.cod) {
       Logger.log('   fila ' + f.fila + ': no tiene CodConfirmacion → imposible cruzarla con Pagos.');
-    } else if (!hits.length) {
-      Logger.log('   fila ' + f.fila + ': el payout no está en la hoja Pagos (ver arriba).');
+    } else if (!hits.some(h => h.paraCods.indexOf(f.cod.toUpperCase()) >= 0)) {
+      Logger.log('   fila ' + f.fila + ': su código (' + f.cod + ') NO aparece en ningún payout.');
+      if (f.cod.toLowerCase().indexOf('airbnb_') === 0) {
+        Logger.log('      ↳ es un código SINTÉTICO (airbnb_…), no el HM real de Airbnb.');
+        const hermana = filas.filter(o => o.fila !== f.fila && o.entrada === f.entrada && o.salida === f.salida);
+        if (hermana.length) {
+          Logger.log('      ↳ y hay otra fila con la MISMA estadía: fila ' + hermana.map(o => o.fila + ' (' + o.cod + ')').join(', '));
+          Logger.log('      ↳ DUPLICADA: la buena es la del código HM. Esta habría que borrarla o cancelarla.');
+        }
+      }
     } else if (!f.fechaPago) {
       Logger.log('   fila ' + f.fila + ': el pago está en Pagos pero la reserva no se actualizó → correr actualizarEstadoPagoAirbnb().');
     } else {
@@ -1109,4 +1124,70 @@ function reconciliarAirbnbReporte() {
 }
 function reconciliarAirbnbINSERTAR() {
   return reconciliarReservasAirbnb(true, RECONCILIAR_DESDE || undefined);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Reservas de Airbnb duplicadas (sintética + HM real)
+// ═══════════════════════════════════════════════════════════
+//
+// Cuando Airbnb notifica un cambio (fecha o monto), la fila vieja puede quedar
+// con un código SINTÉTICO (`airbnb_<hash>`, generado por el sync cuando no pudo
+// leer el HM del email) y con el monto anterior. Después, una reconciliación
+// como insertarReservasAirbnbFaltantes() ve que el HM real "falta" —porque
+// busca por código, no por fechas— e inserta una fila NUEVA. Resultado: dos
+// filas para la misma estadía, la vieja sin cobrar y con el monto viejo.
+//
+// Esa vieja es la que aparece en "por cobrar" aunque Airbnb ya pagó.
+//
+// Agrupa por cabaña + entrada + salida y reporta los grupos con más de una fila.
+// Solo lee y reporta.
+function buscarReservasAirbnbDuplicadas() {
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+  const iso   = v => v instanceof Date ? Utilities.formatDate(v, 'America/Panama', 'yyyy-MM-dd') : (v || '').toString().slice(0, 10);
+  const esSintetico = c => /^airbnb_/i.test(c) || !/^HM/i.test(c);
+
+  const grupos = {};
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    if (!r[_R.ID]) continue;
+    if ((r[_R.ORIGEN] || '').toString().trim() !== 'Airbnb') continue;
+    const estado = (r[20] || '').toString().trim().toUpperCase();
+    if (estado === 'CANCELADA') continue;
+    const key = (r[3] || '') + '|' + iso(r[_R.ENTRADA]) + '|' + iso(r[5]);
+    (grupos[key] = grupos[key] || []).push({
+      fila: i + 1, nombre: r[1], cabana: r[3],
+      entrada: iso(r[_R.ENTRADA]), salida: iso(r[5]),
+      cod: (r[_R.COD] || '').toString().trim(),
+      monto: r[_R.MONTO], montoPagado: r[17], fechaPago: iso(r[16]), estado: estado
+    });
+  }
+
+  const dups = Object.keys(grupos).filter(k => grupos[k].length > 1).map(k => grupos[k]);
+  Logger.log('═══ RESERVAS DE AIRBNB DUPLICADAS ═══');
+  if (!dups.length) { Logger.log('✓ No hay estadías de Airbnb con más de una fila activa.'); return []; }
+
+  let conSintetica = 0;
+  dups.forEach(g => {
+    Logger.log('');
+    Logger.log('⚠ ' + g[0].cabana + ' · ' + g[0].entrada + '→' + g[0].salida + ' · ' + g.length + ' filas:');
+    g.forEach(f => {
+      const tag = esSintetico(f.cod) ? '  ← código SINTÉTICO' : '';
+      Logger.log('   fila ' + f.fila + ' · ' + f.nombre + ' · cod=' + (f.cod || '(vacío)')
+        + ' · monto=' + f.monto + ' · pagado=' + (f.montoPagado || 0)
+        + ' · ' + (f.fechaPago || 'sin fecha de pago') + ' · ' + (f.estado || '(sin estado)') + tag);
+    });
+    const buena = g.filter(f => !esSintetico(f.cod) && f.fechaPago);
+    const mala  = g.filter(f => esSintetico(f.cod) && !f.fechaPago);
+    if (buena.length === 1 && mala.length) {
+      conSintetica++;
+      Logger.log('   → La buena es la fila ' + buena[0].fila + ' (' + buena[0].cod + ', cobrada).');
+      Logger.log('     Sobra: fila ' + mala.map(f => f.fila).join(', ') + '. Borrala o marcala CANCELADA.');
+    } else {
+      Logger.log('   → Revisar a mano: no hay una sola candidata obvia.');
+    }
+  });
+  Logger.log('');
+  Logger.log(dups.length + ' estadía(s) duplicada(s) · ' + conSintetica + ' con una fila sintética sobrante y clara.');
+  return dups;
 }
