@@ -174,15 +174,25 @@ function syncAirbnbUpdates() {
 
       // Emparejar con la solicitud pendiente más reciente del mismo huésped y
       // cabaña, anterior a esta confirmación.
-      let mejor = -1;
+      // Si Airbnb mandó "%{GUEST_NAME}" sin sustituir, el nombre no sirve: se
+      // cae a cercanía temporal y solo se acepta si hay UN candidato.
+      const sinNombre = _altNombreInutil(huesped);
+      let mejor = -1, candidatos = 0;
       for (let k = 1; k < filas.length; k++) {
         if ((filas[k][6] || '').toString() !== 'solicitada') continue;
-        if (norm(filas[k][2]) !== norm(huesped)) continue;
-        if (cab.nombre && norm(filas[k][3]) !== norm(cab.nombre)) continue;
+        if (!sinNombre && norm(filas[k][2]) !== norm(huesped)) continue;
+        if (cab.nombre && norm(filas[k][3]) && norm(filas[k][3]) !== norm(cab.nombre)) continue;
         // _altTs: la celda puede volver como Date, no como el string que escribimos.
         if (_altTs(filas[k][0]) > fecha) continue;
-        if (_altDiasEntre(filas[k][0], fecha) > ALT_VENTANA_DIAS) continue;
+        const gapMin = _altDiasEntre(filas[k][0], fecha) * 1440;
+        if (sinNombre ? gapMin > ALT_FALLBACK_MIN : gapMin > ALT_VENTANA_DIAS * 1440) continue;
+        candidatos++;
         if (mejor < 0 || _altTs(filas[k][0]) > _altTs(filas[mejor][0])) mejor = k;
+      }
+      if (sinNombre && candidatos !== 1) {
+        Logger.log('⚠ Confirmación sin nombre utilizable (' + cod + '): '
+          + candidatos + ' candidato(s) por cercanía; no se arriesga a emparejar.');
+        mejor = -1;
       }
 
       if (mejor < 0) {
@@ -317,6 +327,27 @@ function _altArmarFecha(dia, mesTxt, anio, baseISO) {
   return y + '-' + mm + '-' + (d < 10 ? '0' + d : '' + d);
 }
 
+// Encabezado del bloque de cambio, en MAYÚSCULAS y SIN TILDES.
+//
+// Airbnb cambió el rótulo con el tiempo: los emails de 2025 dicen "HUÉSPEDES
+// ORIGINALES" y los de 2026 "VIAJEROS ORIGINALES". El código comparaba contra
+// 'HUESPED' sin tilde, así que 'HUÉSPEDES'.indexOf('HUESPED') daba -1 y las 9
+// alteraciones de 2025 caían al branch de "anotar para revisar": el cambio de
+// personas quedaba registrado pero nunca se aplicaba.
+function _altNormQue(s) {
+  return String(s == null ? '' : s).toUpperCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+// Airbnb a veces manda la confirmación con la variable de plantilla SIN
+// sustituir: el asunto trae "%{GUEST_NAME}" en vez del nombre. Ahí el huésped no
+// sirve para emparejar y hay que caer a la cercanía temporal.
+function _altNombreInutil(s) {
+  const t = String(s == null ? '' : s).trim();
+  return !t || /%\s*\{|GUEST_NAME/i.test(t);
+}
+const ALT_FALLBACK_MIN = 120;   // minutos, solo para el fallback sin nombre
+
 // Celda de fecha de la hoja → 'yyyy-MM-dd' (puede venir Date o string).
 function _altISO(v) {
   if (!v) return '';
@@ -355,7 +386,7 @@ function _altAplicarCambios(sheet, resData, cod, cambios, fechaConf) {
   let todoAplicado = cambios.length > 0;
   const pendientes = [];
   cambios.forEach(c => {
-    const que = (c.que || '').toUpperCase();
+    const que = _altNormQue(c.que);          // sin tildes: "HUÉSPEDES" → "HUESPEDES"
     if (que.indexOf('VIAJERO') === 0 || que.indexOf('HUESPED') === 0) {
       const n = parseInt((c.despues.match(/(\d+)/) || [])[1], 10);
       if (n > 0) {
