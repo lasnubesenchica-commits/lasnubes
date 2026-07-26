@@ -306,7 +306,7 @@ function getOrCreateSheet() {
 
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
-    sheet.getRange(1, 1, 1, 31).setValues([[
+    sheet.getRange(1, 1, 1, 32).setValues([[
       'ID', 'Nombre', 'Cabaña', 'CabañaCodigo',
       'Entrada', 'Salida', 'Personas',
       'Monto', 'Abono', 'Origen', 'CodConfirmacion',
@@ -314,15 +314,16 @@ function getOrCreateSheet() {
       'FechaPago', 'MontoPagado', 'CodTransferencia', 'MontoVoucher', 'EstadoPago',
       'Email', 'Comentarios', 'Telefono', 'Tipo', 'VoucherURL',
       'IdHuespedURL', 'FechaNacimiento', 'CheckoutExtendido',
-      'HoraEntrada', 'HoraSalida'
+      'HoraEntrada', 'HoraSalida', 'VouchersMeta'
     ]]);
-    sheet.getRange(1, 1, 1, 31).setFontWeight('bold');
+    sheet.getRange(1, 1, 1, 32).setFontWeight('bold');
     sheet.setFrozenRows(1);
   } else {
     // Auto-asegurar columnas Tipo (25), VoucherURL (26), IdHuespedURL (27),
     // FechaNacimiento (28), CheckoutExtendido (29), HoraEntrada (30),
-    // HoraSalida (31). Idempotente: cada llamada rellena lo que falte.
-    if (sheet.getLastColumn() < 31) {
+    // HoraSalida (31), VouchersMeta (32).
+    // Idempotente: cada llamada rellena lo que falte.
+    if (sheet.getLastColumn() < 32) {
       const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
       if (!headers.includes('Tipo')) {
         sheet.getRange(1, 25).setValue('Tipo');
@@ -351,6 +352,10 @@ function getOrCreateSheet() {
       if (!headers.includes('HoraSalida')) {
         sheet.getRange(1, 31).setValue('HoraSalida');
         sheet.getRange(1, 31).setFontWeight('bold');
+      }
+      if (!headers.includes('VouchersMeta')) {
+        sheet.getRange(1, 32).setValue('VouchersMeta');
+        sheet.getRange(1, 32).setFontWeight('bold');
       }
     }
   }
@@ -1294,7 +1299,11 @@ function doGet(e) {
         fechaNacimiento:  r[27] instanceof Date ? Utilities.formatDate(r[27], 'America/Panama', 'yyyy-MM-dd') : (r[27] || ''),
         checkoutExtendido: r[28] === true || r[28] === 'TRUE' || r[28] === 'true' || r[28] === 1,
         horaEntrada:      _normalizeHora(r[29]),
-        horaSalida:       _normalizeHora(r[30])
+        horaSalida:       _normalizeHora(r[30]),
+        // JSON array con un entry por voucher subido: {monto, cod, fecha, url}.
+        // Vacío en reservas viejas — el frontend degrada al par
+        // VoucherURL / CodTransferencia.
+        vouchersMeta:     r[31] || ''
       }));
 
     return ContentService
@@ -1947,7 +1956,7 @@ function doPost(e) {
 
     // ── SAVE VOUCHER TO DRIVE ─────────────────────────────────
     if (action === 'saveVoucherToDrive') {
-      return saveVoucherToDrive(payload.reservation, payload.imageBase64, payload.mimeType, payload.fileName);
+      return saveVoucherToDrive(payload.reservation, payload.imageBase64, payload.mimeType, payload.fileName, payload.voucherMeta);
     }
 
     // ── MALAYA: SAVE RESERVA ─────────────────────────────────
@@ -3720,7 +3729,37 @@ Responde solo el JSON.`;
   }
 }
 
-function saveVoucherToDrive(reservation, imageBase64, mimeType, fileName) {
+// Agrega un entry a la columna 32 (VouchersMeta) de `row`, preservando lo que
+// ya hubiera. Formato: JSON array de {monto, cod, fecha, url}. Tolerante a
+// celdas vacías o con JSON corrupto (arranca de cero en ese caso).
+function _appendVoucherMeta(sheet, row, celdaActual, fileUrl, voucherMeta) {
+  try {
+    let lista = [];
+    const raw = celdaActual ? celdaActual.toString().trim() : '';
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) lista = parsed;
+      } catch(_) { lista = []; }
+    }
+    const m = voucherMeta || {};
+    const monto = (function() {
+      const n = parseFloat(String(m.monto == null ? '' : m.monto).replace(/[^\d.]/g, ''));
+      return isNaN(n) ? 0 : n;
+    })();
+    lista.push({
+      monto: monto,
+      cod:   (m.cod   || '').toString().trim(),
+      fecha: (m.fecha || '').toString().trim(),
+      url:   fileUrl || ''
+    });
+    sheet.getRange(row, 32).setValue(JSON.stringify(lista));
+  } catch(e) {
+    Logger.log('⚠ No se pudo persistir VouchersMeta: ' + e);
+  }
+}
+
+function saveVoucherToDrive(reservation, imageBase64, mimeType, fileName, voucherMeta) {
   try {
     let folder;
     const folders = DriveApp.getFoldersByName(VOUCHER_FOLDER_NAME);
@@ -3775,6 +3814,10 @@ function saveVoucherToDrive(reservation, imageBase64, mimeType, fileName) {
           const existing = data[i][25] ? data[i][25].toString().trim() : '';
           const merged   = existing ? (existing + '|' + fileUrl) : fileUrl;
           sheet.getRange(i + 1, 26).setValue(merged);
+          // Col 32 (VouchersMeta) — un entry por voucher, en el MISMO orden que
+          // las URLs de la col 26. Se escribe aquí (y solo aquí) para que ambas
+          // listas no se puedan desalinear.
+          _appendVoucherMeta(sheet, i + 1, data[i][31], fileUrl, voucherMeta);
           break;
         }
       }

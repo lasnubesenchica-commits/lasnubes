@@ -1564,6 +1564,90 @@
     color: var(--text-muted);
   }
 
+  /* ── VOUCHERS YA REGISTRADOS (lista bajo el dropzone) ─── */
+  .vouchers-reg {
+    display: none;
+    margin: -4px 0 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: #fff;
+  }
+  .vouchers-reg.shown { display: block; }
+  .vouchers-reg-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg-soft, #f6f6f4);
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+  }
+  .vouchers-reg-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    font-size: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .vouchers-reg-row:last-child { border-bottom: none; }
+  .vouchers-reg-idx {
+    flex: 0 0 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--verde-light);
+    color: var(--verde-dark);
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .vouchers-reg-monto { font-weight: 700; color: var(--text); flex: 0 0 auto; }
+  .vouchers-reg-monto.unknown { color: var(--text-muted); font-weight: 500; }
+  .vouchers-reg-meta {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--text-muted);
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .vouchers-reg-link {
+    flex: 0 0 auto;
+    font-size: 11px;
+    text-decoration: none;
+    color: var(--verde-dark);
+    font-weight: 600;
+  }
+  .vouchers-reg-link.disabled { color: var(--text-muted); font-weight: 400; }
+  .vouchers-reg-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg-soft, #f6f6f4);
+    font-size: 12px;
+  }
+  .vouchers-reg-foot .saldo { font-weight: 700; }
+  .vouchers-reg-foot .saldo.ok      { color: var(--verde-dark); }
+  .vouchers-reg-foot .saldo.pending { color: #b45309; }
+  .vouchers-reg-note {
+    padding: 6px 12px 8px;
+    font-size: 10.5px;
+    line-height: 1.35;
+    color: var(--text-muted);
+    background: var(--bg-soft, #f6f6f4);
+  }
+
   .voucher-card {
     display: none;
     margin-bottom: 14px;
@@ -3028,6 +3112,7 @@
         <div class="voucher-dropzone-title" id="voucherDropzoneTitle">Subir voucher de pago</div>
         <div class="voucher-dropzone-hint" id="voucherDropzoneHint">Toca para abrir galería o cámara</div>
       </div>
+      <div id="vouchersRegistrados" class="vouchers-reg"></div>
       <div id="voucherCard" class="voucher-card">
         <div class="voucher-card-header">
           <div class="voucher-card-title">✓ <span>Voucher procesado</span></div>
@@ -7404,6 +7489,7 @@ function openModal(cabin, date) {
   _refreshMultiCabinAvailability();
   document.getElementById('reservaModal').classList.add('open');
   clearVoucher();
+  renderVouchersRegistrados(null); // reserva nueva → sin pagos previos
   document.getElementById('voucherSection').style.display = 'block'; // Directa por defecto
   applyModalCabinTint(document.getElementById('fCabin').value);
   calcPrice();
@@ -7456,6 +7542,7 @@ function editReservation(id) {
   _updateSalidaLock(r.tipo || 'noche');
   calcSaldo();
   clearVoucher();
+  renderVouchersRegistrados(r);
   document.getElementById('voucherSection').style.display = ['Directa','Referido'].includes(r.origin) ? 'block' : 'none';
   // Multi-cabaña: en edición se oculta (solo aplica a nuevas reservas)
   const _mcChk = document.getElementById('fMultiCabin');
@@ -7646,6 +7733,109 @@ function _formatVoucherFecha(isoStr) {
   if (!m) return isoStr;
   const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
   return parseInt(m[3]) + ' ' + meses[parseInt(m[2]) - 1] + ' ' + m[1];
+}
+
+// ── Vouchers ya registrados en la reserva ──────────────────
+// Normaliza los pagos ya asociados a una reserva a una lista de
+// { monto, cod, fecha, url, montoConocido }.
+//
+// Fuente preferida: `vouchersMeta` (col 32) — JSON con un entry por voucher,
+// escrito por saveVoucherToDrive desde que existe la columna. Para reservas
+// anteriores a eso se degrada al par VoucherURL / CodTransferencia (listas
+// separadas por '|'): ahí los montos individuales no se guardaron, así que
+// solo se puede afirmar el monto cuando hay un único voucher (= montoVoucher).
+function _voucherEntries(r) {
+  if (!r) return [];
+  const raw = (r.vouchersMeta || '').toString().trim();
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) {
+        return parsed.map(v => {
+          const monto = parseFloat(String(v && v.monto != null ? v.monto : '').replace(/[^\d.]/g, ''));
+          return {
+            monto: isNaN(monto) ? 0 : monto,
+            montoConocido: !isNaN(monto) && monto > 0,
+            cod:   (v && v.cod   || '').toString(),
+            fecha: (v && v.fecha || '').toString(),
+            url:   (v && v.url   || '').toString()
+          };
+        });
+      }
+    } catch(_) { /* JSON corrupto → cae al fallback */ }
+  }
+
+  const split = s => (s || '').toString().split('|').map(x => x.trim()).filter(Boolean);
+  const urls  = split(r.voucherURL);
+  const cods  = split(r.codTransferencia);
+  const n = Math.max(urls.length, cods.length);
+  if (!n) return [];
+  const totalVoucher = parseFloat((r.montoVoucher || '').toString().replace(/[^\d.]/g, '')) || 0;
+  return Array.from({ length: n }, (_, i) => ({
+    // Con un solo voucher, montoVoucher ES su monto. Con varios, montoVoucher
+    // es el acumulado y no se puede repartir → se muestra como desconocido.
+    monto: (n === 1 ? totalVoucher : 0),
+    montoConocido: (n === 1 && totalVoucher > 0),
+    cod:   cods[i] || '',
+    fecha: '',
+    url:   urls[i] || ''
+  }));
+}
+
+function renderVouchersRegistrados(r) {
+  const box = document.getElementById('vouchersRegistrados');
+  if (!box) return;
+  const entries = _voucherEntries(r);
+  if (!entries.length || !['Directa','Referido'].includes(r && r.origin)) {
+    box.className = 'vouchers-reg';
+    box.innerHTML = '';
+    return;
+  }
+
+  const totalRegistrado = parseFloat((r.montoVoucher || '').toString().replace(/[^\d.]/g, '')) || 0;
+  const recibido = totalRegistrado > 0 ? totalRegistrado : (parseFloat(r.deposit) || 0);
+  const total    = parseFloat(r.amount) || 0;
+  const saldo    = Math.round((total - recibido) * 100) / 100;
+  const algunoSinMonto = entries.some(e => !e.montoConocido);
+
+  const rows = entries.map((e, i) => {
+    const monto = e.montoConocido
+      ? '<span class="vouchers-reg-monto">$' + e.monto.toFixed(2) + '</span>'
+      : '<span class="vouchers-reg-monto unknown">$ ?</span>';
+    const meta = [e.cod, e.fecha ? _formatVoucherFecha(e.fecha) : '']
+      .filter(Boolean).join(' · ') || '—';
+    const link = e.url
+      ? '<a class="vouchers-reg-link" href="' + escapeHtml(e.url) + '" target="_blank" rel="noopener">Ver ↗</a>'
+      : '<span class="vouchers-reg-link disabled">sin archivo</span>';
+    return '<div class="vouchers-reg-row">'
+      + '<span class="vouchers-reg-idx">' + (i + 1) + '</span>'
+      + monto
+      + '<span class="vouchers-reg-meta" title="' + escapeHtml(meta) + '">' + escapeHtml(meta) + '</span>'
+      + link
+      + '</div>';
+  }).join('');
+
+  const saldoTxt = saldo > 0.009
+    ? '<span class="saldo pending">Falta $' + saldo.toFixed(2) + '</span>'
+    : (saldo < -0.009
+        ? '<span class="saldo pending">Excede $' + Math.abs(saldo).toFixed(2) + '</span>'
+        : '<span class="saldo ok">✓ Pagado completo</span>');
+
+  box.innerHTML =
+    '<div class="vouchers-reg-head">'
+      + '<span>Pagos registrados (' + entries.length + ')</span>'
+      + '<span>Recibido $' + recibido.toFixed(2) + ' de $' + total.toFixed(2) + '</span>'
+    + '</div>'
+    + rows
+    + '<div class="vouchers-reg-foot">'
+      + '<span>Saldo</span>'
+      + saldoTxt
+    + '</div>'
+    + (algunoSinMonto && entries.length > 1
+        ? '<div class="vouchers-reg-note">Los montos por voucher no se guardaron en estos pagos '
+          + '(solo el acumulado $' + recibido.toFixed(2) + '). Los vouchers nuevos sí registran su monto individual.</div>'
+        : '');
+  box.className = 'vouchers-reg shown';
 }
 
 function clearVoucher() {
@@ -7995,7 +8185,15 @@ async function _saveMultiCabinReservation() {
             reservation: r,
             imageBase64: pv.base64,
             mimeType:    pv.mimeType,
-            fileName:    pv.fileName
+            fileName:    pv.fileName,
+            // El voucher se sube una sola vez, en la fila de la primera
+            // hermana → su meta lleva la porción prorrateada de esa cabaña,
+            // no el total del pago (que cubre todas las hermanas).
+            voucherMeta: {
+              monto: groupVouchers[0] || 0,
+              cod:   pv.codTransferencia || '',
+              fecha: pv.fechaPago || ''
+            }
           })
         });
         const vdata = await vres.json();
@@ -8328,6 +8526,13 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
       fechaAnterior = { checkin: prev.checkin, checkout: prev.checkout };
     }
     const idx = reservations.findIndex(r => r.id === editId);
+    // Preservar los campos que vive solo en la hoja y que el formulario no
+    // reconstruye (URLs de vouchers y su desglose), o el modal perdería los
+    // pagos ya registrados hasta el próximo reload.
+    if (idx >= 0 && reservations[idx]) {
+      if (reservations[idx].voucherURL   && !reservation.voucherURL)   reservation.voucherURL   = reservations[idx].voucherURL;
+      if (reservations[idx].vouchersMeta && !reservation.vouchersMeta) reservation.vouchersMeta = reservations[idx].vouchersMeta;
+    }
     reservations[idx] = reservation;
   } else {
     reservations.push(reservation);
@@ -8661,7 +8866,14 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
           reservation,
           imageBase64: pendingVoucher.base64,
           mimeType:    pendingVoucher.mimeType,
-          fileName:    pendingVoucher.fileName
+          fileName:    pendingVoucher.fileName,
+          // Metadata de ESTE voucher (col 32 VouchersMeta). montoVoucher en la
+          // hoja es el acumulado; esto guarda el desglose pago por pago.
+          voucherMeta: {
+            monto: _voucherMontoNumber(pendingVoucher.monto),
+            cod:   pendingVoucher.codTransferencia || '',
+            fecha: pendingVoucher.fechaPago || ''
+          }
         })
       });
       const data = await res.json();
