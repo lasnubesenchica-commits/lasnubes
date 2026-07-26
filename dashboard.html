@@ -801,7 +801,16 @@
     border: none;
   }
 
-  /* ── Mini timeline: 3 días con franjas de ocupación real ─────── */
+  /* Pie del mini timeline: próxima reserva fuera de la ventana visible. */
+  .mt-next { margin-top:8px; padding:7px 11px; border:1px dashed var(--border);
+             border-radius:9px; background:var(--bg); font-size:12px;
+             color:var(--text-muted); cursor:pointer; }
+  .mt-next strong { color:var(--text); font-weight:600; }
+  .mt-next:hover { background:var(--card-bg); }
+  .mt-next.empty { cursor:default; font-style:italic; opacity:.75; }
+  .mt-next.empty:hover { background:var(--bg); }
+
+  /* ── Mini timeline: ventana operativa con franjas de ocupación real ─── */
   /* ── Mini timeline vertical: reloj vertical + agenda al lado ─── */
   .mini-timeline {
     --mt-hour-h: 14px;
@@ -5460,24 +5469,62 @@ function renderMiniTimeline(currentRes) {
   if (tipoCur === 'pasadia' || tipoCur === 'early') anchor = _addDaysISO(anchorRes.checkin, 1);
   const _now = new Date();
   const todayISO = _now.getFullYear() + '-' + String(_now.getMonth()+1).padStart(2,'0') + '-' + String(_now.getDate()).padStart(2,'0');
-  // Ventana visible: NO son 3 días completos. Son 2 tramos contiguos que
-  // cubren lo operativamente útil (32h):
-  //   · día de la reserva desde las 6am → quién sale esa mañana y la entrada del día
-  //   · día siguiente hasta las 2pm     → la salida, la ventana de limpieza y
-  //                                        si entra alguien antes de las 2pm
-  const DAY_FROM_H = 6;    // el día ancla arranca 6am
-  const NEXT_TO_H  = 14;   // el día siguiente corta 2pm
-  const days = [anchor, _addDaysISO(anchor, 1)];
+  // ── Ventana visible: DINÁMICA, no días completos ─────────────────
+  // Arranca a las 6am del día ancla (se ve quién sale esa mañana y la entrada
+  // del día) y se estira hasta cubrir, en este orden:
+  //   · mínimo: el día siguiente hasta las 6pm (alcanza para ver la salida, la
+  //     ventana de limpieza, la entrada de las 2pm y un late check-out 4pm)
+  //   · el check-out real de la reserva ancla + su ventana de limpieza
+  //     (para estadías de 2, 3 o más noches)
+  //   · un vistazo (GLIMPSE_H) de la próxima reserva, si empalma de cerca
+  const DAY_FROM_H = 6;      // el día ancla arranca 6am
+  const MIN_TO_H   = 18;     // mínimo: día siguiente hasta 6pm
+  const LIMPIEZA_H = 3;      // colchón tras el check-out (ventana de limpieza)
+  const GLIMPSE_H  = 2;      // cuánto se asoma de la próxima reserva
+  const EMPALME_H  = 12;     // si la próxima arranca dentro de esto, se muestra
+
+  const rangeStart = new Date(anchor + 'T00:00:00');
+  rangeStart.setHours(DAY_FROM_H, 0, 0, 0);
+  // Mínimo: día siguiente a las MIN_TO_H
+  let rangeEndMs = new Date(_addDaysISO(anchor, 1) + 'T00:00:00').getTime() + MIN_TO_H * 3600000;
+  // Estirar hasta el check-out de la reserva ancla + limpieza.
+  let anchorEndMs = null;
+  try {
+    const _asp = _reservationOccupancySpans(anchorRes);
+    if (_asp && _asp.length) {
+      anchorEndMs = _asp[_asp.length - 1].end.getTime();
+      rangeEndMs = Math.max(rangeEndMs, anchorEndMs + LIMPIEZA_H * 3600000);
+    }
+  } catch (_) {}
+  // La próxima reserva de la cabaña que arranca DESPUÉS del check-out ancla.
+  let proximaEv = null;
+  const _desdeMs = anchorEndMs != null ? anchorEndMs : rangeStart.getTime();
+  reservations.forEach(r => {
+    if (r.cabin !== cabin || r.estadoPago === 'CANCELADA' || r.origin === 'Abierta') return;
+    if (!r.checkin || !r.checkout || r.id === anchorRes.id) return;
+    _reservationOccupancySpans(r).forEach(sp => {
+      if (sp.start.getTime() < _desdeMs) return;
+      if (!proximaEv || sp.start < proximaEv.start) proximaEv = { start: sp.start, end: sp.end, r: r };
+    });
+  });
+  // Si empalma de cerca, estirar para asomar GLIMPSE_H de ella.
+  if (proximaEv && proximaEv.start.getTime() <= _desdeMs + EMPALME_H * 3600000) {
+    rangeEndMs = Math.max(rangeEndMs, proximaEv.start.getTime() + GLIMPSE_H * 3600000);
+  }
+  const rangeEnd = new Date(rangeEndMs);
+
+  // Partir el rango en tramos por día (para labels y agenda).
+  const days = [];
+  {
+    const _lastISO = rangeEnd.getFullYear() + '-' + String(rangeEnd.getMonth()+1).padStart(2,'0') + '-' + String(rangeEnd.getDate()).padStart(2,'0');
+    let d = anchor;
+    while (d <= _lastISO) { days.push(d); d = _addDaysISO(d, 1); }
+  }
   const dayStarts = days.map(d => new Date(d + 'T00:00:00'));
   const dayEnds   = dayStarts.map(d => { const x = new Date(d); x.setDate(x.getDate()+1); return x; });
-  const winFromH  = [DAY_FROM_H, 0];
-  const winToH    = [24, NEXT_TO_H];
-  const winStart  = days.map((d, i) => new Date(dayStarts[i].getTime() + winFromH[i] * 3600000));
-  const winEnd    = days.map((d, i) => new Date(dayStarts[i].getTime() + winToH[i]   * 3600000));
-
-  // Recolectar reservas de la misma cabaña con presencia en el rango.
-  const rangeStart = winStart[0];
-  const rangeEnd   = winEnd[1];
+  // Bordes visibles de cada tramo (clampeados al rango).
+  const winStart = dayStarts.map(d => new Date(Math.max(d.getTime(), rangeStart.getTime())));
+  const winEnd   = dayEnds.map(d   => new Date(Math.min(d.getTime(), rangeEnd.getTime())));
   const relevantes = reservations.filter(r =>
     r.cabin === cabin && r.estadoPago !== 'CANCELADA' && r.origin !== 'Abierta' && r.checkin && r.checkout
   );
@@ -5485,10 +5532,7 @@ function renderMiniTimeline(currentRes) {
   relevantes.forEach(r => {
     const spans = _reservationOccupancySpans(r);
     spans.forEach(s => {
-      // `>` y no `>=`: una entrada JUSTO en el borde (la noche que entra a las
-      // 2pm del día siguiente) debe seguir visible — es la que define la
-      // ventana de limpieza, que es una de las cosas que se quiere ver.
-      if (s.end <= rangeStart || s.start > rangeEnd) return;
+      if (s.end <= rangeStart || s.start >= rangeEnd) return;
       events.push({ start: s.start, end: s.end, r: r });
     });
   });
@@ -5555,11 +5599,19 @@ function renderMiniTimeline(currentRes) {
   };
   const filteredSlots = allSlots.filter(slot => _isFragmentedDay(slot.originDay));
 
-  // ── Layout vertical: 14px por hora. Los 2 tramos son CONTIGUOS en el tiempo
-  // (las 24h del día ancla son el mismo instante que las 0h del siguiente), así
-  // que el mapeo a px es lineal sobre las 32h visibles.
-  const HOUR_H  = 14;
-  const winH    = days.map((d, i) => (winToH[i] - winFromH[i]) * HOUR_H);
+  // ── Layout vertical. Los tramos son CONTIGUOS en el tiempo (las 24h de un
+  // día son el mismo instante que las 0h del siguiente), así que el mapeo a px
+  // es lineal sobre el rango. `HOUR_H` se achica en estadías largas para que el
+  // timeline no se vuelva kilométrico: una noche mantiene los 14px/h de siempre.
+  const _totalHoras = (rangeEnd.getTime() - rangeStart.getTime()) / 3600000;
+  // El contenedor scrollea, así que se prioriza legibilidad: hasta ~4 noches se
+  // mantienen los 14px/h de siempre y solo estadías muy largas se comprimen.
+  const MAX_TOTAL_PX = 1600;
+  const HOUR_H  = Math.max(7, Math.min(14, Math.floor(MAX_TOTAL_PX / Math.max(1, _totalHoras))));
+  // Colchón al pie: el último item (ej. "X entra" de 2 líneas) cae sobre el
+  // borde inferior y necesita espacio para renderizar sin recortarse.
+  const BOTTOM_PAD = 46;
+  const winH    = days.map((d, i) => (winEnd[i].getTime() - winStart[i].getTime()) / 3600000 * HOUR_H);
   const winTop  = winH.map((_, i) => winH.slice(0, i).reduce((a, b) => a + b, 0));
   const TOTAL_H = winH.reduce((a, b) => a + b, 0);
   const rangeStartMs = rangeStart.getTime();
@@ -5575,17 +5627,21 @@ function renderMiniTimeline(currentRes) {
     hoursHtml += '<div class="mt-v-day-label" style="top:' + winTop[idx] + 'px;">' + escapeHtml(labelDate) + suffix + '</div>';
     // Ticks cada 6h DENTRO del tramo visible. Se salta la hora de arranque del
     // tramo porque ahí va el label del día.
+    const _fromH = winStart[idx].getHours() + winStart[idx].getMinutes() / 60;
+    const _toH   = (winEnd[idx].getTime() - dayStarts[idx].getTime()) / 3600000;
     [6, 12, 18].forEach(h => {
-      if (h <= winFromH[idx] || h >= winToH[idx]) return;
+      if (h <= _fromH || h >= _toH) return;
       const label = h === 12 ? '12p' : (h < 12 ? h + 'a' : (h - 12) + 'p');
-      hoursHtml += '<div class="mt-v-hour" style="top:' + (winTop[idx] + (h - winFromH[idx]) * HOUR_H) + 'px;">' + label + '</div>';
+      hoursHtml += '<div class="mt-v-hour" style="top:' + (winTop[idx] + (h - _fromH) * HOUR_H) + 'px;">' + label + '</div>';
     });
   });
 
   // ── Columna de barra: daybreaks + bloques + slots ────────────
   let barHtml = '';
   // Daybreaks a 240px y 480px
-  barHtml += '<div class="mt-v-daybreak" style="top:' + winTop[1] + 'px;"></div>';
+  for (let i = 1; i < days.length; i++) {
+    barHtml += '<div class="mt-v-daybreak" style="top:' + winTop[i] + 'px;"></div>';
+  }
   // Bloques de reservas
   events.forEach(e => {
     let top = dtToPx(e.start);
@@ -5650,16 +5706,13 @@ function renderMiniTimeline(currentRes) {
     const dayTop   = winTop[idx];
     // Eventos que suceden dentro de este día (start o end caen en el rango del día)
     // Ordenados por tiempo cronológico.
-    // En el último tramo el borde es inclusivo, para no perder la entrada que
-    // cae exactamente a las 2pm (y con ella su ventana de limpieza).
-    const dayEndX = dayEnd.getTime() + (idx === days.length - 1 ? 1 : 0);
-    const dayEvents = events.filter(e => e.start.getTime() < dayEndX && e.end > dayStart);
+    const dayEvents = events.filter(e => e.start < dayEnd && e.end > dayStart);
     // Carry-over: reservas que empezaron antes de este día y continúan
     const carries = dayEvents.filter(e => e.start < dayStart);
     // Construir lista de items cronológicos: entra/sale + limpieza
     const items = [];
     dayEvents.forEach(e => {
-      if (e.start >= dayStart && e.start.getTime() < dayEndX) {
+      if (e.start >= dayStart && e.start < dayEnd) {
         items.push({ type: 'entra', at: e.start, e: e });
       }
       if (e.end > dayStart && e.end <= dayEnd) {
@@ -5717,7 +5770,11 @@ function renderMiniTimeline(currentRes) {
         const endPx   = ((it.endAt - dayStart) / 3600000) * HOUR_H;
         const midCentered = startPx + (endPx - startPx - height) / 2;
         const maxTop = endPx - height - 3;  // 3px de padding sobre bottom guide
-        top = Math.min(Math.max(midCentered, prevBottom + 2), maxTop);
+        // Si el hueco es tan chico que el texto pisaría al item de arriba
+        // (pasa en estadías largas, donde HOUR_H se comprime), se omite: la
+        // info queda implícita entre el "sale" y el "entra" consecutivos.
+        if (maxTop < prevBottom - 2) return;
+        top = Math.min(Math.max(midCentered, prevBottom - 2), maxTop);
       } else {
         const idealTop = ((it.at - dayStart) / 3600000) * HOUR_H;
         top = Math.max(idealTop + ITEM_SHIFT, prevBottom);
@@ -5795,7 +5852,8 @@ function renderMiniTimeline(currentRes) {
               + '</div>';
       }
     });
-    agendaHtml += '<div class="mt-v-day-block" style="top:' + dayTop + 'px;height:' + winH[idx] + 'px;">' + inner + '</div>';
+    const _blockH = winH[idx] + (idx === days.length - 1 ? BOTTOM_PAD : 0);
+    agendaHtml += '<div class="mt-v-day-block" style="top:' + dayTop + 'px;height:' + _blockH + 'px;">' + inner + '</div>';
   });
 
   container.className = 'mini-timeline';
@@ -5847,17 +5905,35 @@ function renderMiniTimeline(currentRes) {
   };
   events.forEach(e => { _addGuide(dtToPx(e.start)); _addGuide(dtToPx(e.end)); });
 
+  // Pie: si la próxima reserva quedó FUERA de la ventana visible, anunciarla
+  // igual — así siempre se sabe cuándo vuelve a entrar alguien sin tener que
+  // estirar el timeline días enteros.
+  let proximaHtml = '';
+  if (proximaEv && proximaEv.start.getTime() >= rangeEnd.getTime()) {
+    const _pTipo  = proximaEv.r.tipo || 'noche';
+    const _pShort = TIPO_SHORT[_pTipo] || 'Noche';
+    const _pRid   = escapeHtml(String(proximaEv.r.id));
+    proximaHtml = '<div class="mt-next" onclick="event.stopPropagation();_timelineBlockClick(\'' + _pRid + '\')"'
+                + ' title="Tap para ver la reserva">→ Próxima reserva: <strong>'
+                + escapeHtml(proximaEv.r.name || '?') + '</strong> · ' + _pShort + ' · '
+                + escapeHtml(_fmtDT(proximaEv.start)) + '</div>';
+  } else if (!proximaEv) {
+    proximaHtml = '<div class="mt-next empty">Sin próxima reserva registrada en esta cabaña</div>';
+  }
+
+  const _rangoLbl = _fmtDT(rangeStart) + ' → ' + _fmtDT(rangeEnd);
   container.innerHTML = ''
-    + '<div class="mt-legend">Ocupación · hoy 6am → mañana 2pm · tap bloques o eventos para verlos</div>'
+    + '<div class="mt-legend">Ocupación · ' + escapeHtml(_rangoLbl) + ' · tap bloques o eventos para verlos</div>'
     + summaryHtml
     + '<div class="mt-v-scroll">'
-    +   '<div class="mt-v-grid" style="height:' + TOTAL_H + 'px;">'
+    +   '<div class="mt-v-grid" style="height:' + (TOTAL_H + BOTTOM_PAD) + 'px;">'
     +     guidesHtml
     +     '<div class="mt-v-hours">' + hoursHtml + '</div>'
     +     '<div class="mt-v-bar-col">' + barHtml + '</div>'
     +     '<div class="mt-v-agenda">' + agendaHtml + '</div>'
     +   '</div>'
     + '</div>'
+    + proximaHtml
     + legendTipos;
 }
 
