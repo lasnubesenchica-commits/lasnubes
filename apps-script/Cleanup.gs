@@ -1306,7 +1306,16 @@ function _correccionesAirbnb_() {
     { cod: 'HMD8PXQWMT', quien: 'Maria Celeste', checkin: '2026-05-29', checkout: '2026-05-30' },
     { cod: 'HMXZRKWEP8', quien: 'Daniel Yanez',  checkin: '2025-12-30', checkout: '2025-12-31' },
     { cod: 'HMJQRY88C3', quien: 'Jennifer',      checkin: '2025-12-30', checkout: '2025-12-31' },
-    { cod: 'HM3H889PFJ', quien: 'Aneea',         monto: 49.50, neto: 41.83 },
+    // Aneea canceló. La política no le daba reembolso, así que Airbnb igual pagó
+    // la penalización ($49.50 bruto / $41.83 neto, la mitad de la tarifa) y
+    // después liberó la fecha, que tomó Jakdiel. Por eso las dos aparecen la
+    // misma noche en el export: la de Aneea es un cobro, no una estadía.
+    // CANCELADA la saca de la ocupación sin borrar el ingreso: Contabilidad
+    // calcula lo de Airbnb desde la hoja Pagos (los payouts), no desde las
+    // reservas. Sí baja $41.83 en el widget de Ingresos, que suma reserva por
+    // reserva y excluye las canceladas.
+    { cod: 'HM3H889PFJ', quien: 'Aneea', monto: 49.50, neto: 41.83, estadoPago: 'CANCELADA',
+      comentario: 'Cancelada por la huésped. Sin reembolso por política, Airbnb pagó la penalización ($41.83 neto). La fecha la retomó Jakdiel Moreno (HM54W53MJ9).' },
     // Export 2025. NO eran un choque de fechas: están en cabañas DISTINTAS y la
     // hoja tenía a Mario en la de Dianeth. Además ambos montos venían inflados y
     // figuraban sin cobrar, aunque el payout del 24-sep-2025 los pagó (ese
@@ -1353,6 +1362,14 @@ function corregirReservasAirbnbDesdeExport(dryRun) {
       cambios.push({ col: 18, de: r[17] || 0, a: c.montoPagado, que: 'monto pagado' });
     if (c.estadoPago  && String(r[20] || '').trim() !== c.estadoPago)
       cambios.push({ col: 21, de: r[20] || '(vacío)', a: c.estadoPago, que: 'estado de pago' });
+    // Comentario: se anexa (no pisa lo que el admin haya escrito) y solo si no
+    // está ya, para que correr el script dos veces no lo duplique.
+    if (c.comentario) {
+      const actual = String(r[22] || '').trim();
+      if (actual.indexOf(c.comentario) < 0) {
+        cambios.push({ col: 23, de: actual || '(vacío)', a: actual ? actual + '\n' + c.comentario : c.comentario, que: 'comentario' });
+      }
+    }
 
     if (!cambios.length) { yaOk++; Logger.log('   ✓ ' + c.cod + ' (' + c.quien + ') fila ' + fila + ': ya está correcta.'); return; }
     Logger.log((dryRun ? '   [dry] ' : '   ✓ ') + c.cod + ' (' + c.quien + ') fila ' + fila + ':');
