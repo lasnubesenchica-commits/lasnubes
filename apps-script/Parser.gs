@@ -35,11 +35,21 @@ function syncAirbnbReservations() {
 
       if (reservation) {
         const blacklisted = getBlacklistedCodes();
-        const code = reservation.confirmCode || '';
-        if (blacklisted.has(code.toString().trim())) {
+        const code = (reservation.confirmCode || '').toString().trim();
+        if (blacklisted.has(code)) {
           Logger.log(`⛔ Blacklisted, ignorando: ${reservation.name} (${code})`);
+        } else if (code && processed.has(code)) {
+          // Guard anti-re-inserción. `processed` sale de las filas que HAY en la
+          // hoja (ids + CodConfirmacion), así que al borrar una fila su msgId
+          // desaparece del set y este email vuelve a verse como "nuevo": el sync
+          // recreaba la reserva desde el email ORIGINAL, con el monto de antes de
+          // cualquier modificación. Pasó con Yarisel Rangel (HMBBQXQ3QD): se borró
+          // la fila duplicada y volvió con $149 en vez de los $169 vigentes.
+          // Si ya existe una fila con ese código de confirmación, no se re-inserta.
+          Logger.log(`↩ Ya hay una reserva con el código ${code}, no se re-inserta: ${reservation.name}`);
         } else {
           appendReservation(sheet, reservation);
+          if (code) processed.add(code);   // evita duplicar dentro de esta misma corrida
           added++;
           Logger.log(`✓ Reserva agregada: ${reservation.name} - ${reservation.cabin}`);
         }
