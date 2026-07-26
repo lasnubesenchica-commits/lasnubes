@@ -1436,6 +1436,19 @@ function _correccionesAirbnb_() {
     //           $30.00 de una resolución. El bruto es $99.00; el neto se queda en
     //           $113.65 porque la resolución se paga sin comisión, y por eso el
     //           chequeo la va a seguir marcando como 🟡 — está bien así.
+    // Otros tres que la derivación no puede resolver, tomados del export:
+    //   Peter  HMSKS5DS9Q · el payout se partió en DOS líneas ($200.81 + $69.19)
+    //          por ser estadía larga → bruto real $270.00, neto $261.90.
+    //   Aitza  HMC3T2BQFJ · su alteración la movió del 30-dic al 31-ene y la
+    //          tarifa SUBIÓ: la hoja tiene $99.00 y el bruto real es $109.00.
+    //   Ivania HMN2FDYTRE · mismo caso al revés, la fecha nueva era más barata:
+    //          la hoja tiene $112.98 y el bruto real es $81.00.
+    // Carla Bonilla (HMWC8N44BR) NO va acá: su monto de $198.00 ya es correcto y
+    // su neto de $68.31 refleja un ajuste de resolución de −$99.00. El chequeo la
+    // va a marcar 🟡 para siempre y está bien — es un reembolso real.
+    { cod: 'HMSKS5DS9Q', quien: 'Peter',  monto: 270.00, neto: 261.90 },
+    { cod: 'HMC3T2BQFJ', quien: 'Aitza',  monto: 109.00, neto:  92.10 },
+    { cod: 'HMN2FDYTRE', quien: 'Ivania', monto:  81.00, neto:  78.57 },
     { cod: 'HM83ZQKJKW', quien: 'Zulay Valles',   monto: 165.30 },
     { cod: 'HMPW3RYYNE', quien: 'Nidemis Mordock', monto:  99.00 },
 
@@ -2240,15 +2253,33 @@ function corregirMontosInfladosAirbnb(dryRun) {
     const monto  = _cleanMoney_(r[_R.MONTO]);
     const pagado = _cleanMoney_(r[_R.MONTOPAGADO]);
     if (!monto || pagado <= 0) continue;
-    const ref = iso(r[_R.FECHAPAGO]) || iso(r[15]) || iso(r[_R.ENTRADA]);
-    const pct = ref && ref < '2025-12-24' ? 0.03 : 0.155;
-    const derivado = Math.round(pagado / (1 - pct) * 100) / 100;
-    if (Math.abs(monto - derivado) < 0.5) continue;          // ya está bien
-    const ratio = monto / derivado;
-    const item = { fila: i + 1, quien: r[1], monto: monto, pagado: pagado,
-                   derivado: derivado, ratio: ratio, pct: pct };
-    if (Math.abs(ratio - TARIFA_SERVICIO_HUESPED_2025) < 0.002) corregir.push(item);
-    else revisar.push(item);
+
+    // La comisión NO se elige por fecha. Elegirla así fallaba: a Tiffany le tomó
+    // 15.5% por su FechaPago y derivaba $103.31, cuando la verdad es 3% y $90.00.
+    // Se prueban las dos tasas conocidas y gana la que produzca la firma exacta
+    // del 1.1412; si ninguna la produce, no se toca. Así el dato decide en vez de
+    // una heurística de fechas, y de paso queda auto-verificado: que el ratio dé
+    // 1.1412 con una tasa válida es evidencia de que ESA es la tasa aplicada.
+    const PCTS = [0.03, 0.155];
+    let elegido = null, yaEstaBien = false;
+    for (let k = 0; k < PCTS.length; k++) {
+      const der = Math.round(pagado / (1 - PCTS[k]) * 100) / 100;
+      if (Math.abs(monto - der) < 0.5) { yaEstaBien = true; break; }
+      if (Math.abs(monto / der - TARIFA_SERVICIO_HUESPED_2025) < 0.002)
+        elegido = { derivado: der, pct: PCTS[k], ratio: monto / der };
+    }
+    if (yaEstaBien) continue;
+
+    if (elegido) {
+      corregir.push({ fila: i + 1, quien: r[1], monto: monto, pagado: pagado,
+                      derivado: elegido.derivado, ratio: elegido.ratio, pct: elegido.pct });
+    } else {
+      // Se muestran las dos derivaciones posibles para que el admin vea que
+      // ninguna cuadra y por qué no se tocó.
+      revisar.push({ fila: i + 1, quien: r[1], monto: monto, pagado: pagado,
+                     der3: Math.round(pagado / 0.97 * 100) / 100,
+                     der15: Math.round(pagado / 0.845 * 100) / 100 });
+    }
   }
 
   Logger.log('═══ ' + (dryRun ? 'DRY-RUN · ' : '') + 'MONTOS INFLADOS DE AIRBNB ═══');
@@ -2266,7 +2297,8 @@ function corregirMontosInfladosAirbnb(dryRun) {
     Logger.log('  derivación no es de fiar (un cargo de resolución en el payout la rompe).');
     revisar.forEach(x => Logger.log('     fila ' + x.fila + ' · ' + x.quien
       + ' · monto $' + x.monto.toFixed(2) + ' · neto $' + x.pagado.toFixed(2)
-      + ' · derivaría $' + x.derivado.toFixed(2) + ' · ratio ' + x.ratio.toFixed(4)));
+      + '  →  con 3% daría $' + x.der3.toFixed(2) + ', con 15.5% daría $' + x.der15.toFixed(2)
+      + ' · ninguna da la firma 1.1412'));
   }
 
   if (dryRun) {
