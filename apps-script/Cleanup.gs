@@ -1306,7 +1306,16 @@ function _correccionesAirbnb_() {
     { cod: 'HMD8PXQWMT', quien: 'Maria Celeste', checkin: '2026-05-29', checkout: '2026-05-30' },
     { cod: 'HMXZRKWEP8', quien: 'Daniel Yanez',  checkin: '2025-12-30', checkout: '2025-12-31' },
     { cod: 'HMJQRY88C3', quien: 'Jennifer',      checkin: '2025-12-30', checkout: '2025-12-31' },
-    { cod: 'HM3H889PFJ', quien: 'Aneea',         monto: 49.50, neto: 41.83 }
+    { cod: 'HM3H889PFJ', quien: 'Aneea',         monto: 49.50, neto: 41.83 },
+    // Export 2025. NO eran un choque de fechas: están en cabañas DISTINTAS y la
+    // hoja tenía a Mario en la de Dianeth. Además ambos montos venían inflados y
+    // figuraban sin cobrar, aunque el payout del 24-sep-2025 los pagó (ese
+    // payout cuadra exacto: Σ netos = 719.73, y el export 2025 no lleva comisión
+    // de Western Union).
+    { cod: 'HMN4XNR44T', quien: 'Mario De León', cabin: 'azul',  monto: 85.50, neto: 82.93,
+      fechaPago: '2025-09-24', montoPagado: 82.93, estadoPago: 'PAGA' },
+    { cod: 'HMNYXJNQTH', quien: 'Dianeth Rueda', cabin: 'verde', monto: 90.00, neto: 87.30,
+      fechaPago: '2025-09-24', montoPagado: 87.30, estadoPago: 'PAGA' }
   ];
 }
 
@@ -1332,6 +1341,18 @@ function corregirReservasAirbnbDesdeExport(dryRun) {
       cambios.push({ col: 8,  de: r[_R.MONTO], a: c.monto, que: 'monto' });
     if (c.neto  != null && Math.abs((parseFloat(r[_R.NETO])  || 0) - c.neto)  > 0.01)
       cambios.push({ col: 13, de: r[_R.NETO],  a: c.neto,  que: 'neto'  });
+    // Cabaña: se escriben las DOS columnas, el nombre visible (3) y el código (4).
+    if (c.cabin && String(r[3] || '').trim() !== c.cabin) {
+      const NOMBRES = { verde: 'Paseo por Las Nubes', azul: 'Portal hacia Las Nubes', lila: 'Puente entre Las Nubes' };
+      cambios.push({ col: 3, de: r[2], a: NOMBRES[c.cabin] || c.cabin, que: 'cabaña (nombre)' });
+      cambios.push({ col: 4, de: r[3], a: c.cabin,                     que: 'cabaña (código)' });
+    }
+    if (c.fechaPago   && iso(r[16]) !== c.fechaPago)
+      cambios.push({ col: 17, de: iso(r[16]) || '(vacía)', a: c.fechaPago, que: 'fecha de pago' });
+    if (c.montoPagado != null && Math.abs((parseFloat(r[17]) || 0) - c.montoPagado) > 0.01)
+      cambios.push({ col: 18, de: r[17] || 0, a: c.montoPagado, que: 'monto pagado' });
+    if (c.estadoPago  && String(r[20] || '').trim() !== c.estadoPago)
+      cambios.push({ col: 21, de: r[20] || '(vacío)', a: c.estadoPago, que: 'estado de pago' });
 
     if (!cambios.length) { yaOk++; Logger.log('   ✓ ' + c.cod + ' (' + c.quien + ') fila ' + fila + ': ya está correcta.'); return; }
     Logger.log((dryRun ? '   [dry] ' : '   ✓ ') + c.cod + ' (' + c.quien + ') fila ' + fila + ':');
