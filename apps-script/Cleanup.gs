@@ -776,3 +776,93 @@ function corregirCodsSinteticos() {
   SpreadsheetApp.flush();
   Logger.log('✓ ' + n + ' código(s) corregido(s). Corré actualizarEstadoPagoAirbnb() para traer su monto.');
 }
+
+// ═══════════════════════════════════════════════════════════
+//  Vouchers que muestran "sin archivo" en el modal
+// ═══════════════════════════════════════════════════════════
+//
+// Una reserva puede tener CodTransferencia (el OCR leyó el voucher) y aun así
+// no tener VoucherURL. Este diagnóstico separa las dos causas posibles:
+//
+//   A) El archivo NUNCA se subió a Drive. Pasa con las reservas que entran por
+//      el Agente de WhatsApp: el bot descarga la imagen, la manda a Claude y
+//      guarda el código, pero descarta los bytes — nunca llama a
+//      saveVoucherToDrive. Se reconocen porque el código conserva el '#' que
+//      el dashboard sí quita (handleVoucherUpload hace .replace(/^#/, '')).
+//
+//   B) El archivo SÍ está en Drive pero la URL no quedó en la hoja (la subida
+//      falló a mitad, o es anterior a que existiera la columna). Esas son
+//      recuperables: `repoblarVoucherURLs()` las matchea por código en la
+//      descripción del archivo y rellena la columna.
+//
+// Solo reporta, no escribe nada.
+function diagnosticarVouchersSinArchivo() {
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+
+  // Índice de Drive: código de transferencia → url
+  const porCodigo = {};
+  let totalArchivos = 0;
+  const folders = DriveApp.getFoldersByName(VOUCHER_FOLDER_NAME);
+  if (folders.hasNext()) {
+    const it = folders.next().getFiles();
+    while (it.hasNext()) {
+      const f = it.next();
+      totalArchivos++;
+      const desc = (f.getDescription() || '');
+      const m = desc.match(/C[óo]d\.\s*Pago:\s*([^\n]+)/i);
+      if (m) porCodigo[m[1].trim().toUpperCase()] = f.getUrl();
+      // También indexar cualquier código suelto que aparezca en la descripción
+      (desc.match(/[A-Z]{3,6}-\d{5,}/g) || []).forEach(c => { porCodigo[c.toUpperCase()] = f.getUrl(); });
+    }
+  }
+  Logger.log('📁 ' + totalArchivos + ' archivos en "' + VOUCHER_FOLDER_NAME + '"');
+
+  const split = s => (s || '').toString().split('|').map(x => x.trim()).filter(Boolean);
+  const rec = { okCompleto: 0, recuperable: [], nuncaSubido: [], desalineado: [], sinCodigo: 0 };
+
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    if (!r[_R.ID]) continue;
+    const origen = (r[_R.ORIGEN] || '').toString().trim();
+    if (['Directa', 'Referido'].indexOf(origen) < 0) continue;
+    const cods = split(r[_R.COD_TRANSF]);
+    const urls = split(r[25]);                       // col 26 VoucherURL
+    if (!cods.length) { rec.sinCodigo++; continue; }
+
+    if (urls.length >= cods.length) { rec.okCompleto++; continue; }
+
+    // Faltan URLs. ¿Están los archivos en Drive?
+    const faltantes = cods.slice(urls.length);
+    const enDrive   = faltantes.filter(c => porCodigo[c.replace(/^#/, '').toUpperCase()]);
+    const info = {
+      fila: i + 1,
+      nombre: r[1],
+      entrada: r[_R.ENTRADA] instanceof Date
+        ? Utilities.formatDate(r[_R.ENTRADA], 'America/Panama', 'yyyy-MM-dd') : r[_R.ENTRADA],
+      cods: cods.join(', '),
+      urls: urls.length,
+      conHash: cods.some(c => c.indexOf('#') === 0)
+    };
+    if (enDrive.length) { info.enDrive = enDrive.join(', '); rec.recuperable.push(info); }
+    else if (urls.length > 0) rec.desalineado.push(info);
+    else rec.nuncaSubido.push(info);
+  }
+
+  Logger.log('');
+  Logger.log('═══ VOUCHERS SIN ARCHIVO ═══');
+  Logger.log('✓ Con todas sus URLs: ' + rec.okCompleto + '  ·  sin código (nada que buscar): ' + rec.sinCodigo);
+  Logger.log('');
+  Logger.log('🟢 CAUSA B — recuperables (el archivo SÍ está en Drive): ' + rec.recuperable.length);
+  rec.recuperable.forEach(x => Logger.log('   fila ' + x.fila + ' · ' + x.nombre + ' · ' + x.entrada + ' · ' + x.cods + ' → ' + x.enDrive));
+  if (rec.recuperable.length) Logger.log('   → Corré repoblarVoucherURLs() para rellenar la columna.');
+  Logger.log('');
+  Logger.log('🔴 CAUSA A — nunca se subió el archivo: ' + rec.nuncaSubido.length);
+  rec.nuncaSubido.forEach(x => Logger.log('   fila ' + x.fila + ' · ' + x.nombre + ' · ' + x.entrada + ' · ' + x.cods + (x.conHash ? '  [# → vino del bot de WhatsApp]' : '')));
+  const delBot = rec.nuncaSubido.filter(x => x.conHash).length;
+  Logger.log('   de esas, ' + delBot + ' entraron por el Agente de WhatsApp (código con "#").');
+  Logger.log('');
+  Logger.log('🟡 Desalineadas (tienen alguna URL pero menos que códigos): ' + rec.desalineado.length);
+  rec.desalineado.forEach(x => Logger.log('   fila ' + x.fila + ' · ' + x.nombre + ' · ' + x.cods + ' · urls=' + x.urls));
+  return rec;
+}
