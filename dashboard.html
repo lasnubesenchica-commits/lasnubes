@@ -1628,6 +1628,19 @@
     font-weight: 600;
   }
   .vouchers-reg-link.disabled { color: var(--text-muted); font-weight: 400; }
+  /* Fila del voucher recién subido: todavía no está en la hoja. */
+  .vouchers-reg-row.pendiente { background: #fffaf0; }
+  .vouchers-reg-row.pendiente .vouchers-reg-idx { background: #fdeccd; color: #8a6000; }
+  .vouchers-reg-link.pendiente {
+    color: #8a6000;
+    font-weight: 600;
+    background: #fdeccd;
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
   .vouchers-reg-foot {
     display: flex;
     justify-content: space-between;
@@ -3116,7 +3129,9 @@
         <div class="voucher-dropzone-title" id="voucherDropzoneTitle">Subir voucher de pago</div>
         <div class="voucher-dropzone-hint" id="voucherDropzoneHint">Toca para abrir galería o cámara</div>
       </div>
-      <div id="vouchersRegistrados" class="vouchers-reg"></div>
+      <!-- El card del voucher recién procesado va ANTES de la lista: al subir
+           uno, el dropzone se oculta y el card ocupa su lugar, así la lista de
+           pagos no salta hacia arriba. -->
       <div id="voucherCard" class="voucher-card">
         <div class="voucher-card-header">
           <div class="voucher-card-title">✓ <span>Voucher procesado</span></div>
@@ -3129,6 +3144,7 @@
           <div class="voucher-card-row code"><span>Confirmación</span><span id="vcCodigo">—</span></div>
         </div>
       </div>
+      <div id="vouchersRegistrados" class="vouchers-reg"></div>
     </div>
 
     <!-- Fila 1: Huésped + Pago -->
@@ -7854,21 +7870,51 @@ function _voucherEntries(r) {
   }));
 }
 
+// Reserva contra la que se pintó la lista por última vez. Permite re-pintarla
+// desde handleVoucherUpload / clearVoucher sin volver a buscarla.
+let _vouchersRegCtx = null;
+
 function renderVouchersRegistrados(r) {
+  _vouchersRegCtx = r || null;
   const box = document.getElementById('vouchersRegistrados');
   if (!box) return;
   const entries = _voucherEntries(r);
-  if (!entries.length || !['Directa','Referido'].includes(r && r.origin)) {
+
+  // El voucher recién subido todavía NO está en la hoja: se agrega como fila
+  // "por guardar" para que la caja muestre cómo va a quedar la reserva
+  // después de guardar, que es justo para lo que sirve.
+  const origen = (document.getElementById('fOrigin') || {}).value || (r && r.origin);
+  const puedeVoucher = ['Directa','Referido'].includes(origen);
+  const pendMonto = pendingVoucher ? (_voucherMontoNumber(pendingVoucher.monto) || 0) : 0;
+  if (pendingVoucher && puedeVoucher) {
+    entries.push({
+      monto: pendMonto,
+      montoConocido: pendMonto > 0,
+      cod:   (pendingVoucher.codTransferencia || '').toString(),
+      fecha: (pendingVoucher.fechaPago || '').toString(),
+      url:   '',
+      pendiente: true
+    });
+  }
+
+  if (!entries.length || !puedeVoucher) {
     box.className = 'vouchers-reg';
     box.innerHTML = '';
     return;
   }
 
-  const totalRegistrado = parseFloat((r.montoVoucher || '').toString().replace(/[^\d.]/g, '')) || 0;
-  const recibido = totalRegistrado > 0 ? totalRegistrado : (parseFloat(r.deposit) || 0);
-  const total    = parseFloat(r.amount) || 0;
-  const saldo    = Math.round((total - recibido) * 100) / 100;
-  const algunoSinMonto = entries.some(e => !e.montoConocido);
+  // Lo que YA está guardado en la hoja, más lo que suma el voucher pendiente.
+  const totalRegistrado = parseFloat(((r && r.montoVoucher) || '').toString().replace(/[^\d.]/g, '')) || 0;
+  const recibidoGuardado = totalRegistrado > 0 ? totalRegistrado : (parseFloat(r && r.deposit) || 0);
+  const recibido = recibidoGuardado + pendMonto;
+  // El total sale del formulario: el admin pudo cambiarlo, y subir un voucher
+  // mayor al monto lo sube automáticamente.
+  const totalForm = parseFloat((document.getElementById('fAmount') || {}).value);
+  const total  = !isNaN(totalForm) ? totalForm : (parseFloat(r && r.amount) || 0);
+  const saldo  = Math.round((total - recibido) * 100) / 100;
+  // La nota del acumulado solo aplica a los pagos legacy ya guardados.
+  const algunoSinMonto = entries.some(e => !e.montoConocido && !e.pendiente);
+  const guardados = entries.filter(e => !e.pendiente).length;
 
   const rows = entries.map((e, i) => {
     const monto = e.montoConocido
@@ -7876,10 +7922,12 @@ function renderVouchersRegistrados(r) {
       : '<span class="vouchers-reg-monto unknown">$ ?</span>';
     const meta = [e.cod, e.fecha ? _formatVoucherFecha(e.fecha) : '']
       .filter(Boolean).join(' · ') || '—';
-    const link = e.url
-      ? '<a class="vouchers-reg-link" href="' + escapeHtml(e.url) + '" target="_blank" rel="noopener">Ver ↗</a>'
-      : '<span class="vouchers-reg-link disabled">sin archivo</span>';
-    return '<div class="vouchers-reg-row">'
+    const link = e.pendiente
+      ? '<span class="vouchers-reg-link pendiente">por guardar</span>'
+      : (e.url
+          ? '<a class="vouchers-reg-link" href="' + escapeHtml(e.url) + '" target="_blank" rel="noopener">Ver ↗</a>'
+          : '<span class="vouchers-reg-link disabled">sin archivo</span>');
+    return '<div class="vouchers-reg-row' + (e.pendiente ? ' pendiente' : '') + '">'
       + '<span class="vouchers-reg-idx">' + (i + 1) + '</span>'
       + monto
       + '<span class="vouchers-reg-meta" title="' + escapeHtml(meta) + '">' + escapeHtml(meta) + '</span>'
@@ -7900,12 +7948,12 @@ function renderVouchersRegistrados(r) {
     + '</div>'
     + rows
     + '<div class="vouchers-reg-foot">'
-      + '<span>Saldo</span>'
+      + '<span>Saldo' + (pendingVoucher && puedeVoucher ? ' al guardar' : '') + '</span>'
       + saldoTxt
     + '</div>'
-    + (algunoSinMonto && entries.length > 1
+    + (algunoSinMonto && guardados > 1
         ? '<div class="vouchers-reg-note">Los montos por voucher no se guardaron en estos pagos '
-          + '(solo el acumulado $' + recibido.toFixed(2) + '). Los vouchers nuevos sí registran su monto individual.</div>'
+          + '(solo el acumulado $' + recibidoGuardado.toFixed(2) + '). Los vouchers nuevos sí registran su monto individual.</div>'
         : '');
   box.className = 'vouchers-reg shown';
 }
@@ -7929,6 +7977,11 @@ function clearVoucher() {
   if (promoLab) promoLab.classList.add('disabled');
   const alertEl = document.getElementById('voucherValidationAlert');
   if (alertEl) alertEl.style.display = 'none';
+  // Quitar el voucher pendiente saca su fila "por guardar" y devuelve el saldo
+  // a lo que hay guardado. Solo si la lista ya estaba pintada — en
+  // editReservation/openModal clearVoucher corre ANTES del primer render.
+  const _box = document.getElementById('vouchersRegistrados');
+  if (_box && _box.classList.contains('shown')) renderVouchersRegistrados(_vouchersRegCtx);
 }
 
 async function handleVoucherUpload(event) {
@@ -8048,6 +8101,10 @@ async function handleVoucherUpload(event) {
 
     if (dz)   dz.style.display = 'none';
     if (card) card.classList.add('shown');
+
+    // Re-pintar la lista de pagos incluyendo el que se acaba de subir, para
+    // que muestre cómo va a quedar la reserva después de guardar.
+    renderVouchersRegistrados(editId ? reservations.find(x => x.id === editId) : null);
   } catch(e) {
     if (dz)      dz.classList.remove('loading');
     if (dzTitle) dzTitle.textContent = '⚠ Error al procesar';
