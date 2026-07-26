@@ -7870,12 +7870,19 @@ function _voucherEntries(r) {
   }));
 }
 
-// Reserva contra la que se pintó la lista por última vez. Permite re-pintarla
-// desde handleVoucherUpload / clearVoucher sin volver a buscarla.
-let _vouchersRegCtx = null;
+// ID de la reserva contra la que se pintó la lista por última vez. Se guarda el
+// ID y NO el objeto: al guardar, saveReservation reemplaza la entrada de
+// `reservations` por un objeto NUEVO, así que una referencia guardada quedaría
+// obsoleta y la caja seguiría mostrando los montos de antes de guardar.
+let _vouchersRegCtxId = null;
+
+function _rerenderVouchersReg() {
+  renderVouchersRegistrados(
+    _vouchersRegCtxId ? reservations.find(x => x.id === _vouchersRegCtxId) : null);
+}
 
 function renderVouchersRegistrados(r) {
-  _vouchersRegCtx = r || null;
+  _vouchersRegCtxId = (r && r.id) || null;
   const box = document.getElementById('vouchersRegistrados');
   if (!box) return;
   const entries = _voucherEntries(r);
@@ -7981,7 +7988,7 @@ function clearVoucher() {
   // a lo que hay guardado. Solo si la lista ya estaba pintada — en
   // editReservation/openModal clearVoucher corre ANTES del primer render.
   const _box = document.getElementById('vouchersRegistrados');
-  if (_box && _box.classList.contains('shown')) renderVouchersRegistrados(_vouchersRegCtx);
+  if (_box && _box.classList.contains('shown')) _rerenderVouchersReg();
 }
 
 async function handleVoucherUpload(event) {
@@ -8664,6 +8671,8 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
 
   // Detect date change before overwriting
   let fechaAnterior = null;
+  // Desglose de pagos tal como estaba antes de esta edición (ver más abajo).
+  let _voucherEntriesPrevias = [];
   if(editId) {
     const prev = reservations.find(r => r.id === editId);
     if (prev && (prev.checkin !== checkin || prev.checkout !== checkout)) {
@@ -8676,6 +8685,12 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
     if (idx >= 0 && reservations[idx]) {
       if (reservations[idx].voucherURL   && !reservation.voucherURL)   reservation.voucherURL   = reservations[idx].voucherURL;
       if (reservations[idx].vouchersMeta && !reservation.vouchersMeta) reservation.vouchersMeta = reservations[idx].vouchersMeta;
+      // Foto del desglose ANTES de que la acumulación de esta edición toque
+      // codTransferencia/montoVoucher. Es la base con la que _appendVoucherMetaLocal
+      // siembra una reserva legacy: si se leyera después, el código recién
+      // acumulado aparecería como un pago fantasma y el monto del pago viejo
+      // se volvería desconocido.
+      _voucherEntriesPrevias = _voucherEntries(reservations[idx]);
     }
     reservations[idx] = reservation;
   } else {
@@ -9023,12 +9038,55 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
       const data = await res.json();
       if (data.ok) {
         showToast('📎 Voucher guardado en Drive ✓');
+        // Espejar en el estado local lo que _appendVoucherMeta acaba de escribir
+        // en la col 32. Sin esto la lista de pagos del modal se queda con el
+        // desglose viejo (una fila menos) mientras el encabezado ya muestra el
+        // acumulado nuevo — sale un "Recibido $130 de $130" con un solo pago.
+        _appendVoucherMetaLocal(reservation.id, {
+          monto: _voucherMontoNumber(pendingVoucher.monto),
+          cod:   pendingVoucher.codTransferencia || '',
+          fecha: pendingVoucher.fechaPago || '',
+          url:   data.fileUrl || ''
+        }, _voucherEntriesPrevias);
       }
     } catch(e) {
       console.warn('No se pudo subir el voucher:', e);
     }
-    clearVoucher();
+    clearVoucher();   // re-pinta la lista ya sin la fila "por guardar"
   }
+}
+
+// Agrega un entry al vouchersMeta local de una reserva (espejo de
+// _appendVoucherMeta en Parser.gs) y refresca la caja de pagos del modal.
+function _appendVoucherMetaLocal(id, entry, entriesPrevias) {
+  const r = reservations.find(x => x.id === id);
+  if (!r) return;
+  // Se siembra con el desglose PREVIO a esta edición, no con el JSON crudo: en
+  // una reserva legacy (con vouchers guardados pero sin VouchersMeta) eso
+  // conserva los pagos que ya existían. Escribir solo el entry nuevo los haría
+  // desaparecer, porque _voucherEntries prefiere VouchersMeta cuando está.
+  const base = (entriesPrevias && entriesPrevias.length) ? entriesPrevias : _voucherEntries(r);
+  const lista = base.map(e => ({
+    monto: e.montoConocido ? e.monto : 0,   // 0 = monto desconocido → "$ ?"
+    cod:   e.cod,
+    fecha: e.fecha,
+    url:   e.url
+  }));
+  // Si el desglose base ya trae un placeholder de este mismo voucher (mismo
+  // código y sin archivo), se reemplaza en vez de duplicar la fila.
+  const dup = entry.cod
+    ? lista.findIndex(e => e.cod === entry.cod && !e.url)
+    : -1;
+  if (dup >= 0) lista.splice(dup, 1);
+  lista.push(entry);
+  r.vouchersMeta = JSON.stringify(lista);
+  if (entry.url) {
+    const urls = (r.voucherURL || '').toString().split('|').map(s => s.trim()).filter(Boolean);
+    if (urls.indexOf(entry.url) < 0) urls.push(entry.url);
+    r.voucherURL = urls.join('|');
+  }
+  save();
+  _rerenderVouchersReg();
 }
 
 async function deleteReservation(id) {
