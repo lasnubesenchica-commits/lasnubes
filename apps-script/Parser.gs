@@ -129,12 +129,55 @@ function syncAirbnbUpdates() {
 }
 
 // ─── PARSER DEL EMAIL ───────────────────────────────────────
+// Monto de un email de Airbnb a número. El viejo `replace(',', '.')` reemplazaba
+// SOLO la primera coma, así que "1,234.56" quedaba "1.234.56" → parseFloat 1.23.
+// Acepta formato US (1,234.56) y europeo (1.234,56): el ÚLTIMO separador es el
+// decimal cuando aparecen los dos.
+function _montoAirbnbANumero(raw) {
+  let t = String(raw == null ? '' : raw).trim().replace(/\s/g, '');
+  if (!t) return 0;
+  const iComa = t.lastIndexOf(','), iPunto = t.lastIndexOf('.');
+  if (iComa >= 0 && iPunto >= 0) {
+    const decSep  = iComa > iPunto ? ',' : '.';
+    const milSep  = decSep === ',' ? '.' : ',';
+    t = t.split(milSep).join('');
+    t = t.replace(decSep, '.');
+  } else if (iComa >= 0) {
+    // Solo comas: es decimal si quedan exactamente 2 dígitos después.
+    t = (t.length - iComa - 1) === 2 ? t.replace(/,/g, '.') : t.split(',').join('');
+  } else if ((t.match(/\./g) || []).length > 1) {
+    t = t.split('.').join('');                 // varios puntos = separador de miles
+  } else if (iPunto >= 0 && (t.length - iPunto - 1) === 3) {
+    t = t.split('.').join('');                 // "1.234" = mil doscientos treinta y cuatro
+  }
+  const n = parseFloat(t);
+  return isNaN(n) ? 0 : n;
+}
+
+// Un `confirmCode` nunca puede ser un id interno. El dashboard manda
+// `confirmCode: id` (correcto en reservas Directas, donde el código ES el id),
+// pero en una reserva de Airbnb sin código el id llega como `airbnb_<msgId>` y
+// terminaba escrito en la columna CodConfirmacion. Esa fila ya no cruza con
+// ningún payout —sale "sin cobrar"— y la reconciliación cree que el HM real
+// falta e inserta un DUPLICADO. Pasó con Yarisel, Yuliany y Kj Thomas.
+function _sanitizeConfirmCode(cod) {
+  const c = (cod == null ? '' : cod).toString().trim();
+  if (!c) return '';
+  if (/^(airbnb_|csv_)/i.test(c)) return '';
+  return c;
+}
+
 function parseAirbnbEmail(body, msgId, msgDate) {
   try {
     const nameMatch = body.match(/([A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]+(?:\s+[A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]+){1,3})\s+\[https:\/\/www\.airbnb/);
     const name = nameMatch ? nameMatch[1].trim() : extractFallbackName(body);
 
-    let cabin = 'verde';
+    // OJO: antes esto arrancaba en 'verde', así que un email cuyo nombre de
+    // cabaña no matcheara entraba a Paseo EN SILENCIO. Fue lo que puso a Mario
+    // De León en verde cuando Airbnb lo tenía en azul, y de ahí el choque
+    // fantasma con Dianeth. Ahora se deja sin cabaña y se marca la fila: mejor
+    // que salte a la vista que ensuciar la ocupación de una cabaña real.
+    let cabin = '';
     let cabinName = '';
     for (const [cn, code] of Object.entries(CABINS)) {
       if (body.toUpperCase().includes(cn.toUpperCase())) {
@@ -216,16 +259,31 @@ function parseAirbnbEmail(body, msgId, msgDate) {
       }
     }
 
-    const personsMatch = body.match(/(\d+)\s+adulto/i);
-    const persons = personsMatch ? parseInt(personsMatch[1]) : 2;
+    // Antes solo contaba adultos, así que "2 adultos, 2 niños" entraba como 2.
+    // Los bebés no se cuentan (Airbnb tampoco los cuenta para la capacidad).
+    const adultosM = body.match(/(\d+)\s+adulto/i);
+    const ninosM   = body.match(/(\d+)\s+ni[ñn]o/i);
+    const adultos  = adultosM ? parseInt(adultosM[1], 10) : 0;
+    const ninos    = ninosM   ? parseInt(ninosM[1],   10) : 0;
+    const persons  = (adultos + ninos) || 2;
 
     const totalMatch = body.match(/Total\s*\(USD\)[^\$]*\$\s*([\d,\.]+)/i);
-    const amount = totalMatch
-      ? parseFloat(totalMatch[1].replace(',', '.'))
-      : 0;
+    const amount = totalMatch ? _montoAirbnbANumero(totalMatch[1]) : 0;
 
-    const codeMatch = body.match(/\/details\/([A-Z0-9]{10})/);
-    const confirmCode = codeMatch ? codeMatch[1] : '';
+    // Código de confirmación: varios patrones antes de rendirse. Con el código
+    // vacío la reserva no puede cruzarse nunca con un payout, y la
+    // reconciliación cree que el HM real falta e inserta un DUPLICADO.
+    let confirmCode = '';
+    const patronesCod = [
+      /\/details\/([A-Z0-9]{10})/,          // link a la reserva
+      /\/reservation\/itinerary\?[^\s]*code=([A-Z0-9]{10})/i,
+      /\b(HM[A-Z0-9]{8})\b/,                // el código suelto en el cuerpo
+      /c[oó]digo de confirmaci[oó]n[:\s]+([A-Z0-9]{10})/i
+    ];
+    for (let p = 0; p < patronesCod.length; p++) {
+      const m = body.match(patronesCod[p]);
+      if (m && m[1]) { confirmCode = m[1].toUpperCase(); break; }
+    }
 
     Logger.log(`  Nombre: ${name}`);
     Logger.log(`  Cabaña: ${cabinName} (${cabin})`);
@@ -237,6 +295,14 @@ function parseAirbnbEmail(body, msgId, msgDate) {
       Logger.log(`  → name="${name}" checkin="${checkin}" checkout="${checkout}"`);
       return null;
     }
+
+    // Marcas para que un dato faltante se vea en el dashboard en vez de quedar
+    // como un valor plausible pero inventado.
+    const avisos = [];
+    if (!cabin)       avisos.push('⚠ Cabaña no detectada — asignar a mano');
+    if (!confirmCode) avisos.push('⚠ Sin código de confirmación — pegar el HM de Airbnb');
+    if (!amount)      avisos.push('⚠ Monto no detectado');
+    if (avisos.length) Logger.log('  ' + avisos.join(' | '));
 
     return {
       id: msgId,
@@ -250,6 +316,7 @@ function parseAirbnbEmail(body, msgId, msgDate) {
       deposit: 0,
       origin: 'Airbnb',
       confirmCode,
+      alerta: avisos.join(' | '),
       bookingDate: msgDate || Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd'),
       addedAt: new Date().toISOString()
     };
@@ -497,7 +564,7 @@ function appendReservation(sheet, r) {
     r.amount, r.deposit, r.origin, r.confirmCode,
     r.serviceFee || 0,
     r.neto || r.amount,
-    '',
+    r.alerta || '',
     r.name,
     r.bookingDate || Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd'),
     '',
@@ -1515,7 +1582,7 @@ function doPost(e) {
         amount_,
         deposit_,
         r.origin    || 'Directa',
-        r.confirmCode || '',
+        _sanitizeConfirmCode(r.confirmCode) || '',
         serviceFee_,
         neto_,
         '',
@@ -1625,7 +1692,7 @@ function doPost(e) {
             amount_,
             deposit_,
             r.origin    || 'Directa',
-            r.confirmCode || r.id,
+            _sanitizeConfirmCode(r.confirmCode) || _sanitizeConfirmCode(data[i][10]) || r.id,
             serviceFee_,
             neto_,
             data[i][13] || '',

@@ -11355,6 +11355,9 @@ function _renderDetailAlerta(r) {
   const verificar   = /⚠\s*Verificar/i.test(raw);
   const cancelado   = /❌\s*Cancelad/i.test(raw);
   const soloFechas  = !verificar && !cancelado && raw.indexOf('📅') >= 0;
+  // Cualquier otro ⚠ es un aviso del sync que necesita acción del admin
+  // (cabaña no detectada, sin código de confirmación, monto no detectado).
+  const otroAviso   = !verificar && !cancelado && raw.indexOf('⚠') >= 0;
 
   let bg, color, titulo, cuerpo;
   if (verificar) {
@@ -11367,6 +11370,10 @@ function _renderDetailAlerta(r) {
     bg = '#fdecea'; color = '#b71c1c';
     titulo = '❌ <strong>Cancelación registrada</strong>';
     cuerpo = '';
+  } else if (otroAviso) {
+    bg = '#fff3cd'; color = '#856404';
+    titulo = '⚠ <strong>Revisar esta reserva</strong>';
+    cuerpo = ' — el sync no pudo completar un dato.';
   } else if (soloFechas) {
     // Un cambio de fechas es historial, no una alerta: va en tono neutro.
     bg = '#eef4f8'; color = '#385d7a';
