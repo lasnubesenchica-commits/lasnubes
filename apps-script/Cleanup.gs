@@ -1233,42 +1233,25 @@ function buscarReservasAirbnbDuplicadas() {
 // Cargado con lo que devolvió buscarReservasAirbnbDuplicadas() (jul-2026):
 //   69, 98   → filas con código sintético; la buena es la del HM
 //   480,482,490 → mismo código HM que su gemela, con el monto inflado
-// Los mismos 5 duplicados que detectó la auditoría: nunca se borraron y los
-// números de fila de la tanda anterior ya estaban corridos (el guard los
-// rechazó, que es justo lo que tenía que hacer). Actualizados contra el export
-// de la hoja del 26-jul-2026. En cada par se conserva la fila que COINCIDE con
-// el export oficial de Airbnb y se borra la otra:
+// Duplicados pendientes de borrar. Los 5 de la tanda anterior (Yuliany, Kj,
+// Dalit, Anna, Sabrina) ya se borraron el 26-jul-2026, así que salieron de acá.
 //
-//   HMBACCYQM9 Yuliany  → queda 474 (2026-03-16→18, $178.20)   borra 523 (fechas viejas)
-//   HMD4ESKMPX Kj       → queda 475 (2026-03-18→21, $276.30)   borra 524 (fechas viejas)
-//   HM8BH8C99E Dalit    → queda 111 (2026-02-19→21, $200.00)   borra 525 (monto inflado)
-//   HMQRAW8CA5 Anna     → queda 473 (2026-01-07→10, $261.00)   borra 526 (monto inflado)
-//   HMTKZY43CH Sabrina  → queda 112 (2026-02-14→16, $200.00)   borra 527 (monto inflado)
-//
-// Se incluye `id` porque en los pares de Yuliany y Kj el código y el monto se
-// repiten entre las dos filas: sin el id el guard no puede distinguirlas.
-var FILAS_A_BORRAR = [
-  { fila: 523, id: '19c8860a64815de7', cod: 'HMBACCYQM9', monto: 178.2  },  // Yuliany (dup de la 474)
-  { fila: 524, id: '19c8596f2a7a8b95', cod: 'HMD4ESKMPX', monto: 178.2  },  // Kj      (dup de la 475)
-  { fila: 525, id: '19acc6800cc67ea2', cod: 'HM8BH8C99E', monto: 230.52 },  // Dalit   (dup de la 111)
-  { fila: 526, id: '19a87b00f6c61d7a', cod: 'HMQRAW8CA5', monto: 309.2  },  // Anna    (dup de la 473)
-  { fila: 527, id: '19a444362ce49803', cod: 'HMTKZY43CH', monto: 236.32 }   // Sabrina (dup de la 112)
-];
-
-// ── Mairanis: la fila vieja con código sintético ─────────────
-// `airbnb_19e3be8ea9ba8b8e` es exactamente la trampa documentada: la
-// reconciliación busca por código, no encontró HMEQYEZS85 y lo insertó de nuevo
-// (fila 537). Ahora hay dos filas para la misma estadía del 19-21 jun. La 537
-// tiene el código HM real y el payout de $165.79, así que se conserva; esta se
-// borra. Mientras exista, cualquier reconciliación futura puede volver a
+// Queda la fila vieja de Mairanis: tiene el código sintético
+// `airbnb_19e3be8ea9ba8b8e` —un msgId de Gmail, o sea que nació de un email de
+// Airbnb— y por eso la reconciliación no encontró HMEQYEZS85 y lo insertó otra
+// vez. Mientras exista, cualquier reconciliación futura puede volver a
 // duplicarla. Está como origen "Abierta", así que no ocupa ni suma ingreso: el
-// riesgo de borrarla es nulo.
-// OJO: correr borrarFilasReservas() de nuevo DESPUÉS de haber borrado los 5
-// anteriores, no en la misma tanda — los índices ya se corrieron. Verificar el
-// número con verificarSaludAirbnb() (chequeo "misma persona y fechas").
-var FILAS_A_BORRAR_MAIRANIS = [
+// riesgo de borrarla es nulo. La fila 531 conserva el código HM real y el payout.
+//
+// Número de fila confirmado por verificarSaludAirbnb() el 26-jul-2026 a las
+// 18:25, DESPUÉS de mover a Frank a Malaya y de borrar los 5 duplicados. Si se
+// borra o inserta cualquier fila antes de la 316, volver a correr el chequeo:
+// el guard incluye `id`, así que un índice corrido se rechaza en vez de borrar
+// la fila equivocada.
+var FILAS_A_BORRAR = [
   { fila: 316, id: 'airbnb_19e3be8ea9ba8b8e', cod: 'airbnb_19e3be8ea9ba8b8e', monto: 196.2 }
 ];
+
 
 function borrarFilasReservas(dryRun) {
   if (dryRun === undefined) dryRun = true;   // default seguro (ver runners)
@@ -1443,6 +1426,61 @@ function _correccionesAirbnb_() {
     { cod: 'HMB248EDD9', quien: 'Giselle',   cabin: 'azul', monto:  85.50, neto:  82.93,
       checkin: '2025-08-03', checkout: '2025-08-04',
       fechaPago: '2025-08-27', montoPagado:  82.93, estadoPago: 'PAGA' },
+
+    // ── Cobros de 2025 que quedaron fuera de la ventana ──────────
+    // 24 reservas de 2025 cuyo payout quedó fuera de la ventana de
+    // syncAirbnbPayouts, así que sus códigos no están en la hoja Pagos y
+    // actualizarEstadoPagoAirbnb no puede resolverlas. Fecha de payout y neto
+    // tomados del export; el monto también, porque el email de 2025 traía el
+    // total del huésped (+14.12%).
+    { cod: 'HMZRX9FHMK', quien: 'VANESSA', monto: 90.00, neto: 87.30,
+      fechaPago: '2025-09-01', montoPagado: 87.30, estadoPago: 'PAGA' },
+    { cod: 'HMZ8DB8RN8', quien: 'CESAR', monto: 100.00, neto: 97.00,
+      fechaPago: '2025-09-01', montoPagado: 97.00, estadoPago: 'PAGA' },
+    { cod: 'HMSANQ9R83', quien: 'VICTOR', monto: 100.00, neto: 97.00,
+      fechaPago: '2025-09-24', montoPagado: 97.00, estadoPago: 'PAGA' },
+    { cod: 'HMCST9QNTR', quien: 'YOLANY', monto: 100.00, neto: 97.00,
+      fechaPago: '2025-09-24', montoPagado: 97.00, estadoPago: 'PAGA' },
+    { cod: 'HMEZFFAKTN', quien: 'DANIELLE', monto: 81.00, neto: 78.57,
+      fechaPago: '2025-09-24', montoPagado: 78.57, estadoPago: 'PAGA' },
+    { cod: 'HMQP9AQ8SR', quien: 'MEYBOLL', monto: 90.00, neto: 87.30,
+      fechaPago: '2025-10-09', montoPagado: 87.30, estadoPago: 'PAGA' },
+    { cod: 'HMXAFEWYWM', quien: 'DANIEL', monto: 171.00, neto: 165.87,
+      fechaPago: '2025-10-09', montoPagado: 165.87, estadoPago: 'PAGA' },
+    { cod: 'HM3RWMYDN8', quien: 'Nery Elenna', monto: 90.00, neto: 87.30,
+      fechaPago: '2025-10-09', montoPagado: 87.30, estadoPago: 'PAGA' },
+    { cod: 'HMWXAQPAYW', quien: 'MELANIE', monto: 85.50, neto: 82.93,
+      fechaPago: '2025-10-09', montoPagado: 82.93, estadoPago: 'PAGA' },
+    { cod: 'HMK3JF2A3Q', quien: 'EVELYN', monto: 90.00, neto: 87.30,
+      fechaPago: '2025-10-09', montoPagado: 87.30, estadoPago: 'PAGA' },
+    { cod: 'HMSTWZA223', quien: 'GLADYS', monto: 90.00, neto: 87.30,
+      fechaPago: '2025-10-21', montoPagado: 87.30, estadoPago: 'PAGA' },
+    { cod: 'HMEBRF3HTF', quien: 'ESTEFANIS', monto: 81.00, neto: 78.57,
+      fechaPago: '2025-10-21', montoPagado: 78.57, estadoPago: 'PAGA' },
+    { cod: 'HM22CJE5JT', quien: 'MARISABEL', monto: 110.00, neto: 106.70,
+      fechaPago: '2025-10-21', montoPagado: 106.70, estadoPago: 'PAGA' },
+    { cod: 'HMCETSPRH4', quien: 'LIAM', monto: 180.00, neto: 174.60,
+      fechaPago: '2025-10-21', montoPagado: 174.60, estadoPago: 'PAGA' },
+    { cod: 'HMPDHZATAK', quien: 'ALEXANDRA', monto: 200.00, neto: 194.00,
+      fechaPago: '2025-10-21', montoPagado: 194.00, estadoPago: 'PAGA' },
+    { cod: 'HMTPP2WZDH', quien: 'JENNY', monto: 81.00, neto: 78.57,
+      fechaPago: '2025-10-21', montoPagado: 78.57, estadoPago: 'PAGA' },
+    { cod: 'HMPDFDDC4F', quien: 'JIAN', monto: 90.00, neto: 87.30,
+      fechaPago: '2025-10-27', montoPagado: 87.30, estadoPago: 'PAGA' },
+    { cod: 'HMW955DM43', quien: 'ALEX', monto: 90.00, neto: 87.30,
+      fechaPago: '2025-10-30', montoPagado: 87.30, estadoPago: 'PAGA' },
+    { cod: 'HMENBPD9YX', quien: 'CLAUDIA', monto: 104.50, neto: 101.36,
+      fechaPago: '2025-11-17', montoPagado: 101.36, estadoPago: 'PAGA' },
+    { cod: 'HMC4BDZKW5', quien: 'TANIA', monto: 90.00, neto: 87.30,
+      fechaPago: '2025-11-17', montoPagado: 87.30, estadoPago: 'PAGA' },
+    { cod: 'HMKKP5MKJ9', quien: 'PAOLA', monto: 90.00, neto: 87.30,
+      fechaPago: '2025-11-17', montoPagado: 87.30, estadoPago: 'PAGA' },
+    { cod: 'HMH53QPTWY', quien: 'Julio César', monto: 162.00, neto: 157.14,
+      fechaPago: '2025-11-17', montoPagado: 157.14, estadoPago: 'PAGA' },
+    { cod: 'HMSYJC95FS', quien: 'JOEL', monto: 99.00, neto: 96.03,
+      fechaPago: '2025-11-17', montoPagado: 96.03, estadoPago: 'PAGA' },
+    { cod: 'HMB59DDMES', quien: 'MARIBEL', monto: 110.00, neto: 106.70,
+      fechaPago: '2025-11-17', montoPagado: 106.70, estadoPago: 'PAGA' },
 
     // ── Las 5 cancelaciones que la fila no reflejaba ─────────────
     // Las destapó el chequeo G de verificarSaludAirbnb() cruzando la hoja
@@ -2080,3 +2118,77 @@ function moverReservaAMalaya(codOrId, dryRun) {
 }
 
 function moverAMalayaESCRIBIR() { return moverReservaAMalaya(MOVER_A_MALAYA, false); }
+
+// ═══════════════════════════════════════════════════════════
+//  Recalcular el Neto de las reservas de Airbnb
+// ═══════════════════════════════════════════════════════════
+//
+// En 159 filas el Neto es IGUAL al Monto, o sea que la comisión de Airbnb nunca
+// se restó. Importa porque el widget de Ingresos usa `neto || amount`, así que
+// sobrestima lo cobrado en ~$2.5k.
+//
+// No se estima con un porcentaje: cuando la fila tiene `MontoPagado`, ESE es el
+// neto real —lo que Airbnb depositó— y es dato duro del payout. Las filas sin
+// MontoPagado se dejan como están y se reportan aparte: adivinarlas con un 3% o
+// 15.5% sería meter un número inventado en la contabilidad.
+//
+// Dry-run por defecto. Para escribir: recalcularNetosAirbnbESCRIBIR().
+function recalcularNetosAirbnb(dryRun) {
+  if (dryRun !== false) dryRun = true;
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+
+  const arreglables = [], sinDato = [], raras = [];
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    if (String(r[_R.ORIGEN] || '').trim() !== 'Airbnb') continue;
+    const monto  = _cleanMoney_(r[_R.MONTO]);
+    const neto   = _cleanMoney_(r[_R.NETO]);
+    const pagado = _cleanMoney_(r[_R.MONTOPAGADO]);
+    if (!monto || Math.abs(neto - monto) > 0.01) continue;   // el neto ya está distinto: no se toca
+    if (pagado <= 0) { sinDato.push({ fila: i + 1, quien: r[1], monto: monto }); continue; }
+    // Un pagado MAYOR que el monto significa que la tarifa subió (ej. Zulay, que
+    // pasó a 4 viajeros) y el monto quedó viejo. El neto igual se corrige, pero
+    // se avisa: ahí lo que está mal es el monto.
+    if (pagado > monto + 0.01) raras.push({ fila: i + 1, quien: r[1], monto: monto, pagado: pagado });
+    arreglables.push({ fila: i + 1, quien: r[1], monto: monto, pagado: pagado });
+  }
+
+  Logger.log('═══ ' + (dryRun ? 'DRY-RUN · ' : '') + 'RECALCULAR NETO DE AIRBNB ═══');
+  Logger.log('');
+  let dif = 0;
+  arreglables.forEach(x => { dif += x.monto - x.pagado; });
+  Logger.log(arreglables.length + ' fila(s) con MontoPagado: el neto pasa a ese valor exacto.');
+  Logger.log('  El total cobrado baja $' + dif.toFixed(2) + ' — no es plata perdida, es la');
+  Logger.log('  comisión de Airbnb que antes no se estaba restando.');
+  arreglables.slice(0, 10).forEach(x => Logger.log('     fila ' + x.fila + ' · ' + x.quien
+    + ' · neto $' + x.monto.toFixed(2) + ' → $' + x.pagado.toFixed(2)));
+  if (arreglables.length > 10) Logger.log('     … y ' + (arreglables.length - 10) + ' más');
+
+  if (raras.length) {
+    Logger.log('');
+    Logger.log('⚠ ' + raras.length + ' fila(s) donde lo pagado SUPERA el monto: ahí el que está mal');
+    Logger.log('  es el monto, no el neto (suele ser una tarifa que subió por huésped extra).');
+    raras.forEach(x => Logger.log('     fila ' + x.fila + ' · ' + x.quien
+      + ' · monto $' + x.monto.toFixed(2) + ' < pagado $' + x.pagado.toFixed(2)));
+  }
+
+  if (sinDato.length) {
+    Logger.log('');
+    Logger.log('· ' + sinDato.length + ' fila(s) sin MontoPagado: NO se tocan. Sin el payout no hay');
+    Logger.log('  con qué saber el neto real, y estimarlo con un % sería inventar un número.');
+  }
+
+  if (dryRun) {
+    Logger.log('');
+    Logger.log('Nada se escribió. Para ejecutar: recalcularNetosAirbnbESCRIBIR()');
+    return 0;
+  }
+  arreglables.forEach(x => sheet.getRange(x.fila, _R.NETO + 1).setValue(x.pagado));
+  SpreadsheetApp.flush();
+  Logger.log('');
+  Logger.log('✓ ' + arreglables.length + ' neto(s) actualizado(s).');
+  return arreglables.length;
+}
+
+function recalcularNetosAirbnbESCRIBIR() { return recalcularNetosAirbnb(false); }
