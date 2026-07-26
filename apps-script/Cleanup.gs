@@ -969,3 +969,99 @@ function vincularVouchersHuerfanos(dryRun) {
     + ' · ' + sobrantes + ' con archivos de sobra (revisar si hubo re-subidas).');
   return n;
 }
+
+// ═══════════════════════════════════════════════════════════
+//  ¿Por qué una reserva de Airbnb sale "sin cobrar"?
+// ═══════════════════════════════════════════════════════════
+//
+// Recorre la cadena completa y dice en qué eslabón se cortó:
+//
+//   email de payout  →  hoja Pagos  →  actualizarEstadoPagoAirbnb  →  Reservas
+//
+// `query` puede ser el nombre del huésped o el código HM… Ej:
+//   diagnosticarPagoAirbnb('Yarisel')
+//   diagnosticarPagoAirbnb('HMBBQXQ3QD')
+//
+// Solo lee y reporta, no escribe nada.
+function diagnosticarPagoAirbnb(query) {
+  const q = (query || '').toString().trim().toUpperCase();
+  if (!q) { Logger.log('Pasá un nombre o un código HM…'); return; }
+  const ss   = SpreadsheetApp.openById(SHEET_ID);
+  const resS = getOrCreateSheet();
+  const data = resS.getDataRange().getValues();
+  const iso  = v => v instanceof Date ? Utilities.formatDate(v, 'America/Panama', 'yyyy-MM-dd') : (v || '').toString().slice(0, 10);
+
+  // ── 1. La(s) fila(s) en Reservas
+  const filas = [];
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    if (!r[_R.ID]) continue;
+    const nombre = (r[1] || '').toString().toUpperCase();
+    const cod    = (r[_R.COD] || '').toString().trim().toUpperCase();
+    if (nombre.indexOf(q) < 0 && cod !== q) continue;
+    filas.push({ fila: i + 1, nombre: r[1], cod: (r[_R.COD] || '').toString().trim(),
+      origen: r[_R.ORIGEN], entrada: iso(r[_R.ENTRADA]), salida: iso(r[5]),
+      monto: r[_R.MONTO], neto: r[_R.NETO],
+      fechaPago: iso(r[16]), montoPagado: r[17], estado: r[20], alerta: r[13] });
+  }
+  Logger.log('═══ DIAGNÓSTICO DE PAGO · "' + query + '" ═══');
+  if (!filas.length) { Logger.log('✗ No hay ninguna fila en Reservas que matchee.'); return; }
+  filas.forEach(f => {
+    Logger.log('');
+    Logger.log('📋 RESERVAS fila ' + f.fila + ' · ' + f.nombre);
+    Logger.log('   código=' + (f.cod || '(vacío)') + ' · origen=' + f.origen
+      + ' · estadía ' + f.entrada + '→' + f.salida);
+    Logger.log('   monto=' + f.monto + ' · neto=' + f.neto
+      + ' · MontoPagado=' + (f.montoPagado || 0) + ' · FechaPago=' + (f.fechaPago || '(vacía)')
+      + ' · EstadoPago=' + (f.estado || '(vacío)'));
+    if (f.alerta) Logger.log('   alerta: ' + f.alerta);
+  });
+
+  // ── 2. La hoja Pagos
+  const pagosS = ss.getSheetByName('Pagos');
+  if (!pagosS) { Logger.log(''); Logger.log('✗ La hoja Pagos no existe. Corré syncAirbnbPayouts().'); return; }
+  const pagos = pagosS.getDataRange().getValues().slice(1);
+  const cods  = filas.map(f => f.cod.toUpperCase()).filter(Boolean);
+  const hits  = [];
+  pagos.forEach((row, k) => {
+    const codes = (row[5] || '').toString().toUpperCase();
+    if (cods.some(c => codes.indexOf(c) >= 0) || (q.indexOf('HM') === 0 && codes.indexOf(q) >= 0)) {
+      hits.push({ fila: k + 2, fechaCobro: iso(row[0]), montoNeto: row[4],
+        codes: (row[5] || '').toString(), montos: (row[6] || '').toString() });
+    }
+  });
+  Logger.log('');
+  if (!hits.length) {
+    Logger.log('💸 PAGOS: ✗ ningún payout menciona ese código.');
+    Logger.log('   → El email de cobro no se sincronizó. Corré syncAirbnbPayouts() y después');
+    Logger.log('     actualizarEstadoPagoAirbnb(). Si sigue sin aparecer, el email puede estar');
+    Logger.log('     fuera de la ventana newer_than:365d o no ser de automated@airbnb.com.');
+  } else {
+    hits.forEach(h => {
+      Logger.log('💸 PAGOS fila ' + h.fila + ' · cobro ' + h.fechaCobro + ' · neto ' + h.montoNeto);
+      const detalle = h.montos.split(',').filter(p => cods.some(c => p.toUpperCase().indexOf(c) >= 0));
+      Logger.log('   monto asignado a este código: ' + (detalle.join(' ') || '(no desglosado)'));
+    });
+    Logger.log('   → El pago SÍ está registrado. Si la reserva sigue sin FechaPago, corré');
+    Logger.log('     actualizarEstadoPagoAirbnb(): matchea Reservas.CodConfirmacion contra');
+    Logger.log('     Pagos.ConfirmCodes, así que revisá que el código de la fila sea idéntico.');
+  }
+
+  // ── 3. Veredicto
+  Logger.log('');
+  Logger.log('🔎 VEREDICTO');
+  filas.forEach(f => {
+    if ((f.origen || '').toString().trim() !== 'Airbnb') {
+      Logger.log('   fila ' + f.fila + ': origen es "' + f.origen + '", no "Airbnb" → actualizarEstadoPagoAirbnb la ignora.');
+    } else if (!f.cod) {
+      Logger.log('   fila ' + f.fila + ': no tiene CodConfirmacion → imposible cruzarla con Pagos.');
+    } else if (!hits.length) {
+      Logger.log('   fila ' + f.fila + ': el payout no está en la hoja Pagos (ver arriba).');
+    } else if (!f.fechaPago) {
+      Logger.log('   fila ' + f.fila + ': el pago está en Pagos pero la reserva no se actualizó → correr actualizarEstadoPagoAirbnb().');
+    } else {
+      Logger.log('   fila ' + f.fila + ': ya tiene FechaPago ' + f.fechaPago + ' y MontoPagado ' + f.montoPagado + '.');
+    }
+  });
+  return { filas: filas, pagos: hits };
+}
