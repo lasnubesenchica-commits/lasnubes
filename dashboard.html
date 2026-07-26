@@ -2995,9 +2995,9 @@
          se consulta a cada rato, mientras que el referido se mira ocasionalmente
          y por eso se movió al fondo del modal. -->
     <div id="detailPagosBox" class="vouchers-reg vouchers-reg--detalle"></div>
-    <div id="detailAlerta" style="display:none;background:#fff3cd;color:#856404;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:16px;">
-      ⚠ <strong>Verificar itinerario</strong> — Airbnb notificó un cambio. Revisa fechas y monto en la app de Airbnb.
-    </div>
+    <!-- Contenido dinámico: la columna Alerta guarda notas de tipos distintos
+         (ver _renderDetailAlerta). -->
+    <div id="detailAlerta" style="display:none;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:16px;"></div>
     <div id="detailAlerta2" style="display:none;margin-bottom:12px;"></div>
     </div><!-- /#detailReservationSection -->
 
@@ -5510,8 +5510,7 @@ function showDispDetail(id) {
       setTimeout(() => { linkBtn.disabled=false; linkBtn.textContent = defaultLabel; }, 3000);
     };
   }
-  const alertaEl = document.getElementById('detailAlerta');
-  if (alertaEl) alertaEl.style.display = r.alerta ? 'block' : 'none';
+  _renderDetailAlerta(r);
   // Badge de cliente fiel: cuenta estadias previas completadas del mismo huesped
   _renderLoyaltyBadge(r);
   // Badge de referidos: muestra codigo + cuantos referidos, y si reserva usó algún código
@@ -11332,6 +11331,60 @@ function _referralUsesByReferrer(email) {
 function _referralUseForReservaId(id) {
   if (!id) return null;
   return referralUses.find(u => u.usedByReservaId && u.usedByReservaId.toString() === id.toString()) || null;
+}
+
+// La columna `Alerta` (14 de la hoja) NO es solo de Airbnb: acumula notas de
+// tres orígenes distintos, separadas por " | ".
+//   '⚠ Verificar'          → syncAirbnbUpdates: Airbnb notificó un cambio
+//   '❌ Cancelado <fecha>'  → cancelación de Airbnb
+//   '📅 Entrada: … | Salida: …' → cambio de fechas hecho por el admin en el
+//                                 dashboard, en CUALQUIER origen (saveReservation)
+// Antes se mostraba el aviso de Airbnb hardcodeado con solo mirar si la celda
+// tenía algo, así que a una reserva Directa a la que se le editaron las fechas
+// le salía "Airbnb notificó un cambio". Ahora se decide por el contenido.
+//
+// Ojo: la nota de fechas lleva un '|' adentro, así que no se puede partir el
+// texto por ese separador — se detecta por marcadores.
+function _renderDetailAlerta(r) {
+  const el = document.getElementById('detailAlerta');
+  if (!el) return;
+  const raw = ((r && r.alerta) || '').toString().trim();
+  if (!raw) { el.style.display = 'none'; el.innerHTML = ''; return; }
+
+  const esAirbnb    = (r.origin === 'Airbnb');
+  const verificar   = /⚠\s*Verificar/i.test(raw);
+  const cancelado   = /❌\s*Cancelad/i.test(raw);
+  const soloFechas  = !verificar && !cancelado && raw.indexOf('📅') >= 0;
+
+  let bg, color, titulo, cuerpo;
+  if (verificar) {
+    bg = '#fff3cd'; color = '#856404';
+    titulo = '⚠ <strong>Verificar itinerario</strong>';
+    cuerpo = esAirbnb
+      ? ' — Airbnb notificó un cambio. Revisa fechas y monto en la app de Airbnb.'
+      : ' — hay un cambio marcado para revisar.';
+  } else if (cancelado) {
+    bg = '#fdecea'; color = '#b71c1c';
+    titulo = '❌ <strong>Cancelación registrada</strong>';
+    cuerpo = '';
+  } else if (soloFechas) {
+    // Un cambio de fechas es historial, no una alerta: va en tono neutro.
+    bg = '#eef4f8'; color = '#385d7a';
+    titulo = '📅 <strong>Cambio de fechas registrado</strong>';
+    cuerpo = '';
+  } else {
+    bg = '#eef4f8'; color = '#385d7a';
+    titulo = 'ℹ️ <strong>Nota</strong>';
+    cuerpo = '';
+  }
+
+  el.style.background = bg;
+  el.style.color = color;
+  // Siempre se muestra el texto real de la celda: es el historial del cambio.
+  el.innerHTML = titulo + cuerpo
+    + '<div style="margin-top:6px;font-size:12px;opacity:.85;white-space:pre-wrap;">'
+    + escapeHtml(raw) + '</div>';
+  el.style.display = 'block';
 }
 
 function _renderReferralBadge(r) {
