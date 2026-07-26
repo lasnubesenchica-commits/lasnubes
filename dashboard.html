@@ -5440,9 +5440,10 @@ function _reservationOccupancySpans(r) {
   return [{ start, end }];
 }
 
-// Renderiza mini-timeline horizontal 3 días (ayer/hoy/mañana) centrado en
-// el día de la reserva. Cada bloque = franja horaria real. Ayuda a
-// visualizar ventanas de limpieza y conflictos con otras reservas.
+// Renderiza el mini-timeline vertical de la ventana operativa: el día de la
+// reserva desde las 6am + el día siguiente hasta las 2pm (32h contiguas).
+// Cada bloque = franja horaria real. Ayuda a visualizar ventanas de limpieza y
+// conflictos con otras reservas sin el ruido de los días completos.
 function renderMiniTimeline(currentRes) {
   const container = document.getElementById('detailMiniTimeline');
   if (!container) return;
@@ -5452,20 +5453,31 @@ function renderMiniTimeline(currentRes) {
   const anchorRes = _timelineAnchorRes || currentRes;
   const cabin = anchorRes.cabin;
   // Ancla: día principal de la reserva ancla (checkin real, no cortesía).
-  // El label "Hoy" solo aparece si alguno de los 3 días coincide con el
-  // día real actual — no se usa como posición fija Ayer/Hoy/Mañana.
+  // El label "Hoy" solo aparece si alguno de los días visibles coincide con el
+  // día real actual — no se usa como posición fija.
   const tipoCur = anchorRes.tipo || 'noche';
   let anchor = anchorRes.checkin;
   if (tipoCur === 'pasadia' || tipoCur === 'early') anchor = _addDaysISO(anchorRes.checkin, 1);
   const _now = new Date();
   const todayISO = _now.getFullYear() + '-' + String(_now.getMonth()+1).padStart(2,'0') + '-' + String(_now.getDate()).padStart(2,'0');
-  const days = [_addDaysISO(anchor, -1), anchor, _addDaysISO(anchor, 1)];
+  // Ventana visible: NO son 3 días completos. Son 2 tramos contiguos que
+  // cubren lo operativamente útil (32h):
+  //   · día de la reserva desde las 6am → quién sale esa mañana y la entrada del día
+  //   · día siguiente hasta las 2pm     → la salida, la ventana de limpieza y
+  //                                        si entra alguien antes de las 2pm
+  const DAY_FROM_H = 6;    // el día ancla arranca 6am
+  const NEXT_TO_H  = 14;   // el día siguiente corta 2pm
+  const days = [anchor, _addDaysISO(anchor, 1)];
   const dayStarts = days.map(d => new Date(d + 'T00:00:00'));
   const dayEnds   = dayStarts.map(d => { const x = new Date(d); x.setDate(x.getDate()+1); return x; });
+  const winFromH  = [DAY_FROM_H, 0];
+  const winToH    = [24, NEXT_TO_H];
+  const winStart  = days.map((d, i) => new Date(dayStarts[i].getTime() + winFromH[i] * 3600000));
+  const winEnd    = days.map((d, i) => new Date(dayStarts[i].getTime() + winToH[i]   * 3600000));
 
   // Recolectar reservas de la misma cabaña con presencia en el rango.
-  const rangeStart = dayStarts[0];
-  const rangeEnd   = dayEnds[2];
+  const rangeStart = winStart[0];
+  const rangeEnd   = winEnd[1];
   const relevantes = reservations.filter(r =>
     r.cabin === cabin && r.estadoPago !== 'CANCELADA' && r.origin !== 'Abierta' && r.checkin && r.checkout
   );
@@ -5473,7 +5485,10 @@ function renderMiniTimeline(currentRes) {
   relevantes.forEach(r => {
     const spans = _reservationOccupancySpans(r);
     spans.forEach(s => {
-      if (s.end <= rangeStart || s.start >= rangeEnd) return;
+      // `>` y no `>=`: una entrada JUSTO en el borde (la noche que entra a las
+      // 2pm del día siguiente) debe seguir visible — es la que define la
+      // ventana de limpieza, que es una de las cosas que se quiere ver.
+      if (s.end <= rangeStart || s.start > rangeEnd) return;
       events.push({ start: s.start, end: s.end, r: r });
     });
   });
@@ -5503,7 +5518,7 @@ function renderMiniTimeline(currentRes) {
     return dowShort + ' ' + dd + ' ' + mm + ' ' + h + mnStr + ampm;
   };
 
-  // Pre-computar TODOS los slots libres de los 3 días con originDay tagueado.
+  // Pre-computar TODOS los slots libres de los días visibles con originDay tagueado.
   // Un slot de pasanoche que arranca en día X y termina en X+1 se dibuja tanto
   // en la fila de X (parte inicial 8pm-12am) como en la de X+1 (cola 12am-12:30pm).
   // Ambos bloques rutean a la misma modal de disponibilidad (originDay).
@@ -5540,12 +5555,14 @@ function renderMiniTimeline(currentRes) {
   };
   const filteredSlots = allSlots.filter(slot => _isFragmentedDay(slot.originDay));
 
-  // ── Layout vertical: 10px por hora, 240px por día, 720px total (3 días).
-  const HOUR_H = 14;
-  const DAY_H  = 24 * HOUR_H;
-  const TOTAL_H = 3 * DAY_H;
-  // Convertir un Date a offset en px desde el inicio del rango de 3 días.
-  const rangeStartMs = dayStarts[0].getTime();
+  // ── Layout vertical: 14px por hora. Los 2 tramos son CONTIGUOS en el tiempo
+  // (las 24h del día ancla son el mismo instante que las 0h del siguiente), así
+  // que el mapeo a px es lineal sobre las 32h visibles.
+  const HOUR_H  = 14;
+  const winH    = days.map((d, i) => (winToH[i] - winFromH[i]) * HOUR_H);
+  const winTop  = winH.map((_, i) => winH.slice(0, i).reduce((a, b) => a + b, 0));
+  const TOTAL_H = winH.reduce((a, b) => a + b, 0);
+  const rangeStartMs = rangeStart.getTime();
   const dtToPx = (dt) => Math.max(0, Math.min(TOTAL_H, (dt.getTime() - rangeStartMs) / (3600000) * HOUR_H));
 
   // ── Columna de horas + labels de día ─────────────────────────
@@ -5554,26 +5571,29 @@ function renderMiniTimeline(currentRes) {
     const d = new Date(day + 'T00:00:00');
     const isToday = (day === todayISO);
     const labelDate = DOW[d.getDay()] + ' ' + d.getDate() + ' ' + MON[d.getMonth()];
-    const dayTop = idx * DAY_H;
     const suffix = isToday ? '<span>Hoy</span>' : (day === anchor ? '<span>Esta</span>' : '');
-    hoursHtml += '<div class="mt-v-day-label" style="top:' + dayTop + 'px;">' + escapeHtml(labelDate) + suffix + '</div>';
-    // Ticks de horas dentro del día (6a, 12p, 6p). El 12a se solapa con el label del día.
+    hoursHtml += '<div class="mt-v-day-label" style="top:' + winTop[idx] + 'px;">' + escapeHtml(labelDate) + suffix + '</div>';
+    // Ticks cada 6h DENTRO del tramo visible. Se salta la hora de arranque del
+    // tramo porque ahí va el label del día.
     [6, 12, 18].forEach(h => {
+      if (h <= winFromH[idx] || h >= winToH[idx]) return;
       const label = h === 12 ? '12p' : (h < 12 ? h + 'a' : (h - 12) + 'p');
-      hoursHtml += '<div class="mt-v-hour" style="top:' + (dayTop + h * HOUR_H) + 'px;">' + label + '</div>';
+      hoursHtml += '<div class="mt-v-hour" style="top:' + (winTop[idx] + (h - winFromH[idx]) * HOUR_H) + 'px;">' + label + '</div>';
     });
   });
 
   // ── Columna de barra: daybreaks + bloques + slots ────────────
   let barHtml = '';
   // Daybreaks a 240px y 480px
-  barHtml += '<div class="mt-v-daybreak" style="top:' + DAY_H + 'px;"></div>';
-  barHtml += '<div class="mt-v-daybreak" style="top:' + (2*DAY_H) + 'px;"></div>';
+  barHtml += '<div class="mt-v-daybreak" style="top:' + winTop[1] + 'px;"></div>';
   // Bloques de reservas
   events.forEach(e => {
-    const top = dtToPx(e.start);
+    let top = dtToPx(e.start);
     const bottom = dtToPx(e.end);
     const height = Math.max(4, bottom - top);
+    // Un evento que arranca justo en el borde inferior se dibuja como franja
+    // fina pegada al borde, sin desbordar el alto del grid.
+    if (top + height > TOTAL_H) top = Math.max(0, TOTAL_H - height);
     const tipo = e.r.tipo || 'noche';
     const bg = TIPO_BG[tipo] || '#6a9e62';
     const short = TIPO_SHORT[tipo] || tipo;
@@ -5593,7 +5613,7 @@ function renderMiniTimeline(currentRes) {
   // Slots libres (bloques dashed)
   filteredSlots.forEach(slot => {
     // Clipear al rango visible
-    if (slot.end.getTime() <= rangeStartMs || slot.start.getTime() >= rangeStartMs + TOTAL_H/HOUR_H*3600000) return;
+    if (slot.end.getTime() <= rangeStartMs || slot.start.getTime() >= rangeEnd.getTime()) return;
     const top = dtToPx(slot.start);
     const bottom = dtToPx(slot.end);
     const height = Math.max(6, bottom - top);
@@ -5625,18 +5645,21 @@ function renderMiniTimeline(currentRes) {
 
   let agendaHtml = '';
   days.forEach((day, idx) => {
-    const dayStart = dayStarts[idx];
-    const dayEnd   = dayEnds[idx];
-    const dayTop   = idx * DAY_H;
+    const dayStart = winStart[idx];
+    const dayEnd   = winEnd[idx];
+    const dayTop   = winTop[idx];
     // Eventos que suceden dentro de este día (start o end caen en el rango del día)
     // Ordenados por tiempo cronológico.
-    const dayEvents = events.filter(e => e.start < dayEnd && e.end > dayStart);
+    // En el último tramo el borde es inclusivo, para no perder la entrada que
+    // cae exactamente a las 2pm (y con ella su ventana de limpieza).
+    const dayEndX = dayEnd.getTime() + (idx === days.length - 1 ? 1 : 0);
+    const dayEvents = events.filter(e => e.start.getTime() < dayEndX && e.end > dayStart);
     // Carry-over: reservas que empezaron antes de este día y continúan
     const carries = dayEvents.filter(e => e.start < dayStart);
     // Construir lista de items cronológicos: entra/sale + limpieza
     const items = [];
     dayEvents.forEach(e => {
-      if (e.start >= dayStart && e.start < dayEnd) {
+      if (e.start >= dayStart && e.start.getTime() < dayEndX) {
         items.push({ type: 'entra', at: e.start, e: e });
       }
       if (e.end > dayStart && e.end <= dayEnd) {
@@ -5772,7 +5795,7 @@ function renderMiniTimeline(currentRes) {
               + '</div>';
       }
     });
-    agendaHtml += '<div class="mt-v-day-block" style="top:' + dayTop + 'px;height:' + DAY_H + 'px;">' + inner + '</div>';
+    agendaHtml += '<div class="mt-v-day-block" style="top:' + dayTop + 'px;height:' + winH[idx] + 'px;">' + inner + '</div>';
   });
 
   container.className = 'mini-timeline';
@@ -5825,7 +5848,7 @@ function renderMiniTimeline(currentRes) {
   events.forEach(e => { _addGuide(dtToPx(e.start)); _addGuide(dtToPx(e.end)); });
 
   container.innerHTML = ''
-    + '<div class="mt-legend">Ocupación · 3 días · tap bloques o eventos para verlos</div>'
+    + '<div class="mt-legend">Ocupación · hoy 6am → mañana 2pm · tap bloques o eventos para verlos</div>'
     + summaryHtml
     + '<div class="mt-v-scroll">'
     +   '<div class="mt-v-grid" style="height:' + TOTAL_H + 'px;">'
