@@ -1305,7 +1305,13 @@ function _correccionesAirbnb_() {
     { cod: 'HMP5R5WYAF', quien: 'Kenneth',       checkin: '2026-05-09', checkout: '2026-05-10' },
     { cod: 'HMD8PXQWMT', quien: 'Maria Celeste', checkin: '2026-05-29', checkout: '2026-05-30' },
     { cod: 'HMXZRKWEP8', quien: 'Daniel Yanez',  checkin: '2025-12-30', checkout: '2025-12-31' },
-    { cod: 'HMJQRY88C3', quien: 'Jennifer',      checkin: '2025-12-30', checkout: '2025-12-31' },
+    // Mismo caso que Aneea, pero con política firme: la penalización fue del
+    // 100% ($99 bruto / $83.65 neto, idéntico a una estadía normal), así que acá
+    // no hay monto que corregir — solo sacarla de la ocupación. Daniel Yanez
+    // reservó esa misma noche el 30-dic, el día del check-in, al liberarse.
+    { cod: 'HMJQRY88C3', quien: 'Jennifer', checkin: '2025-12-30', checkout: '2025-12-31',
+      estadoPago: 'CANCELADA',
+      comentario: 'Cancelada por la huésped. Sin reembolso por política firme, Airbnb pagó la penalización completa ($83.65 neto). La fecha la retomó Daniel Yanez (HMXZRKWEP8).' },
     // Aneea canceló. La política no le daba reembolso, así que Airbnb igual pagó
     // la penalización ($49.50 bruto / $41.83 neto, la mitad de la tarifa) y
     // después liberó la fecha, que tomó Jakdiel. Por eso las dos aparecen la
