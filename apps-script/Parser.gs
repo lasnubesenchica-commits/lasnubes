@@ -2677,8 +2677,7 @@ function buildGuiaHTML(cabin, tipo, checkoutExtendido, horaSalidaCustom) {
 function buildEmailHTMLAbierta(r) {
   const name = (r.name || '').toString();
   const waUrl = 'https://wa.me/50769812266?text=' + encodeURIComponent('Hola! Quisiera hacer efectiva mi reserva Abierta a nombre de ' + name + '.');
-  let publicLink = '';
-  try { if (r.id) publicLink = getPublicReservaUrl(r.id); } catch(e) { Logger.log('no publicLink abierta: ' + e.message); }
+  const publicLink = getPublicReservaUrlSafe(r.id);
   return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>' +
 '<body style="margin:0;padding:0;background:#f5f3f0;font-family:\'Helvetica Neue\',Helvetica,Arial,sans-serif;">' +
 '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f3f0;padding:32px 16px;"><tr><td align="center">' +
@@ -2730,8 +2729,7 @@ function buildEmailHTMLRegalo(r) {
 
   const waRedimir = 'https://wa.me/50769812266?text=' + encodeURIComponent(
     'Hola! Tengo un certificado de regalo de Las Nubes a nombre de ' + nombre + ' y quisiera coordinar las fechas.');
-  let publicLink = '';
-  try { if (r.id) publicLink = getPublicReservaUrl(r.id); } catch(e) { Logger.log('no publicLink regalo: ' + e.message); }
+  const publicLink = getPublicReservaUrlSafe(r.id);
 
   // Qué incluye el regalo — mismas filas que la confirmación pero SIN "Total".
   const filaEstancia = meta
@@ -2852,8 +2850,7 @@ function buildEmailHTML(r) {
   const icsB64      = Utilities.base64Encode(ics);
   const icsUri      = 'data:text/calendar;base64,' + icsB64;
   const pagarUrl    = 'https://wa.me/50769812266?text=' + encodeURIComponent('Deseo cancelar el saldo restante de mi reserva del día ' + meta.checkinFmt + ' en la cabaña ' + cabin + '. ¿Me comparte los métodos de pago?');
-  let publicLink    = '';
-  try { if (r.id) publicLink = getPublicReservaUrl(r.id); } catch(e) { Logger.log('no publicLink: ' + e.message); }
+  const publicLink = getPublicReservaUrlSafe(r.id);
 
   return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>' +
 '<body style="margin:0;padding:0;background:#f5f3f0;font-family:\'Helvetica Neue\',Helvetica,Arial,sans-serif;">' +
@@ -3275,8 +3272,7 @@ function buildUpdateEmailHTML(reservation, cabin, color, checkinFmt, checkoutFmt
   checkoutFmt    = meta.checkoutFmt;
   hasSaldo       = amount > 0 && parseFloat(saldo) > 0;
   const pagarUrl = 'https://wa.me/50769812266?text=' + encodeURIComponent('Deseo cancelar el saldo restante de mi reserva del día ' + meta.checkinFmt + ' en la cabaña ' + cabin + '. ¿Me comparte los métodos de pago?');
-  let publicLink = '';
-  try { if (reservation.id) publicLink = getPublicReservaUrl(reservation.id); } catch(e) { Logger.log('no publicLink: ' + e.message); }
+  const publicLink = getPublicReservaUrlSafe(reservation.id);
 
   return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"></head>' +
 '<body style="margin:0;padding:0;background:#f5f3f0;font-family:\'Helvetica Neue\',Helvetica,Arial,sans-serif;">' +

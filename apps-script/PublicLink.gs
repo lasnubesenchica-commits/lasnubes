@@ -50,6 +50,28 @@ function getPublicReservaUrl(id) {
   return _publicLinkBaseUrl() + '?id=' + encodeURIComponent(String(id)) + '&t=' + t;
 }
 
+// El dashboard manda el id placeholder 'preview' cuando la reserva del
+// formulario todavía no se guardó (botón "Vista previa"). Ese id se firma
+// perfecto, pero no existe como fila en la hoja, así que el link terminaba en
+// "Link no válido". Se trata como "todavía sin id".
+function _esIdPreview(id) {
+  const s = (id == null ? '' : String(id)).trim().toLowerCase();
+  return !s || s === 'preview';
+}
+
+// Link público de la reserva, o '' si todavía no hay un id real al que apuntar.
+// Úsalo en vez de getPublicReservaUrl() en cualquier plantilla (email/WhatsApp):
+// así una vista previa omite el botón en lugar de ofrecer un link roto.
+function getPublicReservaUrlSafe(id) {
+  if (_esIdPreview(id)) return '';
+  try {
+    return getPublicReservaUrl(id);
+  } catch(e) {
+    Logger.log('no publicLink para id=' + id + ': ' + e.message);
+    return '';
+  }
+}
+
 // ═══════════════════════════════════════════════════════════
 //  Short codes (link mas corto via lookup en sheet ShareLinks)
 // ═══════════════════════════════════════════════════════════

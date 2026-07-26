@@ -262,8 +262,9 @@ function sendWAReservaConfirmada(reservation) {
   // Link público de la reserva. Usamos el HMAC largo (?id=&t=) que está
   // probado en producción; el short link (?c=) crashea en la web app
   // desplegada al leer la hoja ShareLinks, así que no lo usamos.
-  let link = '';
-  try { link = getPublicReservaUrl(reservation.id); } catch(e) { link = 'https://lasnubes.cloud'; }
+  // Safe: con el id placeholder de la vista previa el link firmado apuntaría a
+  // una fila inexistente → cae al sitio en vez de a "Link no válido".
+  const link = getPublicReservaUrlSafe(reservation.id) || 'https://lasnubes.cloud';
 
   return sendWhatsAppTemplate(reservation.telefono, 'confirmacion_reserva', 'es_PA', {
     nombre:        nombre,
@@ -329,8 +330,9 @@ function sendWARegaloCertificado(reservation) {
                      : ' · ' + meta.estanciaValue);
   }
 
-  let link = '';
-  try { link = getPublicReservaUrl(reservation.id); } catch(e) { link = 'https://lasnubes.cloud'; }
+  // Safe: con el id placeholder de la vista previa el link firmado apuntaría a
+  // una fila inexistente → cae al sitio en vez de a "Link no válido".
+  const link = getPublicReservaUrlSafe(reservation.id) || 'https://lasnubes.cloud';
 
   try {
     return sendWhatsAppTemplate(reservation.telefono, 'certificado_regalo', 'es_PA', {
