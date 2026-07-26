@@ -1222,25 +1222,56 @@ function buscarReservasAirbnbDuplicadas() {
 // Borra de MAYOR a MENOR a propósito: al eliminar una fila todas las de abajo
 // suben un lugar, así que borrar en orden ascendente hace que los números
 // siguientes apunten a la fila equivocada.
-var FILAS_A_BORRAR = [];   // ej. [69, 98, 480, 482, 490]
+// Cada entrada puede ser un número de fila o —mejor— un objeto
+// { fila, cod, monto } para que el script VERIFIQUE que la fila sigue siendo la
+// que se quiere borrar. Los números de fila se corren si alguien borró algo en
+// el medio, y borrar la fila equivocada acá es irreversible.
+//
+// Cargado con lo que devolvió buscarReservasAirbnbDuplicadas() (jul-2026):
+//   69, 98   → filas con código sintético; la buena es la del HM
+//   480,482,490 → mismo código HM que su gemela, con el monto inflado
+var FILAS_A_BORRAR = [
+  { fila: 69,  cod: 'airbnb_19c8860a64815de7', monto: 178.2  },  // Yuliany Guerrero (dup de la 476)
+  { fila: 98,  cod: 'airbnb_19c8596f2a7a8b95', monto: 233.47 },  // Kj Thomas       (dup de la 477)
+  { fila: 480, cod: 'HM8BH8C99E',              monto: 230.52 },  // DALIT           (dup de la 113)
+  { fila: 482, cod: 'HMQRAW8CA5',              monto: 309.2  },  // ANNA            (dup de la 475)
+  { fila: 490, cod: 'HMTKZY43CH',              monto: 236.32 }   // SABRINA         (dup de la 114)
+];
 
 function borrarFilasReservas(dryRun) {
   if (dryRun === undefined) dryRun = true;   // default seguro (ver runners)
-  const filas = (FILAS_A_BORRAR || []).slice().filter(n => n > 1).sort((a, b) => b - a);
-  if (!filas.length) { Logger.log('FILAS_A_BORRAR está vacío. Editá la constante arriba.'); return 0; }
+  const items = (FILAS_A_BORRAR || [])
+    .map(x => (typeof x === 'object' ? x : { fila: x }))
+    .filter(x => x.fila > 1)
+    .sort((a, b) => b.fila - a.fila);
+  if (!items.length) { Logger.log('FILAS_A_BORRAR está vacío. Editá la constante arriba.'); return 0; }
   const sheet = getOrCreateSheet();
   const data  = sheet.getDataRange().getValues();
   Logger.log('═══ ' + (dryRun ? 'DRY-RUN · ' : '') + 'BORRAR FILAS DE RESERVAS ═══');
-  let n = 0;
-  filas.forEach(f => {
+  let n = 0, rechazadas = 0;
+  items.forEach(it => {
+    const f = it.fila;
     const r = data[f - 1];
     if (!r || !r[_R.ID]) { Logger.log('   ⚠ fila ' + f + ': vacía o inexistente, se salta.'); return; }
+    // Verificación: si los índices se corrieron, el contenido no coincide y no
+    // se borra nada. Vale más abortar que borrar una reserva buena.
+    const codOk   = it.cod   === undefined || String(r[_R.COD] || '').trim() === String(it.cod).trim();
+    const montoOk = it.monto === undefined || Math.abs((parseFloat(r[_R.MONTO]) || 0) - it.monto) < 0.01;
+    if (!codOk || !montoOk) {
+      rechazadas++;
+      Logger.log('   ✗ fila ' + f + ': NO coincide con lo esperado, se salta.');
+      Logger.log('      esperaba cod=' + it.cod + ' monto=' + it.monto
+        + '  ·  encontró cod=' + (r[_R.COD] || '(vacío)') + ' monto=' + r[_R.MONTO] + ' (' + r[1] + ')');
+      Logger.log('      → los números de fila se corrieron. Volvé a correr buscarReservasAirbnbDuplicadas().');
+      return;
+    }
     Logger.log((dryRun ? '   [dry] ' : '   ✓ ') + 'fila ' + f + ' · ' + r[1] + ' · ' + r[3]
       + ' · cod=' + (r[_R.COD] || '(vacío)') + ' · monto=' + r[_R.MONTO]
       + ' · pagado=' + (r[17] || 0));
     if (!dryRun) sheet.deleteRow(f);
     n++;
   });
+  if (rechazadas) Logger.log('   ⚠ ' + rechazadas + ' fila(s) rechazadas por no coincidir.');
   if (!dryRun) SpreadsheetApp.flush();
   Logger.log('');
   Logger.log((dryRun ? '[dry-run] ' : '') + n + ' fila(s) ' + (dryRun ? 'se borrarían' : 'borradas')
