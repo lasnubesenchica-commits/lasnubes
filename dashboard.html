@@ -1564,6 +1564,90 @@
     color: var(--text-muted);
   }
 
+  /* ── VOUCHERS YA REGISTRADOS (lista bajo el dropzone) ─── */
+  .vouchers-reg {
+    display: none;
+    margin: -4px 0 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: #fff;
+  }
+  .vouchers-reg.shown { display: block; }
+  .vouchers-reg-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg-soft, #f6f6f4);
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+  }
+  .vouchers-reg-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    font-size: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .vouchers-reg-row:last-child { border-bottom: none; }
+  .vouchers-reg-idx {
+    flex: 0 0 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--verde-light);
+    color: var(--verde-dark);
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .vouchers-reg-monto { font-weight: 700; color: var(--text); flex: 0 0 auto; }
+  .vouchers-reg-monto.unknown { color: var(--text-muted); font-weight: 500; }
+  .vouchers-reg-meta {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--text-muted);
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .vouchers-reg-link {
+    flex: 0 0 auto;
+    font-size: 11px;
+    text-decoration: none;
+    color: var(--verde-dark);
+    font-weight: 600;
+  }
+  .vouchers-reg-link.disabled { color: var(--text-muted); font-weight: 400; }
+  .vouchers-reg-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg-soft, #f6f6f4);
+    font-size: 12px;
+  }
+  .vouchers-reg-foot .saldo { font-weight: 700; }
+  .vouchers-reg-foot .saldo.ok      { color: var(--verde-dark); }
+  .vouchers-reg-foot .saldo.pending { color: #b45309; }
+  .vouchers-reg-note {
+    padding: 6px 12px 8px;
+    font-size: 10.5px;
+    line-height: 1.35;
+    color: var(--text-muted);
+    background: var(--bg-soft, #f6f6f4);
+  }
+
   .voucher-card {
     display: none;
     margin-bottom: 14px;
@@ -2882,6 +2966,10 @@
       <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Comentarios</div>
       <div id="detailComentarios" style="white-space:pre-wrap;color:var(--text);"></div>
     </div>
+    <div id="detailRegaloWrap" style="display:none;background:#fdf8f0;border-left:3px solid #b5893f;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;">
+      <div style="font-size:11px;color:#8a6a2f;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;font-weight:600;">🎁 Certificado de regalo</div>
+      <div id="detailRegalo" style="color:var(--text);line-height:1.5;"></div>
+    </div>
     <div id="detailCumpleBadge" style="display:none;background:#f0f8ed;border-left:3px solid #6a9e62;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;color:#2c5e22;">
       🎂 <strong>Cumpleaños en esta estadía</strong> — <span id="detailCumpleText"></span>. Aplicar descuento <strong>20% Dom–Jue / 10% Vie–Sáb</strong> sobre la noche del cumpleaños.
     </div>
@@ -3028,6 +3116,7 @@
         <div class="voucher-dropzone-title" id="voucherDropzoneTitle">Subir voucher de pago</div>
         <div class="voucher-dropzone-hint" id="voucherDropzoneHint">Toca para abrir galería o cámara</div>
       </div>
+      <div id="vouchersRegistrados" class="vouchers-reg"></div>
       <div id="voucherCard" class="voucher-card">
         <div class="voucher-card-header">
           <div class="voucher-card-title">✓ <span>Voucher procesado</span></div>
@@ -3054,10 +3143,27 @@
       </div>
     </div>
 
+    <!-- Fila 1a: Certificado de regalo (pagador ≠ beneficiario) -->
+    <div class="form-row" id="regaloRow">
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:500;cursor:pointer;">
+          <input type="checkbox" id="fEsRegalo" style="width:18px;height:18px;cursor:pointer;" onchange="toggleRegalo()">
+          <span>🎁 Certificado de regalo <span style="color:var(--text-muted);font-weight:400;font-size:12px;">(el huésped es el beneficiario · no verá montos)</span></span>
+        </label>
+        <div id="regaloFields" style="display:none;margin-top:10px;">
+          <label style="font-size:12px;">De parte de</label>
+          <input type="text" id="fRegaloDe" placeholder="Quien regala (default: el nombre del pago)">
+          <label style="font-size:12px;margin-top:8px;display:block;">Dedicatoria <span style="color:var(--text-muted);font-weight:400;">— opcional</span></label>
+          <input type="text" id="fRegaloMensaje" placeholder="Feliz cumpleaños, disfrútalo!" maxlength="180">
+          <p id="regaloHint" style="margin:8px 0 0;font-size:11.5px;color:var(--text-muted);line-height:1.45;"></p>
+        </div>
+      </div>
+    </div>
+
     <!-- Fila 2: Email + Teléfono -->
     <div class="form-row">
       <div class="form-group">
-        <label>Email <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— confirmación</span></label>
+        <label id="fEmailLabel">Email <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— confirmación</span></label>
         <input type="email" id="fEmail" placeholder="correo@ejemplo.com">
       </div>
       <div class="form-group">
@@ -3498,7 +3604,15 @@ async function syncFromSheets() {
           comentarios:      r.comentarios       || '',
           telefono:         r.telefono          || '',
           tipo:             r.tipo              || 'noche',
-          voucherURL:       r.voucherURL        || ''
+          voucherURL:       r.voucherURL        || '',
+          // Estos venían del backend pero no se mapeaban, así que al recargar
+          // desde la hoja se perdían: las horas custom y el check-out extendido
+          // volvían al default del tipo en ocupación/detalle/timeline.
+          horaEntrada:      r.horaEntrada       || '',
+          horaSalida:       r.horaSalida        || '',
+          checkoutExtendido: !!r.checkoutExtendido,
+          vouchersMeta:     r.vouchersMeta      || '',
+          regalo:           r.regalo            || ''
         };
       });
 
@@ -5218,6 +5332,23 @@ function showDispDetail(id) {
     const c = (r.comentarios || '').toString().trim();
     if (c) { cmtEl.textContent = c; cmtWrap.style.display = ''; }
     else   { cmtEl.textContent = ''; cmtWrap.style.display = 'none'; }
+  }
+  // Certificado de regalo: recordarle al admin que el huésped es el beneficiario
+  // y que sus notificaciones van sin montos.
+  const rgWrap = document.getElementById('detailRegaloWrap');
+  const rgEl   = document.getElementById('detailRegalo');
+  if (rgWrap && rgEl) {
+    const _g = _parseRegaloLocal(r);
+    if (_g.esRegalo) {
+      rgEl.innerHTML = 'De parte de <strong>' + escapeHtml(_g.de || '—') + '</strong> para <strong>'
+        + escapeHtml(r.name || '—') + '</strong>.'
+        + (_g.mensaje ? '<br><em style="color:var(--text-muted);">“' + escapeHtml(_g.mensaje) + '”</em>' : '')
+        + '<br><span style="color:var(--text-muted);font-size:12px;">El email y el WhatsApp al beneficiario van sin tarifa ni saldo.</span>';
+      rgWrap.style.display = '';
+    } else {
+      rgEl.innerHTML = '';
+      rgWrap.style.display = 'none';
+    }
   }
   document.getElementById('detailPersons').textContent = r.persons + (r.persons === 1 ? ' persona' : ' personas');
   document.getElementById('detailAmount').textContent  = '$' + parseFloat(r.amount || 0).toFixed(2);
@@ -7402,8 +7533,15 @@ function openModal(cabin, date) {
   const _mcChk = document.getElementById('fMultiCabin');
   if (_mcChk) { _mcChk.checked = false; toggleMultiCabin(); }
   _refreshMultiCabinAvailability();
+  // Regalo: reset en reserva nueva
+  const _rgChk = document.getElementById('fEsRegalo');
+  if (_rgChk) _rgChk.checked = false;
+  const _rgDe  = document.getElementById('fRegaloDe');     if (_rgDe)  _rgDe.value  = '';
+  const _rgMsg = document.getElementById('fRegaloMensaje'); if (_rgMsg) _rgMsg.value = '';
+  toggleRegalo();
   document.getElementById('reservaModal').classList.add('open');
   clearVoucher();
+  renderVouchersRegistrados(null); // reserva nueva → sin pagos previos
   document.getElementById('voucherSection').style.display = 'block'; // Directa por defecto
   applyModalCabinTint(document.getElementById('fCabin').value);
   calcPrice();
@@ -7455,7 +7593,15 @@ function editReservation(id) {
   _updateHorasCustomHint(r.tipo || 'noche', !!r.checkoutExtendido);
   _updateSalidaLock(r.tipo || 'noche');
   calcSaldo();
+  // Regalo: poblar desde la reserva
+  const _rg = _parseRegaloLocal(r);
+  const _rgChkEd = document.getElementById('fEsRegalo');
+  if (_rgChkEd) _rgChkEd.checked = _rg.esRegalo;
+  const _rgDeEd  = document.getElementById('fRegaloDe');      if (_rgDeEd)  _rgDeEd.value  = _rg.de;
+  const _rgMsgEd = document.getElementById('fRegaloMensaje'); if (_rgMsgEd) _rgMsgEd.value = _rg.mensaje;
+  toggleRegalo();
   clearVoucher();
+  renderVouchersRegistrados(r);
   document.getElementById('voucherSection').style.display = ['Directa','Referido'].includes(r.origin) ? 'block' : 'none';
   // Multi-cabaña: en edición se oculta (solo aplica a nuevas reservas)
   const _mcChk = document.getElementById('fMultiCabin');
@@ -7648,6 +7794,109 @@ function _formatVoucherFecha(isoStr) {
   return parseInt(m[3]) + ' ' + meses[parseInt(m[2]) - 1] + ' ' + m[1];
 }
 
+// ── Vouchers ya registrados en la reserva ──────────────────
+// Normaliza los pagos ya asociados a una reserva a una lista de
+// { monto, cod, fecha, url, montoConocido }.
+//
+// Fuente preferida: `vouchersMeta` (col 32) — JSON con un entry por voucher,
+// escrito por saveVoucherToDrive desde que existe la columna. Para reservas
+// anteriores a eso se degrada al par VoucherURL / CodTransferencia (listas
+// separadas por '|'): ahí los montos individuales no se guardaron, así que
+// solo se puede afirmar el monto cuando hay un único voucher (= montoVoucher).
+function _voucherEntries(r) {
+  if (!r) return [];
+  const raw = (r.vouchersMeta || '').toString().trim();
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) {
+        return parsed.map(v => {
+          const monto = parseFloat(String(v && v.monto != null ? v.monto : '').replace(/[^\d.]/g, ''));
+          return {
+            monto: isNaN(monto) ? 0 : monto,
+            montoConocido: !isNaN(monto) && monto > 0,
+            cod:   (v && v.cod   || '').toString(),
+            fecha: (v && v.fecha || '').toString(),
+            url:   (v && v.url   || '').toString()
+          };
+        });
+      }
+    } catch(_) { /* JSON corrupto → cae al fallback */ }
+  }
+
+  const split = s => (s || '').toString().split('|').map(x => x.trim()).filter(Boolean);
+  const urls  = split(r.voucherURL);
+  const cods  = split(r.codTransferencia);
+  const n = Math.max(urls.length, cods.length);
+  if (!n) return [];
+  const totalVoucher = parseFloat((r.montoVoucher || '').toString().replace(/[^\d.]/g, '')) || 0;
+  return Array.from({ length: n }, (_, i) => ({
+    // Con un solo voucher, montoVoucher ES su monto. Con varios, montoVoucher
+    // es el acumulado y no se puede repartir → se muestra como desconocido.
+    monto: (n === 1 ? totalVoucher : 0),
+    montoConocido: (n === 1 && totalVoucher > 0),
+    cod:   cods[i] || '',
+    fecha: '',
+    url:   urls[i] || ''
+  }));
+}
+
+function renderVouchersRegistrados(r) {
+  const box = document.getElementById('vouchersRegistrados');
+  if (!box) return;
+  const entries = _voucherEntries(r);
+  if (!entries.length || !['Directa','Referido'].includes(r && r.origin)) {
+    box.className = 'vouchers-reg';
+    box.innerHTML = '';
+    return;
+  }
+
+  const totalRegistrado = parseFloat((r.montoVoucher || '').toString().replace(/[^\d.]/g, '')) || 0;
+  const recibido = totalRegistrado > 0 ? totalRegistrado : (parseFloat(r.deposit) || 0);
+  const total    = parseFloat(r.amount) || 0;
+  const saldo    = Math.round((total - recibido) * 100) / 100;
+  const algunoSinMonto = entries.some(e => !e.montoConocido);
+
+  const rows = entries.map((e, i) => {
+    const monto = e.montoConocido
+      ? '<span class="vouchers-reg-monto">$' + e.monto.toFixed(2) + '</span>'
+      : '<span class="vouchers-reg-monto unknown">$ ?</span>';
+    const meta = [e.cod, e.fecha ? _formatVoucherFecha(e.fecha) : '']
+      .filter(Boolean).join(' · ') || '—';
+    const link = e.url
+      ? '<a class="vouchers-reg-link" href="' + escapeHtml(e.url) + '" target="_blank" rel="noopener">Ver ↗</a>'
+      : '<span class="vouchers-reg-link disabled">sin archivo</span>';
+    return '<div class="vouchers-reg-row">'
+      + '<span class="vouchers-reg-idx">' + (i + 1) + '</span>'
+      + monto
+      + '<span class="vouchers-reg-meta" title="' + escapeHtml(meta) + '">' + escapeHtml(meta) + '</span>'
+      + link
+      + '</div>';
+  }).join('');
+
+  const saldoTxt = saldo > 0.009
+    ? '<span class="saldo pending">Falta $' + saldo.toFixed(2) + '</span>'
+    : (saldo < -0.009
+        ? '<span class="saldo pending">Excede $' + Math.abs(saldo).toFixed(2) + '</span>'
+        : '<span class="saldo ok">✓ Pagado completo</span>');
+
+  box.innerHTML =
+    '<div class="vouchers-reg-head">'
+      + '<span>Pagos registrados (' + entries.length + ')</span>'
+      + '<span>Recibido $' + recibido.toFixed(2) + ' de $' + total.toFixed(2) + '</span>'
+    + '</div>'
+    + rows
+    + '<div class="vouchers-reg-foot">'
+      + '<span>Saldo</span>'
+      + saldoTxt
+    + '</div>'
+    + (algunoSinMonto && entries.length > 1
+        ? '<div class="vouchers-reg-note">Los montos por voucher no se guardaron en estos pagos '
+          + '(solo el acumulado $' + recibido.toFixed(2) + '). Los vouchers nuevos sí registran su monto individual.</div>'
+        : '');
+  box.className = 'vouchers-reg shown';
+}
+
 function clearVoucher() {
   pendingVoucher = null;
   _amountBeforePromo = null;
@@ -7734,11 +7983,20 @@ async function handleVoucherUpload(event) {
     const fTelefono = document.getElementById('fTelefono');
     const fDeposit  = document.getElementById('fDeposit');
 
+    // En un CERTIFICADO DE REGALO el voucher es del PAGADOR, no del huésped:
+    // sus datos solo pueden ir a "Pago" (y a "De parte de" si está vacío). Si se
+    // autollenaran Huésped/Email/Teléfono se pisaría al beneficiario, que es
+    // justamente quien recibe las notificaciones.
+    const _esRegalo = !!(document.getElementById('fEsRegalo') || {}).checked;
     const nombreFinal = pendingVoucher.nombreCompleto || pendingVoucher.sender || '';
-    if (nombreFinal) fName.value = nombreFinal;
+    if (nombreFinal && !_esRegalo) fName.value = nombreFinal;
     if (pendingVoucher.sender) fPagador.value = pendingVoucher.sender;
-    if (pendingVoucher.email) fEmail.value = pendingVoucher.email;
-    if (pendingVoucher.telefono) fTelefono.value = pendingVoucher.telefono;
+    if (pendingVoucher.email && !_esRegalo) fEmail.value = pendingVoucher.email;
+    if (pendingVoucher.telefono && !_esRegalo) fTelefono.value = pendingVoucher.telefono;
+    if (_esRegalo && pendingVoucher.sender) {
+      const _rgDeEl = document.getElementById('fRegaloDe');
+      if (_rgDeEl && !_rgDeEl.value.trim()) _rgDeEl.value = pendingVoucher.sender;
+    }
     if (montoNum > 0) {
       // En edicion con abono previo: acumular en vez de sobreescribir
       const currentDeposit = parseFloat(fDeposit.value) || 0;
@@ -7823,6 +8081,8 @@ function handleOriginChange() {
   // Abierta: hide date fields, they're not needed yet
   const dateRow = document.getElementById('dateRow');
   if (dateRow) dateRow.style.display = isAbierta ? 'none' : '';
+  // El texto del hint de regalo depende del origen (Abierta = sin fecha).
+  _updateRegaloHint();
 }
 
 // ─── Multi-cabaña save: crea N reservas hermanas ─────────────
@@ -7931,6 +8191,7 @@ async function _saveMultiCabinReservation() {
       comentarios,
       tipo: 'noche',
       checkoutExtendido: false,
+      regalo: _buildRegaloFromForm(),
       voucherURL: ''  // Se rellena tras la subida del voucher
     };
   });
@@ -7995,7 +8256,15 @@ async function _saveMultiCabinReservation() {
             reservation: r,
             imageBase64: pv.base64,
             mimeType:    pv.mimeType,
-            fileName:    pv.fileName
+            fileName:    pv.fileName,
+            // El voucher se sube una sola vez, en la fila de la primera
+            // hermana → su meta lleva la porción prorrateada de esa cabaña,
+            // no el total del pago (que cubre todas las hermanas).
+            voucherMeta: {
+              monto: groupVouchers[0] || 0,
+              cod:   pv.codTransferencia || '',
+              fecha: pv.fechaPago || ''
+            }
           })
         });
         const vdata = await vres.json();
@@ -8318,7 +8587,9 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
   const reservation = { id, name, email, telefono, pagador, cabin, checkin, checkout, persons, origin, deposit, amount,
                         confirmCode: id, serviceFee: 0, neto: amount,
                         fechaReserva, codTransferencia, montoVoucher, estadoPago, comentarios, tipo, checkoutExtendido,
-                        horaEntrada, horaSalida };
+                        horaEntrada, horaSalida,
+                        // Certificado de regalo: JSON {de, mensaje} o '' si no aplica.
+                        regalo: _buildRegaloFromForm() };
 
   // Detect date change before overwriting
   let fechaAnterior = null;
@@ -8328,6 +8599,13 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
       fechaAnterior = { checkin: prev.checkin, checkout: prev.checkout };
     }
     const idx = reservations.findIndex(r => r.id === editId);
+    // Preservar los campos que vive solo en la hoja y que el formulario no
+    // reconstruye (URLs de vouchers y su desglose), o el modal perdería los
+    // pagos ya registrados hasta el próximo reload.
+    if (idx >= 0 && reservations[idx]) {
+      if (reservations[idx].voucherURL   && !reservation.voucherURL)   reservation.voucherURL   = reservations[idx].voucherURL;
+      if (reservations[idx].vouchersMeta && !reservation.vouchersMeta) reservation.vouchersMeta = reservations[idx].vouchersMeta;
+    }
     reservations[idx] = reservation;
   } else {
     reservations.push(reservation);
@@ -8661,7 +8939,14 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
           reservation,
           imageBase64: pendingVoucher.base64,
           mimeType:    pendingVoucher.mimeType,
-          fileName:    pendingVoucher.fileName
+          fileName:    pendingVoucher.fileName,
+          // Metadata de ESTE voucher (col 32 VouchersMeta). montoVoucher en la
+          // hoja es el acumulado; esto guarda el desglose pago por pago.
+          voucherMeta: {
+            monto: _voucherMontoNumber(pendingVoucher.monto),
+            cod:   pendingVoucher.codTransferencia || '',
+            fecha: pendingVoucher.fechaPago || ''
+          }
         })
       });
       const data = await res.json();
@@ -11157,6 +11442,70 @@ function _agenteConfirmaWA(origin, telefono) {
 // Arma un objeto reserva desde el formulario (sin persistir), aplicando la misma
 // traducción de fechas y la conversión pasatarde/pasadía→noche que saveReservation.
 // Se usa para la vista previa (enviar la confirmación a uno mismo antes de guardar).
+// ── Certificado de regalo ──────────────────────────────────
+// Un regalo es un flag ORTOGONAL al tipo y al origen: sigue siendo una noche o
+// un pasadía, sigue entrando por Directa/Referido y su plata sigue contando
+// como ingreso. Lo único que cambia es a QUIÉN se le habla y que el
+// beneficiario no ve montos (ni email, ni WhatsApp, ni página pública).
+//
+// Se guarda en la col 33 `Regalo` como JSON `{de, mensaje}`; vacío = no es
+// regalo. `de` default = el nombre del pago (`pagador`).
+// Combinado con origen `Abierta` = regalo sin fecha, a coordinar.
+function _parseRegaloLocal(r) {
+  const vacio = { esRegalo: false, de: '', mensaje: '' };
+  if (!r || !r.regalo) return vacio;
+  let obj = r.regalo;
+  if (typeof obj === 'string') {
+    const raw = obj.trim();
+    if (!raw) return vacio;
+    try { obj = JSON.parse(raw); } catch(_) { return vacio; }
+  }
+  if (!obj || typeof obj !== 'object' || obj.esRegalo === false) return vacio;
+  return {
+    esRegalo: true,
+    de:      (obj.de      || r.pagador || '').toString().trim(),
+    mensaje: (obj.mensaje || '').toString().trim()
+  };
+}
+
+function esReservaRegalo(r) { return _parseRegaloLocal(r).esRegalo; }
+
+// Lee el bloque de regalo del formulario. Devuelve '' si el check está apagado
+// (así el backend limpia la celda al desmarcar).
+function _buildRegaloFromForm() {
+  const chk = document.getElementById('fEsRegalo');
+  if (!chk || !chk.checked) return '';
+  const de = ((document.getElementById('fRegaloDe') || {}).value || '').trim()
+          || document.getElementById('fPagador').value.trim();
+  const mensaje = ((document.getElementById('fRegaloMensaje') || {}).value || '').trim();
+  return JSON.stringify({ de, mensaje });
+}
+
+function toggleRegalo() {
+  const chk    = document.getElementById('fEsRegalo');
+  const fields = document.getElementById('regaloFields');
+  const on     = !!(chk && chk.checked);
+  if (fields) fields.style.display = on ? 'block' : 'none';
+  const lab = document.getElementById('fEmailLabel');
+  if (lab) {
+    lab.innerHTML = on
+      ? 'Email <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— del beneficiario</span>'
+      : 'Email <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— confirmación</span>';
+  }
+  _updateRegaloHint();
+}
+
+function _updateRegaloHint() {
+  const hint = document.getElementById('regaloHint');
+  if (!hint) return;
+  const chk = document.getElementById('fEsRegalo');
+  if (!chk || !chk.checked) { hint.textContent = ''; return; }
+  const origin = document.getElementById('fOrigin').value;
+  hint.textContent = origin === 'Abierta'
+    ? 'Sin fecha: el certificado le pide al beneficiario coordinar fechas por WhatsApp.'
+    : 'Con fechas confirmadas: el certificado muestra la estadía, sin tarifa ni saldo. Para un regalo sin fecha, usa origen “Abierta (sin fecha)”.';
+}
+
 function _buildFormReservation() {
   const tipoForm     = (document.getElementById('fTipo') || {}).value || 'noche';
   const formCheckin  = document.getElementById('fCheckin').value;
@@ -11188,7 +11537,9 @@ function _buildFormReservation() {
     origin:   document.getElementById('fOrigin').value,
     amount:   parseFloat(document.getElementById('fAmount').value) || 0,
     deposit:  parseFloat(document.getElementById('fDeposit').value) || 0,
-    checkoutExtendido: !!(document.getElementById('fCheckoutExtendido') || {}).checked
+    checkoutExtendido: !!(document.getElementById('fCheckoutExtendido') || {}).checked,
+    pagador:  document.getElementById('fPagador').value.trim(),
+    regalo:   _buildRegaloFromForm()
   };
 }
 

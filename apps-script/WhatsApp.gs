@@ -277,6 +277,122 @@ function sendWAReservaConfirmada(reservation) {
 }
 
 /**
+ * Envia el aviso de CERTIFICADO DE REGALO al beneficiario.
+ *
+ * Plantilla 'certificado_regalo' (es_PA), params nombrados:
+ *   {{nombre}}   beneficiario (primer nombre)
+ *   {{de}}       quien lo regala
+ *   {{cabana}}   nombre de la cabaña
+ *   {{detalle}}  "12 ago 2026 → 13 ago 2026 · 1 noche" o "Fechas a coordinar"
+ *   {{link}}     link publico de la reserva (o lasnubes.cloud)
+ *
+ * Texto sugerido para dar de alta en Meta Business Manager:
+ *   🎁 Hola {{nombre}}! Tienes un regalo en Las Nubes de parte de {{de}}.
+ *   Cabaña: {{cabana}}
+ *   {{detalle}}
+ *   Todo está cubierto — no tienes nada que pagar. Escríbenos para coordinar
+ *   los detalles: {{link}}
+ *
+ * Mientras Meta no la apruebe, cae de vuelta a 'confirmacion_reserva' con los
+ * parametros adaptados al regalo (sin montos) para que el aviso salga igual.
+ * NUNCA incluye tarifa, abono ni saldo.
+ */
+function sendWARegaloCertificado(reservation) {
+  if (!reservation) throw new Error('WA: reservation requerida');
+  if (!reservation.telefono) throw new Error('WA: reservation sin telefono');
+
+  const g = _parseRegalo(reservation);
+  const CABIN_NAMES = {
+    verde: 'Paseo por Las Nubes',
+    azul:  'Portal hacia Las Nubes',
+    lila:  'Puente entre Las Nubes'
+  };
+  const cabin = CABIN_NAMES[reservation.cabin] || reservation.cabin || 'Las Nubes';
+
+  const fullName = (reservation.name || 'amigo').toString().trim();
+  const nombre   = fullName.split(/\s+/)[0] || fullName;
+  const de       = g.de || 'alguien que te quiere';
+
+  // Sin fecha (origen Abierta o fechas vacías) → el beneficiario coordina.
+  const sinFecha = (reservation.origin === 'Abierta') || !reservation.checkin || !reservation.checkout;
+  let detalle;
+  if (sinFecha) {
+    detalle = 'Fechas a coordinar';
+  } else {
+    const meta = tipoEmailMeta(reservation);
+    if (meta.tipo === 'pasatarde')    detalle = meta.checkinFmt + ' · Pasatarde 12:30pm – 7pm';
+    else if (meta.tipo === 'pasadia') detalle = meta.checkinFmt + ' · Pasadía 9am – 5pm';
+    else if (meta.isPasadia)          detalle = meta.checkinFmt;
+    else detalle = meta.checkinFmt + ' → ' + meta.checkoutFmt +
+                   (typeof meta.estanciaValue === 'number'
+                     ? ' · ' + meta.estanciaValue + (meta.estanciaValue === 1 ? ' noche' : ' noches')
+                     : ' · ' + meta.estanciaValue);
+  }
+
+  let link = '';
+  try { link = getPublicReservaUrl(reservation.id); } catch(e) { link = 'https://lasnubes.cloud'; }
+
+  try {
+    return sendWhatsAppTemplate(reservation.telefono, 'certificado_regalo', 'es_PA', {
+      nombre:  nombre,
+      de:      de,
+      cabana:  cabin,
+      detalle: detalle,
+      link:    link
+    }, null, 'consulta_' + reservation.id);
+  } catch(err) {
+    // Fallback: la plantilla de regalo todavía no está aprobada en Meta.
+    // Reusamos 'confirmacion_reserva' metiendo el marco de regalo en los
+    // campos de texto libre. Sigue sin montos.
+    Logger.log('⚠ certificado_regalo falló (' + err.message + ') → fallback confirmacion_reserva');
+    const persons     = parseInt(reservation.persons, 10) || 1;
+    const personasStr = persons + (persons === 1 ? ' persona' : ' personas');
+    return sendWhatsAppTemplate(reservation.telefono, 'confirmacion_reserva', 'es_PA', {
+      nombre:        nombre,
+      cabana:        '🎁 ' + cabin + ' — regalo de ' + de,
+      fechas:        detalle + (sinFecha ? ' (escríbenos para coordinar)' : ''),
+      personas:      personasStr,
+      checkin_hora:  sinFecha ? 'a coordinar' : _horaPlantilla(reservation.tipo, 'checkin',  false, reservation.horaEntrada),
+      checkout_hora: sinFecha ? 'a coordinar' : _horaPlantilla(reservation.tipo, 'checkout', reservation.checkoutExtendido, null, reservation.horaSalida),
+      link:          link
+    }, null, 'consulta_' + reservation.id);
+  }
+}
+
+/**
+ * Router: manda el aviso correcto segun si la reserva es un regalo o no.
+ * Lo usan el dashboard (action sendWAConfirmacion) y la vista previa.
+ */
+function sendWAAvisoReserva(reservation) {
+  return esReservaRegalo(reservation)
+    ? sendWARegaloCertificado(reservation)
+    : sendWAReservaConfirmada(reservation);
+}
+
+/**
+ * Test desde editor: manda el certificado de regalo a tu propio numero.
+ */
+function testEnviarPlantillaRegalo() {
+  const reservaMock = {
+    id:       'TEST-REGALO-' + Date.now(),
+    name:     'Marta Beneficiaria',
+    telefono: '50769812266',
+    pagador:  'Juan Pagador',
+    regalo:   JSON.stringify({ de: 'Juan Pagador', mensaje: 'Feliz cumpleaños, disfrútalo!' }),
+    cabin:    'lila',
+    checkin:  '2026-08-15',
+    checkout: '2026-08-16',
+    persons:  2,
+    amount:   180,
+    tipo:     'noche',
+    origin:   'Directa'
+  };
+  const resultado = sendWARegaloCertificado(reservaMock);
+  Logger.log('Respuesta plantilla regalo: ' + JSON.stringify(resultado));
+  return resultado;
+}
+
+/**
  * Test desde editor: arma una reserva mock y envia la plantilla a
  * tu propio numero. Corre esto despues de que Meta apruebe la plantilla.
  */
