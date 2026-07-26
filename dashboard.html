@@ -1574,6 +1574,9 @@
     background: #fff;
   }
   .vouchers-reg.shown { display: block; }
+  /* En el popup de detalle no cuelga de un dropzone, así que no lleva el
+     margen negativo de arriba. */
+  .vouchers-reg--detalle { margin: 0 0 14px; }
   .vouchers-reg-head {
     display: flex;
     justify-content: space-between;
@@ -2987,7 +2990,11 @@
       🎂 <strong>Cumpleaños en esta estadía</strong> — <span id="detailCumpleText"></span>. Aplicar descuento <strong>20% Dom–Jue / 10% Vie–Sáb</strong> sobre la noche del cumpleaños.
     </div>
     <div id="detailLoyaltyBadge" style="display:none;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;"></div>
-    <div id="detailReferralBadge" style="display:none;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;"></div>
+    <!-- Resumen de pagos (misma caja que el modal de edición, solo lectura).
+         Va acá, donde antes estaba el badge de referidos: es info operativa que
+         se consulta a cada rato, mientras que el referido se mira ocasionalmente
+         y por eso se movió al fondo del modal. -->
+    <div id="detailPagosBox" class="vouchers-reg vouchers-reg--detalle"></div>
     <div id="detailAlerta" style="display:none;background:#fff3cd;color:#856404;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:16px;">
       ⚠ <strong>Verificar itinerario</strong> — Airbnb notificó un cambio. Revisa fechas y monto en la app de Airbnb.
     </div>
@@ -2996,6 +3003,9 @@
 
     <!-- Timeline mini: ayer / hoy / mañana con bloques de ocupación real -->
     <div id="detailMiniTimeline" style="margin-bottom:14px;"></div>
+
+    <!-- Referidos al fondo: se consulta de vez en cuando, no en cada apertura. -->
+    <div id="detailReferralBadge" style="display:none;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;"></div>
 
     <div class="modal-footer detail-footer" style="gap:8px;">
       <!-- Fila secundaria (mobile: arriba; desktop: aparecen todos en una fila) -->
@@ -5506,6 +5516,8 @@ function showDispDetail(id) {
   _renderLoyaltyBadge(r);
   // Badge de referidos: muestra codigo + cuantos referidos, y si reserva usó algún código
   _renderReferralBadge(r);
+  // Resumen de pagos (misma caja del modal de edición, solo lectura)
+  renderDetailPagos(r);
   // Badge de cumpleaños: si DOB cae entre checkin y checkout (display dates)
   const cumpleBadge = document.getElementById('detailCumpleBadge');
   if (cumpleBadge) {
@@ -7881,19 +7893,22 @@ function _rerenderVouchersReg() {
     _vouchersRegCtxId ? reservations.find(x => x.id === _vouchersRegCtxId) : null);
 }
 
-function renderVouchersRegistrados(r) {
-  _vouchersRegCtxId = (r && r.id) || null;
-  const box = document.getElementById('vouchersRegistrados');
-  if (!box) return;
+// Arma el HTML de la caja de pagos. Compartido por el modal de edición (donde
+// además proyecta el voucher pendiente) y el popup de detalle (solo lectura).
+// opts: { pendiente: bool, origen: string, total: number|null }
+// Devuelve '' cuando no hay nada que mostrar.
+function _buildVouchersRegHTML(r, opts) {
+  opts = opts || {};
   const entries = _voucherEntries(r);
+  const origen = opts.origen != null ? opts.origen : (r && r.origin);
+  const puedeVoucher = _puedeSubirVoucher(origen, esReservaRegalo(r));
 
   // El voucher recién subido todavía NO está en la hoja: se agrega como fila
   // "por guardar" para que la caja muestre cómo va a quedar la reserva
   // después de guardar, que es justo para lo que sirve.
-  const origen = (document.getElementById('fOrigin') || {}).value || (r && r.origin);
-  const puedeVoucher = ['Directa','Referido'].includes(origen);
-  const pendMonto = pendingVoucher ? (_voucherMontoNumber(pendingVoucher.monto) || 0) : 0;
-  if (pendingVoucher && puedeVoucher) {
+  const conPendiente = !!(opts.pendiente && pendingVoucher && puedeVoucher);
+  const pendMonto = conPendiente ? (_voucherMontoNumber(pendingVoucher.monto) || 0) : 0;
+  if (conPendiente) {
     entries.push({
       monto: pendMonto,
       montoConocido: pendMonto > 0,
@@ -7904,21 +7919,14 @@ function renderVouchersRegistrados(r) {
     });
   }
 
-  if (!entries.length || !puedeVoucher) {
-    box.className = 'vouchers-reg';
-    box.innerHTML = '';
-    return;
-  }
+  if (!entries.length || !puedeVoucher) return '';
 
   // Lo que YA está guardado en la hoja, más lo que suma el voucher pendiente.
   const totalRegistrado = parseFloat(((r && r.montoVoucher) || '').toString().replace(/[^\d.]/g, '')) || 0;
   const recibidoGuardado = totalRegistrado > 0 ? totalRegistrado : (parseFloat(r && r.deposit) || 0);
   const recibido = recibidoGuardado + pendMonto;
-  // El total sale del formulario: el admin pudo cambiarlo, y subir un voucher
-  // mayor al monto lo sube automáticamente.
-  const totalForm = parseFloat((document.getElementById('fAmount') || {}).value);
-  const total  = !isNaN(totalForm) ? totalForm : (parseFloat(r && r.amount) || 0);
-  const saldo  = Math.round((total - recibido) * 100) / 100;
+  const total = (opts.total != null && !isNaN(opts.total)) ? opts.total : (parseFloat(r && r.amount) || 0);
+  const saldo = Math.round((total - recibido) * 100) / 100;
   // La nota del acumulado solo aplica a los pagos legacy ya guardados.
   const algunoSinMonto = entries.some(e => !e.montoConocido && !e.pendiente);
   const guardados = entries.filter(e => !e.pendiente).length;
@@ -7948,21 +7956,45 @@ function renderVouchersRegistrados(r) {
         ? '<span class="saldo pending">Excede $' + Math.abs(saldo).toFixed(2) + '</span>'
         : '<span class="saldo ok">✓ Pagado completo</span>');
 
-  box.innerHTML =
-    '<div class="vouchers-reg-head">'
+  return '<div class="vouchers-reg-head">'
       + '<span>Pagos registrados (' + entries.length + ')</span>'
       + '<span>Recibido $' + recibido.toFixed(2) + ' de $' + total.toFixed(2) + '</span>'
     + '</div>'
     + rows
     + '<div class="vouchers-reg-foot">'
-      + '<span>Saldo' + (pendingVoucher && puedeVoucher ? ' al guardar' : '') + '</span>'
+      + '<span>Saldo' + (conPendiente ? ' al guardar' : '') + '</span>'
       + saldoTxt
     + '</div>'
     + (algunoSinMonto && guardados > 1
         ? '<div class="vouchers-reg-note">Los montos por voucher no se guardaron en estos pagos '
           + '(solo el acumulado $' + recibidoGuardado.toFixed(2) + '). Los vouchers nuevos sí registran su monto individual.</div>'
         : '');
-  box.className = 'vouchers-reg shown';
+}
+
+function renderVouchersRegistrados(r) {
+  _vouchersRegCtxId = (r && r.id) || null;
+  const box = document.getElementById('vouchersRegistrados');
+  if (!box) return;
+  // El total sale del formulario: el admin pudo cambiarlo, y subir un voucher
+  // mayor al monto lo sube automáticamente.
+  const totalForm = parseFloat((document.getElementById('fAmount') || {}).value);
+  const html = _buildVouchersRegHTML(r, {
+    pendiente: true,
+    origen: (document.getElementById('fOrigin') || {}).value || (r && r.origin),
+    total: isNaN(totalForm) ? null : totalForm
+  });
+  box.innerHTML = html;
+  box.className = html ? 'vouchers-reg shown' : 'vouchers-reg';
+}
+
+// Misma caja en el popup de detalle, solo lectura (sin voucher pendiente y con
+// el monto de la reserva guardada).
+function renderDetailPagos(r) {
+  const box = document.getElementById('detailPagosBox');
+  if (!box) return;
+  const html = _buildVouchersRegHTML(r, { pendiente: false });
+  box.innerHTML = html;
+  box.className = html ? 'vouchers-reg vouchers-reg--detalle shown' : 'vouchers-reg vouchers-reg--detalle';
 }
 
 function clearVoucher() {
