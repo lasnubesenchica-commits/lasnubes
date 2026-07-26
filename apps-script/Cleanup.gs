@@ -1282,3 +1282,70 @@ function borrarFilasReservas(dryRun) {
 function borrarFilasReservasESCRIBIR() {
   return borrarFilasReservas(false);
 }
+
+// ═══════════════════════════════════════════════════════════
+//  Corregir reservas de Airbnb contra el export oficial
+// ═══════════════════════════════════════════════════════════
+//
+// Filas cuyas fechas o montos no coinciden con lo que reporta Airbnb. Se
+// busca por CÓDIGO, no por número de fila: los números se corren cada vez que
+// se borra algo, el código no.
+//
+// Valores tomados del export "airbnb_01_202607_2026.csv" (jul-2026):
+//   HMP5R5WYAF Kenneth        → la hoja tenía 04-04; Airbnb dice 05-09
+//   HMD8PXQWMT Maria Celeste  → la hoja tenía 04-24; Airbnb dice 05-29
+//   HMXZRKWEP8 Daniel Yanez   → la hoja tenía 2026; Airbnb dice 2025
+//   HMJQRY88C3 Jennifer       → idem, año equivocado
+//   HM3H889PFJ Aneea          → fechas OK, pero el monto era 99 y Airbnb dice 49.50
+//
+// Las tres primeras son el clásico choque de cabaña+noche que NO era duplicado:
+// la fila tenía las fechas mal y por eso pisaba a otra reserva real.
+function _correccionesAirbnb_() {
+  return [
+    { cod: 'HMP5R5WYAF', quien: 'Kenneth',       checkin: '2026-05-09', checkout: '2026-05-10' },
+    { cod: 'HMD8PXQWMT', quien: 'Maria Celeste', checkin: '2026-05-29', checkout: '2026-05-30' },
+    { cod: 'HMXZRKWEP8', quien: 'Daniel Yanez',  checkin: '2025-12-30', checkout: '2025-12-31' },
+    { cod: 'HMJQRY88C3', quien: 'Jennifer',      checkin: '2025-12-30', checkout: '2025-12-31' },
+    { cod: 'HM3H889PFJ', quien: 'Aneea',         monto: 49.50, neto: 41.83 }
+  ];
+}
+
+function corregirReservasAirbnbDesdeExport(dryRun) {
+  if (dryRun === undefined) dryRun = true;   // default seguro
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+  const iso   = v => v instanceof Date ? Utilities.formatDate(v, 'America/Panama', 'yyyy-MM-dd') : (v || '').toString().slice(0, 10);
+  Logger.log('═══ ' + (dryRun ? 'DRY-RUN · ' : '') + 'CORREGIR RESERVAS CONTRA EL EXPORT ═══');
+
+  let n = 0, sinHallar = 0, yaOk = 0;
+  _correccionesAirbnb_().forEach(c => {
+    let fila = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][_R.COD] || '').trim().toUpperCase() === c.cod) { fila = i + 1; break; }
+    }
+    if (fila < 0) { sinHallar++; Logger.log('   ⚠ ' + c.cod + ' (' + c.quien + '): no se encontró ninguna fila con ese código.'); return; }
+    const r = data[fila - 1];
+    const cambios = [];
+    if (c.checkin  && iso(r[_R.ENTRADA]) !== c.checkin)  cambios.push({ col: 5,  de: iso(r[_R.ENTRADA]), a: c.checkin,  que: 'entrada' });
+    if (c.checkout && iso(r[5])          !== c.checkout) cambios.push({ col: 6,  de: iso(r[5]),          a: c.checkout, que: 'salida'  });
+    if (c.monto != null && Math.abs((parseFloat(r[_R.MONTO]) || 0) - c.monto) > 0.01)
+      cambios.push({ col: 8,  de: r[_R.MONTO], a: c.monto, que: 'monto' });
+    if (c.neto  != null && Math.abs((parseFloat(r[_R.NETO])  || 0) - c.neto)  > 0.01)
+      cambios.push({ col: 13, de: r[_R.NETO],  a: c.neto,  que: 'neto'  });
+
+    if (!cambios.length) { yaOk++; Logger.log('   ✓ ' + c.cod + ' (' + c.quien + ') fila ' + fila + ': ya está correcta.'); return; }
+    Logger.log((dryRun ? '   [dry] ' : '   ✓ ') + c.cod + ' (' + c.quien + ') fila ' + fila + ':');
+    cambios.forEach(x => Logger.log('        ' + x.que + ': ' + x.de + ' → ' + x.a));
+    if (!dryRun) cambios.forEach(x => sheet.getRange(fila, x.col).setValue(x.a));
+    n++;
+  });
+  if (!dryRun) SpreadsheetApp.flush();
+  Logger.log('');
+  Logger.log((dryRun ? '[dry-run] ' : '') + n + ' fila(s) ' + (dryRun ? 'se corregirían' : 'corregidas')
+    + ' · ' + yaOk + ' ya estaban bien · ' + sinHallar + ' sin encontrar.');
+  return n;
+}
+
+function corregirReservasAirbnbDesdeExportESCRIBIR() {
+  return corregirReservasAirbnbDesdeExport(false);
+}
