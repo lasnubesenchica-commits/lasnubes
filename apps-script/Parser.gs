@@ -61,71 +61,214 @@ function syncAirbnbReservations() {
 }
 
 // ─── SYNC RESERVAS ACTUALIZADAS ────────────────────────────
+// ─── SYNC ALTERACIONES (cambios de reserva) ────────────────
+//
+// Airbnb manda DOS emails por cada cambio, y ninguno alcanza solo:
+//
+//   1) X-Template: STAY_RESERVATION_ALTERATION_REQUESTED
+//      Asunto "<Huésped> quiere hacer un cambio en su reserva".
+//      Trae el DETALLE ("VIAJEROS ORIGINALES 3 viajeros, 1 mascota /
+//      VIAJEROS SOLICITADOS 4 viajeros") pero NO el código HM: solo un id de
+//      alteración que no sirve para cruzar con la hoja.
+//
+//   2) X-Template: ALTERATION_ACCEPTED
+//      Asunto "Reserva actualizada". Trae el CÓDIGO HM en el link al
+//      itinerario, pero NO dice qué cambió ("ya actualizamos el itinerario").
+//
+// Así que hay que EMPAREJARLOS por huésped + cabaña, tomando la solicitud
+// pendiente más reciente anterior a la confirmación. Además la solicitud sola no
+// debe tocar nada: el anfitrión puede rechazarla.
+//
+// La versión anterior de esta función solo escribía '⚠ Verificar' en la columna
+// Alerta y nunca aplicaba el cambio — por eso Yarisel quedó con 3 personas y
+// $149 después de pasar a 4 viajeros y $169.
 function syncAirbnbUpdates() {
   const sheet = getOrCreateSheet();
+  const ss    = SpreadsheetApp.openById(SHEET_ID);
 
-  const threads = GmailApp.search(
-    'from:automated@airbnb.com subject:"Reserva actualizada" newer_than:365d'
-  );
-
-  const ss            = SpreadsheetApp.openById(SHEET_ID);
-  let updSheet        = ss.getSheetByName('UpdatesProcessed');
-  if (!updSheet) {
-    updSheet = ss.insertSheet('UpdatesProcessed');
-    updSheet.getRange(1,1).setValue('MsgId');
+  let altSheet = ss.getSheetByName('Alteraciones');
+  if (!altSheet) {
+    altSheet = ss.insertSheet('Alteraciones');
+    const h = ['FechaSolicitud', 'MsgIdSolicitud', 'Huesped', 'Cabana', 'AlteracionId',
+               'Cambios', 'Estado', 'FechaAceptada', 'MsgIdAceptada', 'CodConfirmacion', 'Aplicado'];
+    altSheet.getRange(1, 1, 1, h.length).setValues([h]);
+    altSheet.getRange(1, 1, 1, h.length).setFontWeight('bold');
   }
-  const updData       = updSheet.getDataRange().getValues();
-  const processedUpds = new Set(updData.slice(1).map(r => r[0].toString()));
+  const altData  = altSheet.getDataRange().getValues();
+  const yaSolic  = new Set(altData.slice(1).map(r => (r[1] || '').toString()).filter(Boolean));
+  const yaAcept  = new Set(altData.slice(1).map(r => (r[8] || '').toString()).filter(Boolean));
 
-  let flagged = 0;
+  const norm = t => (t || '').toString().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  const cabinDe = body => {
+    for (const [cn, code] of Object.entries(CABINS)) {
+      if (body.toUpperCase().indexOf(cn.toUpperCase()) >= 0) return { code: code, nombre: cn };
+    }
+    return { code: '', nombre: '' };
+  };
 
-  threads.forEach(thread => {
-    thread.getMessages().forEach(msg => {
+  // ── Paso 1: solicitudes ────────────────────────────────────
+  let nuevasSolic = 0;
+  GmailApp.search('from:automated@airbnb.com subject:"quiere hacer un cambio" newer_than:365d')
+    .forEach(th => th.getMessages().forEach(msg => {
       const msgId = msg.getId();
-      if (processedUpds.has(msgId)) return;
+      if (yaSolic.has(msgId)) return;
+      const subject = msg.getSubject();
+      const body    = msg.getPlainBody();
+      const bodyN   = body.replace(/\s+/g, ' ');
+      const nombreM = subject.match(/^(.+?)\s+quiere hacer un cambio/i);
+      const huesped = nombreM ? nombreM[1].trim() : '';
+      const cab     = cabinDe(body);
+      const altM    = bodyN.match(/reservation\/alteration\/(\d+)/i);
+      const cambios = _airbnbCambiosSolicitados(bodyN);
+      altSheet.appendRow([
+        Utilities.formatDate(msg.getDate(), 'America/Panama', 'yyyy-MM-dd HH:mm'),
+        msgId, huesped, cab.nombre, altM ? altM[1] : '',
+        JSON.stringify(cambios), 'solicitada', '', '', '', ''
+      ]);
+      yaSolic.add(msgId);
+      nuevasSolic++;
+      Logger.log('◷ Cambio SOLICITADO por ' + huesped + ' (' + cab.nombre + '): '
+        + cambios.map(c => c.que + ' ' + c.antes + ' → ' + c.despues).join(' | '));
+    }));
 
-      const body = msg.getPlainBody();
+  // ── Paso 2: confirmaciones ─────────────────────────────────
+  const filas   = altSheet.getDataRange().getValues();      // releer con las nuevas
+  const resData = sheet.getDataRange().getValues();
+  let aplicados = 0, sinPareja = 0, sinFila = 0;
 
-      const codeMatch = body.match(/reservations\/details\/([A-Z0-9]{8,12})\?/);
-      if (!codeMatch) {
-        Logger.log('⚠ Update sin código identificable: ' + msgId);
-        updSheet.appendRow([msgId]);
+  GmailApp.search('from:automated@airbnb.com subject:"Reserva actualizada" newer_than:365d')
+    .forEach(th => th.getMessages().forEach(msg => {
+      const msgId = msg.getId();
+      if (yaAcept.has(msgId)) return;
+      const body  = msg.getPlainBody();
+      const bodyN = body.replace(/\s+/g, ' ');
+      const fecha = Utilities.formatDate(msg.getDate(), 'America/Panama', 'yyyy-MM-dd HH:mm');
+      const codM  = bodyN.match(/reservations\/details\/([A-Z0-9]{10})/i)
+                 || bodyN.match(/\b(HM[A-Z0-9]{8})\b/);
+      const cod   = codM ? codM[1].toUpperCase() : '';
+      const nomM  = bodyN.match(/reserva con\s+(.+?)\s+se ha actualizado/i);
+      const huesped = nomM ? nomM[1].trim() : '';
+      const cab   = cabinDe(body);
+
+      // Emparejar con la solicitud pendiente más reciente del mismo huésped y
+      // cabaña, anterior a esta confirmación.
+      let mejor = -1;
+      for (let k = 1; k < filas.length; k++) {
+        if ((filas[k][6] || '').toString() !== 'solicitada') continue;
+        if (norm(filas[k][2]) !== norm(huesped)) continue;
+        if (cab.nombre && norm(filas[k][3]) !== norm(cab.nombre)) continue;
+        if ((filas[k][0] || '').toString() > fecha) continue;
+        if (mejor < 0 || (filas[k][0] || '') > (filas[mejor][0] || '')) mejor = k;
+      }
+
+      if (mejor < 0) {
+        sinPareja++;
+        Logger.log('⚠ Confirmación de ' + huesped + ' (' + cod + ') sin solicitud emparejable. '
+          + 'Se marca la reserva para revisar a mano.');
+        _altMarcarRevisar(sheet, resData, cod, 'Airbnb confirmó un cambio pero no se encontró el detalle.');
+        altSheet.appendRow([fecha, '', huesped, cab.nombre, '', '[]', 'aceptada_sin_detalle',
+          fecha, msgId, cod, 'no']);
+        yaAcept.add(msgId);
         return;
       }
-      const confirmCode = codeMatch[1];
 
-      const data = sheet.getDataRange().getValues();
-      let foundRow = -1;
-      for (let i = 1; i < data.length; i++) {
-        if (data[i][10] && data[i][10].toString() === confirmCode) {
-          foundRow = i + 1;
-          break;
-        }
+      const cambios = (function() { try { return JSON.parse(filas[mejor][5] || '[]'); } catch(_) { return []; } })();
+      const res = _altAplicarCambios(sheet, resData, cod, cambios, fecha);
+      altSheet.getRange(mejor + 1, 7).setValue('aceptada');
+      altSheet.getRange(mejor + 1, 8).setValue(fecha);
+      altSheet.getRange(mejor + 1, 9).setValue(msgId);
+      altSheet.getRange(mejor + 1, 10).setValue(cod);
+      altSheet.getRange(mejor + 1, 11).setValue(res.aplicado ? 'si' : 'parcial');
+      yaAcept.add(msgId);
+      if (res.filaEncontrada) aplicados++; else sinFila++;
+      Logger.log((res.aplicado ? '✓ ' : '◐ ') + cod + ' (' + huesped + '): ' + res.detalle);
+    }));
+
+  Logger.log('Alteraciones · ' + nuevasSolic + ' solicitud(es) nueva(s) · ' + aplicados
+    + ' aplicada(s) · ' + sinPareja + ' sin detalle · ' + sinFila + ' sin fila en Reservas');
+}
+
+// Extrae los bloques "X ORIGINALES … X SOLICITADOS" del cuerpo normalizado.
+// En el texto plano los encabezados vienen en mayúsculas ("VIAJEROS ORIGINALES"),
+// y el género de la segunda palabra cambia (solicitadOS / solicitadAS).
+function _airbnbCambiosSolicitados(bodyN) {
+  const out = [];
+  const re = /([A-ZÁÉÍÓÚÑ]{4,})\s+ORIGINAL(?:ES)?\s+(.+?)\s+\1\s+SOLICITAD[AO]S?\s+(.+?)(?=\s+[A-ZÁÉÍÓÚÑ]{4,}\s+ORIGINAL|\s+Si aceptas|\s+Ir a la solicitud|$)/g;
+  let m;
+  while ((m = re.exec(bodyN)) !== null) {
+    out.push({ que: m[1], antes: m[2].trim(), despues: m[3].trim() });
+  }
+  return out;
+}
+
+// Busca la fila por código y le escribe un aviso en Alerta (col 14).
+function _altMarcarRevisar(sheet, resData, cod, texto) {
+  if (!cod) return false;
+  for (let i = 1; i < resData.length; i++) {
+    if ((resData[i][10] || '').toString().trim().toUpperCase() !== cod) continue;
+    const prev = (resData[i][13] || '').toString().trim();
+    const nota = '⚠ ' + texto;
+    if (prev.indexOf(nota) < 0) sheet.getRange(i + 1, 14).setValue(prev ? prev + ' | ' + nota : nota);
+    return true;
+  }
+  return false;
+}
+
+// Aplica a la reserva los cambios que se pueden interpretar sin ambigüedad.
+// VIAJEROS se aplica solo (es un número). FECHAS se intenta parsear. Cualquier
+// otra cosa —precio incluido, que ninguno de los dos emails trae— se deja
+// anotada para que el admin decida: preferimos avisar antes que inventar plata.
+function _altAplicarCambios(sheet, resData, cod, cambios, fechaConf) {
+  const detalle = [];
+  let fila = -1;
+  for (let i = 1; i < resData.length; i++) {
+    if ((resData[i][10] || '').toString().trim().toUpperCase() === cod) { fila = i + 1; break; }
+  }
+  if (fila < 0) {
+    return { filaEncontrada: false, aplicado: false,
+      detalle: 'no hay fila con ese código todavía; queda registrado en Alteraciones.' };
+  }
+
+  let todoAplicado = cambios.length > 0;
+  const pendientes = [];
+  cambios.forEach(c => {
+    const que = (c.que || '').toUpperCase();
+    if (que.indexOf('VIAJERO') === 0 || que.indexOf('HUESPED') === 0) {
+      const n = parseInt((c.despues.match(/(\d+)/) || [])[1], 10);
+      if (n > 0) {
+        sheet.getRange(fila, 7).setValue(n);
+        detalle.push('personas → ' + n);
+        return;
       }
-
-      if (foundRow > 0) {
-        const numCols = sheet.getLastColumn();
-        if (numCols < 14) {
-          sheet.getRange(1, 14).setValue('Alerta');
-          sheet.getRange(1, 14).setFontWeight('bold');
-        }
-        const alertCell = sheet.getRange(foundRow, 14);
-        alertCell.setValue('⚠ Verificar');
-        alertCell.setBackground('#FFF3CD');
-        alertCell.setFontColor('#856404');
-        sheet.getRange(foundRow, 1, 1, 13).setBackground('#FFFDE7');
-
-        Logger.log('⚠ Marcada para verificación: ' + confirmCode + ' (fila ' + foundRow + ')');
-        flagged++;
-      } else {
-        Logger.log('⚠ Código ' + confirmCode + ' no encontrado en el Sheet');
+    }
+    if (que.indexOf('FECHA') === 0) {
+      const ds = (c.despues.match(/\d{1,2}\s+\w+/g) || []).map(x => parseFecha(x, fechaConf.slice(0, 10)));
+      if (ds.length >= 2 && ds[0] && ds[1]) {
+        sheet.getRange(fila, 5).setValue(ds[0]);
+        sheet.getRange(fila, 6).setValue(ds[1]);
+        detalle.push('fechas → ' + ds[0] + ' a ' + ds[1]);
+        return;
       }
-
-      updSheet.appendRow([msgId]);
-    });
+    }
+    todoAplicado = false;
+    pendientes.push(c.que + ': ' + c.antes + ' → ' + c.despues);
   });
 
-  Logger.log('Updates procesados. ' + flagged + ' reservas marcadas para verificación.');
+  if (pendientes.length) {
+    _altMarcarRevisar(sheet, resData, cod, 'Cambio aceptado en Airbnb, revisar a mano: ' + pendientes.join(' ; '));
+    detalle.push('pendiente de revisar: ' + pendientes.join(' ; '));
+  }
+  // Dejar constancia en Comentarios de qué cambió y cuándo.
+  const nota = '🔄 ' + fechaConf + ' Airbnb aplicó un cambio: '
+    + cambios.map(c => c.que + ' ' + c.antes + ' → ' + c.despues).join(' | ');
+  try {
+    const cAct = (resData[fila - 1][22] || '').toString().trim();
+    if (cAct.indexOf(nota) < 0) sheet.getRange(fila, 23).setValue(cAct ? cAct + '\n' + nota : nota);
+  } catch(_) {}
+
+  return { filaEncontrada: true, aplicado: todoAplicado,
+    detalle: detalle.length ? detalle.join(' · ') : 'nada que aplicar automáticamente.' };
 }
 
 // ─── PARSER DEL EMAIL ───────────────────────────────────────
