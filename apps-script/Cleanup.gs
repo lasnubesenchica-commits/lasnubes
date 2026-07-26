@@ -800,26 +800,50 @@ function diagnosticarVouchersSinArchivo() {
   const sheet = getOrCreateSheet();
   const data  = sheet.getDataRange().getValues();
 
-  // Índice de Drive: código de transferencia → url
-  const porCodigo = {};
-  let totalArchivos = 0;
+  // ── Índice de Drive ────────────────────────────────────────────────────
+  // OJO con la llave: la descripción que escribe saveVoucherToDrive NO lleva el
+  // código de transferencia. Lleva 'Cód. Pago: ' + (confirmCode || id), y en las
+  // reservas del dashboard confirmCode ES el id de la reserva. Buscar por código
+  // de transferencia no matchea casi nunca y da un falso "no está en Drive".
+  // Se indexa por id de reserva, por huésped+entrada y por huésped solo.
+  const norm = s => (s || '').toString().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ').trim();
+  const byPago = {}, byNameDate = {}, byName = {};
+  const archivos = [];
   const folders = DriveApp.getFoldersByName(VOUCHER_FOLDER_NAME);
   if (folders.hasNext()) {
     const it = folders.next().getFiles();
     while (it.hasNext()) {
-      const f = it.next();
-      totalArchivos++;
-      const desc = (f.getDescription() || '');
-      const m = desc.match(/C[óo]d\.\s*Pago:\s*([^\n]+)/i);
-      if (m) porCodigo[m[1].trim().toUpperCase()] = f.getUrl();
-      // También indexar cualquier código suelto que aparezca en la descripción
-      (desc.match(/[A-Z]{3,6}-\d{5,}/g) || []).forEach(c => { porCodigo[c.toUpperCase()] = f.getUrl(); });
+      const f    = it.next();
+      const desc = f.getDescription() || '';
+      const get  = re => { const m = desc.match(re); return m ? m[1].trim() : ''; };
+      const info = {
+        url:     f.getUrl(),
+        nombre:  f.getName(),
+        huesped: get(/Hu[ée]sped:\s*([^\n]*)/i),
+        entrada: get(/Entrada:\s*([^\n]*)/i),
+        codPago: get(/C[óo]d\.\s*Pago:\s*([^\n]*)/i)
+      };
+      archivos.push(info);
+      if (info.codPago) (byPago[info.codPago] = byPago[info.codPago] || []).push(info);
+      const nn = norm(info.huesped);
+      if (nn) {
+        (byName[nn] = byName[nn] || []).push(info);
+        if (info.entrada) (byNameDate[nn + '|' + info.entrada] = byNameDate[nn + '|' + info.entrada] || []).push(info);
+      }
     }
   }
-  Logger.log('📁 ' + totalArchivos + ' archivos en "' + VOUCHER_FOLDER_NAME + '"');
+  Logger.log('📁 ' + archivos.length + ' archivos en "' + VOUCHER_FOLDER_NAME + '"');
 
   const split = s => (s || '').toString().split('|').map(x => x.trim()).filter(Boolean);
-  const rec = { okCompleto: 0, recuperable: [], nuncaSubido: [], desalineado: [], sinCodigo: 0 };
+  const iso = v => v instanceof Date ? Utilities.formatDate(v, 'America/Panama', 'yyyy-MM-dd') : (v || '').toString().slice(0, 10);
+
+  // URLs ya referenciadas en la hoja → para detectar archivos huérfanos
+  const usadas = {};
+  for (let i = 1; i < data.length; i++) split(data[i][25]).forEach(u => { usadas[u] = true; });
+
+  const rec = { okCompleto: 0, sinCodigo: 0, recuperable: [], nuncaSubido: [], desalineado: [] };
 
   for (let i = 1; i < data.length; i++) {
     const r = data[i];
@@ -827,42 +851,77 @@ function diagnosticarVouchersSinArchivo() {
     const origen = (r[_R.ORIGEN] || '').toString().trim();
     if (['Directa', 'Referido'].indexOf(origen) < 0) continue;
     const cods = split(r[_R.COD_TRANSF]);
-    const urls = split(r[25]);                       // col 26 VoucherURL
+    const urls = split(r[25]);
     if (!cods.length) { rec.sinCodigo++; continue; }
-
     if (urls.length >= cods.length) { rec.okCompleto++; continue; }
 
-    // Faltan URLs. ¿Están los archivos en Drive?
-    const faltantes = cods.slice(urls.length);
-    const enDrive   = faltantes.filter(c => porCodigo[c.replace(/^#/, '').toUpperCase()]);
+    const id      = r[_R.ID].toString();
+    const nombre  = r[1];
+    const entrada = iso(r[_R.ENTRADA]);
+    const nn      = norm(nombre);
+
+    // Buscar el archivo por las llaves que SÍ existen en la descripción
+    let hallados = byPago[id] || byNameDate[nn + '|' + entrada] || [];
+    let via = byPago[id] ? 'id' : (hallados.length ? 'huesped+entrada' : '');
+    if (!hallados.length && byName[nn] && byName[nn].length === 1) {
+      hallados = byName[nn]; via = 'huesped (probable)';
+    }
+    // Solo cuenta como recuperable si el archivo no está ya enlazado en otra fila
+    const nuevos = hallados.filter(f => !usadas[f.url]);
+
     const info = {
-      fila: i + 1,
-      nombre: r[1],
-      entrada: r[_R.ENTRADA] instanceof Date
-        ? Utilities.formatDate(r[_R.ENTRADA], 'America/Panama', 'yyyy-MM-dd') : r[_R.ENTRADA],
-      cods: cods.join(', '),
-      urls: urls.length,
+      fila: i + 1, id: id, nombre: nombre, entrada: entrada,
+      cods: cods.join(', '), urls: urls.length,
       conHash: cods.some(c => c.indexOf('#') === 0)
     };
-    if (enDrive.length) { info.enDrive = enDrive.join(', '); rec.recuperable.push(info); }
-    else if (urls.length > 0) rec.desalineado.push(info);
+    if (nuevos.length) {
+      info.via = via; info.archivos = nuevos.map(f => f.nombre).join(', ');
+      info.urlsDrive = nuevos.map(f => f.url).join(' | ');
+      rec.recuperable.push(info);
+    } else if (urls.length > 0) rec.desalineado.push(info);
     else rec.nuncaSubido.push(info);
   }
+
+  const huerfanos = archivos.filter(f => !usadas[f.url]);
 
   Logger.log('');
   Logger.log('═══ VOUCHERS SIN ARCHIVO ═══');
   Logger.log('✓ Con todas sus URLs: ' + rec.okCompleto + '  ·  sin código (nada que buscar): ' + rec.sinCodigo);
+  Logger.log('📎 Archivos en Drive sin enlazar a ninguna fila: ' + huerfanos.length + ' de ' + archivos.length);
   Logger.log('');
   Logger.log('🟢 CAUSA B — recuperables (el archivo SÍ está en Drive): ' + rec.recuperable.length);
-  rec.recuperable.forEach(x => Logger.log('   fila ' + x.fila + ' · ' + x.nombre + ' · ' + x.entrada + ' · ' + x.cods + ' → ' + x.enDrive));
-  if (rec.recuperable.length) Logger.log('   → Corré repoblarVoucherURLs() para rellenar la columna.');
+  rec.recuperable.forEach(x => Logger.log('   fila ' + x.fila + ' · ' + x.nombre + ' · ' + x.entrada
+    + ' · match por ' + x.via + ' → ' + x.archivos));
+  if (rec.recuperable.length) Logger.log('   → Corré vincularVouchersHuerfanos() para escribir esas URLs.');
   Logger.log('');
   Logger.log('🔴 CAUSA A — nunca se subió el archivo: ' + rec.nuncaSubido.length);
-  rec.nuncaSubido.forEach(x => Logger.log('   fila ' + x.fila + ' · ' + x.nombre + ' · ' + x.entrada + ' · ' + x.cods + (x.conHash ? '  [# → vino del bot de WhatsApp]' : '')));
-  const delBot = rec.nuncaSubido.filter(x => x.conHash).length;
-  Logger.log('   de esas, ' + delBot + ' entraron por el Agente de WhatsApp (código con "#").');
+  rec.nuncaSubido.forEach(x => Logger.log('   fila ' + x.fila + ' · ' + x.nombre + ' · ' + x.entrada + ' · ' + x.cods
+    + (x.conHash ? '  [# → bot de WhatsApp]' : '')));
+  Logger.log('   de esas, ' + rec.nuncaSubido.filter(x => x.conHash).length + ' entraron por el Agente de WhatsApp.');
   Logger.log('');
   Logger.log('🟡 Desalineadas (tienen alguna URL pero menos que códigos): ' + rec.desalineado.length);
   rec.desalineado.forEach(x => Logger.log('   fila ' + x.fila + ' · ' + x.nombre + ' · ' + x.cods + ' · urls=' + x.urls));
   return rec;
+}
+
+// Escribe las URLs que diagnosticarVouchersSinArchivo() encontró en Drive.
+// Solo toca filas cuya columna VoucherURL está VACÍA y cuyo archivo no está
+// enlazado en ninguna otra fila. Idempotente.
+function vincularVouchersHuerfanos(dryRun) {
+  const rec   = diagnosticarVouchersSinArchivo();
+  const sheet = getOrCreateSheet();
+  let n = 0;
+  rec.recuperable.forEach(x => {
+    if (x.urls > 0) return;                     // ya tiene alguna URL: no pisar
+    if (x.via === 'huesped (probable)') {
+      Logger.log('… fila ' + x.fila + ' (' + x.nombre + ') es solo PROBABLE, se salta. Revisar a mano: ' + x.urlsDrive);
+      return;
+    }
+    Logger.log((dryRun ? '[dry] ' : '✓ ') + 'fila ' + x.fila + ' · ' + x.nombre + ' → ' + x.urlsDrive);
+    if (!dryRun) sheet.getRange(x.fila, 26).setValue(x.urlsDrive);
+    n++;
+  });
+  if (!dryRun) SpreadsheetApp.flush();
+  Logger.log((dryRun ? '[dry-run] ' : '') + n + ' fila(s) ' + (dryRun ? 'se vincularían' : 'vinculadas') + '.');
+  return n;
 }
