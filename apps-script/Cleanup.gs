@@ -1338,7 +1338,28 @@ function _correccionesAirbnb_() {
     // cuando el export dice dic-2025. Lo destapó el reporte de alteraciones, que
     // mostró una reserva de 2026-12 colgada de un cambio de nov-2025.
     { cod: 'HMQSNRTXYZ', quien: 'Gilberto Alexander Mitchell Rios',
-      checkin: '2025-12-20', checkout: '2025-12-21', monto: 121.50, neto: 117.85 }
+      checkin: '2025-12-20', checkout: '2025-12-21', monto: 121.50, neto: 117.85 },
+
+    // ── Las 9 reservas de 2025 que faltaban en la hoja ──────────
+    // La reconciliación las encontró (todas reservadas entre el 22-jun y el
+    // 19-jul-2025, cuando el sync todavía no estaba corriendo) y las inserta
+    // desde el EMAIL. Ese monto viene inflado exactamente un 14.12%: el email
+    // de 2025 traía el total que paga el huésped —con su tarifa de servicio—
+    // mientras que el bruto del anfitrión es el del export. En los emails de
+    // 2026 el formato cambió y el monto ya coincide (Mairanis, HMEQYEZS85,
+    // entra correcta y por eso no está en esta tabla).
+    // Además, en 4 de ellas el parser no reconoció el nombre del anuncio y
+    // quedaron sin cabaña; el export las pone todas en Portal (azul).
+    // Correr esto DESPUÉS de reconciliarAirbnbINSERTAR().
+    { cod: 'HM2JSXHFE8', quien: 'Karldave',                 cabin: 'azul',  monto:  85.50, neto:  82.93 },
+    { cod: 'HMNP53QXR8', quien: 'Manuel',                   cabin: 'verde', monto:  85.50, neto:  82.93 },
+    { cod: 'HMPWNTCTZH', quien: 'Shelsy',                   cabin: 'verde', monto:  85.50, neto:  82.93 },
+    { cod: 'HMTJNZMTAR', quien: 'Stephanie',                cabin: 'verde', monto:  81.00, neto:  78.57 },
+    { cod: 'HMH822D3SA', quien: 'Barbara',                  cabin: 'verde', monto:  90.00, neto:  87.30 },
+    { cod: 'HM5N4SPEJR', quien: 'Michelle Brockmann',       cabin: 'verde', monto:  81.00, neto:  78.57 },
+    { cod: 'HMBX5SARFH', quien: 'Sandy Silvera Santamaria', cabin: 'azul',  monto: 110.00, neto: 106.70 },
+    { cod: 'HM8AX95KQ8', quien: 'Edmundo Alexander',        cabin: 'azul',  monto: 110.00, neto: 106.70 },
+    { cod: 'HMMFD55MMP', quien: 'Ana',                      cabin: 'azul',  monto: 110.00, neto: 106.70 }
   ];
 }
 
