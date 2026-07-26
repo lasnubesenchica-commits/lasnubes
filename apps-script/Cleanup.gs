@@ -1233,12 +1233,26 @@ function buscarReservasAirbnbDuplicadas() {
 // Cargado con lo que devolvió buscarReservasAirbnbDuplicadas() (jul-2026):
 //   69, 98   → filas con código sintético; la buena es la del HM
 //   480,482,490 → mismo código HM que su gemela, con el monto inflado
+// Los mismos 5 duplicados que detectó la auditoría: nunca se borraron y los
+// números de fila de la tanda anterior ya estaban corridos (el guard los
+// rechazó, que es justo lo que tenía que hacer). Actualizados contra el export
+// de la hoja del 26-jul-2026. En cada par se conserva la fila que COINCIDE con
+// el export oficial de Airbnb y se borra la otra:
+//
+//   HMBACCYQM9 Yuliany  → queda 474 (2026-03-16→18, $178.20)   borra 523 (fechas viejas)
+//   HMD4ESKMPX Kj       → queda 475 (2026-03-18→21, $276.30)   borra 524 (fechas viejas)
+//   HM8BH8C99E Dalit    → queda 111 (2026-02-19→21, $200.00)   borra 525 (monto inflado)
+//   HMQRAW8CA5 Anna     → queda 473 (2026-01-07→10, $261.00)   borra 526 (monto inflado)
+//   HMTKZY43CH Sabrina  → queda 112 (2026-02-14→16, $200.00)   borra 527 (monto inflado)
+//
+// Se incluye `id` porque en los pares de Yuliany y Kj el código y el monto se
+// repiten entre las dos filas: sin el id el guard no puede distinguirlas.
 var FILAS_A_BORRAR = [
-  { fila: 69,  cod: 'airbnb_19c8860a64815de7', monto: 178.2  },  // Yuliany Guerrero (dup de la 476)
-  { fila: 98,  cod: 'airbnb_19c8596f2a7a8b95', monto: 233.47 },  // Kj Thomas       (dup de la 477)
-  { fila: 480, cod: 'HM8BH8C99E',              monto: 230.52 },  // DALIT           (dup de la 113)
-  { fila: 482, cod: 'HMQRAW8CA5',              monto: 309.2  },  // ANNA            (dup de la 475)
-  { fila: 490, cod: 'HMTKZY43CH',              monto: 236.32 }   // SABRINA         (dup de la 114)
+  { fila: 523, id: '19c8860a64815de7', cod: 'HMBACCYQM9', monto: 178.2  },  // Yuliany (dup de la 474)
+  { fila: 524, id: '19c8596f2a7a8b95', cod: 'HMD4ESKMPX', monto: 178.2  },  // Kj      (dup de la 475)
+  { fila: 525, id: '19acc6800cc67ea2', cod: 'HM8BH8C99E', monto: 230.52 },  // Dalit   (dup de la 111)
+  { fila: 526, id: '19a87b00f6c61d7a', cod: 'HMQRAW8CA5', monto: 309.2  },  // Anna    (dup de la 473)
+  { fila: 527, id: '19a444362ce49803', cod: 'HMTKZY43CH', monto: 236.32 }   // Sabrina (dup de la 112)
 ];
 
 function borrarFilasReservas(dryRun) {
@@ -1260,11 +1274,17 @@ function borrarFilasReservas(dryRun) {
     // se borra nada. Vale más abortar que borrar una reserva buena.
     const codOk   = it.cod   === undefined || String(r[_R.COD] || '').trim() === String(it.cod).trim();
     const montoOk = it.monto === undefined || Math.abs((parseFloat(r[_R.MONTO]) || 0) - it.monto) < 0.01;
-    if (!codOk || !montoOk) {
+    // El `id` es el único discriminador fiable entre dos filas DUPLICADAS: las
+    // dos de Yuliany comparten código (HMBACCYQM9) y monto ($178.20), así que
+    // cod+monto no alcanza para saber cuál es cuál y un índice corrido borraría
+    // la buena. Siempre poner `id` cuando se borra un duplicado.
+    const idOk    = it.id    === undefined || String(r[_R.ID]  || '').trim() === String(it.id).trim();
+    if (!codOk || !montoOk || !idOk) {
       rechazadas++;
       Logger.log('   ✗ fila ' + f + ': NO coincide con lo esperado, se salta.');
-      Logger.log('      esperaba cod=' + it.cod + ' monto=' + it.monto
-        + '  ·  encontró cod=' + (r[_R.COD] || '(vacío)') + ' monto=' + r[_R.MONTO] + ' (' + r[1] + ')');
+      Logger.log('      esperaba id=' + it.id + ' cod=' + it.cod + ' monto=' + it.monto
+        + '  ·  encontró id=' + (r[_R.ID] || '(vacío)')
+        + ' cod=' + (r[_R.COD] || '(vacío)') + ' monto=' + r[_R.MONTO] + ' (' + r[1] + ')');
       Logger.log('      → los números de fila se corrieron. Volvé a correr buscarReservasAirbnbDuplicadas().');
       return;
     }
@@ -1351,15 +1371,46 @@ function _correccionesAirbnb_() {
     // Además, en 4 de ellas el parser no reconoció el nombre del anuncio y
     // quedaron sin cabaña; el export las pone todas en Portal (azul).
     // Correr esto DESPUÉS de reconciliarAirbnbINSERTAR().
-    { cod: 'HM2JSXHFE8', quien: 'Karldave',                 cabin: 'azul',  monto:  85.50, neto:  82.93 },
-    { cod: 'HMNP53QXR8', quien: 'Manuel',                   cabin: 'verde', monto:  85.50, neto:  82.93 },
-    { cod: 'HMPWNTCTZH', quien: 'Shelsy',                   cabin: 'verde', monto:  85.50, neto:  82.93 },
-    { cod: 'HMTJNZMTAR', quien: 'Stephanie',                cabin: 'verde', monto:  81.00, neto:  78.57 },
-    { cod: 'HMH822D3SA', quien: 'Barbara',                  cabin: 'verde', monto:  90.00, neto:  87.30 },
-    { cod: 'HM5N4SPEJR', quien: 'Michelle Brockmann',       cabin: 'verde', monto:  81.00, neto:  78.57 },
-    { cod: 'HMBX5SARFH', quien: 'Sandy Silvera Santamaria', cabin: 'azul',  monto: 110.00, neto: 106.70 },
-    { cod: 'HM8AX95KQ8', quien: 'Edmundo Alexander',        cabin: 'azul',  monto: 110.00, neto: 106.70 },
-    { cod: 'HMMFD55MMP', quien: 'Ana',                      cabin: 'azul',  monto: 110.00, neto: 106.70 }
+    // El cobro va acá y no lo resuelve actualizarEstadoPagoAirbnb: los payouts
+    // de mediados de 2025 quedaron fuera de la ventana de syncAirbnbPayouts, así
+    // que sus códigos no están en la hoja Pagos y estas 9 se verían "por cobrar"
+    // para siempre ($838.50 de bruto). La columna `Fecha` del export ES la fecha
+    // de payout: se validó contra Dianeth y Mario, que ya teníamos verificados
+    // en 2025-09-24 con $87.30 y $82.93.
+    { cod: 'HM2JSXHFE8', quien: 'Karldave',                 cabin: 'azul',  monto:  85.50, neto:  82.93,
+      fechaPago: '2025-07-01', montoPagado:  82.93, estadoPago: 'PAGA' },
+    { cod: 'HMNP53QXR8', quien: 'Manuel',                   cabin: 'verde', monto:  85.50, neto:  82.93,
+      fechaPago: '2025-07-01', montoPagado:  82.93, estadoPago: 'PAGA' },
+    { cod: 'HMPWNTCTZH', quien: 'Shelsy',                   cabin: 'verde', monto:  85.50, neto:  82.93,
+      fechaPago: '2025-07-17', montoPagado:  82.93, estadoPago: 'PAGA' },
+    { cod: 'HMH822D3SA', quien: 'Barbara',                  cabin: 'verde', monto:  90.00, neto:  87.30,
+      fechaPago: '2025-07-17', montoPagado:  87.30, estadoPago: 'PAGA' },
+    { cod: 'HMTJNZMTAR', quien: 'Stephanie',                cabin: 'verde', monto:  81.00, neto:  78.57,
+      fechaPago: '2025-08-27', montoPagado:  78.57, estadoPago: 'PAGA' },
+    { cod: 'HM5N4SPEJR', quien: 'Michelle Brockmann',       cabin: 'verde', monto:  81.00, neto:  78.57,
+      fechaPago: '2025-08-27', montoPagado:  78.57, estadoPago: 'PAGA' },
+    { cod: 'HMBX5SARFH', quien: 'Sandy Silvera Santamaria', cabin: 'azul',  monto: 110.00, neto: 106.70,
+      fechaPago: '2025-08-27', montoPagado: 106.70, estadoPago: 'PAGA' },
+    { cod: 'HM8AX95KQ8', quien: 'Edmundo Alexander',        cabin: 'azul',  monto: 110.00, neto: 106.70,
+      fechaPago: '2025-09-01', montoPagado: 106.70, estadoPago: 'PAGA' },
+    { cod: 'HMMFD55MMP', quien: 'Ana',                      cabin: 'azul',  monto: 110.00, neto: 106.70,
+      fechaPago: '2025-10-09', montoPagado: 106.70, estadoPago: 'PAGA' },
+
+    // Mairanis entró con el monto bien (el email de 2026 ya trae el bruto) pero
+    // el neto quedó copiado del bruto. La comisión de 2026 es 15.5%:
+    // 196.20 − 30.41 = 165.79, que es lo que pagó el payout del 22-jun.
+    { cod: 'HMEQYEZS85', quien: 'Mairanis Lopez', neto: 165.79 },
+
+    // Kenneth canceló el 8-may-2026, un día antes del check-in, y Airbnb pagó la
+    // penalización ($92.10). syncCancelacionesAirbnb lo había marcado CANCELADA,
+    // pero actualizarEstadoPagoAirbnb se lo revirtió a PAGA en la corrida
+    // siguiente (el bug que se arregló hoy). Como el email de cancelación ya
+    // figura procesado en la hoja Cancelaciones, no se va a volver a marcar
+    // solo: hay que escribirlo desde acá. Al quedar CANCELADA se resuelve además
+    // el choque del 9-may en azul con la directa de David Sauceda, que tomó esa
+    // noche al liberarse — el mismo patrón de Aneea y Jennifer.
+    { cod: 'HMP5R5WYAF', quien: 'Kenneth', estadoPago: 'CANCELADA',
+      comentario: 'Cancelada por el huésped el 8-may-2026. Sin reembolso por política, Airbnb pagó la penalización ($92.10). La noche la retomó David Sauceda (directa).' }
   ];
 }
 
