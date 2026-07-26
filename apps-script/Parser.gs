@@ -79,9 +79,27 @@ function syncAirbnbReservations() {
 // pendiente más reciente anterior a la confirmación. Además la solicitud sola no
 // debe tocar nada: el anfitrión puede rechazarla.
 //
+// OJO — una misma reserva puede tener VARIAS alteraciones a lo largo del tiempo,
+// y una solicitud rechazada (o vencida) se queda 'solicitada' para siempre. Sin
+// más cuidado, la confirmación de la alteración B terminaría emparejada con la
+// solicitud A y aplicaría fechas que nadie pidió. Caso real: HMP5R5WYAF
+// (Kenneth) tiene una confirmación del 29-mar-2026 y una solicitud del
+// 6-may-2026 que nunca se aceptó (canceló el 8). Por eso:
+//   · solo se empareja dentro de ALT_VENTANA_DIAS (Airbnb vence la solicitud del
+//     huésped a las 72 h, así que una semana es de sobra);
+//   · las solicitudes que pasan esa ventana sin confirmarse se cierran como
+//     'sin_confirmacion' y dejan de ser candidatas;
+//   · antes de escribir fechas se verifica que la fila tenga HOY las FECHAS
+//     ORIGINALES del email. Si no coinciden, el emparejamiento es dudoso y se
+//     marca para revisar en vez de pisar el rango bueno.
+// La confirmación NO trae el id de alteración (solo el código HM), así que
+// emparejar por id no es una opción.
+//
 // La versión anterior de esta función solo escribía '⚠ Verificar' en la columna
 // Alerta y nunca aplicaba el cambio — por eso Yarisel quedó con 3 personas y
 // $149 después de pasar a 4 viajeros y $169.
+const ALT_VENTANA_DIAS = 7;
+
 function syncAirbnbUpdates() {
   const sheet = getOrCreateSheet();
   const ss    = SpreadsheetApp.openById(SHEET_ID);
@@ -159,13 +177,14 @@ function syncAirbnbUpdates() {
         if (norm(filas[k][2]) !== norm(huesped)) continue;
         if (cab.nombre && norm(filas[k][3]) !== norm(cab.nombre)) continue;
         if ((filas[k][0] || '').toString() > fecha) continue;
+        if (_altDiasEntre(filas[k][0], fecha) > ALT_VENTANA_DIAS) continue;
         if (mejor < 0 || (filas[k][0] || '') > (filas[mejor][0] || '')) mejor = k;
       }
 
       if (mejor < 0) {
         sinPareja++;
-        Logger.log('⚠ Confirmación de ' + huesped + ' (' + cod + ') sin solicitud emparejable. '
-          + 'Se marca la reserva para revisar a mano.');
+        Logger.log('⚠ Confirmación de ' + huesped + ' (' + cod + ') sin solicitud emparejable '
+          + 'en los ' + ALT_VENTANA_DIAS + ' días previos. Se marca la reserva para revisar a mano.');
         _altMarcarRevisar(sheet, resData, cod, 'Airbnb confirmó un cambio pero no se encontró el detalle.');
         altSheet.appendRow([fecha, '', huesped, cab.nombre, '', '[]', 'aceptada_sin_detalle',
           fecha, msgId, cod, 'no']);
@@ -185,8 +204,37 @@ function syncAirbnbUpdates() {
       Logger.log((res.aplicado ? '✓ ' : '◐ ') + cod + ' (' + huesped + '): ' + res.detalle);
     }));
 
+  // ── Paso 3: cerrar solicitudes colgadas ────────────────────
+  // Una solicitud que pasó la ventana sin confirmarse fue rechazada o venció.
+  // Si se queda 'solicitada' es una mina para la próxima confirmación.
+  const ahora = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd HH:mm');
+  const finales = altSheet.getDataRange().getValues();
+  let vencidas = 0;
+  for (let k = 1; k < finales.length; k++) {
+    if ((finales[k][6] || '').toString() !== 'solicitada') continue;
+    if (_altDiasEntre(finales[k][0], ahora) <= ALT_VENTANA_DIAS) continue;
+    altSheet.getRange(k + 1, 7).setValue('sin_confirmacion');
+    vencidas++;
+  }
+
   Logger.log('Alteraciones · ' + nuevasSolic + ' solicitud(es) nueva(s) · ' + aplicados
-    + ' aplicada(s) · ' + sinPareja + ' sin detalle · ' + sinFila + ' sin fila en Reservas');
+    + ' aplicada(s) · ' + sinPareja + ' sin detalle · ' + sinFila + ' sin fila en Reservas · '
+    + vencidas + ' solicitud(es) cerrada(s) sin confirmar');
+}
+
+// Días entre dos timestamps 'yyyy-MM-dd HH:mm' (o 'yyyy-MM-dd'). Si alguno no
+// parsea devuelve Infinity, así que el que compara descarta el par en vez de
+// tomarlo por bueno.
+function _altDiasEntre(a, b) {
+  const p = s => {
+    const t = String(s == null ? '' : s).trim().replace(' ', 'T');
+    if (!t) return null;
+    const d = new Date(t.length === 10 ? t + 'T00:00:00' : t);
+    return isNaN(d.getTime()) ? null : d.getTime();
+  };
+  const ta = p(a), tb = p(b);
+  if (ta === null || tb === null) return Infinity;
+  return Math.abs(tb - ta) / 86400000;
 }
 
 // Extrae los bloques "X ORIGINALES … X SOLICITADOS" del cuerpo normalizado.
@@ -200,6 +248,57 @@ function _airbnbCambiosSolicitados(bodyN) {
     out.push({ que: m[1], antes: m[2].trim(), despues: m[3].trim() });
   }
   return out;
+}
+
+// Rango de fechas de un bloque "FECHAS ORIGINALES / SOLICITADAS".
+// Formato real del email (confirmado con el caso Kenneth):
+//     "9 de may. de 2026 - 10 de may. de 2026"
+// `parseFecha` NO sirve acá: su regex es `(\d{1,2})\s+(mes)` y acá entre el día
+// y el mes va un "de", así que devolvía null y ningún cambio de fecha se
+// aplicaba nunca. Además el email trae el AÑO explícito, que es mejor que
+// deducirlo de la fecha del mensaje (un cambio puede saltar de año).
+function _altRangoFechas(txt, baseISO) {
+  const t = String(txt == null ? '' : txt).replace(/\s+/g, ' ').trim();
+  if (!t) return null;
+  const MES = '(ene|feb|mar|abr|may|jun|jul|ago|sep|set|oct|nov|dic)[a-z]*\\.?';
+
+  const fechas = [];
+  const uno = new RegExp('(\\d{1,2})\\s+(?:de\\s+)?' + MES + '(?:\\s+de\\s+(\\d{4}))?', 'gi');
+  let m;
+  while ((m = uno.exec(t)) !== null) fechas.push(_altArmarFecha(m[1], m[2], m[3], baseISO));
+
+  // Variante compacta "9 - 10 de may. de 2026": el primer día no lleva mes.
+  if (fechas.length === 1) {
+    const comp = t.match(new RegExp(
+      '^(\\d{1,2})\\s*[-–—]\\s*(\\d{1,2})\\s+(?:de\\s+)?' + MES + '(?:\\s+de\\s+(\\d{4}))?$', 'i'));
+    if (comp) {
+      const a = _altArmarFecha(comp[1], comp[3], comp[4], baseISO);
+      const b = _altArmarFecha(comp[2], comp[3], comp[4], baseISO);
+      if (a && b) fechas.splice(0, 1, a, b);
+    }
+  }
+
+  if (fechas.length < 2 || !fechas[0] || !fechas[1]) return null;
+  if (fechas[1] <= fechas[0]) return null;          // check-out tiene que ser después
+  return { ci: fechas[0], co: fechas[1] };
+}
+
+function _altArmarFecha(dia, mesTxt, anio, baseISO) {
+  const d = parseInt(dia, 10);
+  if (!(d >= 1 && d <= 31)) return null;
+  const mm = monthToNum(String(mesTxt || '').slice(0, 3));
+  if (!mm) return null;
+  let y = anio ? parseInt(anio, 10) : 0;
+  if (!y) y = _anioParaEstadia_(parseInt(mm, 10), d, baseISO) || getCurrentYear(parseInt(mm, 10));
+  if (!(y >= 2000 && y <= 2100)) return null;
+  return y + '-' + mm + '-' + (d < 10 ? '0' + d : '' + d);
+}
+
+// Celda de fecha de la hoja → 'yyyy-MM-dd' (puede venir Date o string).
+function _altISO(v) {
+  if (!v) return '';
+  if (v instanceof Date) return Utilities.formatDate(v, 'America/Panama', 'yyyy-MM-dd');
+  return String(v).trim().slice(0, 10);
 }
 
 // Busca la fila por código y le escribe un aviso en Alerta (col 14).
@@ -243,11 +342,32 @@ function _altAplicarCambios(sheet, resData, cod, cambios, fechaConf) {
       }
     }
     if (que.indexOf('FECHA') === 0) {
-      const ds = (c.despues.match(/\d{1,2}\s+\w+/g) || []).map(x => parseFecha(x, fechaConf.slice(0, 10)));
-      if (ds.length >= 2 && ds[0] && ds[1]) {
-        sheet.getRange(fila, 5).setValue(ds[0]);
-        sheet.getRange(fila, 6).setValue(ds[1]);
-        detalle.push('fechas → ' + ds[0] + ' a ' + ds[1]);
+      const base    = fechaConf.slice(0, 10);
+      const antes   = _altRangoFechas(c.antes, base);
+      const despues = _altRangoFechas(c.despues, base);
+      if (despues) {
+        // Leer las fechas EN VIVO: si en esta misma corrida ya se aplicó otra
+        // alteración a la fila, `resData` quedó viejo.
+        const act   = sheet.getRange(fila, 5, 1, 2).getValues()[0];
+        const ciAct = _altISO(act[0]), coAct = _altISO(act[1]);
+
+        if (ciAct === despues.ci && coAct === despues.co) {
+          detalle.push('fechas ya estaban en ' + despues.ci + ' a ' + despues.co);
+          return;
+        }
+        // Solo pisar el rango si la fila tiene HOY las fechas que el email da
+        // por originales. Si no, el email puede estar mal emparejado (ver el
+        // comentario de syncAirbnbUpdates) y es preferible avisar.
+        if (!antes || (ciAct === antes.ci && coAct === antes.co)) {
+          sheet.getRange(fila, 5).setValue(despues.ci);
+          sheet.getRange(fila, 6).setValue(despues.co);
+          detalle.push('fechas → ' + despues.ci + ' a ' + despues.co);
+          return;
+        }
+        todoAplicado = false;
+        pendientes.push('FECHAS: la reserva está en ' + ciAct + '→' + coAct
+          + ' pero el email cambia ' + antes.ci + '→' + antes.co
+          + ' por ' + despues.ci + '→' + despues.co + ' (no coinciden, no se tocó)');
         return;
       }
     }
