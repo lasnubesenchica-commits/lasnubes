@@ -3145,15 +3145,22 @@ function _botHandleVoucherImage(from, imageId, contactName, conv) {
     return;
   }
   const monto = parseFloat(voucher.monto) || 0;
+  // Guardar la imagen en Drive AHORA: los bytes solo existen en este punto del
+  // flujo (el contexto de la conversación se persiste en una hoja, así que no
+  // puede cargar un base64). Antes se descartaban y la reserva quedaba con el
+  // código pero sin archivo — "sin archivo" en el modal.
+  const voucherUrl = _botGuardarVoucherEnDrive(img, voucher, contactName || from);
   // Recuperar campos extraidos del campo "Mensaje" del voucher (si el cliente los coloco)
   const extractedName  = voucher.nombreCompleto ? voucher.nombreCompleto.toString().trim() : '';
   const extractedEmail = voucher.email ? voucher.email.toString().trim().toLowerCase() : '';
   const newCtx = Object.assign({}, conv.context, {
     voucher: {
       monto: monto,
-      codTransferencia: voucher.codTransferencia,
+      // Mismo saneo que el dashboard (handleVoucherUpload): sin el '#' inicial.
+      codTransferencia: (voucher.codTransferencia || '').toString().replace(/^#/, ''),
       fechaPago: voucher.fechaPago || _botToday(),
-      sender:   voucher.sender || ''
+      sender:   voucher.sender || '',
+      url:      voucherUrl || ''
     },
     name:  extractedName  || (conv.context && conv.context.name)  || '',
     email: extractedEmail || (conv.context && conv.context.email) || ''
@@ -3181,6 +3188,47 @@ function _botHandleVoucherImage(from, imageId, contactName, conv) {
   // Tenemos email pero falta nombre
   sendWhatsAppText(from, confirmMsg + '\n\n¿Cuál es tu *nombre completo*?');
   _saveConv(from, 'AWAITING_NAME', newCtx, contactName);
+}
+
+// Sube a Drive el voucher que el cliente mandó por WhatsApp y devuelve su URL
+// ('' si algo falla — nunca debe tumbar el flujo de la reserva).
+//
+// Se apoya en saveVoucherToDrive para reusar el nombrado y la descripción del
+// archivo. La reserva todavía no existe como fila, así que ese paso interno no
+// encuentra nada que actualizar y solo loguea un aviso; el archivo igual queda
+// creado y su URL se guarda en el contexto para escribirla al crear la fila.
+// El `confirmCode` va con el código de transferencia para que la descripción lo
+// contenga y diagnosticarVouchersSinArchivo() pueda matchearlo después.
+function _botGuardarVoucherEnDrive(img, voucher, quien) {
+  try {
+    if (!img || !img.base64) return '';
+    const cod = (voucher && voucher.codTransferencia || '').toString().replace(/^#/, '');
+    const fake = {
+      id:          '',
+      name:        (voucher && voucher.sender) || quien || 'huesped',
+      cabin:       'wa',
+      checkin:     (voucher && voucher.fechaPago) || '',
+      checkout:    '',
+      amount:      (voucher && voucher.monto) || '',
+      deposit:     (voucher && voucher.monto) || '',
+      confirmCode: cod,
+      origin:      'Directa (Agente WhatsApp)'
+    };
+    const out  = saveVoucherToDrive(fake, img.base64, img.mimeType, 'voucher-wa.jpg', {
+      monto: (voucher && voucher.monto) || 0,
+      cod:   cod,
+      fecha: (voucher && voucher.fechaPago) || ''
+    });
+    const data = JSON.parse(out.getContent());
+    if (data && data.ok && data.fileUrl) {
+      logDebugEntry('bot-voucher-drive-OK', { cod: cod, url: data.fileUrl });
+      return data.fileUrl;
+    }
+    logDebugEntry('bot-voucher-drive-FAIL', { cod: cod, resp: JSON.stringify(data).slice(0, 200) });
+  } catch(err) {
+    logDebugEntry('bot-voucher-drive-CRASH', { error: err.message });
+  }
+  return '';
 }
 
 function _botCreatePreReservation(from, contactName, ctx) {
@@ -3236,7 +3284,23 @@ function _botCreatePreReservation(from, contactName, ctx) {
       _safeCell(from),
       'noche'                  // tipo
     ]);
-    logDebugEntry('bot-prereserva-OK', { id: id, name: fullName, cabin: cabin, from: from, skipVoucher: skipVoucher });
+    // Col 26 (VoucherURL) + col 32 (VouchersMeta): el archivo se subió a Drive
+    // cuando llegó la imagen; acá recién existe la fila donde anotarlo.
+    if (voucher.url) {
+      try {
+        const fila = sheet.getLastRow();
+        sheet.getRange(fila, 26).setValue(voucher.url);
+        sheet.getRange(fila, 32).setValue(JSON.stringify([{
+          monto: parseFloat(voucher.monto) || 0,
+          cod:   voucher.codTransferencia || '',
+          fecha: voucher.fechaPago || '',
+          url:   voucher.url
+        }]));
+      } catch(vErr) {
+        logDebugEntry('bot-prereserva-voucherurl-FAIL', { id: id, error: vErr.message });
+      }
+    }
+    logDebugEntry('bot-prereserva-OK', { id: id, name: fullName, cabin: cabin, from: from, skipVoucher: skipVoucher, voucherUrl: voucher.url || null });
   } catch(err) {
     logDebugEntry('bot-prereserva-FAIL', { error: err.message, stack: err.stack ? String(err.stack).slice(0, 400) : '' });
     sendWhatsAppText(from, '⚠️ Hubo un problema al registrar tu reserva. Te derivo con una persona del equipo.');
