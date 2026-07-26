@@ -1393,3 +1393,168 @@ function corregirReservasAirbnbDesdeExport(dryRun) {
 function corregirReservasAirbnbDesdeExportESCRIBIR() {
   return corregirReservasAirbnbDesdeExport(false);
 }
+
+// ═══════════════════════════════════════════════════════════
+//  Reparar el emparejamiento de Alteraciones
+// ═══════════════════════════════════════════════════════════
+//
+// El primer backfill de syncAirbnbUpdates() corrió con un bug: Sheets convierte
+// el string 'yyyy-MM-dd HH:mm' que escribimos en FechaSolicitud a un valor de
+// fecha, y al releerlo volvía un Date. La comparación de orden se hacía como
+// string —y "Sat Mar 28 2026 22:40:00 GMT-0500" es MAYOR que "2026-03-28
+// 22:43"— así que toda solicitud parecía posterior a su confirmación y el par
+// se descartaba. Ninguna de las 26 alteraciones históricas se emparejó, aunque
+// varias tenían la confirmación 2 o 3 minutos después de la solicitud.
+//
+// El bug ya está arreglado (_altTs en Parser.gs), pero syncAirbnbUpdates no
+// reprocesa: los msgId quedaron registrados en la hoja. Esta función re-empareja
+// usando los datos que YA están en Alteraciones —no vuelve a Gmail— y muestra
+// exactamente qué cambiaría en cada reserva.
+//
+// Corré primero repararAlteracionesReporte() (no escribe nada) y revisá el log.
+// Solo si el reporte se ve bien, corré repararAlteracionesAPLICAR().
+//
+// OJO al revisar: los cambios de FECHAS tienen red de seguridad (solo se
+// escriben si la fila tiene hoy las fechas originales del email), pero los de
+// VIAJEROS no la tienen — son un número y se escriben directo. Si un huésped
+// pidió varios cambios de viajeros y alguno se rechazó, revisá ese caso a mano
+// antes de aplicar.
+function repararAlteracionesHuerfanas(dryRun) {
+  if (dryRun !== false) dryRun = true;
+
+  const ss       = SpreadsheetApp.openById(SHEET_ID);
+  const altSheet = ss.getSheetByName('Alteraciones');
+  if (!altSheet) { Logger.log('No existe la hoja Alteraciones. Nada que reparar.'); return 0; }
+
+  const filas    = altSheet.getDataRange().getValues();
+  const resSheet = getOrCreateSheet();
+  const resData  = resSheet.getDataRange().getValues();
+
+  const norm = t => (t || '').toString().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+
+  // Solicitudes huérfanas y confirmaciones que quedaron sin detalle.
+  const solicitudes = [], confirmaciones = [];
+  for (let k = 1; k < filas.length; k++) {
+    const estado = (filas[k][6] || '').toString();
+    if (filas[k][1] && (estado === 'solicitada' || estado === 'sin_confirmacion')) solicitudes.push(k);
+    else if (filas[k][8] && estado === 'aceptada_sin_detalle') confirmaciones.push(k);
+  }
+  Logger.log((dryRun ? '[DRY-RUN · no escribe nada] ' : '[APLICANDO] ')
+    + solicitudes.length + ' solicitud(es) huérfana(s) · '
+    + confirmaciones.length + ' confirmación(es) sin detalle');
+  Logger.log('');
+
+  confirmaciones.sort((a, b) => _altTs(filas[a][7]).localeCompare(_altTs(filas[b][7])));
+
+  const usada = {};
+  let pares = 0, sinPareja = 0, aplicados = 0;
+
+  confirmaciones.forEach(ci => {
+    const fconf = _altTs(filas[ci][7]) || _altTs(filas[ci][0]);
+    const cod   = (filas[ci][9] || '').toString().trim().toUpperCase();
+    const hue   = norm(filas[ci][2]);
+    const cab   = norm(filas[ci][3]);
+
+    let mejor = -1;
+    solicitudes.forEach(si => {
+      if (usada[si]) return;
+      if (norm(filas[si][2]) !== hue) return;
+      const cabS = norm(filas[si][3]);
+      if (cab && cabS && cabS !== cab) return;
+      const fs = _altTs(filas[si][0]);
+      if (!fs || fs > fconf) return;
+      if (_altDiasEntre(fs, fconf) > ALT_VENTANA_DIAS) return;
+      if (mejor < 0 || fs > _altTs(filas[mejor][0])) mejor = si;
+    });
+
+    if (mejor < 0) {
+      sinPareja++;
+      Logger.log('· ' + (cod || '(sin código)') + ' — ' + (filas[ci][2] || '?')
+        + ' · ' + fconf + ': sigue sin solicitud emparejable.');
+      return;
+    }
+
+    usada[mejor] = true;
+    pares++;
+    let cambios = [];
+    try { cambios = JSON.parse(filas[mejor][5] || '[]'); } catch (_) {}
+
+    const gap = _altDiasEntre(_altTs(filas[mejor][0]), fconf);
+    Logger.log('■ ' + cod + ' — ' + (filas[ci][2] || '?') + ' (' + (filas[ci][3] || 'sin cabaña') + ')');
+    Logger.log('    solicitud ' + _altTs(filas[mejor][0]) + '  →  confirmada ' + fconf
+      + '   (' + (gap < 1 ? Math.round(gap * 1440) + ' min' : gap.toFixed(1) + ' días') + ')');
+    _altPreviewCambios(resData, cod, cambios).forEach(l => Logger.log('    ' + l));
+
+    if (!dryRun) {
+      const res = _altAplicarCambios(resSheet, resData, cod, cambios, fconf);
+      altSheet.getRange(mejor + 1, 7).setValue('aceptada');
+      altSheet.getRange(mejor + 1, 8).setValue(fconf);
+      altSheet.getRange(mejor + 1, 9).setValue(filas[ci][8]);
+      altSheet.getRange(mejor + 1, 10).setValue(cod);
+      altSheet.getRange(mejor + 1, 11).setValue(res.aplicado ? 'si' : 'parcial');
+      altSheet.getRange(ci + 1, 7).setValue('emparejada');     // deja de contar como huérfana
+      if (res.filaEncontrada) aplicados++;
+      Logger.log('    → ' + res.detalle);
+    }
+    Logger.log('');
+  });
+
+  if (!dryRun) SpreadsheetApp.flush();
+  Logger.log('─────────────────────────────────────────');
+  Logger.log((dryRun ? '[dry-run] ' : '') + pares + ' par(es) '
+    + (dryRun ? 'se emparejarían' : 'emparejados')
+    + (dryRun ? '' : ' · ' + aplicados + ' aplicado(s) a Reservas')
+    + ' · ' + sinPareja + ' confirmación(es) siguen sin pareja.');
+  if (dryRun) Logger.log('Nada se escribió. Si el reporte se ve bien: repararAlteracionesAPLICAR()');
+  return pares;
+}
+
+// Qué haría _altAplicarCambios, sin escribir. Devuelve líneas para el log.
+function _altPreviewCambios(resData, cod, cambios) {
+  const out = [];
+  let fila = -1;
+  for (let i = 1; i < resData.length; i++) {
+    if ((resData[i][10] || '').toString().trim().toUpperCase() === cod) { fila = i; break; }
+  }
+  if (fila < 0) return ['⚠ no hay fila en Reservas con el código ' + cod + ' — no se aplicaría nada.'];
+
+  const ciAct = _altISO(resData[fila][4]);
+  const coAct = _altISO(resData[fila][5]);
+  const perAct = resData[fila][6];
+  out.push('hoy la reserva dice: ' + ciAct + ' → ' + coAct + ' · ' + perAct + ' persona(s)');
+
+  if (!cambios.length) { out.push('sin detalle de cambios; no se aplicaría nada.'); return out; }
+
+  cambios.forEach(c => {
+    const que = (c.que || '').toUpperCase();
+    if (que.indexOf('VIAJERO') === 0 || que.indexOf('HUESPED') === 0) {
+      const n = parseInt((String(c.despues).match(/(\d+)/) || [])[1], 10);
+      if (n > 0) {
+        out.push(String(perAct) === String(n)
+          ? '✓ personas: ya está en ' + n + ' (no cambia nada)'
+          : '→ personas: ' + perAct + ' ⇒ ' + n + '   [sin red de seguridad: se escribe directo]');
+        return;
+      }
+    }
+    if (que.indexOf('FECHA') === 0) {
+      const antes   = _altRangoFechas(c.antes,   _altISO(new Date()));
+      const despues = _altRangoFechas(c.despues, _altISO(new Date()));
+      if (!despues) { out.push('⚠ FECHAS ilegibles (' + c.despues + '): quedaría anotado para revisar.'); return; }
+      if (ciAct === despues.ci && coAct === despues.co) {
+        out.push('✓ fechas: ya están en ' + despues.ci + ' → ' + despues.co + ' (no cambia nada)');
+      } else if (!antes || (ciAct === antes.ci && coAct === antes.co)) {
+        out.push('→ fechas: ' + ciAct + ' → ' + coAct + '  ⇒  ' + despues.ci + ' → ' + despues.co);
+      } else {
+        out.push('⊘ fechas: NO se tocarían. El email parte de ' + antes.ci + ' → ' + antes.co
+          + ' y la fila dice ' + ciAct + ' → ' + coAct + '. Se marcaría para revisar.');
+      }
+      return;
+    }
+    out.push('· ' + c.que + ': ' + c.antes + ' ⇒ ' + c.despues + '   [se anota, no se aplica]');
+  });
+  return out;
+}
+
+function repararAlteracionesReporte() { return repararAlteracionesHuerfanas(true); }
+function repararAlteracionesAPLICAR() { return repararAlteracionesHuerfanas(false); }
