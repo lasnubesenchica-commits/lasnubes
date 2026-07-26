@@ -3421,7 +3421,10 @@ function buildCheckinReminderHTML(r, meta, config) {
   const amount  = parseFloat(r.amount)  || 0;
   const deposit = parseFloat(r.deposit) || 0;
   const saldo   = (amount - deposit).toFixed(2);
-  const hasSaldo = amount > 0 && parseFloat(saldo) > 0;
+  // En un CERTIFICADO DE REGALO con fecha definida este recordatorio sí se
+  // dispara (el regalo "Abierta" nunca llega acá porque no tiene check-in).
+  // El beneficiario no debe ver saldo: lo pagó quien se lo regaló.
+  const hasSaldo = !esReservaRegalo(r) && amount > 0 && parseFloat(saldo) > 0;
   const pagarUrl = 'https://wa.me/50769812266?text=' + encodeURIComponent('Hola! Quiero cancelar el saldo restante de mi reserva del ' + meta.checkinFmt + ' en la cabaña ' + cabin + '.');
   const llegadaUrl = 'https://wa.me/50769812266?text=' + encodeURIComponent('Hola! Soy ' + (r.name || 'huésped') + ', llego mañana a Las Nubes (' + cabin + ').');
 
@@ -3600,7 +3603,11 @@ function enviarRecordatoriosCheckin() {
       // 12:30pm (ej. pasatarde convertido a noche) se anunciaría al default 2pm.
       checkoutExtendido: data[i][28] === true || data[i][28] === 'TRUE' || data[i][28] === 'true' || data[i][28] === 1,
       horaEntrada: _normalizeHora(data[i][29]),
-      horaSalida:  _normalizeHora(data[i][30])
+      horaSalida:  _normalizeHora(data[i][30]),
+      // Col 33: sin esto el recordatorio de un regalo con fecha le mostraría el
+      // saldo al beneficiario (ver buildCheckinReminderHTML).
+      regalo:      data[i][32] || '',
+      pagador:     data[i][14] || ''
     };
     if (!r.checkin) continue;
     if (r.estadoPago === 'CANCELADA') continue;
