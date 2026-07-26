@@ -2709,14 +2709,36 @@ function buildEmailHTMLAbierta(r) {
 // Número de contacto y cierre que se repiten en el certificado de regalo y en
 // la plantilla de WhatsApp. Fuente única para no desincronizar los canales.
 const REGALO_WA_NUMERO = '+507 6981-2266';
-const REGALO_COORDINAR_TXT = 'Para verificar disponibilidad y coordinar las fechas de tu reserva escríbenos al WhatsApp ' + REGALO_WA_NUMERO + '. Estaremos atentos 🙏';
+// El cierre se arma por canal y SIN el emoji: en el htmlBody de un email los
+// emoji crudos salen como "??????" en Gmail (el resto de las plantillas de este
+// archivo ya usa entidades numéricas por eso mismo). En WhatsApp, en cambio, el
+// carácter va tal cual. Ver _regaloCoordinarHTML() y REGALO_WA_COORDINAR_CORTO.
+const REGALO_COORDINAR_TXT = 'Para verificar disponibilidad y coordinar las fechas de tu reserva escríbenos al WhatsApp ' + REGALO_WA_NUMERO + '. Estaremos atentos';
 // Con fechas ya puestas no tiene sentido pedirle "coordinar las fechas", así que
 // la invitación se reformula sin perder el cierre.
-const REGALO_DUDAS_TXT = 'Si necesitas ajustar las fechas o tienes cualquier duda, escríbenos al WhatsApp ' + REGALO_WA_NUMERO + '. Estaremos atentos 🙏';
+const REGALO_DUDAS_TXT = 'Si necesitas ajustar las fechas o tienes cualquier duda, escríbenos al WhatsApp ' + REGALO_WA_NUMERO + '. Estaremos atentos';
 
 function _regaloCoordinarHTML(sinFecha) {
   const txt = sinFecha ? REGALO_COORDINAR_TXT : REGALO_DUDAS_TXT;
-  return '<p style="margin:0 0 16px;font-size:13px;color:#6b6560;line-height:1.7;">' + txt + '</p>';
+  // &#128591; = 🙏
+  return '<p style="margin:0 0 16px;font-size:13px;color:#6b6560;line-height:1.7;">' + txt + ' &#128591;</p>';
+}
+
+// Escapa texto que escribió el admin antes de meterlo en el HTML de un email
+// (dedicatoria, nombres). Sin esto un "<" en la dedicatoria rompe el layout.
+function _escHtmlEmail(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// Convierte los caracteres fuera del BMP (emoji) a entidades numéricas HTML.
+// Gmail muestra el emoji crudo del htmlBody como "??????", así que se pasa todo
+// el HTML por acá antes de enviarlo — cubre también los emoji que el admin
+// escriba en la dedicatoria. Los acentos (BMP) no se tocan.
+function _emojiAEntidades(html) {
+  return String(html == null ? '' : html)
+    .replace(/[\u{10000}-\u{10FFFF}]/gu, ch => '&#' + ch.codePointAt(0) + ';');
 }
 
 // Email de CERTIFICADO DE REGALO para el beneficiario.
@@ -2754,7 +2776,9 @@ function buildEmailHTMLRegalo(r) {
       '</tr>'
     : '<tr><td colspan="2" style="padding:20px 24px;border-top:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Fechas</p><p style="margin:0;font-size:15px;color:#3a3530;font-weight:500;">A coordinar</p><p style="margin:4px 0 0;font-size:12px;color:#8a8078;">Escríbenos cuando tengas tus fechas listas.</p></td></tr>';
 
-  return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>' +
+  // Todo el HTML pasa por _emojiAEntidades: en Gmail un emoji crudo en el
+  // htmlBody sale como "??????".
+  return _emojiAEntidades('<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>' +
 '<body style="margin:0;padding:0;background:#f5f3f0;font-family:\'Helvetica Neue\',Helvetica,Arial,sans-serif;">' +
 '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f3f0;padding:32px 16px;"><tr><td align="center">' +
 '<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">' +
@@ -2764,14 +2788,14 @@ function buildEmailHTMLRegalo(r) {
 '<p style="margin:10px 0 0;font-size:15px;color:rgba(255,255,255,0.9);">Buenos Aires, Chame · Panamá Oeste</p>' +
 '</td></tr>' +
 '<tr><td style="background:#ffffff;padding:36px 40px;">' +
-'<p style="margin:0 0 8px;font-size:16px;color:#3a3530;line-height:1.6;">Hola <strong>' + primer + '</strong>,</p>' +
+'<p style="margin:0 0 8px;font-size:16px;color:#3a3530;line-height:1.6;">Hola <strong>' + _escHtmlEmail(primer) + '</strong>,</p>' +
 '<p style="margin:0 0 22px;font-size:16px;color:#3a3530;line-height:1.6;">Te regalaron una estadía en Las Nubes. Este correo es tu certificado &mdash; guárdalo.</p>' +
 // Tarjeta del regalo: de parte de + dedicatoria
 '<table width="100%" cellpadding="0" cellspacing="0" style="background:#fdf8f0;border:1px solid #ecd9b8;border-left:4px solid ' + oro + ';border-radius:10px;margin-bottom:24px;"><tr><td style="padding:20px 24px;">' +
 '<p style="margin:0 0 4px;font-size:11px;color:#8a6a2f;text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">De parte de</p>' +
-'<p style="margin:0;font-size:19px;font-weight:600;color:#3a3530;font-family:Georgia,serif;">' + (g.de || 'alguien que te quiere') + '</p>' +
+'<p style="margin:0;font-size:19px;font-weight:600;color:#3a3530;font-family:Georgia,serif;">' + _escHtmlEmail(g.de || 'alguien que te quiere') + '</p>' +
 (g.mensaje
-  ? '<p style="margin:14px 0 0;padding:12px 16px;background:#ffffff;border:1px solid #ecd9b8;border-radius:8px;font-size:14px;color:#6b6560;line-height:1.65;font-style:italic;">&ldquo;' + g.mensaje + '&rdquo;</p>'
+  ? '<p style="margin:14px 0 0;padding:12px 16px;background:#ffffff;border:1px solid #ecd9b8;border-radius:8px;font-size:14px;color:#6b6560;line-height:1.65;font-style:italic;">&ldquo;' + _escHtmlEmail(g.mensaje) + '&rdquo;</p>'
   : '') +
 '</td></tr></table>' +
 // Qué incluye
@@ -2808,7 +2832,7 @@ function buildEmailHTMLRegalo(r) {
 '<p style="margin:0 0 8px;font-size:18px;font-weight:300;color:#ffffff;font-family:Georgia,serif;">Las <em>Nubes</em></p>' +
 '<p style="margin:0 0 12px;font-size:12px;color:rgba(255,255,255,0.6);">Buenos Aires, Chame · En las faldas de Chicá · Panamá Oeste</p>' +
 '<a href="https://wa.me/50769812266" style="color:rgba(255,255,255,0.8);font-size:13px;text-decoration:none;">&#128172; WhatsApp: +507 6981-2266</a>' +
-'</td></tr></table></td></tr></table></body></html>';
+'</td></tr></table></td></tr></table></body></html>');
 }
 
 // Banner para reservas multi-cabaña: se inserta arriba del bloque de detalles
