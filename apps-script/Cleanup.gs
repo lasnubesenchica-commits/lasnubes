@@ -551,3 +551,103 @@ function insertarReservasAirbnbFaltantes() {
   SpreadsheetApp.flush();
   Logger.log('✓ ' + insertados + ' reserva(s) insertada(s).');
 }
+
+// ═══════════════════════════════════════════════════════════
+//  G) DIAGNÓSTICO DEL PARSER DE RESERVAS AIRBNB
+//
+//  Vuelca EXACTAMENTE lo que ve `syncAirbnbReservations`: el `getPlainBody()`
+//  numerado línea por línea, y el resultado de `parseAirbnbEmail()` sobre ese
+//  mismo texto. Sirve para ver por qué un email no generó reserva sin depender
+//  de copiar/pegar (que rompe los saltos de línea, de los que el parser depende).
+//
+//  USO en el editor de Apps Script:
+//     diagnosticarEmailReserva('Yuliany')        // busca por nombre del huésped
+//     diagnosticarEmailReserva('HMBACCYQM9')     // o por código
+//     listarEmailsReservaAirbnb()                // lista los últimos y cuáles ya están en la hoja
+//
+//  El log de Apps Script trunca mensajes largos: si el body es muy grande,
+//  usá diagnosticarEmailReserva(x, true) para volcar SOLO las líneas clave.
+// ═══════════════════════════════════════════════════════════
+
+function _buscarMsgsReserva_(query) {
+  var threads = GmailApp.search('from:automated@airbnb.com subject:"Reserva confirmada:" newer_than:400d');
+  var out = [];
+  threads.forEach(function(t) {
+    t.getMessages().forEach(function(m) {
+      var hay = m.getSubject() + '\n' + m.getPlainBody();
+      if (!query || hay.toUpperCase().indexOf(String(query).toUpperCase()) >= 0) out.push(m);
+    });
+  });
+  return out;
+}
+
+function listarEmailsReservaAirbnb() {
+  var msgs = _buscarMsgsReserva_(null);
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  var data = sheet.getDataRange().getValues();
+  var cods = {};
+  for (var i = 1; i < data.length; i++) {
+    var c = String(data[i][_R.COD] || '').trim(); if (c) cods[c] = true;
+  }
+  Logger.log('=== Emails "Reserva confirmada" (últimos 400d): ' + msgs.length + ' ===');
+  msgs.forEach(function(m) {
+    var body = m.getPlainBody();
+    var cm = body.match(/\b(HM[A-Z0-9]{8})\b/);
+    var cod = cm ? cm[1] : '(sin código)';
+    var enHoja = cods[cod] ? '✓ en hoja' : '✗ FALTA EN LA HOJA';
+    var parsed = null;
+    try { parsed = parseAirbnbEmail(body, m.getId(),
+            Utilities.formatDate(m.getDate(), 'America/Panama', 'yyyy-MM-dd')); } catch (e) {}
+    Logger.log('  ' + Utilities.formatDate(m.getDate(), 'America/Panama', 'yyyy-MM-dd') +
+               ' ' + cod + ' ' + enHoja +
+               ' | parse: ' + (parsed ? ('OK ' + parsed.cabin + ' ' + parsed.checkin + '→' + parsed.checkout + ' $' + parsed.amount) : 'NULL ⚠') +
+               ' | ' + m.getSubject().slice(0, 60));
+  });
+}
+
+function diagnosticarEmailReserva(query, soloClaves) {
+  var msgs = _buscarMsgsReserva_(query);
+  if (!msgs.length) { Logger.log('⚠️ No se encontró ningún email que contenga: ' + query); return; }
+  Logger.log('=== ' + msgs.length + ' email(s) para "' + query + '" ===');
+  msgs.forEach(function(m, idx) {
+    var body = m.getPlainBody();
+    var fecha = Utilities.formatDate(m.getDate(), 'America/Panama', 'yyyy-MM-dd');
+    Logger.log('\n───────── EMAIL ' + (idx + 1) + ' ─────────');
+    Logger.log('Asunto: ' + m.getSubject());
+    Logger.log('Fecha : ' + fecha + '  | msgId: ' + m.getId());
+    Logger.log('Largo body: ' + body.length + ' chars');
+
+    // Qué extrae cada regex del parser (para ver cuál falla)
+    Logger.log('\n--- Lo que detecta cada regex ---');
+    var nameMatch = body.match(/([A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]+(?:\s+[A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]+){1,3})\s+\[https:\/\/www\.airbnb/);
+    Logger.log('  nombre (regex principal): ' + (nameMatch ? nameMatch[1] : 'NO MATCH → usa fallback'));
+    var cab = 'NINGUNA (default verde)';
+    for (var cn in CABINS) { if (body.toUpperCase().indexOf(cn.toUpperCase()) >= 0) { cab = cn + ' → ' + CABINS[cn]; break; } }
+    Logger.log('  cabaña: ' + cab);
+    var fm = body.match(/Llegada\s+Salida\s+(\w+,?\s+\d{1,2}\s+\w+)\s+(\w+,?\s+\d{1,2}\s+\w+)/i);
+    Logger.log('  fechas "Llegada Salida": ' + (fm ? (fm[1] + ' | ' + fm[2]) : 'NO MATCH'));
+    var nm = body.match(/por\s+(\d+)\s+noche/i);
+    Logger.log('  noches: ' + (nm ? nm[1] : 'NO MATCH'));
+    var tm = body.match(/Total\s*\(USD\)[^\$]*\$\s*([\d,\.]+)/i);
+    Logger.log('  total: ' + (tm ? tm[1] : 'NO MATCH ⚠'));
+    var cm = body.match(/\b(HM[A-Z0-9]{8})\b/);
+    Logger.log('  código: ' + (cm ? cm[1] : 'NO MATCH'));
+
+    var parsed = null, err = '';
+    try { parsed = parseAirbnbEmail(body, m.getId(), fecha); } catch (e) { err = e.message; }
+    Logger.log('\n--- Resultado de parseAirbnbEmail ---');
+    Logger.log(parsed ? JSON.stringify(parsed) : ('NULL ⚠' + (err ? ' · error: ' + err : '')));
+
+    // Body línea por línea (lo que realmente ve el parser)
+    var lines = body.split(/\r?\n/);
+    Logger.log('\n--- BODY (' + lines.length + ' líneas, numeradas) ---');
+    for (var i = 0; i < lines.length; i++) {
+      var l = lines[i];
+      if (soloClaves) {
+        var rel = /HM[A-Z0-9]{8}|Llegada|Salida|noche|Total|USD|Nubes|adulto|\d{1,2}\s+(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)/i.test(l);
+        if (!rel) continue;
+      }
+      Logger.log(String(i + 1).padStart(3, ' ') + '| ' + l);
+    }
+  });
+}
