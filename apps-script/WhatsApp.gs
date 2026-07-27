@@ -757,3 +757,46 @@ function crearPlantillaRegaloEnMeta(dryRun) {
 }
 
 function crearPlantillaRegaloEnMetaAHORA() { return crearPlantillaRegaloEnMeta(false); }
+
+// Estado de las plantillas en Meta, sin entrar a WhatsApp Manager.
+// Útil sobre todo después de crear una: queda en PENDING y hay que saber
+// cuándo pasó a APPROVED para dejar de depender del fallback.
+function verEstadoPlantillasWA() {
+  const cfg = _waProps();
+  if (!cfg.token || !cfg.businessId) {
+    Logger.log('⚠ Faltan WA_ACCESS_TOKEN o WA_BUSINESS_ACCOUNT_ID en Script Properties.');
+    return;
+  }
+  const url = 'https://graph.facebook.com/v21.0/' + cfg.businessId +
+              '/message_templates?fields=name,language,status,category,rejected_reason&limit=100';
+  const res = UrlFetchApp.fetch(url, {
+    headers: { Authorization: 'Bearer ' + cfg.token }, muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) {
+    Logger.log('HTTP ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 400));
+    return;
+  }
+  const data = JSON.parse(res.getContentText()).data || [];
+  const ICONO = { APPROVED: '✅', PENDING: '⏳', REJECTED: '❌', PAUSED: '⏸', DISABLED: '🚫' };
+  Logger.log('═══ PLANTILLAS DE WHATSAPP (' + data.length + ') ═══');
+  Logger.log('');
+  data.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  data.forEach(t => {
+    Logger.log((ICONO[t.status] || '·') + ' ' + t.name + '  (' + t.language + ' · ' + t.category + ')'
+      + '  → ' + t.status + (t.rejected_reason && t.rejected_reason !== 'NONE'
+        ? '  motivo: ' + t.rejected_reason : ''));
+  });
+  const regalo = data.filter(t => t.name === 'certificado_regalo')[0];
+  Logger.log('');
+  if (!regalo) {
+    Logger.log('· certificado_regalo no aparece todavía. Los envíos de regalo siguen');
+    Logger.log('  cayendo al fallback confirmacion_reserva, que funciona.');
+  } else if (regalo.status === 'APPROVED') {
+    Logger.log('✅ certificado_regalo está aprobada. Probala con testEnviarPlantillaRegalo().');
+  } else if (regalo.status === 'REJECTED') {
+    Logger.log('❌ certificado_regalo fue rechazada (' + (regalo.rejected_reason || 's/motivo') + ').');
+    Logger.log('   Los envíos siguen usando el fallback, así que nada se rompe mientras se resuelve.');
+  } else {
+    Logger.log('⏳ certificado_regalo sigue en ' + regalo.status + '. Mientras tanto los envíos');
+    Logger.log('   caen al fallback confirmacion_reserva, que funciona.');
+  }
+}
