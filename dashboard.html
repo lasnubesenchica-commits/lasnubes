@@ -8385,11 +8385,19 @@ async function handleVoucherUpload(event) {
     // autollenaran Huésped/Email/Teléfono se pisaría al beneficiario, que es
     // justamente quien recibe las notificaciones.
     const _esRegalo = !!(document.getElementById('fEsRegalo') || {}).checked;
+    // Y en una reserva que YA tiene datos tampoco se pisa lo que el admin
+    // escribió: el banco abrevia el nombre ("Alfreda H.", "Severino V.") y el
+    // que paga no siempre es el que se hospeda. Al re-subir los vouchers
+    // perdidos de 2026 esto renombró media docena de reservas, y en dos borró
+    // quién era el huésped — Meybis Hernandez quedó como "Alfreda H." y solo
+    // el email delató la sobrescritura. Se sigue autollenando cuando el campo
+    // está VACÍO, que es el caso de una reserva nueva armada desde el voucher.
+    const _vacio = el => el && !el.value.trim();
     const nombreFinal = pendingVoucher.nombreCompleto || pendingVoucher.sender || '';
-    if (nombreFinal && !_esRegalo) fName.value = nombreFinal;
-    if (pendingVoucher.sender) fPagador.value = pendingVoucher.sender;
-    if (pendingVoucher.email && !_esRegalo) fEmail.value = pendingVoucher.email;
-    if (pendingVoucher.telefono && !_esRegalo) fTelefono.value = pendingVoucher.telefono;
+    if (nombreFinal && !_esRegalo && _vacio(fName)) fName.value = nombreFinal;
+    if (pendingVoucher.sender && _vacio(fPagador)) fPagador.value = pendingVoucher.sender;
+    if (pendingVoucher.email && !_esRegalo && _vacio(fEmail)) fEmail.value = pendingVoucher.email;
+    if (pendingVoucher.telefono && !_esRegalo && _vacio(fTelefono)) fTelefono.value = pendingVoucher.telefono;
     if (_esRegalo && pendingVoucher.sender) {
       const _rgDeEl = document.getElementById('fRegaloDe');
       if (_rgDeEl && !_rgDeEl.value.trim()) _rgDeEl.value = pendingVoucher.sender;
