@@ -2828,13 +2828,13 @@
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
         <div class="ocu-chart-title" style="margin-bottom:0;">Reservas del período</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-          <select id="ocuResFilterOrigen" onchange="renderOcuResTable(_ocuResLast)" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
+          <select id="ocuResFilterOrigen" onchange="renderOcuResTable()" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
             <option value="">Todos los orígenes</option>
             <option value="Airbnb">Airbnb</option>
             <option value="Directa">Directa</option>
             <option value="Otro">Otro</option>
           </select>
-          <select id="ocuResFilterCabin" onchange="renderOcuResTable(_ocuResLast)" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
+          <select id="ocuResFilterCabin" onchange="renderOcuResTable()" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
             <option value="">Todas las cabañas</option>
             <option value="verde">Paseo</option>
             <option value="azul">Portal</option>
@@ -4905,7 +4905,9 @@ function reservaDisplayDates(r) {
 // Noches reales según tipo (0 para pasadías, 1 para early/late, N para noche)
 function reservaNochesReales(r) {
   const tipo = r.tipo || 'noche';
-  if (tipo === 'pasatarde' || tipo === 'pasadia') return 0;
+  // `pasadia-largo` se guarda como día−1 → día+1 (la cortesía de la noche
+  // anterior), así que restar checkout−checkin daba 2 noches para un pasadía.
+  if (tipo === 'pasatarde' || tipo === 'pasadia' || tipo === 'pasadia-largo') return 0;
   if (tipo === 'early' || tipo === 'late') return 1;
   if (!r.checkin || !r.checkout) return 0;
   return Math.round((new Date(r.checkout+'T12:00:00') - new Date(r.checkin+'T12:00:00')) / 86400000);
@@ -4917,6 +4919,7 @@ function reservaDuracionLabel(r) {
   if (tipo === 'pasatarde')       return 'Pasatarde';
   if (tipo === 'pasanoche')       return 'Pasanoche';
   if (tipo === 'pasadia')         return 'Pasadía';
+  if (tipo === 'pasadia-largo')   return 'Pasadía larga';
   const n = reservaNochesReales(r);
   return n + (n === 1 ? ' noche' : ' noches');
 }
@@ -12163,9 +12166,15 @@ function getOcuDateRange() {
 //  el período ahora sale de los chips compartidos con Contabilidad.)
 
 let _ocuResLast = [];
+let _ocuResCtx  = null;
 
-function renderOcuResTable(res) {
-  if (res) _ocuResLast = res; else res = _ocuResLast;
+// `ctx` (opcional) trae lo que hace falta para cuadrar el pie contra los KPIs
+// de arriba: cuántas noches de cada reserva caen DENTRO del período y cuáles
+// filas cuentan como ingreso. Sin ctx la tabla sigue funcionando (solo pierde
+// los paréntesis aclaratorios) — la usan los filtros, que re-renderizan sin él.
+function renderOcuResTable(res, ctx) {
+  if (res) { _ocuResLast = res; _ocuResCtx = ctx || null; }
+  else     { res = _ocuResLast; ctx = _ocuResCtx; }
   const tbody = document.getElementById('ocuResTableBody');
   const tfoot = document.getElementById('ocuResTableFoot');
   if (!tbody) return;
@@ -12185,17 +12194,29 @@ function renderOcuResTable(res) {
     return;
   }
 
-  let totalNoches = 0, totalMonto = 0;
+  let totalNoches = 0, totalMonto = 0, nochesPeriodo = 0, montoIngreso = 0;
   tbody.innerHTML = rows.map(r => {
     const nights = reservaNochesReales(r);
     const duracion = reservaDuracionLabel(r);
     const _dd = reservaDisplayDates(r);
+    const monto = parseFloat(r.neto||r.amount||0);
     totalNoches += nights;
-    totalMonto  += parseFloat(r.neto||r.amount||0);
+    totalMonto  += monto;
+    if (ctx) {
+      nochesPeriodo += (ctx.nochesPeriodo && ctx.nochesPeriodo[r.id]) || 0;
+      if (ctx.ingresoIds && ctx.ingresoIds.has(r.id)) montoIngreso += monto;
+    }
+    // Un origen sin cobro (Cortesía, Colaboración, Personal…) no está
+    // "pendiente de pago": nunca se va a cobrar. Marcarlo con el mismo ○ que
+    // una reserva impaga hacía leer como morosidad algo que es regalo.
     const badge = r.estadoPago === 'CANCELADA'
       ? '<span class="pago-badge pago-CANCELADA">✕ Cancelada</span>'
+      : (typeof SIN_PAGO_ORIGINS !== 'undefined' && SIN_PAGO_ORIGINS.includes(r.origin))
+        ? '<span class="pago-badge" style="background:var(--bg);color:var(--text-light);">— Sin cobro</span>'
       : (r.estadoPago === 'PAGA' || r.fechaPago)
         ? '<span class="pago-badge pago-PAGA">✓ Paga</span>'
+      : r.estadoPago === 'ABONADO'
+        ? '<span class="pago-badge pago-ABONADO">⬤ Abonado</span>'
         : '<span class="pago-badge pago-PENDIENTE">○ Pendiente</span>';
     return `<tr>
       <td>${escapeHtml(r.name)||'—'}</td>
@@ -12209,12 +12230,22 @@ function renderOcuResTable(res) {
     </tr>`;
   }).join('');
 
+  // Aclaraciones para que el pie cuadre con los KPIs de arriba. Las filas
+  // muestran la estadía COMPLETA y todo lo que ocupa (incluido lo que no se
+  // cobra); los KPIs cuentan solo lo que cae dentro del período y solo lo que
+  // es ingreso. Cuando difieren, se dice en vez de dejar dos números sueltos.
+  const sub = v => `<div style="font-weight:400;font-size:10px;color:var(--text-light);">${v}</div>`;
+  const nochesSub = (ctx && nochesPeriodo !== totalNoches)
+    ? sub(`${nochesPeriodo} en el período`) : '';
+  const montoSub  = (ctx && Math.abs(montoIngreso - totalMonto) > 0.005)
+    ? sub(`$${montoIngreso.toFixed(2)} ingreso`) : '';
+
   if (tfoot) tfoot.innerHTML = `<tr style="font-weight:700;border-top:2px solid var(--border);background:var(--bg);">
     <td colspan="2" style="padding:6px 10px 6px 12px;">${rows.length} reserva${rows.length!==1?'s':''}</td>
     <td colspan="2"></td>
-    <td style="text-align:center;">${totalNoches}</td>
+    <td style="text-align:center;">${totalNoches}${nochesSub}</td>
     <td></td>
-    <td style="text-align:right;">$${totalMonto.toFixed(2)}</td>
+    <td style="text-align:right;">$${totalMonto.toFixed(2)}${montoSub}</td>
     <td></td>
   </tr>`;
 }
@@ -12594,15 +12625,11 @@ function renderOcupacion() {
     const hayReal = detalle.some(x => !x.imputado);
     const fmtC    = v => '$' + v.toLocaleString('es-PA', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
+    // Sin colaboraciones la tarjeta se oculta, igual que Pasadías. La grilla es
+    // auto-fit, así que la que quede toma el ancho completo y no deja hueco.
+    colabCard.style.display = colabs.length ? '' : 'none';
     if (!colabs.length) {
-      colabContent.innerHTML = `
-        <div style="display:flex;align-items:baseline;gap:10px;">
-          <span style="font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:600;color:var(--text-muted);line-height:1;">0</span>
-          <span style="font-size:12px;color:var(--text-muted);">sin colaboraciones en el período</span>
-        </div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:8px;">
-          Se cuentan las reservas con origen <strong>Colaboración</strong>.
-        </div>`;
+      colabContent.innerHTML = '';
     } else {
       const unidades = [];
       if (noches) unidades.push(noches + (noches === 1 ? ' noche' : ' noches'));
@@ -12846,7 +12873,14 @@ function renderOcupacion() {
     r.checkout > fromStr && r.checkin <= toStr &&
     r.estadoPago !== 'CANCELADA' && r.origin !== 'Abierta'
   );
-  renderOcuResTable(checkinRes);
+  // Mismos criterios que los KPIs de arriba: `diasDeReserva` recorta al período
+  // y `esIngresoOcu` excluye los orígenes sin cobro y los créditos abiertos.
+  const _nochesPeriodo = {}, _ingresoIds = new Set();
+  checkinRes.forEach(r => {
+    _nochesPeriodo[r.id] = diasDeReserva(r, fromStr, toStrExcl).filter(k => k.kind === 'noche').length;
+    if (esIngresoOcu(r)) _ingresoIds.add(r.id);
+  });
+  renderOcuResTable(checkinRes, { nochesPeriodo: _nochesPeriodo, ingresoIds: _ingresoIds });
 }
 
 
