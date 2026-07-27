@@ -2224,15 +2224,21 @@
           <option value="azul">Portal hacia Las Nubes</option>
           <option value="lila">Puente entre Las Nubes</option>
         </select>
-        <select class="filter-select" id="filterMonth" onchange="onFilterMonthChange()">
-          <option value="">Todos los meses</option>
-        </select>
         <button type="button" id="filterFaltaBtn" class="filter-select" onclick="toggleFiltroFalta()" title="Mostrar solo las que tienen saldo pendiente">⚠ Falta<span class="lbl-long"> cobrar</span></button>
-        <div id="filterCustomRange" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;">
-          <input type="date" id="filterDateFrom" class="filter-select" style="font-size:13px;padding:6px 10px;border-radius:8px;" onchange="renderList()">
-          <span style="font-size:13px;color:var(--text-muted);">→</span>
-          <input type="date" id="filterDateTo" class="filter-select" style="font-size:13px;padding:6px 10px;border-radius:8px;" onchange="renderList()">
-        </div>
+      </div>
+
+      <!-- Selector de período: el MISMO de Contabilidad y Ocupación, con estado
+           compartido. Antes acá había un <select> propio que se poblaba después
+           de renderizar la lista, así que mostraba "Julio 2026" mientras la
+           lista traía las 502 reservas del histórico. -->
+      <div class="month-filter" id="resMonthFilter" style="margin-bottom:12px;"></div>
+      <div id="resCustomRangePopover" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding:10px 12px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;">
+        <label style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Desde</label>
+        <input type="date" id="resCustomRangeFrom" style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+        <label style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Hasta</label>
+        <input type="date" id="resCustomRangeTo"   style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+        <button onclick="_applyCustomRange('resCustomRange')" style="padding:6px 14px;font-size:12px;font-weight:600;border:none;border-radius:6px;background:var(--verde-dark);color:#fff;cursor:pointer;">Aplicar</button>
+        <button onclick="_cancelCustomRange()" style="padding:6px 12px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-muted);cursor:pointer;">Cancelar</button>
       </div>
 
       <!-- Tabs -->
@@ -3807,7 +3813,6 @@ async function syncFromSheets() {
 
       renderCalendar();
       renderList();
-      populateMonthFilter();
       renderDisponibilidad();
 
       // ── Sync pagos from Sheet ─────────────────────────────────
@@ -6474,7 +6479,7 @@ function openModalWithType(cabin, date, tipo) {
 function switchView(v) {
   document.getElementById('calendarView').style.display = v==='calendar' ? '' : 'none';
   document.getElementById('listView').style.display = v==='list' ? '' : 'none';
-  if(v==='list') { renderList(); populateMonthFilter(); }
+  if(v==='list') renderList();
 }
 
 
@@ -6605,43 +6610,11 @@ function handleDayClick(cabin, date) {
 }
 
 // ─── LIST ────────────────────────────────────────────────────
-function populateMonthFilter() {
-  const sel = document.getElementById('filterMonth');
-  if (!sel) return;
-  const now = new Date();
-  const thisMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
-  // Union of fechaReserva months and checkin months
-  const months = [...new Set([
-    ...reservations.map(r => (r.fechaReserva||'').slice(0,7)),
-    ...reservations.map(r => (r.checkin||'').slice(0,7))
-  ].filter(Boolean))].sort().reverse();
-  const current = sel.value;
-  sel.innerHTML = '<option value="">Todos los meses</option>';
-  months.forEach(m => {
-    const [y,mo] = m.split('-');
-    sel.innerHTML += `<option value="${m}"${m===thisMonth?' selected':''}>${MONTHS[parseInt(mo)-1]} ${y}</option>`;
-  });
-  sel.innerHTML += '<option value="custom">Rango personalizado…</option>';
-  // Restore previous value if still valid
-  if (current && current !== 'custom' && months.includes(current)) sel.value = current;
-  else if (!current) sel.value = thisMonth;
-}
+// El selector de período de Reservas es ahora el compartido con Contabilidad y
+// Ocupación (chips `_renderChipsPeriodo` + estado `selectedMonth`/`selectedRange`).
+// Acá vivían populateMonthFilter() y onFilterMonthChange(), que manejaban un
+// <select> propio; se borraron con él.
 
-function onFilterMonthChange() {
-  const val     = document.getElementById('filterMonth').value;
-  const rangeEl = document.getElementById('filterCustomRange');
-  if (val === 'custom') {
-    rangeEl.style.display = 'flex';
-    const today = new Date().toISOString().slice(0,10);
-    const fromEl = document.getElementById('filterDateFrom');
-    const toEl   = document.getElementById('filterDateTo');
-    if (!fromEl.value) { const d = new Date(); d.setDate(1); fromEl.value = d.toISOString().slice(0,10); }
-    if (!toEl.value)   toEl.value = today;
-  } else {
-    rangeEl.style.display = 'none';
-  }
-  renderList();
-}
 
 // Estado de pago EFECTIVO de una reserva. La columna `EstadoPago` de la hoja no
 // alcanza: solo se recalcula al subir un voucher, así que un pago registrado a
@@ -6925,16 +6898,11 @@ function setReservasTab(tab) {
   // hacen nada acá. Dejarlos visibles invita a tocarlos y no pasa nada, que se
   // lee como que la pestaña está rota.
   const esAb = tab === 'abiertas';
-  ['filterMonth', 'filterFaltaBtn'].forEach(id => {
+  ['resMonthFilter', 'filterFaltaBtn'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = esAb ? 'none' : '';
   });
-  // Al salir de Abiertas hay que devolverle el rango custom su estado real, no
-  // dejarlo escondido porque lo ocultamos nosotros.
-  const cr = document.getElementById('filterCustomRange');
-  const mes = (document.getElementById('filterMonth') || {}).value;
-  if (cr) cr.style.display = (!esAb && mes === 'custom') ? 'flex' : 'none';
-  renderList();
+  renderList();   // repinta el popover del rango custom según la pestaña
 }
 
 let activeWidget = null; // tracks which widget is active for filtering
@@ -7336,20 +7304,25 @@ function renderList() {
   renderAbiertas();
   populateCxCMonth();
 
-  const cabin   = document.getElementById('filterCabin').value;
-  const month   = document.getElementById('filterMonth').value;
-  const search  = (document.getElementById('filterSearch').value || '').toLowerCase().trim();
-  const isCustom = month === 'custom';
-  const dateFrom = isCustom ? (document.getElementById('filterDateFrom')?.value || '') : '';
-  const dateTo   = isCustom ? (document.getElementById('filterDateTo')?.value   || '') : '';
+  // Período: el MISMO estado que Contabilidad y Ocupación (`selectedMonth` /
+  // `selectedRange`), pintado con los mismos chips. El <select> propio que
+  // había acá se poblaba DESPUÉS de renderizar la lista, así que mostraba
+  // "Julio 2026" mientras la lista traía las 502 reservas del histórico: el
+  // rótulo y los datos no podían desincronizarse más.
+  _ensurePeriodDefault();
+  // Hasta el último mes con llegadas registradas, para poder mirar hacia
+  // adelante desde la pestaña Check-in.
+  const _ultCheckin = reservations.reduce((mx, r) => {
+    const m = (r.checkin || '').slice(0, 7);
+    return m > mx ? m : mx;
+  }, '');
+  _renderChipsPeriodo('resMonthFilter', { hastaMes: _ultCheckin });
+  const _pop = document.getElementById('resCustomRangePopover');
+  if (_pop) _pop.style.display = (_customRangeOpen && _resTab !== 'abiertas') ? 'flex' : 'none';
 
-  // Helper: does a date string fall within the selected filter?
-  function matchesFilter(dateStr) {
-    if (!dateStr) return false;
-    if (!month)   return true;
-    if (isCustom) return dateStr >= dateFrom && dateStr <= dateTo;
-    return dateStr.startsWith(month);
-  }
+  const cabin   = document.getElementById('filterCabin').value;
+  const search  = (document.getElementById('filterSearch').value || '').toLowerCase().trim();
+  const matchesFilter = _matchesSelectedPeriod;
 
   // ── Tab: Por fecha de reserva ────────────────────────────────
   let dataFR = [...reservations]
@@ -7360,7 +7333,7 @@ function renderList() {
   // checkin`). Filtrando solo por `fechaReserva`, una reserva sin ese dato
   // mostraba su check-in pero desaparecía de todos los meses: solo se veía
   // quitando el filtro, sin ninguna señal de que faltaba.
-  if (month)  dataFR = dataFR.filter(r => matchesFilter(r.fechaReserva || r.checkin || ''));
+  dataFR = dataFR.filter(r => matchesFilter(r.fechaReserva || r.checkin || ''));
   if (search) dataFR = dataFR.filter(r => (r.name||'').toLowerCase().includes(search));
   if (_soloFalta) dataFR = dataFR.filter(r => _faltaCobrar(r) > 0);
 
@@ -7391,7 +7364,7 @@ function renderList() {
     .filter(r => r.origin !== 'Abierta' && r.estadoPago !== 'CANCELADA' && r.checkin)
     .sort((a,b) => (a.checkin||'').localeCompare(b.checkin||''));
   if (cabin)  dataCi = dataCi.filter(r => r.cabin === cabin);
-  if (month)  dataCi = dataCi.filter(r => matchesFilter(r.checkin||''));
+  dataCi = dataCi.filter(r => matchesFilter(r.checkin||''));
   if (search) dataCi = dataCi.filter(r => (r.name||'').toLowerCase().includes(search));
   if (_soloFalta) dataCi = dataCi.filter(r => _faltaCobrar(r) > 0);
 
@@ -10054,6 +10027,8 @@ function setPeriod(preset) {
 function _rerenderPorPeriodo() {
   const ocu = document.getElementById('ocupacion');
   if (ocu && ocu.classList.contains('active')) { renderOcupacion(); return; }
+  const res = document.getElementById('reservas');
+  if (res && res.classList.contains('active')) { renderList(); return; }
   renderContabilidad();
   _renderActiveContabTab();
 }
@@ -10071,6 +10046,19 @@ function _applyCustomRange(prefijo) {
   selectedRange = { from, to, presetKey: 'custom', label: 'Custom' };
   _customRangeOpen = false;
   _rerenderPorPeriodo();
+}
+
+// Solo en el PRIMER render auto-elegimos "Este mes" como default; después
+// respetamos la selección explícita del usuario. Vivía dentro de
+// renderContabilidad, así que si entrabas primero a Reservas —que ahora usa el
+// mismo período— `selectedMonth` seguía en null y salía el histórico completo.
+function _ensurePeriodDefault() {
+  if (_selectedMonthInitialized) return;
+  _selectedMonthInitialized = true;
+  if (!selectedMonth && !selectedRange) {
+    const now = new Date();
+    selectedMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  }
 }
 
 function _cancelCustomRange() {
@@ -10171,13 +10159,26 @@ function _brutoDeCobroAirbnb(p) {
 // El estado es compartido (`selectedMonth` / `selectedRange`), así que el
 // período elegido vale para los dos tabs. Es lo que uno espera: si estoy
 // mirando julio en Contabilidad y salto a Ocupación, quiero julio.
-function _renderChipsPeriodo(containerId) {
+// `opts.hastaMes` ('YYYY-MM') extiende los chips MÁS ALLÁ del mes actual.
+// Contabilidad y Ocupación miran hacia atrás, así que cortan en "Este mes";
+// pero la pestaña Check-in de Reservas lista LLEGADAS, que son casi todas
+// futuras — sin meses por delante no se podía ver quién llega en agosto salvo
+// con Custom. El <select> viejo sí los ofrecía (armaba las opciones con los
+// meses presentes en los datos), así que sin esto la unificación perdía
+// funcionalidad.
+function _renderChipsPeriodo(containerId, opts) {
+  opts = opts || {};
   const mf = document.getElementById(containerId);
   if (!mf) return;
   const _now       = new Date();
   const _rangeKey  = selectedRange ? selectedRange.presetKey : null;
   const _yr        = _now.getFullYear();
   const _curMo     = _now.getMonth();
+  // Solo meses del año en curso: los chips son una fila corta, no un calendario.
+  let _ultMo = _curMo;
+  if (opts.hastaMes && opts.hastaMes.slice(0, 4) === String(_yr)) {
+    _ultMo = Math.max(_curMo, Math.min(11, parseInt(opts.hastaMes.slice(5, 7), 10) - 1));
+  }
 
   const _chip = (label, active, onclick, opts) => {
     opts = opts || {};
@@ -10192,7 +10193,7 @@ function _renderChipsPeriodo(containerId) {
   // "Este mes", y al final "Custom…" para cualquier otro rango.
   let chipsHtml = _chip('YTD', _rangeKey === 'ytd', `setPeriod('ytd')`,
                         { preset: true, title: `Año a la fecha (1-ene ${_yr} → hoy)` });
-  for (let mo = 0; mo <= _curMo; mo++) {
+  for (let mo = 0; mo <= _ultMo; mo++) {
     const mStr  = _yr + '-' + String(mo + 1).padStart(2, '0');
     const isCur = mo === _curMo;
     const label = isCur ? 'Este mes' : `${MONTHS[mo]} ${_yr}`;
@@ -10223,15 +10224,7 @@ function renderContabilidad() {
   //  p.fechaCobro.slice(0,7) sin guard: un pago sin fecha rompía el render
   //  entero del panel. Los chips del filtro se arman del año en curso.)
 
-  // Solo en el PRIMER render auto-elegimos "Este mes" (mes actual) como
-  // default. A partir de ahí respetamos la selección explícita del usuario.
-  if (!_selectedMonthInitialized) {
-    _selectedMonthInitialized = true;
-    if (!selectedMonth && !selectedRange) {
-      const now = new Date();
-      selectedMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
-    }
-  }
+  _ensurePeriodDefault();
 
   const mf = document.getElementById('monthFilter');
   const _now = new Date();
@@ -14854,7 +14847,6 @@ function getContabDateRange() {
 
 // ─── INIT ────────────────────────────────────────────────────
 renderCalendar();
-populateMonthFilter();
 renderDisponibilidad();
 // Ocupación se inicializa en syncFromSheets tras cargar datos
 // Auto-sync con Google Sheets al cargar y cada 15 minutos
