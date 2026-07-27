@@ -12222,6 +12222,12 @@ function renderOcupacion() {
 
   const fromDate = new Date(fromStr + 'T12:00:00');
   const toEnd    = new Date(toStr   + 'T12:00:00');
+  // Primer día DESPUÉS del período, para comparar con `< toStrExcl` sin tener que
+  // acordarse de usar <= en un lado y < en el otro.
+  const toStrExcl = (() => {
+    const d = new Date(toStr + 'T12:00:00'); d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  })();
 
   const MONTHS_ES  = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   const CABINS_LIST = [
@@ -12245,51 +12251,57 @@ function renderOcupacion() {
     cur = new Date(cur.getFullYear(), cur.getMonth()+1, 1);
   }
 
-  // ── Single source of truth: nights of reservation r inside [a, bExcl) ─
-  // a = primer día del período (inclusive), bExcl = primer día DESPUÉS del período (exclusive)
-  // Ejemplo: febrero → a='2026-02-01', bExcl='2026-03-01'
-  function nightsInPeriod(r, a, bExcl) {
-    if (!r.checkin || !r.checkout) return 0;
-    const start = r.checkin  > a     ? r.checkin  : a;
-    const end   = r.checkout < bExcl ? r.checkout : bExcl;
-    if (end <= start) return 0;
-    return Math.round((new Date(end) - new Date(start)) / 86400000);
-  }
+  // ── Los días que ocupa UNA reserva, con su categoría ─────────────────
+  //
+  // Antes esto devolvía CONTADORES y el agregador los sumaba reserva por
+  // reserva, así que un día calendario fragmentado se contaba varias veces: el
+  // 28-jul en Portal tenía dos noches y una cortesía sobre el MISMO día, y el
+  // 5-jul en Puente tres reservas. La tarjeta dice "84 días de 93 disp.", y un
+  // numerador que cuenta un día dos veces no es comparable con ese denominador
+  // — la métrica podía pasar de 100%. Ahora se devuelven los días y el agregador
+  // los deduplica.
+  //
+  // El `else` final es a propósito: un tipo que nadie previó se cuenta por su
+  // rango de storage en vez de desaparecer. Eso es exactamente lo que le pasaba
+  // a `pasanoche`, que aportaba 0 días de ocupación mientras su monto SÍ sumaba
+  // a los ingresos y "% Ocupación por origen" SÍ lo contaba.
+  const DIA_PRIORIDAD = { noche: 3, pasadia: 2, cortesia: 1 };
 
-  // Stats por reserva en el período: separa días por categoría según tipo.
-  // Retorna { totalDias, diasNoche, diasPasadia, diasCortesia, pasadiaCount }
-  // - noche: todos los días son diasNoche.
-  // - pasatarde: el día stored.checkin es 1 día pasatarde.
-  // - pasadia: stored.checkin = cortesía, stored.checkin+1 = pasadía.
-  // - early: stored.checkin = cortesía, stored.checkin+1 = noche real.
-  // - late: stored.checkin = noche real, stored.checkin+1 = cortesía.
-  function reservationStats(r, a, bExcl) {
-    const out = { totalDias: 0, diasNoche: 0, diasPasadia: 0, diasCortesia: 0, pasadiaCount: 0 };
+  function diasDeReserva(r, a, bExcl) {
+    const out = [];
     if (!r.checkin || !r.checkout) return out;
     const tipo = r.tipo || 'noche';
-    const inPeriod = (d) => d >= a && d < bExcl;
-    if (tipo === 'noche') {
-      out.diasNoche = nightsInPeriod(r, a, bExcl);
-    } else if (tipo === 'pasatarde') {
-      if (inPeriod(r.checkin)) { out.diasPasadia = 1; out.pasadiaCount = 1; }
-    } else if (tipo === 'pasadia') {
-      const cortesiaDay = r.checkin;
-      const mainDay = (() => { const d = new Date(r.checkin + 'T12:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); })();
-      if (inPeriod(cortesiaDay)) out.diasCortesia++;
-      if (inPeriod(mainDay))     { out.diasPasadia = 1; out.pasadiaCount = 1; }
-    } else if (tipo === 'early') {
-      const cortesiaDay = r.checkin;
-      const realDay     = (() => { const d = new Date(r.checkin + 'T12:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); })();
-      if (inPeriod(cortesiaDay)) out.diasCortesia++;
-      if (inPeriod(realDay))     out.diasNoche++;
-    } else if (tipo === 'late') {
-      const nightDay    = r.checkin;
-      const cortesiaDay = (() => { const d = new Date(r.checkin + 'T12:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); })();
-      if (inPeriod(nightDay))    out.diasNoche++;
-      if (inPeriod(cortesiaDay)) out.diasCortesia++;
+    const sig  = d => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate()+1); return x.toISOString().slice(0,10); };
+    const push = (d, kind) => { if (d >= a && d < bExcl) out.push({ d, kind }); };
+    const porRango = () => {
+      const start = r.checkin  > a     ? r.checkin  : a;
+      const end   = r.checkout < bExcl ? r.checkout : bExcl;
+      for (let d = start; d < end; d = sig(d)) out.push({ d, kind: 'noche' });
+    };
+    if      (tipo === 'noche')     porRango();
+    else if (tipo === 'pasatarde') push(r.checkin, 'pasadia');
+    // 8pm → 12:30pm del día siguiente: ocupa la noche del día de entrada, y por
+    // eso puede convivir con un pasatarde del mismo día (12:30–7pm).
+    else if (tipo === 'pasanoche') push(r.checkin, 'noche');
+    else if (tipo === 'pasadia' || tipo === 'pasadia-largo') {
+      push(r.checkin, 'cortesia');
+      push(sig(r.checkin), 'pasadia');
     }
-    out.totalDias = out.diasNoche + out.diasPasadia + out.diasCortesia;
+    else if (tipo === 'early') { push(r.checkin, 'cortesia'); push(sig(r.checkin), 'noche'); }
+    else if (tipo === 'late')  { push(r.checkin, 'noche');    push(sig(r.checkin), 'cortesia'); }
+    else porRango();
     return out;
+  }
+
+  // ¿Cuenta como pasadía DEL PERÍODO? Esto cuenta RESERVAS, no días, así que no
+  // se deduplica: dos pasadías el mismo día son dos ventas.
+  function esPasadiaEnPeriodo(r, a, bExcl) {
+    const t = r.tipo;
+    if (t !== 'pasatarde' && t !== 'pasadia' && t !== 'pasadia-largo') return false;
+    const dia = t === 'pasatarde'
+      ? r.checkin
+      : (() => { const x = new Date(r.checkin + 'T12:00:00'); x.setDate(x.getDate()+1); return x.toISOString().slice(0,10); })();
+    return dia >= a && dia < bExcl;
   }
 
   // All reservations that overlap the period at all, excluding cancelled
@@ -12298,6 +12310,9 @@ function renderOcupacion() {
   );
 
   // ── Días ocupados por cabaña por mes (con breakdown noche/pasadía/cortesía) ──
+  const ORIGENES_CORE = ['Airbnb', 'Directa'];
+  const originDaysMap = { Airbnb: 0, Directa: 0, Otros: 0 };
+  let unidadesNoche = 0;   // noches VENDIDAS (sin deduplicar por día)
   let totalDays = 0, totalOcc = 0;
   let totalDiasNoche = 0, totalDiasPasadia = 0, totalDiasCortesia = 0, totalPasadiaCount = 0;
   const cabinTotals = {
@@ -12314,10 +12329,37 @@ function renderOcupacion() {
     const row = { year:m.year, month:m.month, days:dim, cabins:{} };
     CABINS_LIST.forEach(c => {
       const cabRes = periodRes.filter(r => r.cabin === c.key);
-      let dN=0, dP=0, dC=0, pCount=0;
+      // fecha → { kind, origin } del que "gana" el día. Un día calendario cuenta
+      // UNA vez: si está fragmentado gana la categoría de mayor peso
+      // (noche > pasadía > cortesía), que es la que mejor describe el día.
+      const porDia = {};
+      let pCount = 0;
       cabRes.forEach(r => {
-        const s = reservationStats(r, mFrom, mTo);
-        dN += s.diasNoche; dP += s.diasPasadia; dC += s.diasCortesia; pCount += s.pasadiaCount;
+        if (esPasadiaEnPeriodo(r, mFrom, mTo)) pCount++;
+        diasDeReserva(r, mFrom, mTo).forEach(({ d, kind }) => {
+          if (!porDia[d] || DIA_PRIORIDAD[kind] > DIA_PRIORIDAD[porDia[d].kind]) {
+            porDia[d] = { kind, origin: r.origin || 'Otro' };
+          }
+        });
+      });
+      // Ocupación mide DÍAS (deduplicados); ADR y "Noches reales" miden UNIDADES
+      // VENDIDAS. Si un día tiene tres reservas es un día ocupado y tres ventas,
+      // así que van en contadores separados — usar uno solo para las dos
+      // preguntas es lo que hacía que al deduplicar el ADR subiera en vez de
+      // corregirse.
+      cabRes.forEach(r => {
+        unidadesNoche += diasDeReserva(r, mFrom, mTo).filter(k => k.kind === 'noche').length;
+      });
+      const kinds = Object.values(porDia);
+      const dN = kinds.filter(k => k.kind === 'noche').length;
+      const dP = kinds.filter(k => k.kind === 'pasadia').length;
+      const dC = kinds.filter(k => k.kind === 'cortesia').length;
+      // El origen se atribuye por día ganado, así que los días por origen suman
+      // EXACTO la ocupación total. Antes usaba nightsInPeriod (el rango de
+      // storage) y daba 85 contra los 84 del KPI.
+      Object.values(porDia).forEach(v => {
+        const grp = ORIGENES_CORE.includes(v.origin) ? v.origin : 'Otros';
+        originDaysMap[grp] = (originDaysMap[grp] || 0) + 1;
       });
       const occ = dN + dP + dC;
       row.cabins[c.key] = { occ, diasNoche:dN, diasPasadia:dP, diasCortesia:dC, pasadiaCount:pCount, pct: Math.round(occ/dim*100), pctProd: Math.round((dN+dP)/dim*100) };
@@ -12354,17 +12396,10 @@ function renderOcupacion() {
   const cabinNights = {};
   CABINS_LIST.forEach(c => { cabinNights[c.key] = cabinTotals[c.key].occ; });
 
-  // ── Nights per origin group ──────────────────────────────────────
-  // toStrExcl: primer día del mes siguiente al último mes del período
-  const _periodEnd  = new Date(toStr + 'T12:00:00');
-  const _nextMo     = new Date(_periodEnd.getFullYear(), _periodEnd.getMonth()+1, 1);
-  const toStrExcl   = _nextMo.getFullYear() + '-' + String(_nextMo.getMonth()+1).padStart(2,'0') + '-01';
-  const CORE = ['Airbnb','Directa'];
-  const originNightsMap = { Airbnb:0, Directa:0, Otros:0 };
-  periodRes.forEach(r => {
-    const grp = CORE.includes(r.origin) ? r.origin : 'Otros';
-    originNightsMap[grp] += nightsInPeriod(r, fromStr, toStrExcl);
-  });
+  // ── Días por origen ─────────────────────────────────────────────
+  // Se llenó en el loop de arriba atribuyendo cada día ocupado al origen de la
+  // reserva que lo ganó, así que suma exacto la ocupación total.
+  const originNightsMap = originDaysMap;
   const totalOccNights = Object.values(originNightsMap).reduce((s,v)=>s+v,0);
 
   // ── KPI widgets ──────────────────────────────────────────────────
@@ -12407,11 +12442,12 @@ function renderOcupacion() {
       periodRes.forEach(r => {
         const t = r.tipo || 'noche';
         const a = parseFloat(r.neto) || parseFloat(r.amount) || 0;
-        if (t === 'pasatarde' || t === 'pasadia') p += a; else n += a;
+        // pasanoche es un producto de NOCHE (8pm→12:30pm), va a noches.
+        if (t === 'pasatarde' || t === 'pasadia' || t === 'pasadia-largo') p += a; else n += a;
       });
       return { revNoche: n, revPasadia: p };
     })();
-    const adrUnits = totalDiasNoche + totalDiasPasadia;
+    const adrUnits = unidadesNoche + totalPasadiaCount;   // ventas, no días
     const adr = adrUnits > 0 ? (ingresos.revNoche + ingresos.revPasadia) / adrUnits : 0;
     const fmtMoney = v => '$' + v.toLocaleString('es-PA',{minimumFractionDigits:0,maximumFractionDigits:0});
     ocuKpisExtra.innerHTML = `
@@ -12427,7 +12463,7 @@ function renderOcupacion() {
       </div>
       <div class="ocu-kpi">
         <div class="ocu-kpi-label">Noches reales</div>
-        <div class="ocu-kpi-value">${totalDiasNoche}</div>
+        <div class="ocu-kpi-value">${unidadesNoche}</div>
         <div class="ocu-kpi-sub">${fmtMoney(ingresos.revNoche)} ingresos</div>
       </div>
       <div class="ocu-kpi">
@@ -12447,14 +12483,11 @@ function renderOcupacion() {
     } else {
       pasadiasCard.style.display = '';
       // Filtrar reservas pasadía cuyo "main day" cae en el período
-      const pasadiaResEnPeriodo = periodRes.filter(r => {
-        const t = r.tipo;
-        if (t !== 'pasatarde' && t !== 'pasadia') return false;
-        const mainDay = (t === 'pasatarde') ? r.checkin : (() => { const d = new Date(r.checkin + 'T12:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); })();
-        return mainDay >= fromStr && mainDay <= toStr;
-      });
+      // Mismo criterio que el KPI de arriba, sin re-implementarlo: así no pueden
+      // divergir (esta versión se olvidaba de 'pasadia-largo').
+      const pasadiaResEnPeriodo = periodRes.filter(r => esPasadiaEnPeriodo(r, fromStr, toStrExcl));
       const pCorta  = pasadiaResEnPeriodo.filter(r => r.tipo === 'pasatarde');
-      const pLarga  = pasadiaResEnPeriodo.filter(r => r.tipo === 'pasadia');
+      const pLarga  = pasadiaResEnPeriodo.filter(r => r.tipo !== 'pasatarde');
       const sumRev  = arr => arr.reduce((s,r) => s + (parseFloat(r.neto)||parseFloat(r.amount)||0), 0);
       const fmtM    = v => '$' + v.toLocaleString('es-PA',{minimumFractionDigits:0,maximumFractionDigits:0});
       const totalP  = pasadiaResEnPeriodo.length;
