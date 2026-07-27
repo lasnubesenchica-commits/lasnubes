@@ -861,6 +861,24 @@
   table.reservations tr:last-child td { border-bottom: none; }
   table.reservations tr:hover td { background: var(--bg); }
 
+  /* Las celdas que NO deben partirse en dos renglones.
+     La pestaña Por check-in tiene una columna más que Por fecha de reserva
+     (Noches), y esos ~90px salen de las demás: por debajo de ~1150px de
+     contenido la columna de acciones se queda sin lugar para los tres botones
+     y el tercero cae a un segundo renglón, la cabaña parte su nombre y el
+     encabezado "Por cobrar" también — la fila pasa de 59px a 89px y la tabla
+     queda desalineada contra la otra pestaña.
+     Con nowrap el navegador prefiere ceder ancho en las columnas de texto, y
+     si aun así no entra, el contenedor ya tiene overflow-x:auto y scrollea.
+     Scrollear un poco es mejor que un renglón partido. */
+  table.reservations th,
+  table.reservations td.acciones { white-space: nowrap; }
+  /* Las tres píldoras de la fila. Al liberar ancho para los botones, el
+     apretón se mudaba al badge de estado y "✓ Paga" quedaba en dos renglones. */
+  table.reservations .cabin-badge,
+  table.reservations .pago-badge,
+  table.reservations .origin-badge { white-space: nowrap; }
+
   .cabin-badge {
     display: inline-flex;
     align-items: center;
@@ -6738,7 +6756,7 @@ function recentRowHtml(r) {
       <td style="font-size:13px;color:var(--verde-dark);font-weight:500;">${recibidoDisplay(r)}</td>
       <td style="font-size:13px;color:#c0392b;font-weight:500;">${porCobrarDisplay(r)}</td>
       <td>${estadoPagoBadge(r)}</td>
-      <td>
+      <td class="acciones">
         <button class="icon-btn" onclick="editReservation('${r.id}')" title="Editar">✏️</button>
         <button class="icon-btn" onclick="showDispDetail('${r.id}')" title="Ver detalle">👁️</button>
         <button class="icon-btn" onclick="deleteReservation('${r.id}')" title="Eliminar">🗑️</button>
@@ -6760,7 +6778,7 @@ function checkinRowHtml(r) {
       <td style="font-size:13px;color:var(--verde-dark);font-weight:500;">${recibidoDisplay(r)}</td>
       <td style="font-size:13px;color:#c0392b;font-weight:500;">${porCobrarDisplay(r)}</td>
       <td>${estadoPagoBadge(r)}</td>
-      <td>
+      <td class="acciones">
         <button class="icon-btn" onclick="editReservation('${r.id}')" title="Editar">✏️</button>
         <button class="icon-btn" onclick="showDispDetail('${r.id}')" title="Ver detalle">👁️</button>
         <button class="icon-btn" onclick="deleteReservation('${r.id}')" title="Eliminar">🗑️</button>
@@ -7107,7 +7125,7 @@ function renderAbiertas() {
       <td><strong>$${parseFloat(r.amount||0).toFixed(2)}</strong></td>
       <td>${estadoPagoBadge(r)}</td>
       <td style="font-size:12px;color:var(--text-muted);max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.comentarios)||'—'}</td>
-      <td>
+      <td class="acciones">
         <button class="icon-btn" onclick="editReservation('${r.id}')" title="Asignar fecha / Editar">✏️</button>
         <button class="icon-btn" onclick="showDispDetail('${r.id}')" title="Ver detalle">👁️</button>
         <button class="icon-btn" onclick="deleteReservation('${r.id}')" title="Eliminar">🗑️</button>
@@ -7206,7 +7224,7 @@ function renderCxC() {
       <td style="color:var(--verde-dark);">${recibidoLabel}</td>
       <td style="color:#c0392b;font-weight:600;">$${pendiente.toFixed(2)}</td>
       <td>${estadoPagoBadge(r)}</td>
-      <td>
+      <td class="acciones">
         <button class="icon-btn" onclick="editReservation('${r.id}')" title="Editar">✏️</button>
         <button class="icon-btn" onclick="showDispDetail('${r.id}')" title="Ver">👁️</button>
       </td>
