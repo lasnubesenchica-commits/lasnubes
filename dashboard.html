@@ -735,7 +735,7 @@
   .res-card-main {
     flex: 1 1 auto;
     min-width: 0;               /* deja que el nombre se recorte en vez de empujar */
-    padding: 10px 4px 10px 12px;
+    padding: 10px 12px;
     border: none;
     background: none;
     font: inherit;
@@ -766,14 +766,10 @@
     font-size: 11.5px; font-weight: 700; color: #c0392b;
     background: #fdecea; border-radius: 20px; padding: 2px 8px;
   }
-  .res-card-eye {
-    flex-shrink: 0;
-    width: 44px;                /* objetivo táctil mínimo */
-    border: none; border-left: 1px solid var(--border);
-    background: none; cursor: pointer;
-    font-size: 15px; color: var(--text-muted);
+  .res-card-credito {
+    font-size: 11.5px; font-weight: 700; color: #8a6d3b;
+    background: #f5ecd8; border-radius: 20px; padding: 2px 8px;
   }
-  .res-card-eye:active { background: var(--bg); }
 
   /* Resumen del filtro. En la tabla vive en el <tfoot>; acá la tabla no se
      dibuja, así que el total tiene que ir arriba o se pierde. */
@@ -811,7 +807,11 @@
        resto; con la etiqueta larga los tres se apretaban y "Todas las cabañas"
        quedaba en "Toda". */
     .table-toolbar #filterFaltaBtn { flex: 0 0 auto; white-space: nowrap; }
-    #filterFaltaBtn .lbl-long { display: none; }
+    /* Etiquetas largas fuera: "⚠ Falta cobrar" apretaba los selects y
+       "Por fecha de reserva / Por check-in / Abiertas" partía los tres tabs
+       en dos líneas. Quedan "Falta", "Reserva", "Check-in", "Abiertas". */
+    #reservas .lbl-long { display: none; }
+    #reservas .res-tabs button { padding: 8px 12px; }
     .filter-select { padding: 10px 12px; font-size: 14px; }  /* dedo, no mouse */
   }
 
@@ -2236,9 +2236,10 @@
       </div>
 
       <!-- Tabs -->
-      <div style="display:flex;gap:4px;margin-bottom:16px;border-bottom:2px solid var(--border);padding-bottom:0;">
-        <button id="resTabFechaReserva" onclick="setReservasTab('fechaReserva')" style="padding:7px 18px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid var(--azul-dark);margin-bottom:-2px;color:var(--azul-dark);">Por fecha de reserva</button>
-        <button id="resTabCheckin"      onclick="setReservasTab('checkin')"      style="padding:7px 18px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Por check-in</button>
+      <div class="res-tabs" style="display:flex;gap:4px;margin-bottom:16px;border-bottom:2px solid var(--border);padding-bottom:0;">
+        <button id="resTabFechaReserva" onclick="setReservasTab('fechaReserva')" style="padding:7px 18px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid var(--azul-dark);margin-bottom:-2px;color:var(--azul-dark);"><span class="lbl-long">Por fecha de </span>Reserva</button>
+        <button id="resTabCheckin"      onclick="setReservasTab('checkin')"      style="padding:7px 18px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);"><span class="lbl-long">Por </span>Check-in</button>
+        <button id="resTabAbiertas"     onclick="setReservasTab('abiertas')"     style="padding:7px 18px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Abiertas<span id="resTabAbiertasCount"></span></button>
       </div>
 
       <!-- TAB: Por fecha de reserva -->
@@ -2289,12 +2290,18 @@
         </div>
       </div>
 
-      <!-- RESERVAS ABIERTAS (sin fecha) -->
-      <div id="abiertasSection" style="margin-top:28px;display:none;">
-        <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px;">
-          🗓 Reservas abiertas <span style="font-weight:400;text-transform:none;font-size:12px;">(paga · sin fecha asignada)</span>
+      <!-- TAB: Abiertas (créditos sin fecha) -->
+      <div id="resViewAbiertas" style="display:none;">
+        <div class="res-help" style="background:#f5f0e6;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start;">
+          <div style="font-size:15px;flex-shrink:0;margin-top:1px;">🎟</div>
+          <div>
+            <div style="font-size:11px;font-weight:600;color:#8a6d3b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Créditos sin fecha asignada</div>
+            <div style="font-size:13px;color:var(--text-muted);line-height:1.5;">Huéspedes que ya pagaron pero no pudieron venir y prefirieron dejar el crédito para otra ocasión. No cuentan como ingreso del período hasta que se usan. Al asignarles fecha, cambiá el origen a Directa.</div>
+          </div>
         </div>
-        <div style="overflow-x:auto;">
+        <div class="res-cards-sum" id="resSumAb"></div>
+        <div class="res-cards" id="resCardsAb"></div>
+        <div class="res-table-wrap" style="overflow-x:auto;">
           <table class="reservations" style="font-size:13px;">
             <thead>
               <tr>
@@ -6836,8 +6843,17 @@ function resCardHtml(r, modo) {
     ? (r.checkin ? formatDate(reservaDisplayDates(r).displayCheckin) : '—')
     : formatDate(r.fechaReserva || r.checkin);
   const falta = _faltaCobrar(r);
-  const meta = [CABINS_SHORT[r.cabin] || CABINS[r.cabin] || r.cabin, fecha, reservaDuracionLabel(r)]
-    .filter(Boolean).join(' · ');
+  // Una reserva abierta es un crédito: no tiene fechas ni duración que mostrar,
+  // y su comentario suele decir por qué quedó abierta, así que ocupa la línea
+  // que en las otras usa el check-in.
+  const esAbierta = modo === 'abiertas';
+  const meta = esAbierta
+    ? [CABINS_SHORT[r.cabin] || r.cabin,
+       r.fechaReserva ? 'Reservó ' + formatDate(r.fechaReserva) : null,
+       'Sin fecha asignada'].filter(Boolean).join(' · ')
+    : [CABINS_SHORT[r.cabin] || CABINS[r.cabin] || r.cabin, fecha, reservaDuracionLabel(r)]
+       .filter(Boolean).join(' · ');
+  const cmt = esAbierta ? (r.comentarios || '').toString().trim() : '';
   return `<div class="res-card${r.alerta ? ' alerta' : ''}">
     <div class="res-card-stripe" style="background:${CABIN_STRIPE[r.cabin] || 'var(--border)'};"></div>
     <button class="res-card-main" onclick="editReservation('${r.id}')">
@@ -6846,13 +6862,14 @@ function resCardHtml(r, modo) {
         <span class="res-card-monto">${netoDisplay(r)}</span>
       </div>
       <div class="res-card-meta">${escapeHtml(meta)}</div>
+      ${cmt ? `<div class="res-card-meta" style="font-style:italic;">${escapeHtml(cmt)}</div>` : ''}
       <div class="res-card-tags">
-        <span class="origin-badge">${escapeHtml(r.origin || '—')}</span>
-        ${estadoPagoBadge(r)}
+        ${esAbierta
+          ? '<span class="res-card-credito">🎟 Crédito pagado</span>'
+          : `<span class="origin-badge">${escapeHtml(r.origin || '—')}</span>${estadoPagoBadge(r)}`}
         ${falta ? `<span class="res-card-falta">Falta $${falta.toFixed(2)}</span>` : ''}
       </div>
     </button>
-    <button class="res-card-eye" onclick="showDispDetail('${r.id}')" title="Ver detalle" aria-label="Ver detalle">👁</button>
   </div>`;
 }
 
@@ -6872,27 +6889,51 @@ function renderResCards(containerId, sumId, data, modo, totalNeto) {
   cont.innerHTML = data.map(r => resCardHtml(r, modo)).join('');
   if (sum) {
     const pend = data.reduce((s, r) => s + _faltaCobrar(r), 0);
-    sum.innerHTML = `<span><strong style="color:var(--text);">${data.length}</strong> reserva${data.length !== 1 ? 's' : ''}`
-      + ` · <strong style="color:var(--verde-dark);">$${totalNeto.toFixed(2)}</strong></span>`
-      + (pend > 0.01
+    // Un crédito abierto ya está pagado, así que "✓ Todo cobrado" sobraría:
+    // lo que importa ahí es que es plata que todavía se debe en noches.
+    const derecha = modo === 'abiertas'
+      ? '<span style="color:#8a6d3b;font-weight:700;">🎟 por usar</span>'
+      : (pend > 0.01
           ? `<span style="color:#c0392b;font-weight:700;">Falta $${pend.toFixed(2)}</span>`
           : '<span style="color:var(--verde-dark);font-weight:700;">✓ Todo cobrado</span>');
+    sum.innerHTML = `<span><strong style="color:var(--text);">${data.length}</strong> ${modo === 'abiertas' ? 'crédito' : 'reserva'}${data.length !== 1 ? 's' : ''}`
+      + ` · <strong style="color:var(--verde-dark);">$${totalNeto.toFixed(2)}</strong></span>` + derecha;
   }
 }
 
 let _resTab = 'fechaReserva';
-function setReservasTab(tab) {
-  _resTab = tab;
-  const isCi = tab === 'checkin';
-  document.getElementById('resViewFechaReserva').style.display = isCi ? 'none' : '';
-  document.getElementById('resViewCheckin').style.display      = isCi ? ''     : 'none';
+const RES_TABS = [
+  { key: 'fechaReserva', view: 'resViewFechaReserva', btn: 'resTabFechaReserva' },
+  { key: 'checkin',      view: 'resViewCheckin',      btn: 'resTabCheckin'      },
+  { key: 'abiertas',     view: 'resViewAbiertas',     btn: 'resTabAbiertas'     }
+];
 
-  const btnFR = document.getElementById('resTabFechaReserva');
-  const btnCi = document.getElementById('resTabCheckin');
-  btnFR.style.borderBottomColor = isCi ? 'transparent'       : 'var(--azul-dark)';
-  btnFR.style.color             = isCi ? 'var(--text-muted)' : 'var(--azul-dark)';
-  btnCi.style.borderBottomColor = isCi ? 'var(--azul-dark)'  : 'transparent';
-  btnCi.style.color             = isCi ? 'var(--azul-dark)'  : 'var(--text-muted)';
+function setReservasTab(tab) {
+  if (!RES_TABS.some(t => t.key === tab)) tab = 'fechaReserva';
+  _resTab = tab;
+  RES_TABS.forEach(t => {
+    const activa = t.key === tab;
+    const view = document.getElementById(t.view);
+    const btn  = document.getElementById(t.btn);
+    if (view) view.style.display = activa ? '' : 'none';
+    if (btn) {
+      btn.style.borderBottomColor = activa ? 'var(--azul-dark)' : 'transparent';
+      btn.style.color             = activa ? 'var(--azul-dark)' : 'var(--text-muted)';
+    }
+  });
+  // Un crédito abierto no tiene fecha ni saldo, así que esos dos filtros no
+  // hacen nada acá. Dejarlos visibles invita a tocarlos y no pasa nada, que se
+  // lee como que la pestaña está rota.
+  const esAb = tab === 'abiertas';
+  ['filterMonth', 'filterFaltaBtn'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = esAb ? 'none' : '';
+  });
+  // Al salir de Abiertas hay que devolverle el rango custom su estado real, no
+  // dejarlo escondido porque lo ocultamos nosotros.
+  const cr = document.getElementById('filterCustomRange');
+  const mes = (document.getElementById('filterMonth') || {}).value;
+  if (cr) cr.style.display = (!esAb && mes === 'custom') ? 'flex' : 'none';
   renderList();
 }
 
@@ -7070,11 +7111,27 @@ function _renderWidgetContent(recent, prev, dStartStr, dEndStr, days, isCustom, 
 }
 
 function renderAbiertas() {
-  const abiertas = reservations.filter(r => r.origin === 'Abierta');
-  const section  = document.getElementById('abiertasSection');
-  const tbody    = document.getElementById('abiertasTbody');
-  if (!section || !tbody) return;
-  section.style.display = abiertas.length ? '' : 'none';
+  // Los créditos abiertos no tienen fecha, así que los filtros de mes y de
+  // saldo pendiente no aplican: la pestaña muestra siempre la lista completa.
+  // Sí respeta cabaña y búsqueda por nombre, que son los dos que sirven acá.
+  const cabinF  = (document.getElementById('filterCabin')  || {}).value || '';
+  const searchF = ((document.getElementById('filterSearch') || {}).value || '').toLowerCase().trim();
+  let abiertas = reservations.filter(r => r.origin === 'Abierta');
+  if (cabinF)  abiertas = abiertas.filter(r => r.cabin === cabinF);
+  if (searchF) abiertas = abiertas.filter(r => (r.name || '').toLowerCase().includes(searchF));
+
+  const cnt = document.getElementById('resTabAbiertasCount');
+  if (cnt) cnt.textContent = abiertas.length ? ' (' + abiertas.length + ')' : '';
+
+  const totalAb = abiertas.reduce((s, r) => s + parseFloat(r.neto || r.amount || 0), 0);
+  renderResCards('resCardsAb', 'resSumAb', abiertas, 'abiertas', totalAb);
+
+  const tbody = document.getElementById('abiertasTbody');
+  if (!tbody) return;
+  if (!abiertas.length) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state">No hay créditos abiertos</div></td></tr>';
+    return;
+  }
   tbody.innerHTML = abiertas.map(r => `
     <tr>
       <td><strong>${escapeHtml(r.name)}</strong></td>
@@ -7299,7 +7356,11 @@ function renderList() {
     .filter(r => r.origin !== 'Abierta' && r.estadoPago !== 'CANCELADA')
     .sort((a,b) => (b.fechaReserva||'').localeCompare(a.fechaReserva||''));
   if (cabin)  dataFR = dataFR.filter(r => r.cabin === cabin);
-  if (month)  dataFR = dataFR.filter(r => matchesFilter(r.fechaReserva||''));
+  // Mismo fallback que usa la fila para MOSTRAR la fecha (`fechaReserva ||
+  // checkin`). Filtrando solo por `fechaReserva`, una reserva sin ese dato
+  // mostraba su check-in pero desaparecía de todos los meses: solo se veía
+  // quitando el filtro, sin ninguna señal de que faltaba.
+  if (month)  dataFR = dataFR.filter(r => matchesFilter(r.fechaReserva || r.checkin || ''));
   if (search) dataFR = dataFR.filter(r => (r.name||'').toLowerCase().includes(search));
   if (_soloFalta) dataFR = dataFR.filter(r => _faltaCobrar(r) > 0);
 
