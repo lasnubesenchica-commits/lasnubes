@@ -861,6 +861,31 @@
   table.reservations tr:last-child td { border-bottom: none; }
   table.reservations tr:hover td { background: var(--bg); }
 
+  /* Fila resaltada: solo cuando el aviso pide acción del admin. */
+  table.reservations tr.fila-alerta td { background: #fffde7; }
+  table.reservations tr.fila-alerta:hover td { background: #fff8d6; }
+
+  /* El nombre recorta; la marca no. Van en cajas separadas para que un nombre
+     largo nunca se coma el ⚠ y deje la fila resaltada sin explicación. */
+  /* nowrap en la celda para que la marca no caiga a un segundo renglón: el
+     nombre ya recorta solo con el ellipsis del span de adentro. */
+  table.reservations td.huesped { max-width: 165px; white-space: nowrap; }
+  table.reservations td.huesped .nombre {
+    display: inline-block;
+    max-width: 110px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    vertical-align: middle;
+  }
+  .marca-alerta, .marca-hist {
+    display: inline-block; vertical-align: middle;
+    margin-left: 5px; padding: 1px 6px;
+    border-radius: 20px; font-size: 10px; line-height: 1.5;
+    cursor: help;
+  }
+  .marca-alerta       { background: #fff3cd; color: #856404; }
+  .marca-alerta.cancel{ background: #fdecea; color: #b71c1c; }
+  .marca-hist         { background: #eef4f8; color: #385d7a; }
+
   /* Las celdas que NO deben partirse en dos renglones.
      La pestaña Por check-in tiene una columna más que Por fecha de reserva
      (Noches), y esos ~90px salen de las demás: por debajo de ~1150px de
@@ -5367,7 +5392,7 @@ function buildDispMonth(firstDay, cabinRes, today) {
       const _cmt = (r.comentarios || '').toString();
       const isPending = (r.estadoPago || '').toString().toUpperCase() === 'PENDIENTE'
                         && /pendiente revisi/i.test(_cmt);
-      occupied[key] = { initials, id: r.id, origin: r.origin || 'Airbnb', isMaintenance, isPending: isPending, checkin: r.checkin, checkout: r.checkout, alerta: (r.origin === 'Airbnb' && r.alerta) ? r.alerta : '', tipo: r.tipo || 'noche', kind };
+      occupied[key] = { initials, id: r.id, origin: r.origin || 'Airbnb', isMaintenance, isPending: isPending, checkin: r.checkin, checkout: r.checkout, alerta: (r.origin === 'Airbnb' && _alertaKind(r.alerta) === 'accion') ? r.alerta : '', tipo: r.tipo || 'noche', kind };
     }
   });
 
@@ -6558,7 +6583,7 @@ function renderCalendar() {
         const tipo = res.tipo || 'noche';
         const hasCourtesy = ['early','late','pasadia'].includes(tipo);
         const isMaintenance = res.origin === 'Mantenimiento';
-        const alertStyle = res.alerta
+        const alertStyle = _alertaKind(res.alerta) === 'accion'
           ? 'background:#f59e0b!important;color:#fff!important;'
           : (isMaintenance ? 'background:#9ca3af!important;color:#fff!important;' : '');
         const tipoPfx = '';
@@ -6745,10 +6770,34 @@ function getDayKind(r, dateStr) {
   return 'main';
 }
 
+// Amarillo SOLO cuando el aviso pide acción. Un cambio de fechas es historial:
+// antes pintaba la fila igual que un sync a medias, así que el amarillo dejaba
+// de significar "esto necesita algo".
+function _alertaRowClass(r) {
+  const k = _alertaKind(r && r.alerta);
+  return k === 'accion' || k === 'cancelada' ? 'fila-alerta' : '';
+}
+
+// El nombre y su marca. La marca va FUERA del span que recorta: metida adentro,
+// una celda de 120px con un nombre largo se comía el ⚠ y la fila quedaba
+// resaltada sin nada que explicara por qué.
+function _nombreConMarca(r) {
+  const k = _alertaKind(r && r.alerta);
+  const marca = k === 'accion'
+    ? '<span class="marca-alerta" title="El sync no pudo completar un dato — abrí el detalle">⚠</span>'
+    : k === 'cancelada'
+      ? '<span class="marca-alerta cancel" title="Cancelación registrada">❌</span>'
+      : k === 'historial'
+        ? '<span class="marca-hist" title="Cambio de fechas registrado — abrí el detalle">📅</span>'
+        : '';
+  return '<strong class="nombre" title="' + escapeHtml(r.name || '') + '">'
+       + (escapeHtml(r.name) || '—') + '</strong>' + marca;
+}
+
 function recentRowHtml(r) {
   return `
-    <tr style="${r.alerta ? 'background:#fffde7;' : ''}">
-      <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><strong title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</strong>${r.alerta ? ' <span style="font-size:10px;background:#fff3cd;color:#856404;padding:1px 6px;border-radius:20px;">⚠</span>' : ''}</td>
+    <tr class="${_alertaRowClass(r)}">
+      <td class="huesped">${_nombreConMarca(r)}</td>
       <td><span class="cabin-badge badge-${r.cabin}">${CABINS[r.cabin]}</span></td>
       <td>${formatDate(r.fechaReserva || r.checkin)}</td>
       <td><span class="origin-badge">${r.origin}</span></td>
@@ -6768,8 +6817,8 @@ function checkinRowHtml(r) {
   const dispCheckin = r.checkin ? reservaDisplayDates(r).displayCheckin : '';
   const duracion = reservaDuracionLabel(r);
   return `
-    <tr style="${r.alerta ? 'background:#fffde7;' : ''}">
-      <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><strong title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</strong>${r.alerta ? ' <span style="font-size:10px;background:#fff3cd;color:#856404;padding:1px 6px;border-radius:20px;">⚠</span>' : ''}</td>
+    <tr class="${_alertaRowClass(r)}">
+      <td class="huesped">${_nombreConMarca(r)}</td>
       <td><span class="cabin-badge badge-${r.cabin}">${CABINS[r.cabin]}</span></td>
       <td>${formatDate(dispCheckin)}</td>
       <td style="text-align:center;font-size:12px;">${duracion}</td>
@@ -6844,11 +6893,13 @@ function resCardHtml(r, modo) {
     : [CABINS_SHORT[r.cabin] || CABINS[r.cabin] || r.cabin, fecha, reservaDuracionLabel(r)]
        .filter(Boolean).join(' · ');
   const cmt = esAbierta ? (r.comentarios || '').toString().trim() : '';
-  return `<div class="res-card${r.alerta ? ' alerta' : ''}">
+  const _k = _alertaKind(r.alerta);
+  const _marca = _k === 'accion' ? ' ⚠' : (_k === 'cancelada' ? ' ❌' : (_k === 'historial' ? ' 📅' : ''));
+  return `<div class="res-card${(_k === 'accion' || _k === 'cancelada') ? ' alerta' : ''}">
     <div class="res-card-stripe" style="background:${CABIN_STRIPE[r.cabin] || 'var(--border)'};"></div>
     <button class="res-card-main" onclick="editReservation('${r.id}')">
       <div class="res-card-top">
-        <span class="res-card-name">${escapeHtml(r.name) || '—'}${r.alerta ? ' ⚠' : ''}</span>
+        <span class="res-card-name">${escapeHtml(r.name) || '—'}${_marca}</span>
         <span class="res-card-monto">${netoDisplay(r)}</span>
       </div>
       <div class="res-card-meta">${escapeHtml(meta)}</div>
@@ -11857,6 +11908,26 @@ function _referralUseForReservaId(id) {
 //
 // Ojo: la nota de fechas lleva un '|' adentro, así que no se puede partir el
 // texto por ese separador — se detecta por marcadores.
+// Clasifica el contenido de `Alerta` en ACCIÓN vs HISTORIAL. Fuente única para
+// el popup de detalle, las tablas y las tarjetas: antes cada superficie decidía
+// por su cuenta y la tabla pintaba de amarillo los cuatro casos por igual,
+// incluido el cambio de fechas que el detalle ya trataba como historial neutro.
+//
+//   'accion'    → el automatismo NO pudo terminar y hay que meter mano:
+//                 el sync no leyó cabaña/código/monto de un email de Airbnb, o
+//                 el sistema de alteraciones no supo aplicar un cambio.
+//   'cancelada' → cancelación registrada.
+//   'historial' → el cambio de fechas que hizo el admin. No requiere nada.
+//   ''          → celda vacía.
+function _alertaKind(alerta) {
+  const raw = (alerta || '').toString().trim();
+  if (!raw) return '';
+  if (/❌\s*Cancelad/i.test(raw)) return 'cancelada';
+  if (raw.indexOf('⚠') >= 0)      return 'accion';
+  if (raw.indexOf('📅') >= 0)     return 'historial';
+  return 'historial';   // nota suelta: informativa, no accionable
+}
+
 function _renderDetailAlerta(r) {
   const el = document.getElementById('detailAlerta');
   if (!el) return;
@@ -11864,12 +11935,11 @@ function _renderDetailAlerta(r) {
   if (!raw) { el.style.display = 'none'; el.innerHTML = ''; return; }
 
   const esAirbnb    = (r.origin === 'Airbnb');
+  const kind        = _alertaKind(raw);
   const verificar   = /⚠\s*Verificar/i.test(raw);
-  const cancelado   = /❌\s*Cancelad/i.test(raw);
-  const soloFechas  = !verificar && !cancelado && raw.indexOf('📅') >= 0;
-  // Cualquier otro ⚠ es un aviso del sync que necesita acción del admin
-  // (cabaña no detectada, sin código de confirmación, monto no detectado).
-  const otroAviso   = !verificar && !cancelado && raw.indexOf('⚠') >= 0;
+  const cancelado   = kind === 'cancelada';
+  const soloFechas  = kind === 'historial' && raw.indexOf('📅') >= 0;
+  const otroAviso   = kind === 'accion' && !verificar;
 
   let bg, color, titulo, cuerpo;
   if (verificar) {
