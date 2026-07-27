@@ -2742,10 +2742,17 @@
     <div class="ocu-kpi-grid" id="ocuKpis"></div>
     <div class="ocu-strip" id="ocuKpisExtra"></div>
 
-    <!-- Sección Pasadías (visible solo si hay pasadías) -->
-    <div class="ocu-chart-card" id="ocuPasadiasCard" style="margin:16px 0;display:none;">
-      <div class="ocu-chart-title">Pasadías del período</div>
-      <div id="ocuPasadiasContent"></div>
+    <!-- Pasadías y Colaboraciones, lado a lado. auto-fit: si una se oculta, la
+         otra ocupa el ancho completo en vez de dejar medio panel vacío. -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin:16px 0;">
+      <div class="ocu-chart-card" id="ocuPasadiasCard" style="display:none;">
+        <div class="ocu-chart-title">Pasadías del período</div>
+        <div id="ocuPasadiasContent"></div>
+      </div>
+      <div class="ocu-chart-card" id="ocuColabCard">
+        <div class="ocu-chart-title">Colaboraciones del período</div>
+        <div id="ocuColabContent"></div>
+      </div>
     </div>
 
     <!-- Tendencia full width -->
@@ -3798,6 +3805,11 @@ function _canonOrigin(raw) {
 }
 
 const RATES = { weekday: 90, weekend: 110 }; // Vie/Sáb = 110
+// Tarifa de lista de los productos que no se cobran por noche. Sirve para
+// VALUAR estadías que no generaron cobro —colaboraciones, cortesías— y poder
+// decir cuánto representaron. Estaban hardcodeadas sueltas en el timeline de
+// Disponibilidad; esta es la fuente única.
+const TARIFA_TIPO = { pasatarde: 60, pasadia: 80, pasanoche: 75 };
 
 // ─── ESTIMACIÓN DE COMISIÓN AIRBNB ───────────────────────────
 // Análisis del CSV histórico reveló:
@@ -4846,9 +4858,7 @@ function _buildDispTimelineDay(ctx) {
       const horas = slot.tipo === 'pasatarde' ? '12:30–7 pm'
                   : slot.tipo === 'pasanoche' ? '8 pm–12:30 pm sig.'
                   : '';
-      const precio = slot.tipo === 'pasatarde' ? '$60'
-                   : slot.tipo === 'pasanoche' ? '$75'
-                   : '';
+      const precio = TARIFA_TIPO[slot.tipo] ? '$' + TARIFA_TIPO[slot.tipo] : '';
       innerAgenda += '<div class="mt-v-slot-hint" ' + topStyle + ' onclick="event.stopPropagation();showAvailabilityDetail(\'' + cabin + '\',\'' + slot.originDay + '\',\'' + slot.tipo + '\')" title="Ventana libre — tap para cotizar/registrar">'
                   +   '<time>' + _fmtHM(slot.start) + '</time>'
                   +   '<div>💡 <span class="mt-slot-lbl">' + tipoLabel + ' libre</span> '
@@ -12593,6 +12603,86 @@ function renderOcupacion() {
     }
   }
 
+  // ── Colaboraciones del período ───────────────────────────────────
+  // Un canje: alguien se hospeda gratis a cambio de difusión. El modal fuerza
+  // el monto a $0 cuando el origen es Colaboracion, así que la "inversión" no
+  // está en ningún campo — hay que VALUARLA a tarifa de lista.
+  //
+  // Se distingue lo imputado de lo real: si la fila tiene monto cargado se
+  // respeta ese número, y si no se calcula con TARIFA_TIPO / RATES. La tarjeta
+  // dice cuál es cuál, porque presentar un valor imputado como si fuera plata
+  // que se movió sería exactamente el tipo de número que venimos limpiando.
+  const colabCard    = document.getElementById('ocuColabCard');
+  const colabContent = document.getElementById('ocuColabContent');
+  if (colabCard && colabContent) {
+    const colabs = periodRes.filter(r => r.origin === 'Colaboracion');
+
+    const valorDe = r => {
+      const real = parseFloat(r.amount || 0);
+      if (real > 0) return { valor: real, imputado: false };
+      const t = r.tipo || 'noche';
+      if (TARIFA_TIPO[t] != null) return { valor: TARIFA_TIPO[t], imputado: true };
+      // Productos por noche: se valúan noche por noche, que vie/sáb valen más.
+      let v = 0;
+      diasDeReserva(r, fromStr, toStrExcl).forEach(({ d, kind }) => {
+        if (kind !== 'noche') return;
+        const dow = new Date(d + 'T12:00:00').getDay();
+        v += (dow === 5 || dow === 6) ? RATES.weekend : RATES.weekday;
+      });
+      return { valor: v, imputado: true };
+    };
+
+    const detalle = colabs.map(r => Object.assign({ r }, valorDe(r)));
+    const total   = detalle.reduce((t, x) => t + x.valor, 0);
+    const noches  = colabs.reduce((t, r) =>
+      t + diasDeReserva(r, fromStr, toStrExcl).filter(k => k.kind === 'noche').length, 0);
+    const pasad   = colabs.filter(r => esPasadiaEnPeriodo(r, fromStr, toStrExcl)).length;
+    const hayReal = detalle.some(x => !x.imputado);
+    const fmtC    = v => '$' + v.toLocaleString('es-PA', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+    if (!colabs.length) {
+      colabContent.innerHTML = `
+        <div style="display:flex;align-items:baseline;gap:10px;">
+          <span style="font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:600;color:var(--text-muted);line-height:1;">0</span>
+          <span style="font-size:12px;color:var(--text-muted);">sin colaboraciones en el período</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:8px;">
+          Se cuentan las reservas con origen <strong>Colaboración</strong>.
+        </div>`;
+    } else {
+      const unidades = [];
+      if (noches) unidades.push(noches + (noches === 1 ? ' noche' : ' noches'));
+      if (pasad)  unidades.push(pasad  + (pasad  === 1 ? ' pasadía' : ' pasadías'));
+      const porCabana = CABINS_LIST
+        .map(c => ({ c, n: colabs.filter(r => r.cabin === c.key).length,
+                     v: detalle.filter(x => x.r.cabin === c.key).reduce((t,x) => t + x.valor, 0) }))
+        .filter(x => x.n > 0);
+
+      colabContent.innerHTML = `
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:4px;">
+          <span style="font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:600;color:#8b7cc8;line-height:1;">${colabs.length}</span>
+          <span style="font-size:12px;color:var(--text-muted);">${colabs.length === 1 ? 'colaboración' : 'colaboraciones'}${unidades.length ? ' · ' + unidades.join(' · ') : ''}</span>
+        </div>
+        <div style="font-size:13px;color:var(--text);margin-bottom:10px;">
+          <strong style="font-size:18px;">${fmtC(total)}</strong>
+          <span style="font-size:11px;color:var(--text-muted);">en inversión publicitaria${hayReal ? '' : ' (valuado a tarifa)'}</span>
+        </div>
+        <div style="font-size:12px;line-height:2;">
+          ${porCabana.map(x => `
+            <span style="white-space:nowrap;">
+              <span style="width:8px;height:8px;border-radius:2px;background:${x.c.color};display:inline-block;margin-right:5px;vertical-align:middle;"></span>
+              <strong style="color:var(--text);">${x.n}</strong>
+              <span style="color:var(--text-muted);">${x.c.name} · ${fmtC(x.v)}</span>
+            </span>`).join('<span style="color:var(--border);margin:0 10px;">|</span>')}
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:10px;" title="${detalle.map(x => (x.r.name||'?') + ' ' + fmtC(x.valor) + (x.imputado ? ' (tarifa)' : '')).join(' · ').replace(/"/g,'&quot;')}">
+          ${hayReal
+            ? 'Mezcla montos cargados y valuación a tarifa — pasá el mouse para el detalle.'
+            : 'Valuado a tarifa de lista: no hubo cobro, es lo que se dejó de facturar.'}
+        </div>`;
+    }
+  }
+
   // ── Cabin bars ───────────────────────────────────────────────────
   document.getElementById('ocuBars').innerHTML = CABINS_LIST.map(c => {
     const n   = cabinNights[c.key];
@@ -12601,7 +12691,7 @@ function renderOcupacion() {
       <div class="ocu-bar-row">
         <div class="ocu-bar-label">
           <strong>${c.name}</strong>
-          <span>${n} días · ${pct}%</span>
+          <span>${n} ${n === 1 ? 'día' : 'días'} · ${pct}%</span>
         </div>
         <div class="ocu-bar-track">
           <div class="ocu-bar-fill" style="width:${pct}%;background:${c.color};"></div>
@@ -12621,7 +12711,7 @@ function renderOcupacion() {
         <div class="ocu-bar-row">
           <div class="ocu-bar-label">
             <strong>${grp}</strong>
-            <span>${n} días · ${pct}%</span>
+            <span>${n} ${n === 1 ? 'día' : 'días'} · ${pct}%</span>
           </div>
           <div class="ocu-bar-track">
             <div class="ocu-bar-fill" style="width:${pct}%;background:${ORIGIN_BAR_COLORS[grp]};"></div>
