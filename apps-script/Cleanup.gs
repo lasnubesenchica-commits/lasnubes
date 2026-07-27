@@ -925,6 +925,17 @@ function diagnosticarVouchersSinArchivo() {
 //   • no está        → el voucher nunca llegó a Drive. El pago igual es real
 //                      (el abono lo respalda); lo que falta es el comprobante.
 //
+// ── Carga retroactiva ──────────────────────────────────────────────────────
+// La primera corrida (jul-2026) devolvió 41 filas, y 34 eran ruido: las filas
+// 115-148, todas creadas en una ventana de 17 horas del 4-5 de marzo con
+// entradas de FEBRERO — estadías que ya habían pasado cuando se cargaron. Ahí
+// nunca hubo voucher que subir: el pago ocurrió antes de que la reserva
+// existiera en el sistema. Reportarlas junto a las que sí perdieron el archivo
+// convierte el log en una pared de 41 líneas donde las 7 que importan se
+// pierden. Se separan comparando el timestamp del `id` (los ids del dashboard
+// son `Date.now()`) contra el check-in: creada DESPUÉS de la entrada = carga
+// retroactiva, no es un archivo perdido.
+//
 // Solo lee y reporta. Para escribir: vincularPagosSinRastroESCRIBIR().
 function diagnosticarPagosSinRastro() {
   return _pagosSinRastro_(true);
@@ -937,6 +948,17 @@ function vincularPagosSinRastro(dryRun) {
 
 function vincularPagosSinRastroESCRIBIR() {
   return _pagosSinRastro_(false);
+}
+
+// Fecha en que se CREÓ la fila, deducida del id. Los ids del dashboard son
+// `Date.now()` (13 dígitos); los de Airbnb y los hex no dicen nada y devuelven ''.
+function _idCreadoISO_(id) {
+  const s = (id || '').toString().trim();
+  if (!/^\d{13}$/.test(s)) return '';
+  const n = parseInt(s, 10);
+  // Sanidad: entre 2020 y 2100, por si algún id numérico no fuera un timestamp.
+  if (n < 1577854800000 || n > 4102462800000) return '';
+  return Utilities.formatDate(new Date(n), 'America/Panama', 'yyyy-MM-dd');
 }
 
 function _pagosSinRastro_(dryRun) {
@@ -975,7 +997,7 @@ function _pagosSinRastro_(dryRun) {
   Logger.log('📁 ' + totalArchivos + ' archivos en "' + VOUCHER_FOLDER_NAME + '"');
   Logger.log('');
 
-  const enDrive = [], sinArchivo = [];
+  const enDrive = [], sinArchivo = [], retro = [];
   for (let i = 1; i < data.length; i++) {
     const r = data[i];
     if (!r[_R.ID]) continue;
@@ -998,12 +1020,17 @@ function _pagosSinRastro_(dryRun) {
     const total   = _cleanMoney_(r[_R.NETO]) || _cleanMoney_(r[_R.MONTO]);
     const hall    = (byPago[id] || byNameDate[norm(nombre) + '|' + entrada] || [])
                       .filter(f => !usadas[f.url]);
+    const creada = _idCreadoISO_(id);
     const item = { fila: i + 1, id: id, nombre: nombre, entrada: entrada,
-                   total: total, abono: abono,
+                   total: total, abono: abono, creada: creada,
                    estado: (r[_R.ESTADO] || '').toString() || '(vacío)',
                    via: byPago[id] ? 'id' : (hall.length ? 'huesped+entrada' : ''),
                    archivos: hall };
-    (hall.length ? enDrive : sinArchivo).push(item);
+    if (hall.length) enDrive.push(item);
+    // Fila creada DESPUÉS del check-in: la estadía ya había pasado, el pago
+    // ocurrió antes de que la reserva existiera. No hay archivo perdido.
+    else if (creada && creada > entrada) retro.push(item);
+    else sinArchivo.push(item);
   }
 
   const linea = x => '   fila ' + x.fila + ' · ' + x.entrada + ' · ' + x.nombre
@@ -1018,10 +1045,25 @@ function _pagosSinRastro_(dryRun) {
   if (!enDrive.length) Logger.log('   (ninguno)');
 
   Logger.log('');
-  Logger.log('🔴 NO HAY ARCHIVO EN DRIVE (' + sinArchivo.length + ') — el voucher nunca se subió');
-  Logger.log('   El pago igual es real: el abono lo respalda. Lo que falta es el comprobante.');
-  sinArchivo.forEach(x => Logger.log(linea(x)));
+  Logger.log('🔴 FALTA EL COMPROBANTE (' + sinArchivo.length + ') — se esperaba voucher y no está');
+  Logger.log('   Reservas cargadas ANTES de la estadía: el pago pasó por el sistema y el');
+  Logger.log('   archivo se perdió. El pago es real (el abono lo respalda); hay que re-subirlo.');
+  sinArchivo.forEach(x => Logger.log(linea(x) + ' · creada ' + (x.creada || '?')));
   if (!sinArchivo.length) Logger.log('   (ninguno)');
+
+  Logger.log('');
+  Logger.log('⚪ CARGA RETROACTIVA (' + retro.length + ') — nunca hubo voucher que subir');
+  Logger.log('   Filas creadas DESPUÉS del check-in: la estadía ya había pasado y el pago');
+  Logger.log('   ocurrió fuera del sistema. No es un archivo perdido, no hay nada que hacer.');
+  if (retro.length) {
+    const porDia = {};
+    retro.forEach(x => { porDia[x.creada || '?'] = (porDia[x.creada || '?'] || 0) + 1; });
+    Object.keys(porDia).sort().forEach(d => Logger.log('   ' + d + ' · ' + porDia[d] + ' fila(s) cargadas'));
+    Logger.log('   Rango de filas: ' + retro[0].fila + '–' + retro[retro.length - 1].fila
+      + ' · $' + retro.reduce((s, x) => s + x.abono, 0).toFixed(2) + ' en abonos.');
+  } else {
+    Logger.log('   (ninguna)');
+  }
 
   // ── Escritura ──
   let n = 0;
@@ -1045,8 +1087,8 @@ function _pagosSinRastro_(dryRun) {
   if (!dryRun) SpreadsheetApp.flush();
   Logger.log('');
   Logger.log((dryRun ? '[dry-run] ' : '') + n + ' fila(s) ' + (dryRun ? 'se enlazarían' : 'enlazadas')
-    + ' · ' + sinArchivo.length + ' sin archivo recuperable.');
-  return { enDrive: enDrive.length, sinArchivo: sinArchivo.length };
+    + ' · ' + sinArchivo.length + ' a re-subir a mano · ' + retro.length + ' retroactivas (ignorar).');
+  return { enDrive: enDrive.length, sinArchivo: sinArchivo.length, retro: retro.length };
 }
 
 
