@@ -12753,8 +12753,11 @@ function updateRentabilidad() {
   const totalIn  = window._contabTotalIn  || 0;
   const egresos  = window._contabFilteredEgr || [];
 
+  const esPrestamo = e => (e.cat || '').toLowerCase() === 'prestamo';
+  const totalPrestamo = egresos.filter(esPrestamo)
+    .reduce((s,e) => s + parseFloat(e.amount||0), 0);
   const totalOut = egresos
-    .filter(e => conPrestamo || (e.cat || '').toLowerCase() !== 'prestamo')
+    .filter(e => conPrestamo || !esPrestamo(e))
     .reduce((s,e) => s + parseFloat(e.amount||0), 0);
 
   if (totalIn <= 0) {
@@ -12767,7 +12770,19 @@ function updateRentabilidad() {
   const margen = ((totalIn - totalOut) / totalIn) * 100;
   valEl.textContent = margen.toFixed(1) + '%';
   valEl.className   = 'stat-value ' + (margen >= 0 ? 'positive' : 'negative');
-  if (subEl) subEl.textContent = conPrestamo ? 'margen neto (c/préstamo)' : 'margen neto (s/préstamo)';
+
+  // Se dice el MONTO del préstamo, no solo si está dentro o fuera. Sin eso la
+  // tarjeta parecía mal calculada: con el toggle apagado el margen no es
+  // balance/ingresos —los dos números de las tarjetas de al lado— y no había
+  // forma de saber cuánto los separaba. Si el período no tiene préstamo el
+  // toggle no cambia nada y no se menciona.
+  if (subEl) {
+    const fmt = v => '$' + v.toLocaleString('es-PA',
+      { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    subEl.textContent = totalPrestamo > 0.005
+      ? 'margen neto · ' + (conPrestamo ? 'incluye ' : 'excluye ') + fmt(totalPrestamo) + ' de préstamo'
+      : 'margen neto';
+  }
 }
 
 // ─── CONTABILIDAD TABS ───────────────────────────────────────
