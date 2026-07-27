@@ -9755,6 +9755,31 @@ function setOrigenFilter(origen) {
 // Si el cobro no cruza con ninguna reserva no hay bruto que conocer: se cae a
 // `montoTotal` y se marca `exacto:false` para poder decirlo en la UI en vez de
 // presentar una estimación como si fuera dato.
+// ¿Esta reserva directa es un ingreso? Un solo criterio para TODO el tab, que
+// antes tenía tres distintos: la tarjeta KPI excluía solo 'Cortesia', y las dos
+// gráficas excluían 'Cortesia' pero sin exigir monto > 0.
+//
+// SIN_PAGO_ORIGINS son los cinco orígenes que por definición no se cobran
+// (Cortesia, Colaboracion, Personal, Mantenimiento, Abierta). La constante ya se
+// usaba en 10+ lugares del archivo, pero no acá: una reserva de Mantenimiento o
+// Personal con monto cargado se contaba como ingreso.
+function _esIngresoDirecta(r) {
+  if (!r || r.origin === 'Airbnb') return false;          // Airbnb viene de pagos[]
+  if (SIN_PAGO_ORIGINS.includes(r.origin)) return false;
+  return parseFloat(r.amount || 0) > 0;
+}
+
+// Las que quedaron fuera por origen sin cobro PERO tienen monto cargado. Se
+// reportan en la UI: si el total del mes baja al aplicar el filtro, que se vea
+// por qué en vez de tener que adivinarlo.
+function _directasSinCobroConMonto() {
+  return reservations.filter(r =>
+    r.origin !== 'Airbnb' &&
+    SIN_PAGO_ORIGINS.includes(r.origin) &&
+    parseFloat(r.amount || 0) > 0 &&
+    _matchesSelectedPeriod(getFechaIngreso(r)));
+}
+
 function _brutoDeCobroAirbnb(p) {
   const delCobro = reservations.filter(r =>
     p.confirmCodes && r.confirmCode && p.confirmCodes.includes(r.confirmCode));
@@ -9776,20 +9801,14 @@ function renderContabilidad() {
   // Directas usan reservations[] con fechaReserva
 
   const filteredPagos = pagos.filter(p => _matchesSelectedPeriod(p.fechaCobro));
-  const isRevenue = r => r.origin !== 'Cortesia' && parseFloat(r.amount||0) > 0;
-  const filteredDirectas = reservations.filter(r => {
-    if (r.origin === 'Airbnb') return false; // Airbnb viene de pagos[]
-    const fi = getFechaIngreso(r);
-    return isRevenue(r) && _matchesSelectedPeriod(fi);
-  });
+  const filteredDirectas = reservations.filter(r =>
+    _esIngresoDirecta(r) && _matchesSelectedPeriod(getFechaIngreso(r)));
+  const excluidasSinCobro = _directasSinCobroConMonto();
   const filteredEgr = egresos.filter(e => _matchesSelectedPeriod(e.date));
 
-  // ── Months list (union of pagos, directas, egresos) ──────────────────
-  const allMonths = [...new Set([
-    ...pagos.map(p => p.fechaCobro.slice(0,7)),
-    ...reservations.filter(r => r.origin !== 'Airbnb').map(r => getFechaIngreso(r).slice(0,7)).filter(Boolean),
-    ...egresos.map(e => e.date?.slice(0,7)).filter(Boolean)
-  ])].sort().reverse();
+  // (acá había un `allMonths` que nadie usaba y cuyo primer map hacía
+  //  p.fechaCobro.slice(0,7) sin guard: un pago sin fecha rompía el render
+  //  entero del panel. Los chips del filtro se arman del año en curso.)
 
   // Solo en el PRIMER render auto-elegimos "Este mes" (mes actual) como
   // default. A partir de ahí respetamos la selección explícita del usuario.
@@ -9928,10 +9947,32 @@ function renderContabilidad() {
     countText = `${filteredDirectas.length} reserva${filteredDirectas.length!==1?'s':''}`;
     if (breakdownParts.length) countText += ` · ${breakdownParts.join(' · ')}`;
   } else {
+    // El desglose por tipo sale SOLO de las directas, pero totalCount suma
+    // también los cobros de Airbnb. Antes se leía "60 registros · 53 noches ·
+    // 3 pasatardes · …" y la suma daba 59: parecía faltar uno. Ahora se dice de
+    // dónde sale cada parte.
     countText = `${totalCount} registro${totalCount!==1?'s':''}`;
-    if (breakdownParts.length) countText += ` · ${breakdownParts.join(' · ')}`;
+    const nP = filteredPagos.length, nD = filteredDirectas.length;
+    if (nP && nD)      countText += ` · ${nP} cobro${nP!==1?'s':''} Airbnb · ${nD} directa${nD!==1?'s':''}`;
+    else if (nP)       countText += ` · ${nP} cobro${nP!==1?'s':''} Airbnb`;
+    if (breakdownParts.length) countText += `: ${breakdownParts.join(' · ')}`;
   }
-  document.getElementById('statIngresosCount').textContent = countText;
+
+  // Si hay reservas de origen sin cobro con monto cargado, decirlo: son las que
+  // el criterio deja fuera del ingreso, y explican una caída del total.
+  const _ingCountEl = document.getElementById('statIngresosCount');
+  if (excluidasSinCobro.length && origenFilter !== 'Airbnb') {
+    const montoExc = excluidasSinCobro.reduce((t,r) => t + parseFloat(r.amount||0), 0);
+    countText += ` · ⊘ ${excluidasSinCobro.length} sin cobro`;
+    _ingCountEl.title = 'No suman al ingreso porque su origen no se cobra ('
+      + [...new Set(excluidasSinCobro.map(r => r.origin))].join(', ') + '): $'
+      + montoExc.toFixed(2) + ' en '
+      + excluidasSinCobro.map(r => r.name).slice(0, 6).join(', ')
+      + (excluidasSinCobro.length > 6 ? '…' : '');
+  } else {
+    _ingCountEl.title = '';
+  }
+  _ingCountEl.textContent = countText;
 
   document.getElementById('statEgresos').textContent = `$${totalOut.toFixed(2)}`;
   document.getElementById('statEgresosCount').textContent = `${filteredEgr.length} registro${filteredEgr.length!==1?'s':''}`;
@@ -10081,8 +10122,8 @@ function renderContabilidad() {
     egList.innerHTML = [...filteredEgr].sort((a,b)=>b.date.localeCompare(a.date)).map(e => `
       <li class="contab-item">
         <div class="item-info">
-          <div class="item-desc">${e.desc}</div>
-          <div class="item-meta">${formatDate(e.date)} · ${e.cat}${e.cabin!=='General'?' · '+CABINS[e.cabin]:''}</div>
+          <div class="item-desc">${escapeHtml(e.desc)}</div>
+          <div class="item-meta">${formatDate(e.date)} · ${escapeHtml(e.cat)}${e.cabin!=='General'?' · '+escapeHtml(CABINS[e.cabin]||e.cabin):''}</div>
         </div>
         <div style="display:flex;align-items:center;">
           <div class="contab-amount amount-out">-$${parseFloat(e.amount).toFixed(2)}</div>
@@ -10442,13 +10483,20 @@ function renderVentasChart() {
   const isDay     = !!selectedMonth;
 
   // ── Color palette por cabaña ─────────────────────────────────────────
-  const CABIN_COLORS = { verde: '#40b37a', azul: '#6baed6', lila: '#c77dff' };
+  // Un cobro de Airbnb que no cruza con ninguna reserva no se puede atribuir a
+  // una cabaña. Antes se le sumaba a 'verde', que infla Paseo en silencio — la
+  // misma trampa del parser que hacía entrar reservas a la cabaña equivocada.
+  // Ahora va a un segmento propio, gris, igual que 'Sin check-in' en la otra
+  // gráfica: si aparece, se ve que hay plata sin asignar.
+  const SIN_ASIGNAR  = '__sin_asignar__';
+  const CABIN_COLORS = { verde: '#40b37a', azul: '#6baed6', lila: '#c77dff', [SIN_ASIGNAR]: '#c8c8c8' };
   const CABIN_LABELS = {
     verde: 'Paseo por Las Nubes',
     azul:  'Portal hacia Las Nubes',
     lila:  'Puente entre Las Nubes',
+    [SIN_ASIGNAR]: 'Sin asignar',
   };
-  const CABIN_SHORT = { verde: 'Paseo', azul: 'Portal', lila: 'Puente' };
+  const CABIN_SHORT = { verde: 'Paseo', azul: 'Portal', lila: 'Puente', [SIN_ASIGNAR]: 'Sin asignar' };
   const allSegments = ['verde', 'azul', 'lila'];
 
   const keyFn = dateStr => isDay ? dateStr.slice(0,10) : dateStr.slice(0,7);
@@ -10472,8 +10520,7 @@ function renderVentasChart() {
       );
 
       if (resDelPago.length === 0) {
-        // No matched reservations — show full montoNeto under unknown cabin
-        byLabel[lk]['verde'] = (byLabel[lk]['verde'] || 0) + p.montoNeto;
+        byLabel[lk][SIN_ASIGNAR] = (byLabel[lk][SIN_ASIGNAR] || 0) + p.montoNeto;
         return;
       }
 
@@ -10495,19 +10542,20 @@ function renderVentasChart() {
     });
 
   // -- Directas: iterate reservations
-  if (origenFilter !== 'Airbnb') reservations.filter(r => {
-    if (r.origin === 'Airbnb' || r.origin === 'Cortesia') return false;
-    const fi = r.fechaReserva || r.checkin || '';
-    return fi && _matchesSelectedPeriod(fi);   // ver nota arriba: antes ignoraba YTD/Custom
-  }).forEach(r => {
-    const fi = r.fechaReserva || r.checkin || '';
+  if (origenFilter !== 'Airbnb') reservations.filter(r =>
+    _esIngresoDirecta(r) && _matchesSelectedPeriod(getFechaIngreso(r))
+  ).forEach(r => {
+    const fi = getFechaIngreso(r);
     const lk = keyFn(fi);
-    const cab = r.cabin || 'verde';
-    const amt = parseFloat(r.neto || r.amount || 0);
+    const cab = r.cabin || SIN_ASIGNAR;
+    const amt = parseFloat(r.amount || 0);   // igual que la tarjeta KPI
     if (!byLabel[lk]) { byLabel[lk] = {}; resMap[lk] = []; }
     byLabel[lk][cab] = (byLabel[lk][cab] || 0) + amt;
     resMap[lk].push({ ...r, _netoAjustado: amt });
   });
+
+  // 'Sin asignar' solo entra a la leyenda y a la tabla si de verdad hay algo.
+  if (Object.values(byLabel).some(d => d[SIN_ASIGNAR])) allSegments.push(SIN_ASIGNAR);
 
   // ── Labels (X axis) ───────────────────────────────────────────────────
   let labels;
@@ -10899,12 +10947,10 @@ function renderCheckinChart() {
     });
 
   // -- Directas: use r.neto, group by check-in month
-  if (origenFilter !== 'Airbnb') reservations.filter(r => {
-    if (r.origin === 'Airbnb' || r.origin === 'Cortesia') return false;
-    const fi = r.fechaReserva || r.checkin || '';
-    return fi && _matchesSelectedPeriod(fi);   // ver nota arriba: antes ignoraba YTD/Custom
-  }).forEach(r => {
-    const fi = r.fechaReserva || r.checkin || '';
+  if (origenFilter !== 'Airbnb') reservations.filter(r =>
+    _esIngresoDirecta(r) && _matchesSelectedPeriod(getFechaIngreso(r))
+  ).forEach(r => {
+    const fi = getFechaIngreso(r);
     const lk = keyFn(fi);
     const ciMes = (r.checkin || '').slice(0,7) || '__sin_checkin__';
     const amt = parseFloat(r.neto || r.amount || 0);
