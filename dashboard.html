@@ -12653,6 +12653,26 @@ function renderOcupacion() {
       const unidades = [];
       if (noches) unidades.push(noches + (noches === 1 ? ' noche' : ' noches'));
       if (pasad)  unidades.push(pasad  + (pasad  === 1 ? ' pasadía' : ' pasadías'));
+      // Con quién se hizo cada canje, en texto corrido. Se agrupa por nombre:
+      // si el mismo aliado vino dos veces son dos estadías con UNA persona, no
+      // dos aliados distintos.
+      const porPersona = [];
+      detalle.forEach(x => {
+        const nom = (x.r.name || '?').trim();
+        const hit = porPersona.filter(y => y.nom.toLowerCase() === nom.toLowerCase())[0];
+        if (hit) { hit.n++; hit.v += x.valor; }
+        else porPersona.push({ nom: nom, n: 1, v: x.valor });
+      });
+      porPersona.sort((a, b) => b.v - a.v);
+      const TOPE = 8;
+      const conQuienHtml = porPersona.slice(0, TOPE).map(x =>
+        `<span style="white-space:nowrap;"><span style="color:var(--text);">${escapeHtml(x.nom)}</span>`
+        + (x.n > 1 ? ` <span style="opacity:.7;">×${x.n}</span>` : '')
+        + ` <span style="opacity:.7;">${fmtC(x.v)}</span></span>`
+      ).join('<span style="opacity:.45;"> · </span>')
+        + (porPersona.length > TOPE
+            ? `<span style="opacity:.7;"> · y ${porPersona.length - TOPE} más</span>` : '');
+
       const porCabana = CABINS_LIST
         .map(c => ({ c, n: colabs.filter(r => r.cabin === c.key).length,
                      v: detalle.filter(x => x.r.cabin === c.key).reduce((t,x) => t + x.valor, 0) }))
@@ -12675,7 +12695,11 @@ function renderOcupacion() {
               <span style="color:var(--text-muted);">${x.c.name} · ${fmtC(x.v)}</span>
             </span>`).join('<span style="color:var(--border);margin:0 10px;">|</span>')}
         </div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:10px;" title="${detalle.map(x => (x.r.name||'?') + ' ' + fmtC(x.valor) + (x.imputado ? ' (tarifa)' : '')).join(' · ').replace(/"/g,'&quot;')}">
+        <div style="font-size:12px;color:var(--text-muted);margin-top:8px;line-height:1.7;">
+          <span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;">Con</span>
+          ${conQuienHtml}
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:10px;" title="${detalle.map(x => (x.r.name||'?') + ' · ' + (x.r.checkin || 'sin fecha') + ' · ' + fmtC(x.valor) + (x.imputado ? ' (tarifa)' : ' (monto cargado)')).join('\n').replace(/"/g,'&quot;')}">
           ${hayReal
             ? 'Mezcla montos cargados y valuación a tarifa — pasá el mouse para el detalle.'
             : 'Valuado a tarifa de lista: no hubo cobro, es lo que se dejó de facturar.'}
