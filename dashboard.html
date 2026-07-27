@@ -2922,11 +2922,11 @@
          otra ocupa el ancho completo en vez de dejar medio panel vacío. -->
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin:16px 0;">
       <div class="ocu-chart-card" id="ocuPasadiasCard" style="display:none;">
-        <div class="ocu-chart-title">Pasadías del período</div>
+        <div class="ocu-chart-title ocu-clickable" onclick="ocuDrillSet('pasadias','pasadías del período')" title="Ver estas reservas">Pasadías del período</div>
         <div id="ocuPasadiasContent"></div>
       </div>
       <div class="ocu-chart-card" id="ocuColabCard">
-        <div class="ocu-chart-title">Colaboraciones del período</div>
+        <div class="ocu-chart-title ocu-clickable" onclick="ocuDrillSet('colaboraciones','canjes del período')" title="Ver estas reservas">Colaboraciones del período</div>
         <div id="ocuColabContent"></div>
       </div>
     </div>
@@ -12582,6 +12582,29 @@ let _ocuResCtx  = null;
 // glosa de la métrica, para que el chip pueda decir de dónde salió el número.
 let _ocuDrillMetrica = '';
 
+// Pasada 2: dimensiones que NO son origen ni cabaña (pasadías, colaboraciones,
+// noches vendidas, créditos). No se pueden expresar con los dos <select>, así
+// que renderOcupacion —que ya las calcula para pintar los widgets— pasa el
+// conjunto de filas de cada una en el ctx de la tabla. El drill guarda solo el
+// NOMBRE del conjunto; las filas nunca viajan por un atributo onclick.
+//
+// Cada conjunto trae sus propias filas en vez de un filtro sobre `res`, porque
+// los créditos ni siquiera están en `res`: no tienen fechas, así que el feed de
+// la tabla los descarta antes. Con `rows` propio el caso sale gratis.
+let _ocuDrillSet = '';
+
+function ocuDrillSet(nombre, metrica) {
+  const so = document.getElementById('ocuResFilterOrigen');
+  const sc = document.getElementById('ocuResFilterCabin');
+  if (so) so.value = '';
+  if (sc) sc.value = '';
+  _ocuDrillSet = nombre || '';
+  _ocuDrillMetrica = metrica || '';
+  renderOcuResTable();
+  const card = document.getElementById('ocuResCard');
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 // Los handlers se arman en un atributo HTML con comillas dobles y el argumento
 // va entre simples, así que un origen con apóstrofo rompería el onclick.
 function _dq(s) { return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;'); }
@@ -12591,6 +12614,7 @@ function ocuDrill(origen, cabin, metrica) {
   const sc = document.getElementById('ocuResFilterCabin');
   if (so) so.value = origen || '';
   if (sc) sc.value = cabin  || '';
+  _ocuDrillSet = '';
   _ocuDrillMetrica = metrica || '';
   renderOcuResTable();
   // Sin esto, en el celular clickeás un widget arriba y no ves que abajo pasó
@@ -12599,11 +12623,11 @@ function ocuDrill(origen, cabin, metrica) {
   if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function ocuDrillClear() { ocuDrill('', '', ''); }
+function ocuDrillClear() { _ocuDrillSet = ''; ocuDrill('', '', ''); }
 
 // Cambiar un select a mano invalida la glosa: el número que la originó ya no
 // tiene por qué corresponder al filtro nuevo.
-function ocuFiltroManual() { _ocuDrillMetrica = ''; renderOcuResTable(); }
+function ocuFiltroManual() { _ocuDrillMetrica = ''; _ocuDrillSet = ''; renderOcuResTable(); }
 
 // El <select> de origen tenía las opciones hardcodeadas (Airbnb/Directa/Otro),
 // así que un drill-down desde la tabla de Ingresos —que muestra los orígenes
@@ -12625,10 +12649,11 @@ function _poblarFiltroOrigen(res) {
   if (actual && (presentes.includes(actual) || actual === 'Otro')) sel.value = actual;
 }
 
-function _renderDrillChip(filterOrigen, filterCabin, C, nRows) {
+function _renderDrillChip(filterOrigen, filterCabin, C, nRows, setDrill) {
   const chip = document.getElementById('ocuResFiltroChip');
   if (!chip) return;
   const partes = [];
+  if (setDrill)     partes.push(setDrill.label);
   if (filterOrigen) partes.push(filterOrigen === 'Otro' ? 'Otros orígenes' : filterOrigen);
   if (filterCabin)  partes.push(C[filterCabin] || filterCabin);
   if (!partes.length) { chip.style.display = 'none'; chip.innerHTML = ''; return; }
@@ -12648,12 +12673,23 @@ function renderOcuResTable(res, ctx) {
   const tfoot = document.getElementById('ocuResTableFoot');
   if (!tbody) return;
 
+  // Un conjunto activo trae SU propia base de filas (ver ocuDrillSet). Si el
+  // nombre guardado ya no existe en el ctx —cambió el período y ese widget
+  // desapareció— se cae a la lista completa en vez de mostrar una tabla vacía
+  // sin explicación.
+  const setDrill = (_ocuDrillSet && ctx && ctx.sets && ctx.sets[_ocuDrillSet]) || null;
+  if (_ocuDrillSet && !setDrill) { _ocuDrillSet = ''; _ocuDrillMetrica = ''; }
+  const base = setDrill ? setDrill.rows : res;
+
   _poblarFiltroOrigen(res);
   const filterOrigen = document.getElementById('ocuResFilterOrigen')?.value || '';
   const filterCabin  = document.getElementById('ocuResFilterCabin')?.value  || '';
   const C = { verde:'Paseo', azul:'Portal', lila:'Puente' };
 
-  let rows = [...res].filter(r => r.origin !== 'Abierta' && r.estadoPago !== 'CANCELADA');
+  // Los créditos abiertos son el único conjunto que necesita ver `Abierta`:
+  // el resto de la tabla los excluye porque no ocupan noches todavía.
+  let rows = [...base].filter(r => r.estadoPago !== 'CANCELADA'
+    && (setDrill && setDrill.incluyeAbiertas ? true : r.origin !== 'Abierta'));
   // 'Otro' agrupa todo lo que no es Airbnb ni Directa. Antes se comparaba
   // `r.origin === 'Otro'`, que no es cierto para NINGUNA reserva (los orígenes
   // reales son Referido, Cortesia, Colaboracion…), así que elegir esa opción
@@ -12663,7 +12699,7 @@ function renderOcuResTable(res, ctx) {
   if (filterCabin)             rows = rows.filter(r => r.cabin  === filterCabin);
   rows.sort((a,b) => (a.checkin||'').localeCompare(b.checkin||''));
 
-  _renderDrillChip(filterOrigen, filterCabin, C, rows.length);
+  _renderDrillChip(filterOrigen, filterCabin, C, rows.length, setDrill);
 
   if (!rows.length) {
     tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Sin reservas para este filtro</td></tr>';
@@ -12683,17 +12719,23 @@ function renderOcuResTable(res, ctx) {
       nochesPeriodo += (ctx.nochesPeriodo && ctx.nochesPeriodo[r.id]) || 0;
       if (ctx.ingresoIds && ctx.ingresoIds.has(r.id)) montoIngreso += monto;
     }
-    // Mismo criterio que el resto del dashboard (`estadoPagoBadge`). Un origen
-    // sin cobro devuelve '' allá; acá se explicita, porque una celda vacía en
-    // una columna que dice "Estado" se lee como dato faltante.
-    const badge = estadoPagoBadge(r)
-      || '<span class="pago-badge" style="background:var(--bg);color:var(--text-light);">— Sin cobro</span>';
+    // Un crédito abierto SÍ está pagado: lo que no tiene es fecha. Con el badge
+    // genérico salía "— Sin cobro", que dice justo lo contrario de la verdad.
+    // Mismo chip que usa la pestaña Abiertas, para que las dos coincidan.
+    const esCredito = r.origin === 'Abierta';
+    const badge = esCredito
+      ? '<span class="res-card-credito">🎟 Crédito pagado</span>'
+      : (estadoPagoBadge(r)
+         // Un origen sin cobro devuelve '' allá; acá se explicita, porque una
+         // celda vacía en una columna que dice "Estado" se lee como dato falta.
+         || '<span class="pago-badge" style="background:var(--bg);color:var(--text-light);">— Sin cobro</span>');
+    const sinFecha = '<span style="color:var(--text-light);">—</span>';
     return `<tr>
       <td>${escapeHtml(r.name)||'—'}</td>
       <td style="color:var(--${r.cabin||'verde'}-dark);font-weight:600;">${C[r.cabin]||r.cabin||'—'}</td>
-      <td>${formatDate(_dd.displayCheckin)}</td>
-      <td>${formatDate(_dd.displayCheckout)}</td>
-      <td style="text-align:center;font-size:12px;">${duracion}</td>
+      <td>${esCredito ? sinFecha : formatDate(_dd.displayCheckin)}</td>
+      <td>${esCredito ? sinFecha : formatDate(_dd.displayCheckout)}</td>
+      <td style="text-align:center;font-size:12px;">${esCredito ? 'Sin fecha' : duracion}</td>
       <td>${r.origin||'—'}</td>
       <td style="text-align:right;">$${parseFloat(r.neto||r.amount||0).toFixed(2)}</td>
       <td>${badge}</td>
@@ -12987,19 +13029,24 @@ function renderOcupacion() {
     // Una sola tarjeta con las métricas de rendimiento en línea. Antes eran
     // cuatro cajas del mismo peso visual que la ocupación, y con los créditos
     // quedaba una quinta sola en su propia fila.
+    // El ADR no lleva drill: es un cociente, no representa un subconjunto de
+    // filas. Los otros tres sí, cada uno con su conjunto.
     const strip = [
       { label: 'ADR', value: fmtMoney(adr), sub: 'por unidad vendida' },
-      { label: 'Noches vendidas', value: unidadesNoche, sub: fmtMoney(ingresos.revNoche) },
-      { label: 'Pasadías', value: totalPasadiaCount, sub: fmtMoney(ingresos.revPasadia) }
+      { label: 'Noches vendidas', value: unidadesNoche, sub: fmtMoney(ingresos.revNoche),
+        set: 'noches',   metrica: unidadesNoche + (unidadesNoche === 1 ? ' noche vendida' : ' noches vendidas') },
+      { label: 'Pasadías', value: totalPasadiaCount, sub: fmtMoney(ingresos.revPasadia),
+        set: 'pasadias',  metrica: totalPasadiaCount + (totalPasadiaCount === 1 ? ' pasadía' : ' pasadías') }
     ];
     if (creditosAbiertos.length) strip.push({
       label: 'Créditos por usar',
       value: fmtMoney(totalCreditos),
       sub:   creditosAbiertos.length + ' sin fecha · aún no es ingreso',
-      title: creditosAbiertos.map(r => (r.name || '?') + ' ' + fmtMoney(montoDe(r))).join(' · ')
+      title: creditosAbiertos.map(r => (r.name || '?') + ' ' + fmtMoney(montoDe(r))).join(' · '),
+      set:   'creditos', metrica: fmtMoney(totalCreditos) + ' sin fecha'
     });
     ocuKpisExtra.innerHTML = strip.map(x => `
-      <div class="ocu-strip-item"${x.title ? ` title="${String(x.title).replace(/"/g,'&quot;')}"` : ''}>
+      <div class="ocu-strip-item${x.set ? ' ocu-clickable' : ''}"${x.set ? ` onclick="ocuDrillSet('${x.set}','${_dq(x.metrica)}')"` : ''} title="${String(x.title || (x.set ? 'Ver estas reservas' : '')).replace(/"/g,'&quot;')}">
         <div class="ocu-strip-label">${x.label}</div>
         <div class="ocu-strip-value">${x.value}</div>
         <div class="ocu-strip-sub">${x.sub}</div>
@@ -13362,7 +13409,29 @@ function renderOcupacion() {
     _nochesPeriodo[r.id] = diasDeReserva(r, fromStr, toStrExcl).filter(k => k.kind === 'noche').length;
     if (esIngresoOcu(r)) _ingresoIds.add(r.id);
   });
-  renderOcuResTable(checkinRes, { nochesPeriodo: _nochesPeriodo, ingresoIds: _ingresoIds });
+  // Conjuntos para el drill-down de dimensiones que no son origen ni cabaña.
+  // Se arman con los MISMOS predicados que pintaron los widgets de arriba
+  // (`esPasadiaEnPeriodo`, `diasDeReserva`, `creditosAbiertos`), no con una
+  // reimplementación: si divergieran, el número del widget y las filas que
+  // muestra al clickearlo dirían cosas distintas.
+  const _sets = {};
+  const _pasadias = checkinRes.filter(r => esPasadiaEnPeriodo(r, fromStr, toStrExcl));
+  if (_pasadias.length) _sets.pasadias = { label: 'Pasadías del período', rows: _pasadias };
+
+  const _colabs = checkinRes.filter(r => r.origin === 'Colaboracion');
+  if (_colabs.length) _sets.colaboraciones = { label: 'Colaboraciones', rows: _colabs };
+
+  // Noches VENDIDAS: las que aportan al menos una noche dentro del período.
+  const _conNoches = checkinRes.filter(r => (_nochesPeriodo[r.id] || 0) > 0);
+  if (_conNoches.length) _sets.noches = { label: 'Reservas con noches en el período', rows: _conNoches };
+
+  if (creditosAbiertos.length) {
+    _sets.creditos = { label: 'Créditos por usar', rows: creditosAbiertos, incluyeAbiertas: true };
+  }
+
+  renderOcuResTable(checkinRes, {
+    nochesPeriodo: _nochesPeriodo, ingresoIds: _ingresoIds, sets: _sets
+  });
 }
 
 
