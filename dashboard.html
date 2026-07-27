@@ -801,8 +801,7 @@
     /* flex-basis 0 en vez de 50%: con padding en content-box, un basis de 50%
        más los 24px de padding pasaba de la mitad y los dos selects wrapeaban a
        una fila cada uno. Con basis 0 se reparten lo que sobra y entran juntos. */
-    .table-toolbar #filterCabin,
-    .table-toolbar #filterMonth { flex: 1 1 0; min-width: 0; }
+    .table-toolbar #filterCabin { flex: 1 1 0; min-width: 0; }
     /* El botón se queda con su ancho natural y los selects se reparten el
        resto; con la etiqueta larga los tres se apretaban y "Todas las cabañas"
        quedaba en "Toda". */
