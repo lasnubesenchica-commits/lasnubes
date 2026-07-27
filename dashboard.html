@@ -347,6 +347,41 @@
     color: var(--text-muted);
     margin-top: 4px;
   }
+  /* Tira compacta: métricas que se leen juntas no necesitan una tarjeta cada
+     una. Antes ADR, noches, pasadías y créditos eran 4 cajas del mismo peso
+     visual que la ocupación, así que nada resaltaba. */
+  .ocu-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+  .ocu-strip-item { padding: 14px 18px; border-left: 1px solid var(--border); }
+  .ocu-strip-item:first-child { border-left: none; }
+  .ocu-strip-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--text-muted); margin-bottom: 4px;
+  }
+  .ocu-strip-value {
+    font-family: 'Cormorant Garamond', serif; font-size: 24px;
+    font-weight: 600; line-height: 1; color: var(--text);
+  }
+  .ocu-strip-sub { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+  @media (max-width: 640px) {
+    .ocu-strip { grid-template-columns: repeat(2, 1fr); }
+    .ocu-strip-item:nth-child(odd) { border-left: none; }
+  }
+  /* Línea secundaria del hero: el % productivo vive dentro de la ocupación,
+     no como tarjeta aparte — es la misma medida sin los días de cortesía. */
+  .ocu-kpi-extra {
+    margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border);
+    font-size: 12px; color: var(--text-muted);
+  }
   .ocu-kpi-value.verde { color: var(--verde-dark); }
   .ocu-kpi-value.azul  { color: var(--azul-dark); }
   .ocu-kpi-value.lila  { color: var(--lila-dark); }
@@ -2692,21 +2727,20 @@
       </button>
     </div>
 
-    <!-- Period selector -->
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:20px;">
-      <select id="ocuMonthSelect" onchange="onOcuMonthChange()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
-        <option value="month:0">Este mes</option>
-      </select>
-      <span id="ocuRangeWrap" style="display:none;align-items:center;gap:6px;">
-        <input type="date" id="ocuFrom" onchange="renderOcupacion()" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
-        <span style="font-size:12px;color:var(--text-muted);">→</span>
-        <input type="date" id="ocuTo" onchange="renderOcupacion()" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
-      </span>
+    <!-- Selector de período: el MISMO de Contabilidad, con estado compartido -->
+    <div class="month-filter" id="ocuMonthFilter"></div>
+    <div id="ocuCustomRangePopover" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0 12px;padding:10px 12px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;">
+      <label style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Desde</label>
+      <input type="date" id="ocuCustomRangeFrom" style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+      <label style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Hasta</label>
+      <input type="date" id="ocuCustomRangeTo"   style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+      <button onclick="_applyCustomRange('ocuCustomRange')" style="padding:6px 14px;font-size:12px;font-weight:600;border:none;border-radius:6px;background:var(--verde-dark);color:#fff;cursor:pointer;">Aplicar</button>
+      <button onclick="_cancelCustomRange()" style="padding:6px 12px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-muted);cursor:pointer;">Cancelar</button>
     </div>
 
     <!-- KPI widgets -->
     <div class="ocu-kpi-grid" id="ocuKpis"></div>
-    <div class="ocu-kpi-grid" id="ocuKpisExtra" style="margin-top:12px;"></div>
+    <div class="ocu-strip" id="ocuKpisExtra"></div>
 
     <!-- Sección Pasadías (visible solo si hay pasadías) -->
     <div class="ocu-chart-card" id="ocuPasadiasCard" style="margin:16px 0;display:none;">
@@ -3691,7 +3725,6 @@ async function syncFromSheets() {
 
   // Ocupación: siempre fuera del try/catch principal para no contaminar el indicador
   try {
-    populateOcuMonth();
     renderOcupacion();
   } catch(ocuErr) {
     console.warn('Ocupación render error:', ocuErr);
@@ -3818,7 +3851,7 @@ function showSection(id) {
     renderDisponibilidad();
     if (dispViewMode === 'timeline') setTimeout(() => scrollDispTimelineToToday(false), 60);
   }
-  if(id === 'ocupacion')      { populateOcuMonth(); renderOcupacion(); }
+  if(id === 'ocupacion')      renderOcupacion();
   if(id === 'programa')       renderProgramaMetrics();
   if(id === 'bot')            { loadBotData(); startBotLive(); }
   else                        stopBotLive();
@@ -9696,8 +9729,11 @@ function setPeriod(preset) {
     // Prellenar los inputs con el rango actual (o el mes actual) para dar
     // punto de partida.
     setTimeout(() => {
-      const fromEl = document.getElementById('customRangeFrom');
-      const toEl   = document.getElementById('customRangeTo');
+      const enOcu  = (document.getElementById('ocupacion') || {}).classList
+                     && document.getElementById('ocupacion').classList.contains('active');
+      const pref   = enOcu ? 'ocuCustomRange' : 'customRange';
+      const fromEl = document.getElementById(pref + 'From');
+      const toEl   = document.getElementById(pref + 'To');
       if (fromEl && !fromEl.value) {
         const seed = selectedRange || { from: _fmtDate(new Date(now.getFullYear(), now.getMonth(), 1)),
                                         to:   _fmtDate(now) };
@@ -9713,13 +9749,23 @@ function setPeriod(preset) {
   }
   const canvas = document.getElementById('flujoCanvas');
   if (canvas) canvas._selectedBar = undefined;
+  _rerenderPorPeriodo();
+}
+
+// Re-render tras un cambio de período. Contabilidad y Ocupación comparten el
+// estado, así que hay que refrescar la vista que esté a la vista — antes solo
+// existía Contabilidad y el período de Ocupación era otro.
+function _rerenderPorPeriodo() {
+  const ocu = document.getElementById('ocupacion');
+  if (ocu && ocu.classList.contains('active')) { renderOcupacion(); return; }
   renderContabilidad();
   _renderActiveContabTab();
 }
 
-function _applyCustomRange() {
-  const fromEl = document.getElementById('customRangeFrom');
-  const toEl   = document.getElementById('customRangeTo');
+function _applyCustomRange(prefijo) {
+  prefijo = prefijo || 'customRange';
+  const fromEl = document.getElementById(prefijo + 'From');
+  const toEl   = document.getElementById(prefijo + 'To');
   const from = fromEl ? fromEl.value : '';
   const to   = toEl   ? toEl.value   : '';
   if (!from || !to) { alert('Elegí ambas fechas (desde / hasta).'); return; }
@@ -9728,14 +9774,12 @@ function _applyCustomRange() {
   selectedMonth = null;
   selectedRange = { from, to, presetKey: 'custom', label: 'Custom' };
   _customRangeOpen = false;
-  renderContabilidad();
-  _renderActiveContabTab();
+  _rerenderPorPeriodo();
 }
 
 function _cancelCustomRange() {
   _customRangeOpen = false;
-  renderContabilidad();
-  _renderActiveContabTab();
+  _rerenderPorPeriodo();
 }
 
 // Toggle del filtro por categoría en la tab Egresos. Si el widget clickeado
@@ -9823,6 +9867,51 @@ function _brutoDeCobroAirbnb(p) {
 // CUALQUIER reserva, así que sobre una directa —que no paga comisión de
 // Airbnb— le inventaba un 15.5% de descuento.
 
+// Barra de chips de período. Se extrajo de renderContabilidad para que
+// Ocupación use EXACTAMENTE el mismo selector en vez de su propio <select> con
+// su propia lógica de rangos: dos implementaciones del mismo control terminan
+// divergiendo, y ya tenían criterios distintos para "Custom".
+//
+// El estado es compartido (`selectedMonth` / `selectedRange`), así que el
+// período elegido vale para los dos tabs. Es lo que uno espera: si estoy
+// mirando julio en Contabilidad y salto a Ocupación, quiero julio.
+function _renderChipsPeriodo(containerId) {
+  const mf = document.getElementById(containerId);
+  if (!mf) return;
+  const _now       = new Date();
+  const _rangeKey  = selectedRange ? selectedRange.presetKey : null;
+  const _yr        = _now.getFullYear();
+  const _curMo     = _now.getMonth();
+
+  const _chip = (label, active, onclick, opts) => {
+    opts = opts || {};
+    const cls = ['month-chip'];
+    if (opts.preset) cls.push('preset');
+    if (active)      cls.push('active');
+    const t = opts.title ? ` title="${opts.title}"` : '';
+    return `<div class="${cls.join(' ')}" onclick="${onclick}"${t}>${label}</div>`;
+  };
+
+  // "YTD" primero, después un chip por mes desde enero del año en curso hasta
+  // "Este mes", y al final "Custom…" para cualquier otro rango.
+  let chipsHtml = _chip('YTD', _rangeKey === 'ytd', `setPeriod('ytd')`,
+                        { preset: true, title: `Año a la fecha (1-ene ${_yr} → hoy)` });
+  for (let mo = 0; mo <= _curMo; mo++) {
+    const mStr  = _yr + '-' + String(mo + 1).padStart(2, '0');
+    const isCur = mo === _curMo;
+    const label = isCur ? 'Este mes' : `${MONTHS[mo]} ${_yr}`;
+    chipsHtml += _chip(label, selectedMonth === mStr, `setPeriod('${mStr}')`,
+                       { preset: isCur, title: isCur ? `${MONTHS[mo]} ${_yr}` : '' });
+  }
+  chipsHtml += '<div class="month-chip-divider" aria-hidden="true"></div>';
+  const customLabel = _rangeKey === 'custom'
+    ? '📅 ' + (selectedRange.from + ' → ' + selectedRange.to)
+    : 'Custom…';
+  chipsHtml += _chip(customLabel, _rangeKey === 'custom' || _customRangeOpen, `setPeriod('customToggle')`,
+                     { preset: true, title: _rangeKey === 'custom' ? 'Click para cambiar el rango' : 'Elegir rango personalizado' });
+  mf.innerHTML = chipsHtml;
+}
+
 function renderContabilidad() {
   // ── Pagos de Airbnb (fuente de verdad para ingresos Airbnb) ──────────
   // pagos[] viene de la hoja Pagos (un cobro por email de pago de Airbnb)
@@ -9856,39 +9945,7 @@ function renderContabilidad() {
   const _isTodo    = !selectedMonth && !selectedRange;
   const _rangeKey  = selectedRange ? selectedRange.presetKey : null;
 
-  const _chip = (label, active, onclick, opts) => {
-    opts = opts || {};
-    const cls = ['month-chip'];
-    if (opts.preset) cls.push('preset');
-    if (active)      cls.push('active');
-    const t = opts.title ? ` title="${opts.title}"` : '';
-    return `<div class="${cls.join(' ')}" onclick="${onclick}"${t}>${label}</div>`;
-  };
-
-  // Filtro de período: "YTD" (año a la fecha) primero, luego un botón por cada
-  // mes desde ENERO del año en curso hasta "Este mes" (el mes actual), y al
-  // final "Custom…" para cualquier otro rango. El mes actual se rotula "Este
-  // mes" y va tinteado como preset; los demás meses van con tono neutro. Para
-  // meses de años anteriores → Custom.
-  let chipsHtml = '';
-  const _yr    = _now.getFullYear();
-  const _curMo = _now.getMonth(); // 0-based
-  chipsHtml += _chip('YTD', _rangeKey === 'ytd', `setPeriod('ytd')`,
-                     { preset: true, title: `Año a la fecha (1-ene ${_yr} → hoy)` });
-  for (let mo = 0; mo <= _curMo; mo++) {
-    const mStr  = _yr + '-' + String(mo + 1).padStart(2, '0');
-    const isCur = mo === _curMo;
-    const label = isCur ? 'Este mes' : `${MONTHS[mo]} ${_yr}`;
-    chipsHtml += _chip(label, selectedMonth === mStr, `setPeriod('${mStr}')`,
-                       { preset: isCur, title: isCur ? `${MONTHS[mo]} ${_yr}` : '' });
-  }
-  chipsHtml += '<div class="month-chip-divider" aria-hidden="true"></div>';
-  const customLabel = _rangeKey === 'custom'
-    ? '📅 ' + (selectedRange.from + ' → ' + selectedRange.to)
-    : 'Custom…';
-  chipsHtml += _chip(customLabel, _rangeKey === 'custom' || _customRangeOpen, `setPeriod('customToggle')`,
-                     { preset: true, title: _rangeKey === 'custom' ? 'Click para cambiar el rango' : 'Elegir rango personalizado' });
-  mf.innerHTML = chipsHtml;
+  _renderChipsPeriodo('monthFilter');
 
   // Popover del rango custom: visible solo cuando el chip está en modo
   // toggle (recién clickeado sin aplicar aún).
@@ -12114,81 +12171,32 @@ function setOcuPeriod(months, btn) {
   renderOcupacion();
 }
 
+// El rango sale del estado COMPARTIDO con Contabilidad (selectedMonth /
+// selectedRange), no de un <select> propio. Antes Ocupación tenía su propia
+// implementación de períodos y ni siquiera coincidía con la otra en qué es
+// "Custom": dos controles distintos para la misma pregunta.
 function getOcuDateRange() {
-  const sel = document.getElementById('ocuMonthSelect');
-  const val = (sel && sel.value) ? sel.value : 'month:0';
-  const today = new Date();
-  const y = today.getFullYear(), m = today.getMonth();
-  const pad = n => String(n).padStart(2,'0');
-
-  if (val === 'custom') {
-    return {
-      fromStr: document.getElementById('ocuFrom')?.value || '',
-      toStr:   document.getElementById('ocuTo')?.value   || ''
-    };
+  const pad = n => String(n).padStart(2, '0');
+  if (selectedRange && selectedRange.from && selectedRange.to) {
+    return { fromStr: selectedRange.from, toStr: selectedRange.to };
   }
-  if (val.startsWith('period:')) {
-    const months = parseInt(val.split(':')[1]);
-    const from   = new Date(y, m - months + 1, 1);
-    const toEnd  = new Date(y, m + 1, 0);
-    return {
-      fromStr: from.getFullYear() + '-' + pad(from.getMonth()+1) + '-01',
-      toStr:   toEnd.getFullYear() + '-' + pad(toEnd.getMonth()+1) + '-' + pad(toEnd.getDate())
-    };
+  if (selectedMonth) {
+    const [y, m]  = selectedMonth.split('-').map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    return { fromStr: selectedMonth + '-01', toStr: selectedMonth + '-' + pad(lastDay) };
   }
-  // month:0, month:-1, month:YYYY-MM
-  const part = val.startsWith('month:') ? val.slice(6) : '0';
-  let target;
-  if      (part === '0')  target = new Date(y, m, 1);
-  else if (part === '-1') target = new Date(y, m - 1, 1);
-  else                    target = new Date(part + '-01T12:00:00');
-  const ty = target.getFullYear(), tm = target.getMonth();
-  const lastDay = new Date(ty, tm + 1, 0).getDate();
+  // Sin período elegido ("Todo"): de la primera estadía registrada hasta hoy.
+  // La barra de chips no ofrece "Todo", pero setPeriod('todo') sigue existiendo.
+  const conFecha = reservations.map(r => r.checkin).filter(Boolean).sort();
+  const hoy = new Date();
   return {
-    fromStr: ty + '-' + pad(tm+1) + '-01',
-    toStr:   ty + '-' + pad(tm+1) + '-' + pad(lastDay)
+    fromStr: conFecha[0] || (hoy.getFullYear() + '-01-01'),
+    toStr:   hoy.getFullYear() + '-' + pad(hoy.getMonth() + 1) + '-' + pad(hoy.getDate())
   };
 }
 
-function populateOcuMonth() {
-  const sel = document.getElementById('ocuMonthSelect');
-  if (!sel) return;
-  const current = sel.value || 'month:0';
-  const MONTHS_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-  const months = [...new Set(reservations
-    .filter(r => r.checkin)
-    .map(r => r.checkin.slice(0,7))
-    .filter(Boolean)
-  )].sort().reverse();
-  const periodOpts = [
-    { value:'month:0',   label:'Este mes' },
-    { value:'month:-1',  label:'Mes anterior' },
-    { value:'period:3',  label:'Últimos 3 meses' },
-    { value:'period:6',  label:'Últimos 6 meses' },
-    { value:'period:12', label:'Últimos 12 meses' },
-    { value:'custom',    label:'?? Rango personalizado' },
-  ];
-  let html = periodOpts.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
-  html += '<option disabled>──────────</option>';
-  html += months.map(m => {
-    const [yy, mo] = m.split('-');
-    return `<option value="month:${m}">${MONTHS_ES[parseInt(mo)-1]} ${yy}</option>`;
-  }).join('');
-  sel.innerHTML = html;
-  // Restore previous selection, or default to 'Este mes'
-  if (current && current !== 'month:0' && [...sel.options].some(o => o.value === current)) {
-    sel.value = current;
-  } else {
-    sel.value = 'month:0';
-  }
-}
-
-function onOcuMonthChange() {
-  const val  = document.getElementById('ocuMonthSelect').value;
-  const wrap = document.getElementById('ocuRangeWrap');
-  if (wrap) wrap.style.display = val === 'custom' ? 'flex' : 'none';
-  renderOcupacion();
-}
+// (populateOcuMonth y onOcuMonthChange se eliminaron con el <select> viejo:
+//  el período ahora sale de los chips compartidos con Contabilidad.)
 
 let _ocuResLast = [];
 
@@ -12248,6 +12256,10 @@ function renderOcuResTable(res) {
 }
 
 function renderOcupacion() {
+  _renderChipsPeriodo('ocuMonthFilter');
+  const _ocuPop = document.getElementById('ocuCustomRangePopover');
+  if (_ocuPop) _ocuPop.style.display = _customRangeOpen ? 'flex' : 'none';
+
   const { fromStr, toStr } = getOcuDateRange();
   if (!fromStr || !toStr) return;
 
@@ -12464,6 +12476,10 @@ function renderOcupacion() {
       value: overallPct + '%',
       sub:   totalOcc + ' días de ' + totalDays + ' disp.',
       bd:    breakdownChip(totalDiasNoche, totalDiasPasadia, totalDiasCortesia),
+      // El % productivo es la misma ocupación sin los días de cortesía: va
+      // dentro de esta tarjeta, no como una cuarta caja del mismo tamaño.
+      extra: '<strong>' + overallProd + '%</strong> productivo · '
+             + (totalDiasNoche + totalDiasPasadia) + ' días con huésped',
       cls:'' },
     ...CABINS_LIST.map(c => ({
       label: c.name,
@@ -12479,6 +12495,7 @@ function renderOcupacion() {
       <div class="ocu-kpi-value ${k.cls}">${k.value}</div>
       <div class="ocu-kpi-sub">${k.sub}</div>
       <div class="ocu-kpi-sub" style="font-size:11px;color:var(--text-muted);margin-top:2px;font-style:italic;">${k.bd}</div>
+      ${k.extra ? `<div class="ocu-kpi-extra">${k.extra}</div>` : ''}
     </div>
   `).join('');
 
@@ -12499,34 +12516,26 @@ function renderOcupacion() {
     const adrUnits = unidadesNoche + totalPasadiaCount;   // ventas, no días
     const adr = adrUnits > 0 ? (ingresos.revNoche + ingresos.revPasadia) / adrUnits : 0;
     const fmtMoney = v => '$' + v.toLocaleString('es-PA',{minimumFractionDigits:0,maximumFractionDigits:0});
-    ocuKpisExtra.innerHTML = `
-      <div class="ocu-kpi">
-        <div class="ocu-kpi-label">% Productivo (sin cortesía)</div>
-        <div class="ocu-kpi-value">${overallProd}%</div>
-        <div class="ocu-kpi-sub">${totalDiasNoche + totalDiasPasadia} días con huésped activo</div>
-      </div>
-      <div class="ocu-kpi">
-        <div class="ocu-kpi-label">Pasadías</div>
-        <div class="ocu-kpi-value">${totalPasadiaCount}</div>
-        <div class="ocu-kpi-sub">${fmtMoney(ingresos.revPasadia)} ingresos</div>
-      </div>
-      <div class="ocu-kpi">
-        <div class="ocu-kpi-label">Noches reales</div>
-        <div class="ocu-kpi-value">${unidadesNoche}</div>
-        <div class="ocu-kpi-sub">${fmtMoney(ingresos.revNoche)} ingresos</div>
-      </div>
-      <div class="ocu-kpi">
-        <div class="ocu-kpi-label">ADR (avg por unidad)</div>
-        <div class="ocu-kpi-value">${fmtMoney(adr)}</div>
-        <div class="ocu-kpi-sub">ingreso ÷ (noches + pasadías)</div>
-      </div>
-      ${creditosAbiertos.length ? `
-      <div class="ocu-kpi" title="${creditosAbiertos.map(r => (r.name||'?') + ' ' + fmtMoney(montoDe(r))).join(' · ').replace(/"/g,'&quot;')}">
-        <div class="ocu-kpi-label">Créditos por usar</div>
-        <div class="ocu-kpi-value">${fmtMoney(totalCreditos)}</div>
-        <div class="ocu-kpi-sub">${creditosAbiertos.length} sin fecha · cobrado, no es ingreso aún</div>
-      </div>` : ''}
-    `;
+    // Una sola tarjeta con las métricas de rendimiento en línea. Antes eran
+    // cuatro cajas del mismo peso visual que la ocupación, y con los créditos
+    // quedaba una quinta sola en su propia fila.
+    const strip = [
+      { label: 'ADR', value: fmtMoney(adr), sub: 'por unidad vendida' },
+      { label: 'Noches vendidas', value: unidadesNoche, sub: fmtMoney(ingresos.revNoche) },
+      { label: 'Pasadías', value: totalPasadiaCount, sub: fmtMoney(ingresos.revPasadia) }
+    ];
+    if (creditosAbiertos.length) strip.push({
+      label: 'Créditos por usar',
+      value: fmtMoney(totalCreditos),
+      sub:   creditosAbiertos.length + ' sin fecha · aún no es ingreso',
+      title: creditosAbiertos.map(r => (r.name || '?') + ' ' + fmtMoney(montoDe(r))).join(' · ')
+    });
+    ocuKpisExtra.innerHTML = strip.map(x => `
+      <div class="ocu-strip-item"${x.title ? ` title="${String(x.title).replace(/"/g,'&quot;')}"` : ''}>
+        <div class="ocu-strip-label">${x.label}</div>
+        <div class="ocu-strip-value">${x.value}</div>
+        <div class="ocu-strip-sub">${x.sub}</div>
+      </div>`).join('');
   }
 
   // ── Sección Pasadías: detalle por tipo y por cabaña ─────────────
@@ -12555,33 +12564,31 @@ function renderOcupacion() {
           revByCabin[r.cabin] += esIngresoOcu(r) ? montoDe(r) : 0;
         }
       });
+      // Compacto: seis cajas para contar cinco pasadías era más marco que dato.
+      // Dos filas de texto — por tipo y por cabaña — dicen lo mismo y se leen
+      // de un vistazo. Las cabañas sin pasadías no se listan.
+      const linea = (items) => items.map(x =>
+        `<span style="white-space:nowrap;">
+           <span style="width:8px;height:8px;border-radius:2px;background:${x.color};display:inline-block;margin-right:5px;vertical-align:middle;"></span>
+           <strong style="color:var(--text);">${x.n}</strong>
+           <span style="color:var(--text-muted);">${x.label}</span>
+           <span style="color:var(--text-muted);">· ${fmtM(x.rev)}</span>
+         </span>`).join('<span style="color:var(--border);margin:0 10px;">|</span>');
+
+      const porTipo = [];
+      if (pCorta.length) porTipo.push({ n: pCorta.length, label: 'pasatarde · 12:30–7pm', rev: sumRev(pCorta), color: '#f59e0b' });
+      if (pLarga.length) porTipo.push({ n: pLarga.length, label: 'pasadía · 9–5',        rev: sumRev(pLarga), color: '#ea580c' });
+      const porCabana = CABINS_LIST
+        .filter(c => byCabin[c.key] > 0)
+        .map(c => ({ n: byCabin[c.key], label: c.name, rev: revByCabin[c.key], color: c.color }));
+
       pasadiasContent.innerHTML = `
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:14px;">
-          <div style="padding:12px;background:var(--bg);border-radius:10px;border:1px solid var(--border);">
-            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Total pasadías</div>
-            <div style="font-size:22px;font-weight:700;color:#f59e0b;">${totalP}</div>
-            <div style="font-size:12px;color:var(--text-muted);">${fmtM(totalR)} ingresos</div>
-          </div>
-          <div style="padding:12px;background:var(--bg);border-radius:10px;border:1px solid var(--border);">
-            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Pasatarde · 12:30–7pm</div>
-            <div style="font-size:18px;font-weight:600;color:var(--text);">${pCorta.length}</div>
-            <div style="font-size:12px;color:var(--text-muted);">${fmtM(sumRev(pCorta))}</div>
-          </div>
-          <div style="padding:12px;background:var(--bg);border-radius:10px;border:1px solid var(--border);">
-            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Pasadía · 9–5</div>
-            <div style="font-size:18px;font-weight:600;color:var(--text);">${pLarga.length}</div>
-            <div style="font-size:12px;color:var(--text-muted);">${fmtM(sumRev(pLarga))}</div>
-          </div>
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+          <span style="font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:600;color:#f59e0b;line-height:1;">${totalP}</span>
+          <span style="font-size:12px;color:var(--text-muted);">en total · ${fmtM(totalR)}</span>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
-          ${CABINS_LIST.map(c => `
-            <div style="padding:10px 12px;background:var(--bg);border-radius:8px;border-left:3px solid ${c.color};">
-              <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">${c.name}</div>
-              <div style="font-size:16px;font-weight:600;color:${c.color};">${byCabin[c.key]} ${byCabin[c.key]===1?'pasadía':'pasadías'}</div>
-              <div style="font-size:11px;color:var(--text-muted);">${fmtM(revByCabin[c.key])}</div>
-            </div>
-          `).join('')}
-        </div>
+        <div style="font-size:12px;line-height:2;">${linea(porTipo)}</div>
+        <div style="font-size:12px;line-height:2;">${linea(porCabana)}</div>
       `;
     }
   }
@@ -12605,7 +12612,9 @@ function renderOcupacion() {
   // ── Origin bars ──────────────────────────────────────────────────
   const ORIGIN_BAR_COLORS = { Airbnb:'#FF5A5F', Directa:'#6a9e62', Otros:'#8a8078' };
   document.getElementById('ocuBarsByOrigin').innerHTML =
-    ['Airbnb','Directa','Otros'].map(grp => {
+    ['Airbnb','Directa','Otros']
+      .filter(grp => (originNightsMap[grp] || 0) > 0)   // un origen en cero es marco sin dato
+      .map(grp => {
       const n   = originNightsMap[grp];
       const pct = totalOccNights > 0 ? Math.round(n/totalOccNights*100) : 0;
       return `
@@ -12664,6 +12673,11 @@ function renderOcupacion() {
     const cls = pct>=70 ? 'ocu-pct-high' : pct>=40 ? 'ocu-pct-medium' : 'ocu-pct-low';
     return `<span class="ocu-pct-pill ${cls}">${pct}%</span>`;
   }
+  // Con un solo mes la tabla repite fila por fila lo que ya dicen las tarjetas
+  // de arriba. Se oculta, igual que la tarjeta de tendencia.
+  const _tablaWrap = document.getElementById('ocuTableBody').closest('table');
+  if (_tablaWrap) _tablaWrap.style.display = isSingleMonth ? 'none' : '';
+
   document.getElementById('ocuTableBody').innerHTML = monthData.map(m => `
     <tr>
       <td style="font-weight:500;">${MONTHS_ES[m.month]} ${m.year}</td>
