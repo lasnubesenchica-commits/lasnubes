@@ -1152,6 +1152,117 @@ function sincronizarEstadoPagoConAbonoESCRIBIR() {
 }
 
 
+// ═══════════════════════════════════════════════════════════
+//  Voucher compartido cargado COMPLETO en cada cabaña
+// ═══════════════════════════════════════════════════════════
+//
+// Un pago único que cubre dos cabañas tiene que repartirse entre las hermanas:
+// `_saveMultiCabinReservation` lo prorratea, pero cuando el voucher se sube a
+// mano —una reserva por vez— es fácil escribir el TOTAL del comprobante en cada
+// fila. El sistema entonces lee el doble de lo cobrado: `montoRecibido()` da
+// prioridad a `MontoVoucher`, así que dos filas de $75 con "$150" cada una se
+// leen como $300 recibidos por una reserva de $150.
+//
+// Al re-subir los comprobantes perdidos de 2026 pasó en 4 filas ($315 de más).
+//
+// La huella es inconfundible: **varias filas comparten el mismo código de
+// transferencia** (mismo comprobante) y alguna tiene `MontoVoucher` mayor que
+// su propio `Monto`. El código se compara sin el `#` que a veces antepone el
+// OCR y sin distinguir mayúsculas.
+//
+// La corrección reparte el voucher en proporción al monto de cada fila, igual
+// que `_saveMultiCabinReservation`: la última absorbe el redondeo para que la
+// suma dé exactamente el total del comprobante. También reescribe el monto en
+// `VouchersMeta`, que es de donde el modal saca el desglose pago por pago.
+//
+// Solo lee y reporta. Para escribir: repartirVoucherCompartidoESCRIBIR().
+function repartirVoucherCompartido(dryRun) {
+  if (dryRun === undefined) dryRun = true;
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+  const iso   = v => v instanceof Date ? Utilities.formatDate(v, 'America/Panama', 'yyyy-MM-dd') : (v || '').toString().slice(0, 10);
+  // '#OEKKW-52729303' y 'OEKKW-52729303' son el MISMO comprobante: el OCR a
+  // veces se trae el '#' del recibo. Sin normalizar, las hermanas no se agrupan
+  // y el reparto no se detecta.
+  const normCod = c => (c || '').toString().trim().replace(/^#+/, '').toUpperCase();
+
+  // Agrupar filas por código de transferencia. Una fila con varios códigos
+  // (abonos parciales, separados por '|') no entra: ahí el voucher ya es
+  // acumulado y repartirlo requiere saber a qué pago corresponde cada parte.
+  const grupos = {};
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    if (!r[_R.ID]) continue;
+    const origen = (r[_R.ORIGEN] || '').toString().trim();
+    if (['Directa', 'Referido'].indexOf(origen) < 0) continue;
+    if ((r[_R.ESTADO] || '').toString().toUpperCase() === 'CANCELADA') continue;
+    const cods = (r[_R.COD_TRANSF] || '').toString().split('|').map(normCod).filter(Boolean);
+    if (cods.length !== 1) continue;
+    (grupos[cods[0]] = grupos[cods[0]] || []).push({
+      fila: i + 1, nombre: r[1], entrada: iso(r[_R.ENTRADA]), cabana: r[3],
+      monto: _cleanMoney_(r[_R.MONTO]), voucher: _cleanMoney_(r[_R.MONTOVOUCHER]),
+      meta: (r[31] || '').toString()
+    });
+  }
+
+  Logger.log('');
+  Logger.log('═══ ' + (dryRun ? 'DRY-RUN · ' : '') + 'VOUCHER COMPARTIDO MAL REPARTIDO ═══');
+  let n = 0, exceso = 0;
+  Object.keys(grupos).sort().forEach(cod => {
+    const g = grupos[cod];
+    if (g.length < 2) return;
+    const totalMonto   = g.reduce((s, x) => s + x.monto, 0);
+    const totalVoucher = g.reduce((s, x) => s + x.voucher, 0);
+    // Sin exceso no hay nada que arreglar: o ya está repartido, o el grupo son
+    // pagos legítimamente distintos que casualmente comparten código.
+    if (totalVoucher <= totalMonto + 0.5) return;
+    // El comprobante real es el MAYOR de los montos escritos: es el que alguien
+    // copió entero. Los demás son porciones o copias del mismo número.
+    const real = g.reduce((mx, x) => Math.max(mx, x.voucher), 0);
+    if (totalMonto <= 0) {
+      Logger.log('   ⚠ ' + cod + ': montos en cero, no se puede prorratear. Revisar a mano.');
+      return;
+    }
+    const partes = _repartir_(real, g.map(x => x.monto));
+
+    Logger.log('');
+    Logger.log('📄 ' + cod + ' · comprobante $' + real.toFixed(2)
+      + ' · ' + g.length + ' cabañas por $' + totalMonto.toFixed(2)
+      + ' · registrado $' + totalVoucher.toFixed(2)
+      + '  (sobra $' + (totalVoucher - real).toFixed(2) + ')');
+    exceso += totalVoucher - real;
+    g.forEach((x, k) => {
+      Logger.log((dryRun ? '   [dry] ' : '   ✓ ') + 'fila ' + x.fila + ' · ' + x.entrada + ' · '
+        + x.nombre + ' (' + x.cabana + ') · $' + x.voucher.toFixed(2) + ' → $' + partes[k].toFixed(2));
+      if (!dryRun) {
+        sheet.getRange(x.fila, 20).setValue('$' + partes[k].toFixed(2));
+        // VouchersMeta guarda el desglose pago por pago; si no se corrige, el
+        // modal sigue mostrando el monto viejo en "Pagos registrados".
+        if (x.meta) {
+          try {
+            const arr = JSON.parse(x.meta);
+            if (Array.isArray(arr) && arr.length === 1) {
+              arr[0].monto = partes[k];
+              sheet.getRange(x.fila, 32).setValue(JSON.stringify(arr));
+            }
+          } catch (_) { /* meta corrupta: se deja como está, el monto ya se corrigió */ }
+        }
+      }
+      n++;
+    });
+  });
+  if (!dryRun) SpreadsheetApp.flush();
+  Logger.log('');
+  Logger.log((dryRun ? '[dry-run] ' : '') + n + ' fila(s) ' + (dryRun ? 'se corregirían' : 'corregidas')
+    + ' · $' + exceso.toFixed(2) + ' que el sistema contaba como cobrados de más.');
+  return n;
+}
+
+function repartirVoucherCompartidoESCRIBIR() {
+  return repartirVoucherCompartido(false);
+}
+
+
 // Escribe las URLs que diagnosticarVouchersSinArchivo() encontró en Drive.
 // Solo toca filas cuya columna VoucherURL está VACÍA y cuyo archivo no está
 // enlazado en ninguna otra fila. Idempotente.
