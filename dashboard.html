@@ -109,6 +109,21 @@
     justify-content:center; cursor:pointer; overflow:hidden; white-space:nowrap;
   }
   .disp-tlw-now { position:absolute; top:-3px; bottom:-3px; width:2px; background:#dc2626; z-index:3; }
+  /* Hueco libre: lo único de la barra que crea una reserva nueva, así que se
+     marca con puntos y un "+" que aparece al pasar por encima. Distinto del
+     slot vendible (PT/PN), que ya trae producto y precio. */
+  .disp-tlw-free {
+    position:absolute; top:0; bottom:0; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    background:repeating-linear-gradient(45deg,transparent,transparent 5px,rgba(106,158,98,.10) 5px,rgba(106,158,98,.10) 10px);
+    transition:background .15s;
+  }
+  .disp-tlw-free span {
+    font-size:10.5px; font-weight:600; color:var(--verde-dark);
+    opacity:0; transition:opacity .15s; white-space:nowrap;
+  }
+  .disp-tlw-free:hover { background:var(--verde-light); }
+  .disp-tlw-free:hover span { opacity:1; }
   .disp-tlw-events {
     display:flex; flex-wrap:wrap; gap:4px 12px; margin-top:7px;
     font-size:12px; color:var(--text-muted); line-height:1.5;
@@ -4983,6 +4998,23 @@ function _dispTimelineAgenda(a) {
   return { carries, items };
 }
 
+// Resta una lista de intervalos a uno base. Devuelve los tramos que quedan
+// libres, en orden. Se usa para los huecos clickeables del timeline ancho: lo
+// que sobra del día después de sacar reservas, limpiezas y slots.
+function _restarIntervalos(base, quitar) {
+  let tramos = [[base[0], base[1]]];
+  quitar.slice().sort((a, b) => a[0] - b[0]).forEach(([qa, qz]) => {
+    const out = [];
+    tramos.forEach(([a, z]) => {
+      if (qz <= a || qa >= z) { out.push([a, z]); return; }   // no se tocan
+      if (qa > a) out.push([a, qa]);                          // queda algo antes
+      if (qz < z) out.push([qz, z]);                          // queda algo después
+    });
+    tramos = out;
+  });
+  return tramos.filter(([a, z]) => z > a);
+}
+
 // ── Timeline ANCHO (escritorio) ────────────────────────────────────────
 // El layout vertical dibuja 24h en un eje de arriba a abajo, así que no usa el
 // ancho por construcción: medido, el alto total del scroll era el MISMO a
@@ -5031,11 +5063,46 @@ function _buildDispTimelineDayWide(ctx) {
     if (slot.end <= dayStart || slot.start >= dayEnd) return;
     const l = pct(slot.start), r = pct(slot.end);
     const w = Math.max(0.6, r - l);
-    const slotTip = 'Ventana libre · ' + _fmtDT(slot.start) + ' → ' + _fmtDT(slot.end) + ' · click para cotizar/registrar';
+    // Un slot NO es un hueco cualquiera: es un producto con nombre y precio
+    // (pasatarde / pasanoche). Decía "＋ libre" igual que el hueco genérico,
+    // así que los dos se leían como lo mismo.
+    const slotLbl = (slot.tipo === 'pasatarde' ? 'PT' : slot.tipo === 'pasanoche' ? 'PN' : '＋')
+                  + (TARIFA_TIPO[slot.tipo] ? ' $' + TARIFA_TIPO[slot.tipo] : '');
+    const slotTip = 'Ventana vendible · ' + (TIPO_SHORT[slot.tipo] || slot.tipo) + ' · '
+                  + _fmtDT(slot.start) + ' → ' + _fmtDT(slot.end) + ' · click para cotizar/registrar';
     barHtml += '<div class="disp-tlw-slot" onclick="event.stopPropagation();showAvailabilityDetail(\'' + cabin + '\',\'' + slot.originDay + '\',\'' + slot.tipo + '\')"'
              + ' style="left:' + l.toFixed(2) + '%;width:' + w.toFixed(2) + '%;"'
-             + ' title="' + escapeHtml(slotTip) + '">' + (w >= 6 ? '＋ libre' : '＋') + '</div>';
+             + ' title="' + escapeHtml(slotTip) + '">' + (w >= 6 ? escapeHtml(slotLbl) : '＋') + '</div>';
   });
+  // ── Huecos libres, clickeables ────────────────────────────────────
+  // Lo que queda del día después de sacar lo ocupado, las ventanas de limpieza
+  // y los slots vendibles. Antes un día 100% libre era una barra vacía que no
+  // hacía nada — justo el día más vendible era el único sobre el que no se
+  // podía actuar. Ahora abre el modal de nueva reserva con la fecha puesta,
+  // igual que una celda libre del Calendario.
+  //
+  // La limpieza se resta a propósito: son las 3h entre una salida y la próxima
+  // entrada, no es tiempo vendible y ofrecerlo sería un error de operación.
+  const ocupados = dayEvents.map(e => [Math.max(e.start, dayStart), Math.min(e.end, dayEnd)]);
+  items.forEach(it => {
+    if (it.type === 'clean' && it.endAt) ocupados.push([it.at, it.endAt]);
+  });
+  filteredSlots.forEach(sl => {
+    if (sl.end > dayStart && sl.start < dayEnd) ocupados.push([Math.max(sl.start, dayStart), Math.min(sl.end, dayEnd)]);
+  });
+  const libres = _restarIntervalos([dayStart.getTime(), dayEnd.getTime()],
+                                   ocupados.map(x => [ +x[0], +x[1] ]));
+  const MIN_HUECO_MS = 45 * 60000;   // menos de 45min no es vendible ni se ve
+  libres.forEach(([a, z]) => {
+    if (z - a < MIN_HUECO_MS) return;
+    const l = pct(new Date(a)), r = pct(new Date(z));
+    const w = Math.max(0.6, r - l);
+    const tip = 'Libre · ' + _fmtHM(new Date(a)) + ' → ' + _fmtHM(new Date(z)) + ' · click para registrar una reserva';
+    barHtml += '<div class="disp-tlw-free" onclick="event.stopPropagation();openModal(\'' + cabin + '\',\'' + day + '\')"'
+             + ' style="left:' + l.toFixed(2) + '%;width:' + w.toFixed(2) + '%;"'
+             + ' title="' + escapeHtml(tip) + '"><span>+ libre</span></div>';
+  });
+
   if (isToday) {
     const nowPct = pct(new Date());
     if (nowPct > 0 && nowPct < 100) {
@@ -5086,7 +5153,13 @@ function _buildDispTimelineDayWide(ctx) {
              +  horas + ' ' + precio + '</span>';
     }
   });
-  if (!evHtml) evHtml = '<span class="disp-tlw-ev vacio">Sin ocupación registrada</span>';
+  // Un día intermedio de una estadía larga no tiene movimientos: la línea solo
+  // repetía "Fulano · Noche continúa desde …", que ya dice la barra. Se omite
+  // entera y el renglón queda más corto. Con el día 100% libre pasa lo mismo:
+  // el bloque "+ libre" de la barra ya lo dice.
+  const _soloArrastre = !items.length && carries.length && !libres.length;
+  const _todoLibre    = !items.length && !carries.length && libres.length;
+  if (_soloArrastre || _todoLibre) evHtml = '';
 
   let badges = '';
   if (isToday)                 badges += '<span class="disp-tl-badge disp-tl-badge-today">Hoy</span>';
@@ -5099,7 +5172,7 @@ function _buildDispTimelineDayWide(ctx) {
        +   '<div class="disp-tlw-main">'
        +     '<div class="disp-tlw-hours">' + hoursHtml + '</div>'
        +     '<div class="disp-tlw-track">' + barHtml + '</div>'
-       +     '<div class="disp-tlw-events">' + evHtml + '</div>'
+       +     (evHtml ? '<div class="disp-tlw-events">' + evHtml + '</div>' : '')
        +   '</div>'
        + '</div>';
 }
