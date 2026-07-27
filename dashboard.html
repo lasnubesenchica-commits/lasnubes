@@ -14467,10 +14467,19 @@ function _renderSumTimeline(wrap, kws) {
     return Math.round(_daysBetween(windowStart, clamped) * pxPerDay);
   };
 
-  // Fecha a la que scrollear según el filtro de período (posiciona, no recorta).
+  // Fecha a la que scrollear (posiciona, no recorta). Si el período INCLUYE
+  // hoy, se ancla en hoy: ahí es donde está la acción — la última barra de cada
+  // item y su semáforo de recompra. Anclando siempre en el inicio del rango,
+  // con YTD abrías en enero y había que scrollear siete meses para ver qué
+  // toca recomprar. Si el período es enteramente pasado (ej. "Marzo 2026") sí
+  // se ancla en su inicio, porque hoy no está a la vista.
   let focusDate = todayISO;
-  if (sumRange && sumRange.from) focusDate = sumRange.from;
-  else if (sumMonth) focusDate = sumMonth + '-01';
+  if (sumRange && sumRange.from) {
+    const dentro = todayISO >= sumRange.from && (!sumRange.to || todayISO <= sumRange.to);
+    if (!dentro) focusDate = sumRange.from;
+  } else if (sumMonth) {
+    if (todayISO.slice(0, 7) !== sumMonth) focusDate = sumMonth + '-01';
+  }
   const scrollTargetX = Math.max(0, xOf(focusDate) - 30);
 
   // Header de meses.
