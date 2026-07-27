@@ -287,20 +287,29 @@ function sendWAReservaConfirmada(reservation) {
  *   {{detalle}}  "12 ago 2026 → 13 ago 2026 · 1 noche" o "Fechas a coordinar"
  *   {{link}}     link publico de la reserva (o lasnubes.cloud)
  *
- * Texto sugerido para dar de alta en Meta Business Manager (copiar tal cual —
- * el cierre "Estaremos atentos" tiene que vivir en el body de la plantilla,
- * porque Meta no permite inyectar texto libre fuera de los parametros):
+ * Para darla de alta NO hay que escribirla a mano: correr
+ * crearPlantillaRegaloEnMeta() desde el editor. Manda la definicion por API con
+ * los nombres de parametro y el boton exactos que espera este codigo, que es
+ * justo lo que se rompe al crearla desde la UI. El texto que registra:
+ *
  *   🎁 Hola {{nombre}}! Tienes un regalo en Las Nubes de parte de {{de}}.
  *
  *   Cabaña: {{cabana}}
- *   {{detalle}}
+ *   Fechas: {{detalle}}
  *
  *   Todo está cubierto — no tienes nada que pagar.
+ *   Aquí puedes ver los detalles: {{link}}
  *
- *   Para verificar disponibilidad y coordinar las fechas de tu reserva
- *   escríbenos al WhatsApp 6981-2266. Estaremos atentos 🙏
+ *   Si necesitas coordinar o ajustar tus fechas, escríbenos al WhatsApp
+ *   6981-2266. Estaremos atentos 🙏
  *
- *   {{link}}
+ * Ojo con tres cosas, que son las que hacen fallar el envio:
+ *   · los parametros son NOMBRADOS, no {{1}}/{{2}};
+ *   · `cabana` va sin ñ, igual que la clave que manda el codigo;
+ *   · la plantilla NECESITA un boton quick-reply, porque este codigo siempre
+ *     manda el payload 'consulta_<id>' (lo atiende _botHandleConsultaReserva).
+ *     Sin boton, Meta rechaza el envio por componentes que no coinciden.
+ *   · el body no arranca ni termina en variable, que Meta a veces rechaza.
  *
  * Mientras Meta no la apruebe, cae de vuelta a 'confirmacion_reserva' con los
  * parametros adaptados al regalo (sin montos). Como ahí el body es fijo y no
@@ -642,3 +651,109 @@ function sendWhatsAppButtons(toPhone, bodyText, buttons, headerText, footerText)
   return json;
 }
 
+
+// ═══════════════════════════════════════════════════════════
+//  Dar de alta la plantilla 'certificado_regalo' en Meta
+// ═══════════════════════════════════════════════════════════
+//
+// Crearla desde la UI de WhatsApp Manager es donde se rompe todo: hay que
+// acordarse de elegir parámetros NOMBRADOS en vez de {{1}}/{{2}}, escribir
+// `cabana` sin ñ, y agregar el botón quick-reply. Cualquiera de las tres cosas
+// mal y el envío falla con un error de componentes que no dice mucho.
+//
+// Esta función manda la definición por API con esos tres detalles ya correctos,
+// derivados del mismo código que después la envía.
+//
+// Dry-run por defecto: imprime el JSON y no lo manda, para poder revisarlo (o
+// pegarlo a mano si se prefiere). Para crearla de verdad:
+//   crearPlantillaRegaloEnMetaAHORA()
+function _plantillaRegaloPayload() {
+  const body =
+    '🎁 Hola {{nombre}}! Tienes un regalo en Las Nubes de parte de {{de}}.\n' +
+    '\n' +
+    'Cabaña: {{cabana}}\n' +
+    'Fechas: {{detalle}}\n' +
+    '\n' +
+    'Todo está cubierto — no tienes nada que pagar.\n' +
+    'Aquí puedes ver los detalles: {{link}}\n' +
+    '\n' +
+    'Si necesitas coordinar o ajustar tus fechas, escríbenos al WhatsApp ' +
+    '6981-2266. Estaremos atentos 🙏';
+
+  return {
+    name: 'certificado_regalo',
+    language: 'es_PA',
+    category: 'UTILITY',
+    parameter_format: 'NAMED',
+    components: [
+      {
+        type: 'BODY',
+        text: body,
+        example: {
+          body_text_named_params: [
+            { param_name: 'nombre',  example: 'María' },
+            { param_name: 'de',      example: 'Josué Rodríguez' },
+            { param_name: 'cabana',  example: 'Paseo por Las Nubes' },
+            { param_name: 'detalle', example: '12 ago 2026 → 13 ago 2026 · 1 noche' },
+            { param_name: 'link',    example: 'https://lasnubes.cloud/reserva.html?id=LN-1234&t=abc123' }
+          ]
+        }
+      },
+      {
+        type: 'BUTTONS',
+        buttons: [{ type: 'QUICK_REPLY', text: 'Consultas y cambios' }]
+      }
+    ]
+  };
+}
+
+function crearPlantillaRegaloEnMeta(dryRun) {
+  if (dryRun !== false) dryRun = true;
+  const cfg = _waProps();
+  if (!cfg.token)      { Logger.log('⚠ Falta WA_ACCESS_TOKEN en Script Properties.'); return; }
+  if (!cfg.businessId) { Logger.log('⚠ Falta WA_BUSINESS_ACCOUNT_ID en Script Properties.'); return; }
+
+  const payload = _plantillaRegaloPayload();
+  Logger.log('═══ ' + (dryRun ? 'DRY-RUN · ' : '') + "PLANTILLA 'certificado_regalo' ═══");
+  Logger.log('');
+  Logger.log('Así queda el mensaje que va a recibir el beneficiario:');
+  Logger.log('');
+  payload.components[0].text.split('\n').forEach(l => Logger.log('   ' + (l || ' ')));
+  Logger.log('');
+  Logger.log('   [ Consultas y cambios ]   ← botón quick-reply');
+  Logger.log('');
+  Logger.log('Definición que se manda a Meta (WABA ' + cfg.businessId + '):');
+  Logger.log(JSON.stringify(payload, null, 2));
+
+  if (dryRun) {
+    Logger.log('');
+    Logger.log('Nada se envió. Para crearla: crearPlantillaRegaloEnMetaAHORA()');
+    return;
+  }
+
+  const res = UrlFetchApp.fetch(
+    'https://graph.facebook.com/v21.0/' + cfg.businessId + '/message_templates',
+    { method: 'post', contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      headers: { Authorization: 'Bearer ' + cfg.token },
+      muteHttpExceptions: true });
+  const code = res.getResponseCode();
+  const txt  = res.getContentText();
+  Logger.log('');
+  Logger.log('HTTP ' + code);
+  Logger.log(txt);
+  if (code >= 200 && code < 300) {
+    Logger.log('');
+    Logger.log('✓ Plantilla enviada a revisión. Meta suele aprobar las UTILITY en minutos.');
+    Logger.log('  Cuando quede aprobada, probala con testEnviarPlantillaRegalo().');
+    Logger.log('  Mientras esté en revisión el envío sigue cayendo al fallback, que funciona.');
+  } else {
+    Logger.log('');
+    Logger.log('✗ Meta la rechazó. Los motivos habituales:');
+    Logger.log('   · ya existe una plantilla con ese nombre en es_PA → borrarla o renombrarla;');
+    Logger.log('   · el token no tiene permiso whatsapp_business_management;');
+    Logger.log('   · Meta reclasificó la categoría (si la pasa a MARKETING igual sirve).');
+  }
+}
+
+function crearPlantillaRegaloEnMetaAHORA() { return crearPlantillaRegaloEnMeta(false); }
