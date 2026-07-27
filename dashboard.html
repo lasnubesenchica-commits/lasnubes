@@ -412,6 +412,15 @@
   /* Bar chart */
   .ocu-bar-group { display: flex; flex-direction: column; gap: 12px; }
   .ocu-bar-row { display: flex; flex-direction: column; gap: 4px; }
+
+  /* Drill-down: lo que se puede clickear para filtrar la tabla de abajo. Un
+     solo estilo para barras, KPIs y celdas, así se aprende una vez. */
+  .ocu-clickable { cursor: pointer; border-radius: 8px; transition: background .15s, box-shadow .15s; }
+  .ocu-clickable:hover { background: var(--bg); }
+  .ocu-kpi.ocu-clickable:hover { box-shadow: 0 0 0 2px var(--border) inset; }
+  td.ocu-clickable:hover { background: var(--bg); box-shadow: 0 0 0 2px var(--border) inset; }
+  .ocu-bar-row.ocu-clickable { padding: 4px 6px; margin: 0 -6px; }
+  .ocu-clickable:active { opacity: .75; }
   .ocu-bar-label {
     display: flex;
     justify-content: space-between;
@@ -2991,17 +3000,26 @@
     </div>
 
     <!-- Reservas del período -->
-    <div class="ocu-chart-card" style="margin-top:16px;">
+    <div class="ocu-chart-card" id="ocuResCard" style="margin-top:16px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-        <div class="ocu-chart-title" style="margin-bottom:0;">Reservas del período</div>
+        <!-- "Reservas del período" era ambiguo: acá el criterio es que la
+             estadía TOQUE el período, no que el check-in caiga adentro (eso es
+             la pestaña Por check-in de Reservas). Una estadía del 28-jun al
+             3-jul ocupa 3 noches de julio y sale acá, pero no allá. -->
+        <div>
+          <div class="ocu-chart-title" style="margin-bottom:0;">Reservas que ocupan el período</div>
+          <!-- El drill-down no se descubre solo: sin este renglón hay que
+               adivinar que las barras y las celdas de arriba son clickeables. -->
+          <div id="ocuDrillHint" style="font-size:11.5px;color:var(--text-muted);margin-top:2px;">Toca cualquier estadística de arriba para filtrar esta lista</div>
+        </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-          <select id="ocuResFilterOrigen" onchange="renderOcuResTable()" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
+          <select id="ocuResFilterOrigen" onchange="ocuFiltroManual()" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
             <option value="">Todos los orígenes</option>
             <option value="Airbnb">Airbnb</option>
             <option value="Directa">Directa</option>
             <option value="Otro">Otro</option>
           </select>
-          <select id="ocuResFilterCabin" onchange="renderOcuResTable()" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
+          <select id="ocuResFilterCabin" onchange="ocuFiltroManual()" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
             <option value="">Todas las cabañas</option>
             <option value="verde">Paseo</option>
             <option value="azul">Portal</option>
@@ -3009,6 +3027,10 @@
           </select>
         </div>
       </div>
+      <!-- Chip del drill-down. Los widgets de arriba cuentan DÍAS o unidades y
+           esta tabla lista RESERVAS, así que "42 días → 15 reservas" es
+           correcto pero no se explica solo. El chip dice qué se clickeó. -->
+      <div id="ocuResFiltroChip" style="display:none;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding:8px 12px;border-radius:10px;background:var(--bg);border:1px solid var(--border);font-size:12.5px;color:var(--text-muted);"></div>
       <div style="overflow-x:auto;">
         <table class="ocu-table">
           <thead>
@@ -12552,6 +12574,73 @@ let _ocuResCtx  = null;
 // de arriba: cuántas noches de cada reserva caen DENTRO del período y cuáles
 // filas cuentan como ingreso. Sin ctx la tabla sigue funcionando (solo pierde
 // los paréntesis aclaratorios) — la usan los filtros, que re-renderizan sin él.
+// ── Drill-down: clickear un widget filtra la tabla de abajo ─────────────
+//
+// Los dos <select> de la tarjeta son la FUENTE ÚNICA del filtro: el click de un
+// widget los setea en vez de llevar estado aparte, así cambiar el filtro a mano
+// y clickear un widget no pueden divergir. Lo único que se guarda aparte es la
+// glosa de la métrica, para que el chip pueda decir de dónde salió el número.
+let _ocuDrillMetrica = '';
+
+// Los handlers se arman en un atributo HTML con comillas dobles y el argumento
+// va entre simples, así que un origen con apóstrofo rompería el onclick.
+function _dq(s) { return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;'); }
+
+function ocuDrill(origen, cabin, metrica) {
+  const so = document.getElementById('ocuResFilterOrigen');
+  const sc = document.getElementById('ocuResFilterCabin');
+  if (so) so.value = origen || '';
+  if (sc) sc.value = cabin  || '';
+  _ocuDrillMetrica = metrica || '';
+  renderOcuResTable();
+  // Sin esto, en el celular clickeás un widget arriba y no ves que abajo pasó
+  // algo: la tabla queda a varias pantallas de distancia.
+  const card = document.getElementById('ocuResCard');
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function ocuDrillClear() { ocuDrill('', '', ''); }
+
+// Cambiar un select a mano invalida la glosa: el número que la originó ya no
+// tiene por qué corresponder al filtro nuevo.
+function ocuFiltroManual() { _ocuDrillMetrica = ''; renderOcuResTable(); }
+
+// El <select> de origen tenía las opciones hardcodeadas (Airbnb/Directa/Otro),
+// así que un drill-down desde la tabla de Ingresos —que muestra los orígenes
+// REALES, incluido Referido o Colaboracion— seteaba un valor inexistente y el
+// select caía a "" en silencio. Se arma con lo que hay en el período.
+function _poblarFiltroOrigen(res) {
+  const sel = document.getElementById('ocuResFilterOrigen');
+  if (!sel) return;
+  const presentes = [...new Set((res || [])
+    .filter(r => r.origin !== 'Abierta' && r.estadoPago !== 'CANCELADA')
+    .map(r => r.origin).filter(Boolean))].sort();
+  const firma = presentes.join('|');
+  if (sel.dataset.firma === firma) return;   // sin cambios, no repintar
+  const actual = sel.value;
+  sel.dataset.firma = firma;
+  sel.innerHTML = '<option value="">Todos los orígenes</option>'
+    + presentes.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('')
+    + '<option value="Otro">Otro (no Airbnb ni Directa)</option>';
+  if (actual && (presentes.includes(actual) || actual === 'Otro')) sel.value = actual;
+}
+
+function _renderDrillChip(filterOrigen, filterCabin, C, nRows) {
+  const chip = document.getElementById('ocuResFiltroChip');
+  if (!chip) return;
+  const partes = [];
+  if (filterOrigen) partes.push(filterOrigen === 'Otro' ? 'Otros orígenes' : filterOrigen);
+  if (filterCabin)  partes.push(C[filterCabin] || filterCabin);
+  if (!partes.length) { chip.style.display = 'none'; chip.innerHTML = ''; return; }
+  chip.style.display = 'flex';
+  chip.innerHTML =
+      '<span>Mostrando <strong style="color:var(--text);">' + escapeHtml(partes.join(' · ')) + '</strong>'
+    + (_ocuDrillMetrica ? ' <span style="opacity:.8;">(' + escapeHtml(_ocuDrillMetrica) + ')</span>' : '')
+    + ' → <strong style="color:var(--text);">' + nRows + (nRows === 1 ? ' reserva' : ' reservas') + '</strong></span>'
+    + '<button onclick="ocuDrillClear()" style="border:1px solid var(--border);background:var(--surface);'
+    + 'color:var(--text-muted);border-radius:8px;padding:3px 10px;font-size:12px;cursor:pointer;">✕ quitar filtro</button>';
+}
+
 function renderOcuResTable(res, ctx) {
   if (res) { _ocuResLast = res; _ocuResCtx = ctx || null; }
   else     { res = _ocuResLast; ctx = _ocuResCtx; }
@@ -12559,17 +12648,25 @@ function renderOcuResTable(res, ctx) {
   const tfoot = document.getElementById('ocuResTableFoot');
   if (!tbody) return;
 
+  _poblarFiltroOrigen(res);
   const filterOrigen = document.getElementById('ocuResFilterOrigen')?.value || '';
   const filterCabin  = document.getElementById('ocuResFilterCabin')?.value  || '';
   const C = { verde:'Paseo', azul:'Portal', lila:'Puente' };
 
   let rows = [...res].filter(r => r.origin !== 'Abierta' && r.estadoPago !== 'CANCELADA');
-  if (filterOrigen) rows = rows.filter(r => r.origin === filterOrigen);
-  if (filterCabin)  rows = rows.filter(r => r.cabin  === filterCabin);
+  // 'Otro' agrupa todo lo que no es Airbnb ni Directa. Antes se comparaba
+  // `r.origin === 'Otro'`, que no es cierto para NINGUNA reserva (los orígenes
+  // reales son Referido, Cortesia, Colaboracion…), así que elegir esa opción
+  // vaciaba la tabla en vez de filtrarla.
+  if (filterOrigen === 'Otro') rows = rows.filter(r => r.origin !== 'Airbnb' && r.origin !== 'Directa');
+  else if (filterOrigen)       rows = rows.filter(r => r.origin === filterOrigen);
+  if (filterCabin)             rows = rows.filter(r => r.cabin  === filterCabin);
   rows.sort((a,b) => (a.checkin||'').localeCompare(b.checkin||''));
 
+  _renderDrillChip(filterOrigen, filterCabin, C, rows.length);
+
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Sin reservas en este período</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Sin reservas para este filtro</td></tr>';
     if (tfoot) tfoot.innerHTML = '';
     return;
   }
@@ -12854,11 +12951,14 @@ function renderOcupacion() {
       value: Math.round(cabinTotals[c.key].occ/(cabinTotals[c.key].avail||1)*100) + '%',
       sub:   cabinNights[c.key] + ' días de ' + cabinTotals[c.key].avail + ' disp.',
       bd:    breakdownChip(cabinTotals[c.key].diasNoche, cabinTotals[c.key].diasPasadia, cabinTotals[c.key].diasCortesia),
-      cls:   c.key
+      cls:   c.key,
+      // La tarjeta global no filtra: su subconjunto es "todo", que es el estado
+      // sin filtro. Clickeable solo lo que representa un recorte real.
+      drill: { cabin: c.key, metrica: cabinNights[c.key] + ' días ocupados' }
     }))
   ];
   document.getElementById('ocuKpis').innerHTML = kpiData.map(k => `
-    <div class="ocu-kpi">
+    <div class="ocu-kpi${k.drill ? ' ocu-clickable' : ''}"${k.drill ? ` onclick="ocuDrill('','${k.drill.cabin}','${k.drill.metrica}')" title="Ver las reservas de ${k.label}"` : ''}>
       <div class="ocu-kpi-label">${k.label}</div>
       <div class="ocu-kpi-value ${k.cls}">${k.value}</div>
       <div class="ocu-kpi-sub">${k.sub}</div>
@@ -13066,7 +13166,7 @@ function renderOcupacion() {
     const n   = cabinNights[c.key];
     const pct = Math.round(n/(cabinTotals[c.key].avail||1)*100);
     return `
-      <div class="ocu-bar-row">
+      <div class="ocu-bar-row ocu-clickable" onclick="ocuDrill('','${c.key}','${n} ${n===1?'día':'días'} ocupados · ${pct}%')" title="Ver las reservas de ${c.name}">
         <div class="ocu-bar-label">
           <strong>${c.name}</strong>
           <span>${n} ${n === 1 ? 'día' : 'días'} · ${pct}%</span>
@@ -13085,8 +13185,10 @@ function renderOcupacion() {
       .map(grp => {
       const n   = originNightsMap[grp];
       const pct = totalOccNights > 0 ? Math.round(n/totalOccNights*100) : 0;
+      // 'Otros' es el grupo del gráfico; en el filtro se llama 'Otro'.
+      const drillO = grp === 'Otros' ? 'Otro' : grp;
       return `
-        <div class="ocu-bar-row">
+        <div class="ocu-bar-row ocu-clickable" onclick="ocuDrill('${drillO}','','${n} ${n===1?'día':'días'} ocupados · ${pct}%')" title="Ver las reservas de ${grp}">
           <div class="ocu-bar-label">
             <strong>${grp}</strong>
             <span>${n} ${n === 1 ? 'día' : 'días'} · ${pct}%</span>
@@ -13199,10 +13301,17 @@ function renderOcupacion() {
     const rowTotal = revCabins.reduce((s,c)=>s+(revMatrix[o][c.key]||0),0);
     const color = ORIGIN_COLORS[o]||'#aaa';
     const pct   = grandTotal > 0 ? Math.round(rowTotal/grandTotal*100) : 0;
+    // Cada celda es un cruce origen × cabaña, o sea el recorte más fino que la
+    // tabla de abajo puede mostrar. El nombre de la fila filtra solo por origen.
     return `<tr>
-      <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px;"></span><strong>${o}</strong></td>
-      ${revCabins.map(c=>`<td style="text-align:right;">${fmt(revMatrix[o][c.key]||0)}</td>`).join('')}
-      <td style="text-align:right;font-weight:500;">${money(rowTotal)}</td>
+      <td class="ocu-clickable" onclick="ocuDrill('${_dq(o)}','','${money(rowTotal)} en ingresos')" title="Ver las reservas de ${_dq(o)}"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px;"></span><strong>${o}</strong></td>
+      ${revCabins.map(c=>{
+        const v = revMatrix[o][c.key]||0;
+        return v > 0
+          ? `<td style="text-align:right;" class="ocu-clickable" onclick="ocuDrill('${_dq(o)}','${c.key}','${money(v)} en ingresos')" title="Ver ${_dq(o)} en ${c.name}">${fmt(v)}</td>`
+          : `<td style="text-align:right;">${fmt(v)}</td>`;
+      }).join('')}
+      <td style="text-align:right;font-weight:500;" class="ocu-clickable" onclick="ocuDrill('${_dq(o)}','','${money(rowTotal)} en ingresos')" title="Ver las reservas de ${_dq(o)}">${money(rowTotal)}</td>
       <td style="padding-left:8px;">
         <div style="display:flex;align-items:center;gap:6px;">
           <div style="flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden;">
@@ -13218,7 +13327,7 @@ function renderOcupacion() {
     <td>Total</td>
     ${revCabins.map(c=>{
       const pc = grandTotal > 0 ? Math.round(colTotals[c.key]/grandTotal*100) : 0;
-      return `<td style="text-align:right;">${money(colTotals[c.key])}
+      return `<td style="text-align:right;" class="ocu-clickable" onclick="ocuDrill('','${c.key}','${money(colTotals[c.key])} en ingresos')" title="Ver las reservas de ${c.name}">${money(colTotals[c.key])}
         <div style="font-size:10px;font-weight:400;color:var(--text-muted);">${pc}%</div></td>`;
     }).join('')}
     <td style="text-align:right;">${money(grandTotal)}</td>
