@@ -6524,19 +6524,34 @@ function onFilterMonthChange() {
   renderList();
 }
 
+// Estado de pago EFECTIVO de una reserva. La columna `EstadoPago` de la hoja no
+// alcanza: solo se recalcula al subir un voucher, así que un pago registrado a
+// mano en el campo Abono la deja en `PENDIENTE` para siempre. Mientras tanto
+// toda Contabilidad deriva el cobro de `montoRecibido()`, que sí lee el abono —
+// y la misma fila terminaba diciendo "recibido $110 de $110 ✓" al lado de
+// "○ Pendiente". Acá se cruzan las dos: la plata recibida puede SUBIR el estado
+// (pendiente → abonado → paga) pero nunca bajarlo, así que un `PAGA` puesto a
+// mano sin abono (efectivo, cortesía de pago) se respeta igual que antes.
+function estadoPagoEfectivo(r) {
+  const stored = (r.estadoPago || '').toString().toUpperCase();
+  if (stored === 'CANCELADA') return 'CANCELADA';
+  if (r.origin === 'Airbnb')  return r.fechaPago ? 'PAGA' : 'PENDIENTE';
+  if (SIN_PAGO_ORIGINS.includes(r.origin)) return '';
+  if (stored === 'PAGA') return 'PAGA';
+
+  const total    = parseFloat(r.neto || r.amount || 0) || 0;
+  const recibido = montoRecibido(r);
+  if (total > 0 && recibido >= total - 0.01) return 'PAGA';
+  if (recibido > 0.01) return 'ABONADO';
+  return stored || (total > 0 ? 'PENDIENTE' : '');
+}
+
+const PAGO_LABELS = { PAGA: '✓ Paga', ABONADO: '⬤ Abonado', PENDIENTE: '○ Pendiente', CANCELADA: '✕ Cancelada' };
+
 function estadoPagoBadge(r) {
-  // CANCELADA tiene prioridad sobre cualquier otra lógica
-  if (r.estadoPago === 'CANCELADA') {
-    return '<span class="pago-badge pago-CANCELADA">✕ Cancelada</span>';
-  }
-  // Airbnb: PAGA si tiene FechaPago, si no pendiente de cobro
-  const estado = r.origin === 'Airbnb'
-    ? (r.fechaPago ? 'PAGA' : 'PENDIENTE')
-    : (r.estadoPago || '');
-  const sinPago = ['Cortesia', 'Colaboracion', 'Personal', 'Mantenimiento'];
-  if (!estado || sinPago.includes(r.origin)) return '';
-  const labels = { PAGA: '✓ Paga', ABONADO: '⬤ Abonado', PENDIENTE: '○ Pendiente' };
-  return `<span class="pago-badge pago-${estado}">${labels[estado] || estado}</span>`;
+  const estado = estadoPagoEfectivo(r);
+  if (!estado) return '';
+  return `<span class="pago-badge pago-${estado}">${PAGO_LABELS[estado] || estado}</span>`;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -8716,11 +8731,20 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
     if (voucherValidation.alerta) {
       showVoucherAlert(voucherValidation.alerta, voucherValidation.tipo);
     }
-  } else if (!editId) {
-    // New reservation without voucher — set initial state
-    const sinPago = SIN_PAGO_ORIGINS;
-    if (origin === 'Airbnb') estadoPago = 'PAGA';
-    else if (!sinPago.includes(origin) && parseFloat(amount) > 0) estadoPago = 'PENDIENTE';
+  } else if (origin === 'Airbnb') {
+    estadoPago = 'PAGA';
+  } else if (!SIN_PAGO_ORIGINS.includes(origin) && parseFloat(amount) > 0) {
+    // Sin voucher nuevo, el ABONO es la evidencia del pago: un cobro en
+    // efectivo o un voucher que se registró a mano dejaba la reserva en
+    // PENDIENTE para siempre, aunque el abono cubriera el total. Solo SUBE el
+    // estado — un PAGA/ABONADO previo no se degrada por editar otro campo.
+    const _ab  = parseFloat(deposit) || 0;
+    const _tot = parseFloat(amount)  || 0;
+    const derivado = _ab >= _tot - 0.01 ? 'PAGA' : (_ab > 0.01 ? 'ABONADO' : 'PENDIENTE');
+    const rank = { '': 0, PENDIENTE: 1, ABONADO: 2, PAGA: 3 };
+    const prevEstado = (existingEstado || '').toString().toUpperCase();
+    if (prevEstado === 'CANCELADA') estadoPago = existingEstado;
+    else estadoPago = (rank[derivado] || 0) > (rank[prevEstado] || 0) ? derivado : (existingEstado || derivado);
   }
 
   const comentarios = document.getElementById('fComentarios').value.trim();
@@ -12206,18 +12230,11 @@ function renderOcuResTable(res, ctx) {
       nochesPeriodo += (ctx.nochesPeriodo && ctx.nochesPeriodo[r.id]) || 0;
       if (ctx.ingresoIds && ctx.ingresoIds.has(r.id)) montoIngreso += monto;
     }
-    // Un origen sin cobro (Cortesía, Colaboración, Personal…) no está
-    // "pendiente de pago": nunca se va a cobrar. Marcarlo con el mismo ○ que
-    // una reserva impaga hacía leer como morosidad algo que es regalo.
-    const badge = r.estadoPago === 'CANCELADA'
-      ? '<span class="pago-badge pago-CANCELADA">✕ Cancelada</span>'
-      : (typeof SIN_PAGO_ORIGINS !== 'undefined' && SIN_PAGO_ORIGINS.includes(r.origin))
-        ? '<span class="pago-badge" style="background:var(--bg);color:var(--text-light);">— Sin cobro</span>'
-      : (r.estadoPago === 'PAGA' || r.fechaPago)
-        ? '<span class="pago-badge pago-PAGA">✓ Paga</span>'
-      : r.estadoPago === 'ABONADO'
-        ? '<span class="pago-badge pago-ABONADO">⬤ Abonado</span>'
-        : '<span class="pago-badge pago-PENDIENTE">○ Pendiente</span>';
+    // Mismo criterio que el resto del dashboard (`estadoPagoBadge`). Un origen
+    // sin cobro devuelve '' allá; acá se explicita, porque una celda vacía en
+    // una columna que dice "Estado" se lee como dato faltante.
+    const badge = estadoPagoBadge(r)
+      || '<span class="pago-badge" style="background:var(--bg);color:var(--text-light);">— Sin cobro</span>';
     return `<tr>
       <td>${escapeHtml(r.name)||'—'}</td>
       <td style="color:var(--${r.cabin||'verde'}-dark);font-weight:600;">${C[r.cabin]||r.cabin||'—'}</td>
