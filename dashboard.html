@@ -9721,7 +9721,8 @@ function _toggleEgrCatFilter(cat) {
   sel.value = (sel.value === cat) ? '' : cat;
   renderEgresosTab();
 }
-let amountMode   = 'gross'; // 'gross' | 'neto'
+let amountMode   = 'neto';  // 'gross' | 'neto' — arranca en Neto, que es el
+                            // botón marcado en el HTML y lo que de verdad entró.
 let origenFilter = 'all';   // 'all' | 'Airbnb' | 'Directa'
 
 // getFechaIngreso: para Directas usa fechaReserva; Airbnb no aplica (usa pagos[])
@@ -9731,11 +9732,7 @@ function getFechaIngreso(r) {
 
 function setAmountMode(mode) {
   amountMode = mode;
-  document.getElementById('btnGross').classList.toggle('active', mode === 'gross');
-  document.getElementById('btnNeto').classList.toggle('active',  mode === 'neto');
-  document.getElementById('modeExplainer').textContent = mode === 'gross'
-    ? 'Incluye comisión Airbnb' : 'Después de comisión Airbnb';
-  renderContabilidad();
+  renderContabilidad();   // pinta botones y explicación, así no pueden desfasarse
 }
 
 function setOrigenFilter(origen) {
@@ -9747,13 +9744,31 @@ function setOrigenFilter(origen) {
   renderContabilidad();
 }
 
-function getAmount(r) {
-  if (amountMode === 'neto') {
-    if (parseFloat(r.neto||0) > 0)  return parseFloat(r.neto);
-    return estimarComision(parseFloat(r.amount||0), r.checkin).neto;
-  }
-  return parseFloat(r.amount || 0);
+// El bruto de un cobro de Airbnb: lo que pagó el huésped ANTES de que Airbnb se
+// quede su comisión.
+//
+// pagos[] no lo trae. `montoTotal` es la suma de las líneas del payout, que ya
+// vienen netas de comisión — la diferencia con `montoNeto` es solo el cargo de
+// Western Union ($10). Así que el bruto se reconstruye desde las reservas del
+// cobro, cuyo `Monto` es el bruto del export de Airbnb.
+//
+// Si el cobro no cruza con ninguna reserva no hay bruto que conocer: se cae a
+// `montoTotal` y se marca `exacto:false` para poder decirlo en la UI en vez de
+// presentar una estimación como si fuera dato.
+function _brutoDeCobroAirbnb(p) {
+  const delCobro = reservations.filter(r =>
+    p.confirmCodes && r.confirmCode && p.confirmCodes.includes(r.confirmCode));
+  const suma = delCobro.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+  return suma > 0
+    ? { bruto: suma, exacto: true }
+    : { bruto: parseFloat(p.montoTotal || p.montoNeto || 0), exacto: false };
 }
+
+// getAmount() quedó sin uso cuando los ingresos de Airbnb pasaron de
+// reservations[] a pagos[], y con ella el toggle Bruto/Neto dejó de mover
+// cualquier número. Se saca en vez de dejarla: aplicaba estimarComision() a
+// CUALQUIER reserva, así que sobre una directa —que no paga comisión de
+// Airbnb— le inventaba un 15.5% de descuento.
 
 function renderContabilidad() {
   // ── Pagos de Airbnb (fuente de verdad para ingresos Airbnb) ──────────
@@ -9836,8 +9851,36 @@ function renderContabilidad() {
   // ── Totals ────────────────────────────────────────────────────────────
   // Airbnb: suma de MontoNeto de pagos[]  (exacto, coincide con emails)
   // Directas: suma de monto de reservas directas
-  const totalAirbnb   = filteredPagos.reduce((s,p) => s + p.montoNeto, 0);
+  // El toggle Bruto/Neto solo mueve la columna de Airbnb, porque es la única con
+  // comisión de plataforma. Una directa no paga comisión: su bruto ES su neto, y
+  // descontarle un 15.5% estimado sería inventar un gasto que no existe.
+  const brutosAirbnb  = filteredPagos.map(_brutoDeCobroAirbnb);
+  const cobrosSinBruto = brutosAirbnb.filter(b => !b.exacto).length;
+  const totalAirbnbNeto  = filteredPagos.reduce((s,p) => s + p.montoNeto, 0);
+  const totalAirbnbBruto = brutosAirbnb.reduce((s,b) => s + b.bruto, 0);
+  const totalAirbnb   = amountMode === 'gross' ? totalAirbnbBruto : totalAirbnbNeto;
   const totalDirectas = filteredDirectas.reduce((s,r) => s + parseFloat(r.amount||0), 0);
+
+  // Estado del toggle: se pinta acá y no en setAmountMode para que el botón
+  // marcado, la variable y la explicación no puedan desfasarse — antes el HTML
+  // marcaba Neto, la variable decía 'gross' y el texto era el de bruto.
+  const _bg = document.getElementById('btnGross');
+  const _bn = document.getElementById('btnNeto');
+  const _mx = document.getElementById('modeExplainer');
+  if (_bg) _bg.classList.toggle('active', amountMode === 'gross');
+  if (_bn) _bn.classList.toggle('active', amountMode === 'neto');
+  if (_mx) {
+    if (origenFilter === 'Directa') {
+      _mx.textContent = 'Las directas no pagan comisión';
+    } else if (amountMode === 'gross') {
+      const dif = totalAirbnbBruto - totalAirbnbNeto;
+      _mx.textContent = 'Antes de comisión Airbnb'
+        + (dif > 0.01 ? ` (se queda $${dif.toFixed(2)})` : '')
+        + (cobrosSinBruto ? ` · ${cobrosSinBruto} cobro${cobrosSinBruto!==1?'s':''} sin bruto conocido` : '');
+    } else {
+      _mx.textContent = 'Lo que entró, después de comisión Airbnb';
+    }
+  }
 
   let totalIn;
   if      (origenFilter === 'Airbnb')  totalIn = totalAirbnb;
@@ -10101,6 +10144,12 @@ function renderFlujoChart(filteredPagos, filteredDirectas) {
   // ── Canvas setup ────────────────────────────────────────────────────────
   const dpr = window.devicePixelRatio || 1;
   const W   = canvas.parentElement.clientWidth - 8;
+  // El panel de Resumen puede estar oculto cuando renderContabilidad() corre
+  // (setPeriod lo llama desde cualquier sub-tab). Ahí clientWidth es 0, W queda
+  // en -8, el canvas rechaza el ancho negativo y se queda en 300px, pero chartW
+  // se vuelve negativo y las barras se dibujan fuera del área: gráfica en
+  // blanco. Se sale y se repinta al volver a la tab (_repintarGraficasResumen).
+  if (!(W > 0)) return;
   const H   = 340;   // Altura doble
   canvas.width  = W * dpr; canvas.height = H * dpr;
   canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
@@ -10410,7 +10459,10 @@ function renderVentasChart() {
   const byLabel = {}, resMap = {};
 
   // -- Airbnb: iterate pagos[], use exact montosPorCodigo from email
-  pagos.filter(p => (!selectedMonth || p.fechaCobro.startsWith(selectedMonth)) && origenFilter !== 'Directa')
+  // _matchesSelectedPeriod y no startsWith(selectedMonth): con YTD o Custom
+  // selectedMonth es null, así que el `!selectedMonth ||` dejaba pasar TODO el
+  // histórico y la gráfica contradecía a las tarjetas KPI.
+  pagos.filter(p => _matchesSelectedPeriod(p.fechaCobro) && origenFilter !== 'Directa')
     .forEach(p => {
       const lk = keyFn(p.fechaCobro);
       if (!byLabel[lk]) { byLabel[lk] = {}; resMap[lk] = []; }
@@ -10446,7 +10498,7 @@ function renderVentasChart() {
   if (origenFilter !== 'Airbnb') reservations.filter(r => {
     if (r.origin === 'Airbnb' || r.origin === 'Cortesia') return false;
     const fi = r.fechaReserva || r.checkin || '';
-    return fi && (!selectedMonth || fi.startsWith(selectedMonth));
+    return fi && _matchesSelectedPeriod(fi);   // ver nota arriba: antes ignoraba YTD/Custom
   }).forEach(r => {
     const fi = r.fechaReserva || r.checkin || '';
     const lk = keyFn(fi);
@@ -10495,6 +10547,12 @@ function renderVentasChart() {
   // ── Canvas setup ──────────────────────────────────────────────────────
   const dpr = window.devicePixelRatio || 1;
   const W   = canvas.parentElement.clientWidth - 8;
+  // El panel de Resumen puede estar oculto cuando renderContabilidad() corre
+  // (setPeriod lo llama desde cualquier sub-tab). Ahí clientWidth es 0, W queda
+  // en -8, el canvas rechaza el ancho negativo y se queda en 300px, pero chartW
+  // se vuelve negativo y las barras se dibujan fuera del área: gráfica en
+  // blanco. Se sale y se repinta al volver a la tab (_repintarGraficasResumen).
+  if (!(W > 0)) return;
   const H   = 340;
   canvas.width  = W * dpr; canvas.height = H * dpr;
   canvas.style.width  = W + 'px'; canvas.style.height = H + 'px';
@@ -10806,7 +10864,10 @@ function renderCheckinChart() {
   const byLabel = {}, resMap = {};
 
   // -- Airbnb: use exact montosPorCodigo, group by check-in month
-  pagos.filter(p => (!selectedMonth || p.fechaCobro.startsWith(selectedMonth)) && origenFilter !== 'Directa')
+  // _matchesSelectedPeriod y no startsWith(selectedMonth): con YTD o Custom
+  // selectedMonth es null, así que el `!selectedMonth ||` dejaba pasar TODO el
+  // histórico y la gráfica contradecía a las tarjetas KPI.
+  pagos.filter(p => _matchesSelectedPeriod(p.fechaCobro) && origenFilter !== 'Directa')
     .forEach(p => {
       const lk = keyFn(p.fechaCobro);
       if (!byLabel[lk]) { byLabel[lk] = {}; resMap[lk] = []; }
@@ -10841,7 +10902,7 @@ function renderCheckinChart() {
   if (origenFilter !== 'Airbnb') reservations.filter(r => {
     if (r.origin === 'Airbnb' || r.origin === 'Cortesia') return false;
     const fi = r.fechaReserva || r.checkin || '';
-    return fi && (!selectedMonth || fi.startsWith(selectedMonth));
+    return fi && _matchesSelectedPeriod(fi);   // ver nota arriba: antes ignoraba YTD/Custom
   }).forEach(r => {
     const fi = r.fechaReserva || r.checkin || '';
     const lk = keyFn(fi);
@@ -10911,6 +10972,12 @@ function renderCheckinChart() {
   // ── Canvas ────────────────────────────────────────────────────────────
   const dpr = window.devicePixelRatio || 1;
   const W   = canvas.parentElement.clientWidth - 8;
+  // El panel de Resumen puede estar oculto cuando renderContabilidad() corre
+  // (setPeriod lo llama desde cualquier sub-tab). Ahí clientWidth es 0, W queda
+  // en -8, el canvas rechaza el ancho negativo y se queda en 300px, pero chartW
+  // se vuelve negativo y las barras se dibujan fuera del área: gráfica en
+  // blanco. Se sale y se repinta al volver a la tab (_repintarGraficasResumen).
+  if (!(W > 0)) return;
   const H   = 340;
   canvas.width  = W * dpr; canvas.height = H * dpr;
   canvas.style.width  = W + 'px'; canvas.style.height = H + 'px';
@@ -12692,13 +12759,30 @@ function setContabTab(tab) {
     const panelEl = document.getElementById(panels[t]);
     const btnEl   = document.getElementById(btns[t]);
     const active  = t === tab;
-    if (panelEl) panelEl.style.display = active ? '' : 'none';
+    if (panelEl) panelEl.style.display = active ? '' : 'none';   // ojo: oculto = clientWidth 0
     if (btnEl) {
       btnEl.style.borderBottomColor = active ? 'var(--azul-dark)' : 'transparent';
       btnEl.style.color             = active ? 'var(--azul-dark)' : 'var(--text-muted)';
     }
   });
+  // Al volver a Resumen hay que repintar: si el período cambió mientras el
+  // panel estaba oculto, las gráficas se saltearon el dibujo (guard de W>0) y
+  // quedarían en blanco. _renderActiveContabTab no cubre 'resumen' a propósito
+  // —el panel entero lo dibuja renderContabilidad— así que solo se repintan las
+  // gráficas, que es lo único que depende del ancho visible.
+  if (tab === 'resumen') _repintarGraficasResumen();
   _renderActiveContabTab();
+}
+
+// Repinta las tres gráficas del Resumen sin recalcular todo el panel.
+// renderFlujoChart necesita los datos ya filtrados: los dejó en el canvas la
+// última vez que corrió renderContabilidad(), que setPeriod ejecuta siempre.
+function _repintarGraficasResumen() {
+  const fc = document.getElementById('flujoCanvas');
+  const args = fc && fc._renderArgs;
+  if (args) renderFlujoChart(args.filteredPagos, args.filteredDirectas);
+  renderVentasChart();
+  renderCheckinChart();
 }
 
 // ─── SUMINISTROS: timeline de consumo por keyword ────────────
