@@ -2292,6 +2292,7 @@
       <button class="active" onclick="showSection('disponibilidad')">Disponibilidad</button>
       <button onclick="showSection('reservas')">Reservas</button>
       <button onclick="showSection('ocupacion')">Ocupación</button>
+      <button onclick="showSection('suministros')">Suministros</button>
       <button onclick="showSection('contabilidad')">Contabilidad</button>
       <button onclick="showSection('programa')">Programa</button>
       <button id="btnBotNav" onclick="showSection('bot')" style="display:none;">💬 Agente</button>
@@ -2303,6 +2304,7 @@
         <button onclick="showSection('disponibilidad');closeNavMenu()">Disponibilidad</button>
         <button onclick="showSection('reservas');closeNavMenu()">Reservas</button>
         <button onclick="showSection('ocupacion');closeNavMenu()">Ocupación</button>
+        <button onclick="showSection('suministros');closeNavMenu()">Suministros</button>
         <button onclick="showSection('contabilidad');closeNavMenu()">Contabilidad</button>
         <button onclick="showSection('programa');closeNavMenu()">Programa</button>
         <button id="btnBotNavMobile" onclick="showSection('bot');closeNavMenu()" style="display:none;">💬 Agente</button>
@@ -2486,7 +2488,6 @@
       <button id="contabTabIngresos"  onclick="setContabTab('ingresos')"  style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Ingresos</button>
       <button id="contabTabEgresos"   onclick="setContabTab('egresos')"   style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Egresos</button>
       <button id="contabTabCxC"       onclick="setContabTab('cxc')"       style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Por Cobrar</button>
-      <button id="contabTabSuministros" onclick="setContabTab('suministros')" style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Suministros</button>
     </div>
 
     <!-- Month filter — shared between tabs -->
@@ -2876,41 +2877,7 @@
     </div><!-- /contabPanelCxC -->
 
     <!-- TAB: SUMINISTROS (timeline de consumo por item) -->
-    <div id="contabPanelSuministros" style="display:none;">
-      <!-- Widgets: mayores gastos por item (Suministros / Servicios) -->
-      <div id="sumTopWidgets" style="margin-bottom:14px;"></div>
 
-      <!-- Palabras clave (keywords + explicación), colapsable, cerrado por defecto -->
-      <details style="margin-bottom:14px;background:var(--bg);border:1px solid var(--border);border-radius:10px;">
-        <summary style="cursor:pointer;padding:8px 14px;font-size:12px;font-weight:600;color:var(--text-muted);user-select:none;">🔑 Palabras clave<span id="sumKwCount" style="font-weight:400;"></span></summary>
-        <div style="padding:2px 14px 12px;">
-          <div id="sumKeywordChips" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;"></div>
-          <div style="font-size:12.5px;color:var(--text-muted);line-height:1.5;border-top:1px dashed var(--border);padding-top:10px;">Agrega los items que quieres seguir (agua, gas, papel higiénico…). El sistema busca esa palabra en la descripción de tus egresos de <strong>Suministros</strong> y <strong>Servicios</strong>. La vista <strong>Timeline</strong> arma una línea de tiempo: 🟢 barra = tenías stock, ● = compra, y la barra se corta el día antes de la siguiente compra. La última barra llega a hoy; si ya pasó su duración típica se pone 🔴 (toca recomprar). La vista <strong>Detalle por item</strong> lista las facturas de cada keyword con su total. Toca cualquier barra o fila para ver o editar la factura.</div>
-        </div>
-      </details>
-
-      <!-- Toggle de vista + total sin cuadrar (esquina superior derecha) -->
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
-        <div style="display:flex;gap:4px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:3px;width:fit-content;">
-          <button id="sumViewTimelineBtn" onclick="setSumView('timeline')" style="font-size:12px;font-weight:600;padding:6px 16px;border-radius:8px;border:none;cursor:pointer;background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.06);">📊 Timeline</button>
-          <button id="sumViewDetalleBtn" onclick="setSumView('detalle')" style="font-size:12px;font-weight:600;padding:6px 16px;border-radius:8px;border:none;cursor:pointer;background:transparent;color:var(--text-muted);">📋 Detalle por item</button>
-        </div>
-        <div id="sumUncuadradasBadge"></div>
-      </div>
-
-      <!-- Timeline -->
-      <div id="sumTimelineWrap" style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);"></div>
-      <!-- Leyenda de colores de la última barra (semáforo de recompra) -->
-      <div id="sumTimelineLegend" style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;margin-top:8px;padding:0 4px;font-size:11px;color:var(--text-muted);line-height:1.5;">
-        <span style="font-weight:600;">Color de la última barra:</span>
-        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:14px;height:8px;border-radius:3px;background:#6a9e62;display:inline-block;flex-shrink:0;"></span> Dentro de lo normal</span>
-        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:14px;height:8px;border-radius:3px;background:#c0956a;display:inline-block;flex-shrink:0;"></span> Ya casi (≥80% de su ciclo típico)</span>
-        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:14px;height:8px;border-radius:3px;background:#c0392b;display:inline-block;flex-shrink:0;"></span> Pasó su duración típica · toca recomprar</span>
-        <span style="opacity:.8;">Las barras anteriores siempre van verdes.</span>
-      </div>
-      <!-- Detalle (facturas por item) -->
-      <div id="sumDetalleWrap" style="display:none;"></div>
-    </div><!-- /contabPanelSuministros -->
 
   </section>
 
@@ -2968,6 +2935,63 @@
 
 
   <!-- ===== OCUPACIÓN ===== -->
+  <!-- ══════════ SUMINISTROS ══════════ -->
+  <section id="suministros" class="section">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px;">
+      <div>
+        <h1 class="page-title">Suministros</h1>
+        <p class="page-subtitle">Consumo y recompra de insumos y servicios</p>
+      </div>
+      <button class="btn btn-primary" onclick="openEgresoModal()">+ Nuevo egreso</button>
+    </div>
+
+    <!-- Período PROPIO: acá el default es YTD, no "Este mes". Un timeline de
+         consumo con un mes de datos no muestra ningún ciclo de recompra. -->
+    <div class="month-filter" id="sumMonthFilter"></div>
+    <div id="sumCustomRangePopover" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding:10px 12px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;">
+      <label style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Desde</label>
+      <input type="date" id="sumCustomRangeFrom" style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+      <label style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Hasta</label>
+      <input type="date" id="sumCustomRangeTo"   style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+      <button onclick="_applySumCustomRange()" style="padding:6px 14px;font-size:12px;font-weight:600;border:none;border-radius:6px;background:var(--verde-dark);color:#fff;cursor:pointer;">Aplicar</button>
+      <button onclick="_cancelSumCustomRange()" style="padding:6px 12px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-muted);cursor:pointer;">Cancelar</button>
+    </div>
+    
+      <!-- Widgets: mayores gastos por item (Suministros / Servicios) -->
+      <div id="sumTopWidgets" style="margin-bottom:14px;"></div>
+
+      <!-- Palabras clave (keywords + explicación), colapsable, cerrado por defecto -->
+      <details style="margin-bottom:14px;background:var(--bg);border:1px solid var(--border);border-radius:10px;">
+        <summary style="cursor:pointer;padding:8px 14px;font-size:12px;font-weight:600;color:var(--text-muted);user-select:none;">🔑 Palabras clave<span id="sumKwCount" style="font-weight:400;"></span></summary>
+        <div style="padding:2px 14px 12px;">
+          <div id="sumKeywordChips" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;"></div>
+          <div style="font-size:12.5px;color:var(--text-muted);line-height:1.5;border-top:1px dashed var(--border);padding-top:10px;">Agrega los items que quieres seguir (agua, gas, papel higiénico…). El sistema busca esa palabra en la descripción de tus egresos de <strong>Suministros</strong> y <strong>Servicios</strong>. La vista <strong>Timeline</strong> arma una línea de tiempo: 🟢 barra = tenías stock, ● = compra, y la barra se corta el día antes de la siguiente compra. La última barra llega a hoy; si ya pasó su duración típica se pone 🔴 (toca recomprar). La vista <strong>Detalle por item</strong> lista las facturas de cada keyword con su total. Toca cualquier barra o fila para ver o editar la factura.</div>
+        </div>
+      </details>
+
+      <!-- Toggle de vista + total sin cuadrar (esquina superior derecha) -->
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+        <div style="display:flex;gap:4px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:3px;width:fit-content;">
+          <button id="sumViewTimelineBtn" onclick="setSumView('timeline')" style="font-size:12px;font-weight:600;padding:6px 16px;border-radius:8px;border:none;cursor:pointer;background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.06);">📊 Timeline</button>
+          <button id="sumViewDetalleBtn" onclick="setSumView('detalle')" style="font-size:12px;font-weight:600;padding:6px 16px;border-radius:8px;border:none;cursor:pointer;background:transparent;color:var(--text-muted);">📋 Detalle por item</button>
+        </div>
+        <div id="sumUncuadradasBadge"></div>
+      </div>
+
+      <!-- Timeline -->
+      <div id="sumTimelineWrap" style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);"></div>
+      <!-- Leyenda de colores de la última barra (semáforo de recompra) -->
+      <div id="sumTimelineLegend" style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;margin-top:8px;padding:0 4px;font-size:11px;color:var(--text-muted);line-height:1.5;">
+        <span style="font-weight:600;">Color de la última barra:</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:14px;height:8px;border-radius:3px;background:#6a9e62;display:inline-block;flex-shrink:0;"></span> Dentro de lo normal</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:14px;height:8px;border-radius:3px;background:#c0956a;display:inline-block;flex-shrink:0;"></span> Ya casi (≥80% de su ciclo típico)</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:14px;height:8px;border-radius:3px;background:#c0392b;display:inline-block;flex-shrink:0;"></span> Pasó su duración típica · toca recomprar</span>
+        <span style="opacity:.8;">Las barras anteriores siempre van verdes.</span>
+      </div>
+      <!-- Detalle (facturas por item) -->
+      <div id="sumDetalleWrap" style="display:none;"></div>
+      </section>
+
   <section id="ocupacion" class="section">
     <!-- Hidden print header -->
     <div id="printHeader" style="display:none;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #eee;">
@@ -4111,8 +4135,8 @@ document.addEventListener('click', function(e) {
 function showSection(id) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  const sections = ['reservas','contabilidad','disponibilidad','ocupacion','programa','bot'];
-  const labels   = { reservas:'Reservas', contabilidad:'Contabilidad', disponibilidad:'Disponibilidad', ocupacion:'Ocupación', programa:'Programa Amigos', bot:'💬 Agente' };
+  const sections = ['reservas','contabilidad','disponibilidad','ocupacion','suministros','programa','bot'];
+  const labels   = { reservas:'Reservas', contabilidad:'Contabilidad', disponibilidad:'Disponibilidad', ocupacion:'Ocupación', suministros:'Suministros', programa:'Programa Amigos', bot:'💬 Agente' };
   document.querySelectorAll('nav button').forEach(b => {
     const sec = b.getAttribute('onclick')?.match(/showSection\('(\w+)'/)?.[1];
     b.classList.toggle('active', sec === id);
@@ -4125,6 +4149,7 @@ function showSection(id) {
     if (dispViewMode === 'timeline') setTimeout(() => scrollDispTimelineToToday(false), 60);
   }
   if(id === 'ocupacion')      renderOcupacion();
+  if(id === 'suministros')    renderSuministrosTab();
   if(id === 'programa')       renderProgramaMetrics();
   if(id === 'bot')            { loadBotData(); startBotLive(); }
   else                        stopBotLive();
@@ -10371,6 +10396,84 @@ function _matchesSelectedPeriod(iso) {
 }
 
 // Cambia el período (mes específico, preset multi-mes, o Todo) y re-renderea.
+// ── Período PROPIO de Suministros ────────────────────────────────────
+// Suministros no comparte el período con Contabilidad/Ocupación/Reservas a
+// propósito: heredaba el default "Este mes" y con un mes de datos un timeline
+// de consumo no dice nada — la gracia es ver el ciclo de recompra, que necesita
+// meses. Con "Este mes" la mitad de los items salían "sin compras aún" cuando
+// en realidad sus compras cayeron fuera de julio.
+let sumMonth = null;
+let sumRange = null;
+let _sumCustomOpen = false;
+let _sumPeriodInit = false;
+
+function _ensureSumPeriodDefault() {
+  if (_sumPeriodInit) return;
+  _sumPeriodInit = true;
+  if (!sumMonth && !sumRange) {
+    const now = new Date();
+    const _f = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0')
+                  + '-' + String(d.getDate()).padStart(2,'0');
+    sumRange = { from: now.getFullYear() + '-01-01', to: _f(now), presetKey: 'ytd', label: 'YTD' };
+  }
+}
+
+// Espejo de `_matchesSelectedPeriod` sobre el estado de Suministros.
+function _matchesSumPeriod(iso) {
+  if (!iso) return false;
+  const s = String(iso);
+  if (sumRange && sumRange.from && sumRange.to) {
+    const day = s.slice(0, 10);
+    return day >= sumRange.from && day <= sumRange.to;
+  }
+  if (sumMonth) return s.startsWith(sumMonth);
+  return true;
+}
+
+function setSumPeriod(preset) {
+  const now = new Date();
+  const _fmtMonth = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+  const _fmtDate  = d => _fmtMonth(d) + '-' + String(d.getDate()).padStart(2,'0');
+  _sumPeriodInit = true;
+
+  if (preset === 'ytd') {
+    sumMonth = null;
+    sumRange = { from: now.getFullYear() + '-01-01', to: _fmtDate(now), presetKey: 'ytd', label: 'YTD' };
+    _sumCustomOpen = false;
+  } else if (preset === 'customToggle') {
+    _sumCustomOpen = !_sumCustomOpen;
+    setTimeout(() => {
+      const fromEl = document.getElementById('sumCustomRangeFrom');
+      const toEl   = document.getElementById('sumCustomRangeTo');
+      if (fromEl && !fromEl.value) {
+        const seed = sumRange || { from: now.getFullYear() + '-01-01', to: _fmtDate(now) };
+        fromEl.value = seed.from;
+        toEl.value   = seed.to;
+      }
+      if (fromEl && _sumCustomOpen) fromEl.focus();
+    }, 0);
+  } else if (typeof preset === 'string' && /^\d{4}-\d{2}$/.test(preset)) {
+    sumMonth = preset; sumRange = null; _sumCustomOpen = false;
+  } else {
+    return;
+  }
+  renderSuministrosTab();
+}
+
+function _applySumCustomRange() {
+  const from = (document.getElementById('sumCustomRangeFrom') || {}).value || '';
+  const to   = (document.getElementById('sumCustomRangeTo')   || {}).value || '';
+  if (!from || !to) { alert('Elegí ambas fechas (desde / hasta).'); return; }
+  if (from > to)    { alert('La fecha "desde" debe ser anterior o igual a "hasta".'); return; }
+  _sumPeriodInit = true;
+  sumMonth = null;
+  sumRange = { from, to, presetKey: 'custom', label: 'Custom' };
+  _sumCustomOpen = false;
+  renderSuministrosTab();
+}
+
+function _cancelSumCustomRange() { _sumCustomOpen = false; renderSuministrosTab(); }
+
 function setPeriod(preset) {
   const now = new Date();
   const _fmtMonth = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
@@ -10578,12 +10681,21 @@ function _brutoDeCobroAirbnb(p) {
 // con Custom. El <select> viejo sí los ofrecía (armaba las opciones con los
 // meses presentes en los datos), así que sin esto la unificación perdía
 // funcionalidad.
+// `opts.scope: 'suministros'` pinta los chips sobre el estado PROPIO de
+// Suministros (`sumMonth`/`sumRange`) y emite `setSumPeriod` en vez de
+// `setPeriod`. Sin el parámetro sigue operando sobre el período compartido de
+// Contabilidad / Ocupación / Reservas, que es lo que hacía antes.
 function _renderChipsPeriodo(containerId, opts) {
   opts = opts || {};
   const mf = document.getElementById(containerId);
   if (!mf) return;
+  const esSum      = opts.scope === 'suministros';
+  const _mesSel    = esSum ? sumMonth : selectedMonth;
+  const _rangoSel  = esSum ? sumRange : selectedRange;
+  const _abierto   = esSum ? _sumCustomOpen : _customRangeOpen;
+  const _fn        = esSum ? 'setSumPeriod' : 'setPeriod';
   const _now       = new Date();
-  const _rangeKey  = selectedRange ? selectedRange.presetKey : null;
+  const _rangeKey  = _rangoSel ? _rangoSel.presetKey : null;
   const _yr        = _now.getFullYear();
   const _curMo     = _now.getMonth();
   // Solo meses del año en curso: los chips son una fila corta, no un calendario.
@@ -10603,20 +10715,20 @@ function _renderChipsPeriodo(containerId, opts) {
 
   // "YTD" primero, después un chip por mes desde enero del año en curso hasta
   // "Este mes", y al final "Custom…" para cualquier otro rango.
-  let chipsHtml = _chip('YTD', _rangeKey === 'ytd', `setPeriod('ytd')`,
+  let chipsHtml = _chip('YTD', _rangeKey === 'ytd', `${_fn}('ytd')`,
                         { preset: true, title: `Año a la fecha (1-ene ${_yr} → hoy)` });
   for (let mo = 0; mo <= _ultMo; mo++) {
     const mStr  = _yr + '-' + String(mo + 1).padStart(2, '0');
     const isCur = mo === _curMo;
     const label = isCur ? 'Este mes' : `${MONTHS[mo]} ${_yr}`;
-    chipsHtml += _chip(label, selectedMonth === mStr, `setPeriod('${mStr}')`,
+    chipsHtml += _chip(label, _mesSel === mStr, `${_fn}('${mStr}')`,
                        { preset: isCur, title: isCur ? `${MONTHS[mo]} ${_yr}` : '' });
   }
   chipsHtml += '<div class="month-chip-divider" aria-hidden="true"></div>';
   const customLabel = _rangeKey === 'custom'
-    ? '📅 ' + (selectedRange.from + ' → ' + selectedRange.to)
+    ? '📅 ' + (_rangoSel.from + ' → ' + _rangoSel.to)
     : 'Custom…';
-  chipsHtml += _chip(customLabel, _rangeKey === 'custom' || _customRangeOpen, `setPeriod('customToggle')`,
+  chipsHtml += _chip(customLabel, _rangeKey === 'custom' || _abierto, `${_fn}('customToggle')`,
                      { preset: true, title: _rangeKey === 'custom' ? 'Click para cambiar el rango' : 'Elegir rango personalizado' });
   mf.innerHTML = chipsHtml;
 }
@@ -13809,25 +13921,25 @@ function _renderActiveContabTab() {
   if (_contabTab === 'egresos')     renderEgresosTab();
   if (_contabTab === 'ingresos')    renderWidgets7d();
   if (_contabTab === 'cxc')         renderCxC();
-  if (_contabTab === 'suministros') renderSuministrosTab();
 }
 
 function setContabTab(tab) {
   _contabTab = tab;
-  const tabs   = ['resumen', 'ingresos', 'egresos', 'cxc', 'suministros'];
+  // Suministros salió de acá: es sección propia (`#suministros`) con su propio
+  // período. No es contabilidad — Contabilidad responde "¿cuánto gasté?",
+  // Suministros "¿cuándo recompro el gas?".
+  const tabs   = ['resumen', 'ingresos', 'egresos', 'cxc'];
   const panels = {
-    resumen:     'contabPanelResumen',
-    ingresos:    'contabPanelIngresos',
-    egresos:     'contabPanelEgresos',
-    cxc:         'contabPanelCxC',
-    suministros: 'contabPanelSuministros'
+    resumen:  'contabPanelResumen',
+    ingresos: 'contabPanelIngresos',
+    egresos:  'contabPanelEgresos',
+    cxc:      'contabPanelCxC'
   };
   const btns = {
-    resumen:     'contabTabResumen',
-    ingresos:    'contabTabIngresos',
-    egresos:     'contabTabEgresos',
-    cxc:         'contabTabCxC',
-    suministros: 'contabTabSuministros'
+    resumen:  'contabTabResumen',
+    ingresos: 'contabTabIngresos',
+    egresos:  'contabTabEgresos',
+    cxc:      'contabTabCxC'
   };
   tabs.forEach(t => {
     const panelEl = document.getElementById(panels[t]);
@@ -13956,7 +14068,7 @@ function _sumListaUncuadradas() {
   const allNkw = (_suministrosKeywords || []).map(_sumNormalize).filter(Boolean);
   const out = [];
   (egresos || []).forEach(e => {
-    if (!_sumCatOk(e) || !e.date || !_matchesSelectedPeriod(e.date)) return;
+    if (!_sumCatOk(e) || !e.date || !_matchesSumPeriod(e.date)) return;
     const matched = allNkw.filter(n => _sumMatchesKw(e, n));
     if (matched.length < 2) return;                      // no es compartida
     // Solo es un descuadre REAL si TODOS los items matcheados ya tienen su
@@ -14181,6 +14293,10 @@ async function renderSuministrosTab() {
   const chips = document.getElementById('sumKeywordChips');
   const wrap  = document.getElementById('sumTimelineWrap');
   if (!chips || !wrap) return;
+  _ensureSumPeriodDefault();
+  _renderChipsPeriodo('sumMonthFilter', { scope: 'suministros' });
+  const _sumPop = document.getElementById('sumCustomRangePopover');
+  if (_sumPop) _sumPop.style.display = _sumCustomOpen ? 'flex' : 'none';
   if (_suministrosKeywords === null) {
     chips.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">Cargando items…</span>';
     await _loadSuministrosKeywords();
@@ -14240,7 +14356,7 @@ function _renderSumTopWidgets() {
     const nkw = _sumNormalize(kw);
     let total = 0;
     (egresos || []).forEach(e => {
-      if (!_sumCatOk(e) || !e.date || !_matchesSelectedPeriod(e.date)) return;
+      if (!_sumCatOk(e) || !e.date || !_matchesSumPeriod(e.date)) return;
       if (!_sumMatchesKw(e, nkw)) return;
       const ov = _sumItemAmount(e, nkw);
       total += (ov != null ? ov : parseFloat(e.amount || 0));
@@ -14320,7 +14436,7 @@ function _renderSumTimeline(wrap, kws) {
   const rows = kws.map(kw => {
     const nkw = _sumNormalize(kw);
     const ps = egresos
-      .filter(e => _sumCatOk(e) && e.date && _matchesSelectedPeriod(e.date) && _sumMatchesKw(e, nkw))
+      .filter(e => _sumCatOk(e) && e.date && _matchesSumPeriod(e.date) && _sumMatchesKw(e, nkw))
       .map(e => {
         const total = parseFloat(e.amount||0);
         const ov = _sumItemAmount(e, nkw); // porción asignada a este item (o null)
@@ -14353,8 +14469,8 @@ function _renderSumTimeline(wrap, kws) {
 
   // Fecha a la que scrollear según el filtro de período (posiciona, no recorta).
   let focusDate = todayISO;
-  if (selectedRange && selectedRange.from) focusDate = selectedRange.from;
-  else if (selectedMonth) focusDate = selectedMonth + '-01';
+  if (sumRange && sumRange.from) focusDate = sumRange.from;
+  else if (sumMonth) focusDate = sumMonth + '-01';
   const scrollTargetX = Math.max(0, xOf(focusDate) - 30);
 
   // Header de meses.
@@ -14501,7 +14617,7 @@ function _renderSumDetalle(wrap, kws) {
     kws.forEach(k => { const n = _sumNormalize(k); if (n && !(n in kwByNkw)) { kwByNkw[n] = k; allNkw.push(n); } });
     const shared = [];
     egresos.forEach(e => {
-      if (!_sumCatOk(e) || !e.date || !_matchesSelectedPeriod(e.date)) return;
+      if (!_sumCatOk(e) || !e.date || !_matchesSumPeriod(e.date)) return;
       const nd = _sumNormalize(e.desc);
       const matched = []; const seen = {};
       allNkw.forEach(n => { if (!seen[n] && _sumMatchesKw(e, n)) { seen[n] = 1; matched.push({ nkw: n, kw: kwByNkw[n] }); } });
@@ -14572,7 +14688,7 @@ function _renderSumDetalle(wrap, kws) {
   const renderKwCard = (kw) => {
     const nkw = _sumNormalize(kw);
     const ps = egresos
-      .filter(e => _sumCatOk(e) && e.date && _matchesSelectedPeriod(e.date) && _sumMatchesKw(e, nkw))
+      .filter(e => _sumCatOk(e) && e.date && _matchesSumPeriod(e.date) && _sumMatchesKw(e, nkw))
       .map(e => {
         const total = parseFloat(e.amount||0);
         const ov = _sumItemAmount(e, nkw);
@@ -14630,7 +14746,7 @@ function _renderSumDetalle(wrap, kws) {
     });
 
     // Facturas descartadas de este item (MontosItem[nkw]===false) — para restaurar.
-    const descartadas = egresos.filter(e => _sumCatOk(e) && e.date && _matchesSelectedPeriod(e.date) && _sumParseMontos(e)[nkw] === false);
+    const descartadas = egresos.filter(e => _sumCatOk(e) && e.date && _matchesSumPeriod(e.date) && _sumParseMontos(e)[nkw] === false);
 
     const sub = ps.length
       ? `${ps.length} factura${ps.length!==1?'s':''}${totalQty>0 ? ' · '+(Number.isInteger(totalQty)?totalQty:totalQty.toFixed(2))+' uds' : ''}${avg ? ' · cada ~'+avg+'d' : ''}`
