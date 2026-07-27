@@ -2451,3 +2451,82 @@ function liberarFechasAbiertas(dryRun) {
 }
 
 function liberarFechasAbiertasESCRIBIR() { return liberarFechasAbiertas(false); }
+
+// ═══════════════════════════════════════════════════════════
+//  Borrar créditos abiertos vencidos
+// ═══════════════════════════════════════════════════════════
+//
+// Un crédito que el huésped nunca usó y ya venció. Se borra la fila en vez de
+// dejarla: sin fecha, sin monto y sin ocupación no aparece en ninguna vista, así
+// que quedaría como fila huérfana que nadie puede interpretar después.
+//
+// Se identifican por CONTENIDO (huésped + fecha original + monto), no por número
+// de fila: los índices se corren con cada borrado y una lista de filas queda
+// obsoleta al primer cambio. El guard exige que la fila sea `Abierta` y que los
+// tres campos coincidan, así que si algo no cuadra no borra nada.
+//
+// OJO: si el crédito vencido TIENE monto, borrarlo pierde el rastro de una plata
+// que sí entró. En ese caso conviene reconocerlo como ingreso (el huésped lo
+// perdió) en vez de borrarlo — hablalo antes de agregarlo a esta lista.
+var CREDITOS_VENCIDOS = [
+  // Crédito de marzo-2026 que nunca se usó. Sin monto registrado, así que no hay
+  // plata que reconocer: se borra sin más.
+  { quien: 'Daniela Silva', checkin: '2026-03-07', monto: 0 }
+];
+
+function borrarCreditosVencidos(dryRun) {
+  if (dryRun !== false) dryRun = true;
+  if (!CREDITOS_VENCIDOS.length) { Logger.log('CREDITOS_VENCIDOS está vacío.'); return 0; }
+
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+  const iso = v => v instanceof Date
+    ? Utilities.formatDate(v, 'America/Panama', 'yyyy-MM-dd')
+    : String(v || '').trim().slice(0, 10);
+  const norm = t => String(t || '').trim().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+  Logger.log('═══ ' + (dryRun ? 'DRY-RUN · ' : '') + 'BORRAR CRÉDITOS VENCIDOS ═══');
+  Logger.log('');
+  const aBorrar = [];
+  CREDITOS_VENCIDOS.forEach(c => {
+    const hits = [];
+    for (let i = 1; i < data.length; i++) {
+      const r = data[i];
+      if (String(r[_R.ORIGEN] || '').trim() !== 'Abierta') continue;
+      if (norm(r[1]) !== norm(c.quien)) continue;
+      if (iso(r[_R.ENTRADA]) !== c.checkin) continue;
+      if (Math.abs(_cleanMoney_(r[_R.MONTO]) - c.monto) > 0.01) continue;
+      hits.push({ fila: i + 1, quien: r[1], cabana: r[2], ci: iso(r[_R.ENTRADA]) });
+    }
+    if (hits.length === 1) {
+      aBorrar.push(hits[0]);
+      Logger.log('   ✓ ' + c.quien + ' · ' + c.checkin + ' · $' + c.monto.toFixed(2)
+        + '  → fila ' + hits[0].fila + ' (' + hits[0].cabana + ')');
+    } else {
+      Logger.log('   ✗ ' + c.quien + ' · ' + c.checkin + ' · $' + c.monto.toFixed(2)
+        + '  → ' + hits.length + ' coincidencia(s), no se toca.');
+      if (hits.length > 1) Logger.log('      filas: ' + hits.map(h => h.fila).join(', '));
+      else Logger.log('      ¿ya se borró, o le cambiaron el origen / la fecha / el monto?');
+    }
+  });
+
+  if (!aBorrar.length) {
+    Logger.log('');
+    Logger.log('Nada para borrar.');
+    return 0;
+  }
+  if (dryRun) {
+    Logger.log('');
+    Logger.log('Nada se escribió. Para ejecutar: borrarCreditosVencidosESCRIBIR()');
+    return 0;
+  }
+  // De mayor a menor para no correr los índices durante el borrado.
+  aBorrar.sort((a, b) => b.fila - a.fila).forEach(x => sheet.deleteRow(x.fila));
+  SpreadsheetApp.flush();
+  Logger.log('');
+  Logger.log('✓ ' + aBorrar.length + ' crédito(s) vencido(s) borrado(s).');
+  return aBorrar.length;
+}
+
+function borrarCreditosVencidosESCRIBIR() { return borrarCreditosVencidos(false); }
