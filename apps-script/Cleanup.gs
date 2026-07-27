@@ -904,6 +904,212 @@ function diagnosticarVouchersSinArchivo() {
   return rec;
 }
 
+// ═══════════════════════════════════════════════════════════
+//  Pagos registrados SOLO en el campo Abono (sin rastro de voucher)
+// ═══════════════════════════════════════════════════════════
+//
+// Caso Severino Villarreal (jun-2026): la fila tenía Monto $110 y **Abono $110**
+// pero `codTransferencia`, `MontoVoucher`, `VoucherURL` y `VouchersMeta` vacíos.
+// El pago existe —el abono es la evidencia— pero el voucher no quedó en ningún
+// lado, así que la reserva no aparece en "Por cobrar" (Contabilidad deriva el
+// cobro del abono) y a la vez salía "○ Pendiente" (la columna `EstadoPago` solo
+// se recalculaba al subir un voucher). Dos superficies, dos respuestas opuestas.
+//
+// `diagnosticarVouchersSinArchivo()` NO los ve: descarta las filas sin código de
+// transferencia antes de mirar Drive, y estas justamente no lo tienen. Por eso
+// esta función va por el otro lado — busca en Drive por id de reserva y por
+// huésped+entrada — y separa dos desenlaces distintos:
+//
+//   • está en Drive  → recuperable: el archivo se subió, la URL no se escribió.
+//                      Se enlaza con `vincularPagosSinRastroESCRIBIR()`.
+//   • no está        → el voucher nunca llegó a Drive. El pago igual es real
+//                      (el abono lo respalda); lo que falta es el comprobante.
+//
+// Solo lee y reporta. Para escribir: vincularPagosSinRastroESCRIBIR().
+function diagnosticarPagosSinRastro() {
+  return _pagosSinRastro_(true);
+}
+
+function vincularPagosSinRastro(dryRun) {
+  if (dryRun === undefined) dryRun = true;   // default seguro: el editor corre sin argumentos
+  return _pagosSinRastro_(dryRun);
+}
+
+function vincularPagosSinRastroESCRIBIR() {
+  return _pagosSinRastro_(false);
+}
+
+function _pagosSinRastro_(dryRun) {
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+  const split = s => (s || '').toString().split('|').map(x => x.trim()).filter(Boolean);
+  const iso   = v => v instanceof Date ? Utilities.formatDate(v, 'America/Panama', 'yyyy-MM-dd') : (v || '').toString().slice(0, 10);
+  const norm  = s => (s || '').toString().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ').trim();
+
+  // ── Índice de Drive (mismas llaves que diagnosticarVouchersSinArchivo) ──
+  const byPago = {}, byNameDate = {}, usadas = {};
+  for (let i = 1; i < data.length; i++) split(data[i][25]).forEach(u => { usadas[u] = true; });
+  let totalArchivos = 0;
+  const folders = DriveApp.getFoldersByName(VOUCHER_FOLDER_NAME);
+  if (folders.hasNext()) {
+    const it = folders.next().getFiles();
+    while (it.hasNext()) {
+      const f    = it.next();
+      const desc = f.getDescription() || '';
+      const get  = re => { const m = desc.match(re); return m ? m[1].trim() : ''; };
+      const info = { url: f.getUrl(), nombre: f.getName(),
+                     huesped: get(/Hu[ée]sped:\s*([^\n]*)/i),
+                     entrada: get(/Entrada:\s*([^\n]*)/i),
+                     codPago: get(/C[óo]d\.\s*Pago:\s*([^\n]*)/i) };
+      totalArchivos++;
+      if (info.codPago) (byPago[info.codPago] = byPago[info.codPago] || []).push(info);
+      const nn = norm(info.huesped);
+      if (nn && info.entrada) (byNameDate[nn + '|' + info.entrada] = byNameDate[nn + '|' + info.entrada] || []).push(info);
+    }
+  }
+
+  Logger.log('');
+  Logger.log('═══ ' + (dryRun ? 'DRY-RUN · ' : '') + 'PAGOS SIN RASTRO DE VOUCHER ═══');
+  Logger.log('📁 ' + totalArchivos + ' archivos en "' + VOUCHER_FOLDER_NAME + '"');
+  Logger.log('');
+
+  const enDrive = [], sinArchivo = [];
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    if (!r[_R.ID]) continue;
+    const origen = (r[_R.ORIGEN] || '').toString().trim();
+    if (['Directa', 'Referido'].indexOf(origen) < 0) continue;
+    if ((r[_R.ESTADO] || '').toString().toUpperCase() === 'CANCELADA') continue;
+
+    // Rastro de voucher: cualquiera de las cuatro columnas alcanza.
+    const tieneRastro = split(r[_R.COD_TRANSF]).length || split(r[25]).length
+                     || _cleanMoney_(r[_R.MONTOVOUCHER]) > 0
+                     || (r[31] || '').toString().trim();
+    if (tieneRastro) continue;
+
+    const abono = _cleanMoney_(r[8]);
+    if (abono <= 0) continue;   // sin abono no hay pago registrado; no es este caso
+
+    const id      = r[_R.ID].toString();
+    const nombre  = r[1];
+    const entrada = iso(r[_R.ENTRADA]);
+    const total   = _cleanMoney_(r[_R.NETO]) || _cleanMoney_(r[_R.MONTO]);
+    const hall    = (byPago[id] || byNameDate[norm(nombre) + '|' + entrada] || [])
+                      .filter(f => !usadas[f.url]);
+    const item = { fila: i + 1, id: id, nombre: nombre, entrada: entrada,
+                   total: total, abono: abono,
+                   estado: (r[_R.ESTADO] || '').toString() || '(vacío)',
+                   via: byPago[id] ? 'id' : (hall.length ? 'huesped+entrada' : ''),
+                   archivos: hall };
+    (hall.length ? enDrive : sinArchivo).push(item);
+  }
+
+  const linea = x => '   fila ' + x.fila + ' · ' + x.entrada + ' · ' + x.nombre
+    + ' · abono $' + x.abono.toFixed(2) + ' de $' + x.total.toFixed(2)
+    + ' · EstadoPago=' + x.estado;
+
+  Logger.log('🟢 EL ARCHIVO ESTÁ EN DRIVE (' + enDrive.length + ') — solo falta enlazarlo');
+  enDrive.forEach(x => {
+    Logger.log(linea(x) + ' · match por ' + x.via);
+    x.archivos.forEach(f => Logger.log('        ' + f.nombre));
+  });
+  if (!enDrive.length) Logger.log('   (ninguno)');
+
+  Logger.log('');
+  Logger.log('🔴 NO HAY ARCHIVO EN DRIVE (' + sinArchivo.length + ') — el voucher nunca se subió');
+  Logger.log('   El pago igual es real: el abono lo respalda. Lo que falta es el comprobante.');
+  sinArchivo.forEach(x => Logger.log(linea(x)));
+  if (!sinArchivo.length) Logger.log('   (ninguno)');
+
+  // ── Escritura ──
+  let n = 0;
+  if (enDrive.length) Logger.log('');
+  enDrive.forEach(x => {
+    const f = x.archivos[0];   // el más probable; si hay varios se enlaza uno solo
+    if (x.archivos.length > 1) {
+      Logger.log('   ⚠ fila ' + x.fila + ' tiene ' + x.archivos.length + ' archivos candidatos; se enlaza el primero.');
+    }
+    Logger.log((dryRun ? '[dry] ' : '✓ ') + 'fila ' + x.fila + ' · ' + x.nombre + ' → ' + f.nombre);
+    if (!dryRun) {
+      sheet.getRange(x.fila, 26).setValue(f.url);
+      // VouchersMeta: el desglose pago por pago. Con un solo voucher, su monto ES
+      // el abono registrado — no hay nada que repartir.
+      sheet.getRange(x.fila, 32).setValue(JSON.stringify([
+        { monto: x.abono, cod: '', fecha: x.entrada, url: f.url }
+      ]));
+    }
+    n++;
+  });
+  if (!dryRun) SpreadsheetApp.flush();
+  Logger.log('');
+  Logger.log((dryRun ? '[dry-run] ' : '') + n + ' fila(s) ' + (dryRun ? 'se enlazarían' : 'enlazadas')
+    + ' · ' + sinArchivo.length + ' sin archivo recuperable.');
+  return { enDrive: enDrive.length, sinArchivo: sinArchivo.length };
+}
+
+
+// ═══════════════════════════════════════════════════════════
+//  EstadoPago desincronizado con el abono
+// ═══════════════════════════════════════════════════════════
+//
+// `EstadoPago` es una columna GUARDADA y solo se recalculaba al subir un voucher.
+// Un pago registrado a mano en el campo Abono la dejaba en PENDIENTE para
+// siempre, aunque el abono cubriera el total — mientras Contabilidad, que deriva
+// el cobro de `montoRecibido()`, ya la daba por cobrada.
+//
+// El dashboard ahora deriva el estado en pantalla, así que esto es para dejar la
+// HOJA coherente: los reportes y cualquier lectura externa leen la columna cruda.
+//
+// Solo SUBE el estado (pendiente → abonado → paga): nunca degrada un PAGA puesto
+// a mano ni toca CANCELADA. Dry-run por defecto.
+function sincronizarEstadoPagoConAbono(dryRun) {
+  if (dryRun === undefined) dryRun = true;
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+  const iso   = v => v instanceof Date ? Utilities.formatDate(v, 'America/Panama', 'yyyy-MM-dd') : (v || '').toString().slice(0, 10);
+  const rank  = { '': 0, 'PENDIENTE': 1, 'ABONADO': 2, 'PAGA': 3 };
+
+  Logger.log('');
+  Logger.log('═══ ' + (dryRun ? 'DRY-RUN · ' : '') + 'SINCRONIZAR EstadoPago CON EL ABONO ═══');
+  let n = 0, total = 0;
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    if (!r[_R.ID]) continue;
+    const origen = (r[_R.ORIGEN] || '').toString().trim();
+    if (['Directa', 'Referido'].indexOf(origen) < 0) continue;
+    const actual = (r[_R.ESTADO] || '').toString().trim().toUpperCase();
+    if (actual === 'CANCELADA') continue;
+
+    const tot = _cleanMoney_(r[_R.NETO]) || _cleanMoney_(r[_R.MONTO]);
+    if (tot <= 0) continue;
+    // Mismo criterio que montoRecibido() en el dashboard: el voucher manda; si no
+    // hay voucher, el abono es lo recibido.
+    const mv  = _cleanMoney_(r[_R.MONTOVOUCHER]);
+    const rec = mv > 0 ? mv : _cleanMoney_(r[8]);
+
+    const derivado = rec >= tot - 0.01 ? 'PAGA' : (rec > 0.01 ? 'ABONADO' : 'PENDIENTE');
+    if ((rank[derivado] || 0) <= (rank[actual] || 0)) continue;
+
+    Logger.log((dryRun ? '[dry] ' : '✓ ') + 'fila ' + (i + 1) + ' · ' + iso(r[_R.ENTRADA])
+      + ' · ' + r[1] + ' · recibido $' + rec.toFixed(2) + ' de $' + tot.toFixed(2)
+      + ' · ' + (actual || '(vacío)') + ' → ' + derivado);
+    if (!dryRun) sheet.getRange(i + 1, 21).setValue(derivado);
+    n++; total += rec;
+  }
+  if (!dryRun) SpreadsheetApp.flush();
+  Logger.log('');
+  Logger.log((dryRun ? '[dry-run] ' : '') + n + ' fila(s) ' + (dryRun ? 'se corregirían' : 'corregidas')
+    + ' · $' + total.toFixed(2) + ' ya recibidos que la columna daba por pendientes.');
+  return n;
+}
+
+function sincronizarEstadoPagoConAbonoESCRIBIR() {
+  return sincronizarEstadoPagoConAbono(false);
+}
+
+
 // Escribe las URLs que diagnosticarVouchersSinArchivo() encontró en Drive.
 // Solo toca filas cuya columna VoucherURL está VACÍA y cuyo archivo no está
 // enlazado en ninguna otra fila. Idempotente.
@@ -1108,6 +1314,14 @@ function diagnosticarPagoAqui() {
 function vincularVouchersHuerfanosESCRIBIR() {
   return vincularVouchersHuerfanos(false);
 }
+
+// ── Pagos que solo están en el campo Abono ───────────────────
+// Los que vincularVouchersHuerfanos() no ve porque no tienen código de
+// transferencia. Reporte: diagnosticarPagosSinRastro().
+// Escribe: vincularPagosSinRastroESCRIBIR().
+//
+// Y para dejar la columna EstadoPago coherente con el abono:
+// sincronizarEstadoPagoConAbono() (dry-run) / …ESCRIBIR().
 
 // ── Diagnóstico del email de una reserva ─────────────────────
 var DIAG_EMAIL_QUERY = '';
