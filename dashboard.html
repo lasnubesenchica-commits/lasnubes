@@ -75,6 +75,18 @@
   .disp-cabin-tab.lila         { border-color:var(--lila);     color:var(--lila-dark); }
   .disp-cabin-tab.lila.active  { background:var(--lila-dark);  color:#fff; border-color:var(--lila-dark); }
   .disp-calendars { display:flex; flex-direction:column; gap:24px; }
+  /* Dos meses por fila en escritorio. Con uno solo a todo el ancho, cada celda
+     quedaba de 154×154px para un número de 13px —espacio desperdiciado y el
+     texto perdido en el medio— y solo entraba un mes en pantalla.
+     960px y no 900: por debajo de ~940 las celdas topan con su `min-height` de
+     52px y el mes se pasa del ancho de su columna, así que la PÁGINA scrollea
+     en horizontal. Medido: 920px scrollea, 940 ya no.
+     OJO: el breakpoint está duplicado en `DISP_2COL_MQ` (JS), que decide si los
+     meses se cargan de a 4 o de a 3. Si se cambia uno, cambiar el otro. */
+  .disp-month-grid { display:grid; grid-template-columns:1fr; gap:24px; }
+  @media (min-width: 960px) {
+    .disp-month-grid { grid-template-columns:1fr 1fr; }
+  }
   .disp-month-block {
     background:var(--surface); border-radius:var(--radius);
     box-shadow:var(--shadow); padding:24px; border:1px solid var(--border);
@@ -2838,7 +2850,7 @@
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
       <div>
         <h1 class="page-title">Disponibilidad</h1>
-        <p class="page-subtitle">Vista por cabaña &middot; 3 meses</p>
+        <p class="page-subtitle" id="dispSubtitulo">Vista por cabaña</p>
       </div>
       <button class="btn btn-primary" onclick="openModal()">+ Nueva reserva</button>
     </div>
@@ -4640,7 +4652,15 @@ function renderBotDetail(conv, messages) {
 
 // ─── DISPONIBILIDAD ──────────────────────────────────────
 let dispCabin = 'verde';
-let dispMonthsShown = 3;
+// Con dos columnas conviene cargar de a 4: llena dos filas completas. De a 3
+// dejaría media fila vacía en cada carga. En móvil (una columna) siguen 3.
+// El breakpoint es el MISMO que el de `.disp-month-grid` en el CSS.
+const DISP_2COL_MQ = '(min-width: 960px)';
+function _dispPasoMeses() {
+  return window.matchMedia(DISP_2COL_MQ).matches ? 4 : 3;
+}
+
+let dispMonthsShown = _dispPasoMeses();
 let dispMonthsBack  = 0;
 const CABIN_DIRECT_COLOR = { verde: '#a8c9a0', azul: '#8fb3d4', lila: '#b09fd4' };
 
@@ -4663,7 +4683,7 @@ function updateDispLegend() {
 
 function setDispCabin(cabin, btn) {
   dispCabin = cabin;
-  dispMonthsShown = 3;
+  dispMonthsShown = _dispPasoMeses();
   dispMonthsBack  = 0;
   dispTimelineDaysLoaded = DISP_TL_START_DAYS;
   document.querySelectorAll('.disp-cabin-tab').forEach(t => t.classList.remove('active'));
@@ -5334,6 +5354,14 @@ function renderDisponibilidad() {
   const today = new Date();
   today.setHours(0,0,0,0);
 
+  const _paso = _dispPasoMeses();
+  // El subtítulo decía "3 meses" fijo; ahora depende de cuántos hay cargados,
+  // que cambia con el ancho y con los botones de cargar más.
+  const _sub = document.getElementById('dispSubtitulo');
+  if (_sub) {
+    const _tot = dispMonthsShown + dispMonthsBack;
+    _sub.textContent = 'Vista por cabaña · ' + _tot + (_tot === 1 ? ' mes' : ' meses');
+  }
   let html = '';
   // Botón "Cargar meses anteriores ↑" arriba
   html += `<div style="text-align:center;padding:0 0 16px;">
@@ -5343,15 +5371,19 @@ function renderDisponibilidad() {
       transition:all .15s;font-family:inherit;
     " onmouseover="this.style.borderColor='var(--text-muted)';this.style.color='var(--text)'"
       onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-muted)'">
-      ${dispMonthsBack > 0 ? '↑ Cargar 3 meses anteriores · viendo ' + dispMonthsBack + ' atrás' : '↑ Ver histórico (meses anteriores)'}
+      ${dispMonthsBack > 0 ? '↑ Cargar ' + _paso + ' meses anteriores · viendo ' + dispMonthsBack + ' atrás' : '↑ Ver histórico (meses anteriores)'}
     </button>
   </div>`;
 
+  // Los meses van en su propia grilla para que los dos botones de "cargar más"
+  // queden fuera y no se conviertan en celdas de una columna.
+  html += '<div class="disp-month-grid" id="dispMonthGrid">';
   // Iterar desde -dispMonthsBack hasta dispMonthsShown-1
   for (let m = -dispMonthsBack; m < dispMonthsShown; m++) {
     const d = new Date(today.getFullYear(), today.getMonth() + m, 1);
     html += buildDispMonth(d, cabinRes, today);
   }
+  html += '</div>';
   html += `<div style="text-align:center;padding:16px 0 8px;">
     <button onclick="loadMoreDispMonths()" style="
       background:none;border:1.5px solid var(--border);border-radius:20px;
@@ -5359,7 +5391,7 @@ function renderDisponibilidad() {
       transition:all .15s;font-family:inherit;
     " onmouseover="this.style.borderColor='var(--text-muted)';this.style.color='var(--text)'"
       onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-muted)'">
-      Cargar 3 meses más ↓
+      Cargar ${_paso} meses más ↓
     </button>
   </div>`;
   container.innerHTML = html;
@@ -5367,7 +5399,7 @@ function renderDisponibilidad() {
 }
 
 function loadMoreDispMonths() {
-  dispMonthsShown += 3;
+  dispMonthsShown += _dispPasoMeses();
   renderDisponibilidad();
   // Scroll to the newly loaded months
   const container = document.getElementById('dispCalendars');
@@ -5378,7 +5410,7 @@ function loadMoreDispMonths() {
 }
 
 function loadMoreDispMonthsPast() {
-  dispMonthsBack += 3;
+  dispMonthsBack += _dispPasoMeses();
   renderDisponibilidad();
   // Scroll al primer mes (el más antiguo recién cargado)
   const container = document.getElementById('dispCalendars');
