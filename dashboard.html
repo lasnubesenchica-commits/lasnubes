@@ -8187,9 +8187,27 @@ function handleOriginChange() {
     document.getElementById('fDeposit').value = '0.00';
     const _pp = document.getElementById('pricePreview'); if(_pp) _pp.style.display = 'none';
   }
-  // Abierta: hide date fields, they're not needed yet
+  // Abierta = crédito sin fecha. Antes esto SOLO ocultaba los campos, así que
+  // los valores viejos seguían en el DOM y se guardaban: la reserva quedaba
+  // "abierta" pero con fecha, bloqueando noches que en realidad estaban a la
+  // venta. Así nacieron las filas Abierta con fecha.
+  //
+  // Se vacían de verdad. Esto solo se llama desde el onchange del select, así
+  // que nunca corre al abrir el modal: no puede borrar fechas sin que el usuario
+  // haya elegido Abierta a mano.
   const dateRow = document.getElementById('dateRow');
   if (dateRow) dateRow.style.display = isAbierta ? 'none' : '';
+  if (isAbierta) {
+    const ci = document.getElementById('fCheckin');
+    const co = document.getElementById('fCheckout');
+    const habia = (ci && ci.value) || (co && co.value);
+    if (ci) ci.value = '';
+    if (co) co.value = '';
+    // El tipo describe horarios de una estadía concreta: sin fecha no aplica.
+    const tp = document.getElementById('fTipo');
+    if (tp) tp.value = 'noche';
+    if (habia) showToast('Fechas liberadas: el crédito queda sin fecha y esas noches vuelven a estar disponibles');
+  }
   // El texto del hint de regalo depende del origen (Abierta = sin fecha).
   _updateRegaloHint();
 }
@@ -8512,10 +8530,20 @@ async function saveReservation() {
   const deposit  = parseFloat(document.getElementById('fDeposit').value) || 0;
   const amount   = parseFloat(document.getElementById('fAmount').value) || 0;
 
-  if(!name || !formCheckin) { showToast('Por favor completa los campos requeridos'); return; }
-  if (tipoForm === 'noche' || tipoForm === 'early' || tipoForm === 'late') {
-    if (!formCheckout || formCheckout <= formCheckin) {
-      showToast('La fecha de salida debe ser posterior a la entrada'); return;
+  // Abierta no lleva fechas: es un crédito a coordinar. Se fuerzan vacías por si
+  // el form traía algo, y se saltean las validaciones de fecha — antes exigía
+  // checkin, así que la única forma de guardar una Abierta era conservando una
+  // fecha vieja, que es justo lo que no queremos.
+  const esAbierta = (origin === 'Abierta');
+  if (esAbierta) { checkin = ''; checkout = ''; }
+
+  if (!name) { showToast('Por favor completa los campos requeridos'); return; }
+  if (!esAbierta) {
+    if (!formCheckin) { showToast('Por favor completa los campos requeridos'); return; }
+    if (tipoForm === 'noche' || tipoForm === 'early' || tipoForm === 'late') {
+      if (!formCheckout || formCheckout <= formCheckin) {
+        showToast('La fecha de salida debe ser posterior a la entrada'); return;
+      }
     }
   }
 
@@ -11809,7 +11837,10 @@ function esReservaRegalo(r) { return _parseRegaloLocal(r).esRegalo; }
 //   un 'Directa ' con espacio al final hacía desaparecer el dropzone.
 // - Un CERTIFICADO DE REGALO siempre lleva pago (lo pagó el padrino), así que
 //   habilita el dropzone incluso con origen 'Abierta' (regalo sin fecha).
-const VOUCHER_ORIGINS = ['directa', 'referido'];
+// 'abierta' entra porque un crédito abierto YA está pagado: el huésped pagó, no
+// pudo venir y dejó la fecha a coordinar. Sin esto el modal escondía el pago y
+// no había dónde ver ni registrar la plata que respalda el crédito.
+const VOUCHER_ORIGINS = ['directa', 'referido', 'abierta'];
 function _puedeSubirVoucher(origin, esRegalo) {
   if (esRegalo) return true;
   return VOUCHER_ORIGINS.includes((origin || '').toString().trim().toLowerCase());
@@ -12229,6 +12260,23 @@ function renderOcupacion() {
     return d.toISOString().slice(0, 10);
   })();
 
+  // ── Qué cuenta como ingreso acá ──────────────────────────────────
+  // Mismo criterio que Contabilidad: los orígenes sin cobro no son ingreso.
+  // `Abierta` es el caso importante — es un CRÉDITO: el huésped pagó, no pudo
+  // venir y dejó la fecha a coordinar. La plata entró pero la estadía no
+  // ocurrió, así que es un pasivo y se reconoce cuando usa el crédito.
+  //
+  // Antes la tarjeta por cabaña sumaba TODO lo no cancelado y la de origen
+  // descartaba todo lo que no fuera Airbnb/Directa: $6,540 contra $6,165 en
+  // julio-2026, dos totales para lo mismo en tarjetas contiguas.
+  const esIngresoOcu = r => !SIN_PAGO_ORIGINS.includes(r.origin);
+  const montoDe = r => parseFloat(r.neto) || parseFloat(r.amount) || 0;
+
+  // Créditos abiertos: plata cobrada que todavía no es ingreso. Se muestran
+  // aparte para que no queden invisibles al excluirlas del ingreso.
+  const creditosAbiertos = reservations.filter(r => r.origin === 'Abierta' && montoDe(r) > 0);
+  const totalCreditos = creditosAbiertos.reduce((t,r) => t + montoDe(r), 0);
+
   const MONTHS_ES  = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   const CABINS_LIST = [
     { key: 'verde', name: 'Paseo',  color: 'var(--verde-dark)' },
@@ -12440,8 +12488,9 @@ function renderOcupacion() {
     const ingresos = (() => {
       let n=0, p=0;
       periodRes.forEach(r => {
+        if (!esIngresoOcu(r)) return;   // un crédito abierto no es ingreso todavía
         const t = r.tipo || 'noche';
-        const a = parseFloat(r.neto) || parseFloat(r.amount) || 0;
+        const a = montoDe(r);
         // pasanoche es un producto de NOCHE (8pm→12:30pm), va a noches.
         if (t === 'pasatarde' || t === 'pasadia' || t === 'pasadia-largo') p += a; else n += a;
       });
@@ -12471,6 +12520,12 @@ function renderOcupacion() {
         <div class="ocu-kpi-value">${fmtMoney(adr)}</div>
         <div class="ocu-kpi-sub">ingreso ÷ (noches + pasadías)</div>
       </div>
+      ${creditosAbiertos.length ? `
+      <div class="ocu-kpi" title="${creditosAbiertos.map(r => (r.name||'?') + ' ' + fmtMoney(montoDe(r))).join(' · ').replace(/"/g,'&quot;')}">
+        <div class="ocu-kpi-label">Créditos por usar</div>
+        <div class="ocu-kpi-value">${fmtMoney(totalCreditos)}</div>
+        <div class="ocu-kpi-sub">${creditosAbiertos.length} sin fecha · cobrado, no es ingreso aún</div>
+      </div>` : ''}
     `;
   }
 
@@ -12488,7 +12543,7 @@ function renderOcupacion() {
       const pasadiaResEnPeriodo = periodRes.filter(r => esPasadiaEnPeriodo(r, fromStr, toStrExcl));
       const pCorta  = pasadiaResEnPeriodo.filter(r => r.tipo === 'pasatarde');
       const pLarga  = pasadiaResEnPeriodo.filter(r => r.tipo !== 'pasatarde');
-      const sumRev  = arr => arr.reduce((s,r) => s + (parseFloat(r.neto)||parseFloat(r.amount)||0), 0);
+      const sumRev  = arr => arr.reduce((s,r) => s + (esIngresoOcu(r) ? montoDe(r) : 0), 0);
       const fmtM    = v => '$' + v.toLocaleString('es-PA',{minimumFractionDigits:0,maximumFractionDigits:0});
       const totalP  = pasadiaResEnPeriodo.length;
       const totalR  = sumRev(pasadiaResEnPeriodo);
@@ -12497,7 +12552,7 @@ function renderOcupacion() {
       pasadiaResEnPeriodo.forEach(r => {
         if (byCabin[r.cabin] !== undefined) {
           byCabin[r.cabin]++;
-          revByCabin[r.cabin] += parseFloat(r.neto)||parseFloat(r.amount)||0;
+          revByCabin[r.cabin] += esIngresoOcu(r) ? montoDe(r) : 0;
         }
       });
       pasadiasContent.innerHTML = `
@@ -12694,7 +12749,8 @@ function renderOcupacion() {
   // ── Revenue por cabaña ───────────────────────────────────────────
   const revByCabin = { verde:0, azul:0, lila:0 };
   periodRes.forEach(r => {
-    if (revByCabin[r.cabin]!==undefined) revByCabin[r.cabin]+=(parseFloat(r.neto)||parseFloat(r.amount)||0);
+    if (!esIngresoOcu(r)) return;
+    if (revByCabin[r.cabin]!==undefined) revByCabin[r.cabin]+=montoDe(r);
   });
   const totalRev = Object.values(revByCabin).reduce((s,v)=>s+v,0);
   const maxRev   = Math.max(...Object.values(revByCabin),1);

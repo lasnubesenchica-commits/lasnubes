@@ -2362,3 +2362,92 @@ function corregirMontosInfladosAirbnb(dryRun) {
 }
 
 function corregirMontosInfladosESCRIBIR() { return corregirMontosInfladosAirbnb(false); }
+
+// ═══════════════════════════════════════════════════════════
+//  Liberar las fechas de los créditos abiertos
+// ═══════════════════════════════════════════════════════════
+//
+// Origen `Abierta` significa CRÉDITO SIN FECHA: el huésped pagó, no pudo venir y
+// en vez de pedir devolución dejó la fecha a coordinar. Pero varias de esas filas
+// conservaron la fecha original, y eso cuesta plata de dos formas:
+//
+//   · esas noches figuran vendidas y NO se pueden vender, aunque el huésped ya
+//     avisó que no viene;
+//   · inflan la ocupación y los ingresos del mes en que nunca hubo nadie.
+//
+// El dashboard ya trata `Abierta` como sin fecha (el modal oculta los campos y
+// la ocupación filtra por checkin/checkout), así que vaciar las fechas es lo que
+// alinea el dato con lo que el sistema ya asume. NO se toca el monto ni el
+// voucher: son el respaldo del crédito.
+//
+// El modal ya no puede volver a crear este estado (al elegir Abierta vacía las
+// fechas), así que esto es una migración de una sola vez.
+//
+// Dry-run por defecto. Para ejecutar: liberarFechasAbiertasESCRIBIR()
+function liberarFechasAbiertas(dryRun) {
+  if (dryRun !== false) dryRun = true;
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+  const iso = v => v instanceof Date
+    ? Utilities.formatDate(v, 'America/Panama', 'yyyy-MM-dd')
+    : String(v || '').trim().slice(0, 10);
+  const hoy = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd');
+
+  const conFecha = [], sinFecha = [];
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    if (String(r[_R.ORIGEN] || '').trim() !== 'Abierta') continue;
+    const ci = iso(r[_R.ENTRADA]), co = iso(r[5]);
+    const item = { fila: i + 1, quien: r[1], cabana: r[2], ci: ci, co: co,
+                   monto: _cleanMoney_(r[_R.MONTO]), futura: ci >= hoy };
+    if (ci || co) conFecha.push(item); else sinFecha.push(item);
+  }
+
+  Logger.log('═══ ' + (dryRun ? 'DRY-RUN · ' : '') + 'LIBERAR FECHAS DE CRÉDITOS ABIERTOS ═══');
+  Logger.log('');
+  Logger.log(conFecha.length + ' crédito(s) con fecha puesta · ' + sinFecha.length + ' ya sin fecha (correctos)');
+  if (!conFecha.length) {
+    Logger.log('');
+    Logger.log('✅ Nada que liberar: todos los créditos abiertos ya están sin fecha.');
+    return 0;
+  }
+  Logger.log('');
+  let noches = 0, plata = 0, futuras = 0;
+  conFecha.forEach(x => {
+    const n = (x.ci && x.co)
+      ? Math.round((new Date(x.co + 'T12:00:00') - new Date(x.ci + 'T12:00:00')) / 86400000) : 0;
+    noches += n; plata += x.monto;
+    if (x.futura) futuras++;
+    Logger.log('   fila ' + x.fila + ' · ' + x.quien + ' · ' + (x.cabana || 'sin cabaña'));
+    Logger.log('        ' + (x.ci || '?') + ' → ' + (x.co || '?') + '  (' + n + ' noche' + (n === 1 ? '' : 's') + ')'
+      + ' · $' + x.monto.toFixed(2)
+      + (x.futura ? '  ← A FUTURO: al liberarla podés vender esas noches' : '  · ya pasó'));
+  });
+  Logger.log('');
+  Logger.log('Total: ' + noches + ' noche(s) que dejan de figurar ocupadas · $' + plata.toFixed(2)
+    + ' que pasan de "ingreso" a "crédito por usar".');
+  if (futuras) Logger.log(futuras + ' de esos créditos son de fechas FUTURAS: esas noches vuelven a estar a la venta.');
+
+  if (dryRun) {
+    Logger.log('');
+    Logger.log('Nada se escribió. Para ejecutar: liberarFechasAbiertasESCRIBIR()');
+    return 0;
+  }
+  conFecha.forEach(x => {
+    sheet.getRange(x.fila, _R.ENTRADA + 1).setValue('');
+    sheet.getRange(x.fila, 6).setValue('');
+    const cAct = String(data[x.fila - 1][_R.COMENT] || '').trim();
+    const nota = '📅 Fechas liberadas (' + hoy + '): crédito abierto, estadía a coordinar. '
+      + 'Fechas originales ' + (x.ci || '?') + ' → ' + (x.co || '?') + '.';
+    if (cAct.indexOf('Fechas liberadas') < 0) {
+      sheet.getRange(x.fila, _R.COMENT + 1).setValue(cAct ? cAct + '\n' + nota : nota);
+    }
+  });
+  SpreadsheetApp.flush();
+  Logger.log('');
+  Logger.log('✓ ' + conFecha.length + ' crédito(s) liberado(s). El monto y el voucher quedaron intactos.');
+  Logger.log('  Cuando el huésped elija fecha: poné las fechas y cambiá el origen a Directa.');
+  return conFecha.length;
+}
+
+function liberarFechasAbiertasESCRIBIR() { return liberarFechasAbiertas(false); }
