@@ -708,6 +708,113 @@
     overflow: hidden;
   }
 
+  /* ── Reservas en tarjetas (móvil) ──────────────────────────────
+     La tabla de Reservas mide ~730px y el ancho útil de un teléfono es ~340:
+     más de la mitad de las columnas —monto, estado y los botones de acción—
+     quedaban fuera de pantalla, así que editar una reserva desde el celular
+     obligaba a scrollear en horizontal para llegar al lápiz. Debajo de 700px
+     la tabla se reemplaza por tarjetas: toda la fila es el área tocable y
+     abre el modal de edición, que es lo que se hace el 90% de las veces
+     (corregir un monto, subir un voucher). El ojo abre el detalle, y borrar
+     vive ahí adentro — a dos toques, para que no se dispare sin querer. */
+  .res-cards { display: none; flex-direction: column; gap: 8px; }
+
+  .res-card {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .res-card.alerta { background: #fffdf2; border-color: #f0e2b6; }
+  .res-card-stripe { width: 4px; flex-shrink: 0; }
+  .res-card-main {
+    flex: 1 1 auto;
+    min-width: 0;               /* deja que el nombre se recorte en vez de empujar */
+    padding: 10px 4px 10px 12px;
+    border: none;
+    background: none;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .res-card-main:active { background: var(--bg); }
+  .res-card-top {
+    display: flex; align-items: baseline; gap: 8px;
+    margin-bottom: 3px;
+  }
+  .res-card-name {
+    flex: 1 1 auto; min-width: 0;
+    font-weight: 600; font-size: 14.5px; line-height: 1.25;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .res-card-monto { flex-shrink: 0; font-weight: 700; font-size: 14.5px; }
+  .res-card-meta {
+    font-size: 12px; color: var(--text-muted); line-height: 1.45;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .res-card-tags {
+    display: flex; align-items: center; gap: 6px;
+    margin-top: 6px; flex-wrap: wrap;
+  }
+  .res-card-falta {
+    font-size: 11.5px; font-weight: 700; color: #c0392b;
+    background: #fdecea; border-radius: 20px; padding: 2px 8px;
+  }
+  .res-card-eye {
+    flex-shrink: 0;
+    width: 44px;                /* objetivo táctil mínimo */
+    border: none; border-left: 1px solid var(--border);
+    background: none; cursor: pointer;
+    font-size: 15px; color: var(--text-muted);
+  }
+  .res-card-eye:active { background: var(--bg); }
+
+  /* Resumen del filtro. En la tabla vive en el <tfoot>; acá la tabla no se
+     dibuja, así que el total tiene que ir arriba o se pierde. */
+  .res-cards-sum {
+    display: none;
+    position: sticky; top: 0; z-index: 3;
+    background: var(--bg);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 8px 12px; margin-bottom: 10px;
+    font-size: 12px; color: var(--text-muted);
+    justify-content: space-between; align-items: center; gap: 10px;
+  }
+
+  @media (max-width: 700px) {
+    .res-table-wrap { display: none; }
+    .res-cards      { display: flex; }
+    .res-cards-sum  { display: flex; }
+
+    /* El encabezado se comía la pantalla entera antes de la primera reserva. */
+    #reservas .page-title { font-size: 30px; }
+    #reservas .page-subtitle { display: none; }
+    #reservas .cabin-legend { display: none; }   /* cada tarjeta dice su cabaña */
+    /* Las cajas de ayuda traen `display:flex` inline, que le gana a la hoja de
+       estilos — de ahí el !important. Son 5 líneas de texto explicativo entre
+       el filtro y la primera reserva; en un teléfono eso es media pantalla. */
+    #reservas .res-help { display: none !important; }
+    .table-toolbar { padding: 0; border-bottom: none; gap: 8px; }
+    .table-toolbar #filterSearch { flex: 1 1 100%; min-width: 0 !important; }
+    /* flex-basis 0 en vez de 50%: con padding en content-box, un basis de 50%
+       más los 24px de padding pasaba de la mitad y los dos selects wrapeaban a
+       una fila cada uno. Con basis 0 se reparten lo que sobra y entran juntos. */
+    .table-toolbar #filterCabin,
+    .table-toolbar #filterMonth { flex: 1 1 0; min-width: 0; }
+    /* El botón se queda con su ancho natural y los selects se reparten el
+       resto; con la etiqueta larga los tres se apretaban y "Todas las cabañas"
+       quedaba en "Toda". */
+    .table-toolbar #filterFaltaBtn { flex: 0 0 auto; white-space: nowrap; }
+    #filterFaltaBtn .lbl-long { display: none; }
+    .filter-select { padding: 10px 12px; font-size: 14px; }  /* dedo, no mouse */
+  }
+
   .table-toolbar {
     padding: 16px 20px;
     border-bottom: 1px solid var(--border);
@@ -2120,6 +2227,7 @@
         <select class="filter-select" id="filterMonth" onchange="onFilterMonthChange()">
           <option value="">Todos los meses</option>
         </select>
+        <button type="button" id="filterFaltaBtn" class="filter-select" onclick="toggleFiltroFalta()" title="Mostrar solo las que tienen saldo pendiente">⚠ Falta<span class="lbl-long"> cobrar</span></button>
         <div id="filterCustomRange" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;">
           <input type="date" id="filterDateFrom" class="filter-select" style="font-size:13px;padding:6px 10px;border-radius:8px;" onchange="renderList()">
           <span style="font-size:13px;color:var(--text-muted);">→</span>
@@ -2135,14 +2243,16 @@
 
       <!-- TAB: Por fecha de reserva -->
       <div id="resViewFechaReserva">
-        <div style="background:#f0ede9;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start;">
+        <div class="res-help" style="background:#f0ede9;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start;">
           <div style="font-size:15px;flex-shrink:0;margin-top:1px;">ℹ️</div>
           <div>
             <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Filtra por mes de fecha de reserva</div>
             <div style="font-size:13px;color:var(--text-muted);line-height:1.5;">Lista completa de reservas activas. Filtrá por cabaña, mes o nombre del huésped para encontrar una reserva específica o revisar el histórico de ocupación.</div>
           </div>
         </div>
-        <div style="overflow-x:auto;">
+        <div class="res-cards-sum" id="resSumFR"></div>
+        <div class="res-cards" id="resCardsFR"></div>
+        <div class="res-table-wrap" style="overflow-x:auto;">
           <table class="reservations">
             <thead>
               <tr>
@@ -2157,14 +2267,16 @@
 
       <!-- TAB: Por check-in -->
       <div id="resViewCheckin" style="display:none;">
-        <div style="background:#eef3f8;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start;">
+        <div class="res-help" style="background:#eef3f8;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start;">
           <div style="font-size:15px;flex-shrink:0;margin-top:1px;">ℹ️</div>
           <div>
             <div style="font-size:11px;font-weight:600;color:var(--azul-dark);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Filtra por mes de check-in</div>
             <div style="font-size:13px;color:var(--text-muted);line-height:1.5;">Reservas ordenadas por fecha de llegada. Útil para ver qué huéspedes están llegando en un mes determinado y planificar la operación de las cabañas.</div>
           </div>
         </div>
-        <div style="overflow-x:auto;">
+        <div class="res-cards-sum" id="resSumCi"></div>
+        <div class="res-cards" id="resCardsCi"></div>
+        <div class="res-table-wrap" style="overflow-x:auto;">
           <table class="reservations">
             <thead>
               <tr>
@@ -6677,6 +6789,97 @@ function checkinRowHtml(r) {
     </tr>`;
 }
 
+// ── Tarjetas de reserva (vista móvil) ───────────────────────────────────
+// Misma data que la fila de la tabla, jerarquizada para una pantalla angosta:
+// arriba lo que identifica la reserva (quién y cuánto), abajo el estado y —lo
+// único accionable— cuánto falta cobrar. Toda la tarjeta abre el modal de
+// edición; el ojo abre el detalle.
+//
+// `modo` decide qué fecha se muestra: 'fechaReserva' (cuándo la reservó) o
+// 'checkin' (cuándo llega), igual que las dos pestañas.
+const CABIN_STRIPE = { verde: 'var(--verde-dark)', azul: 'var(--azul-dark)', lila: 'var(--lila-dark)' };
+// Nombre corto: "Puente entre Las Nubes · 09/07/2026 · 1 noche" no entra en la
+// línea de un teléfono. La franja de color ya identifica la cabaña, así que el
+// nombre solo tiene que desambiguar.
+const CABINS_SHORT = { verde: 'Paseo', azul: 'Portal', lila: 'Puente' };
+
+// Saldo pendiente de UNA reserva, con el mismo criterio que `porCobrarDisplay`
+// de la tabla: los orígenes sin cobro no deben nada, y Airbnb no se cobra desde
+// acá (su payout lo maneja Airbnb, no hay voucher que subir). Fuente única del
+// chip "Falta $X" de la tarjeta, del filtro y del resumen, para que los tres
+// digan el mismo número.
+function _faltaCobrar(r) {
+  if (SIN_PAGO_ORIGINS.includes(r.origin)) return 0;
+  if (r.origin === 'Airbnb') return 0;
+  const falta = parseFloat(r.neto || r.amount || 0) - montoRecibido(r);
+  return falta > 0.01 ? falta : 0;
+}
+
+// Filtro "⚠ Falta cobrar". Nace apagado; con el celular en la mano sirve para
+// saltar directo a las reservas a las que hay que subirles el voucher sin
+// scrollear toda la lista.
+let _soloFalta = false;
+function toggleFiltroFalta() {
+  _soloFalta = !_soloFalta;
+  const b = document.getElementById('filterFaltaBtn');
+  if (b) {
+    b.style.background  = _soloFalta ? '#fdecea' : '';
+    b.style.borderColor = _soloFalta ? '#e8b4ae' : '';
+    b.style.color       = _soloFalta ? '#c0392b' : '';
+    b.style.fontWeight  = _soloFalta ? '700' : '';
+  }
+  renderList();
+}
+
+function resCardHtml(r, modo) {
+  const fecha = modo === 'checkin'
+    ? (r.checkin ? formatDate(reservaDisplayDates(r).displayCheckin) : '—')
+    : formatDate(r.fechaReserva || r.checkin);
+  const falta = _faltaCobrar(r);
+  const meta = [CABINS_SHORT[r.cabin] || CABINS[r.cabin] || r.cabin, fecha, reservaDuracionLabel(r)]
+    .filter(Boolean).join(' · ');
+  return `<div class="res-card${r.alerta ? ' alerta' : ''}">
+    <div class="res-card-stripe" style="background:${CABIN_STRIPE[r.cabin] || 'var(--border)'};"></div>
+    <button class="res-card-main" onclick="editReservation('${r.id}')">
+      <div class="res-card-top">
+        <span class="res-card-name">${escapeHtml(r.name) || '—'}${r.alerta ? ' ⚠' : ''}</span>
+        <span class="res-card-monto">${netoDisplay(r)}</span>
+      </div>
+      <div class="res-card-meta">${escapeHtml(meta)}</div>
+      <div class="res-card-tags">
+        <span class="origin-badge">${escapeHtml(r.origin || '—')}</span>
+        ${estadoPagoBadge(r)}
+        ${falta ? `<span class="res-card-falta">Falta $${falta.toFixed(2)}</span>` : ''}
+      </div>
+    </button>
+    <button class="res-card-eye" onclick="showDispDetail('${r.id}')" title="Ver detalle" aria-label="Ver detalle">👁</button>
+  </div>`;
+}
+
+// Pinta las tarjetas y su barra de resumen. El "Falta" del resumen es la SUMA
+// DE LOS CHIPS de las tarjetas (`_faltaCobrar`), no `neto − recibido`: así el
+// total cuadra con lo que se ve debajo. El pie de la tabla de escritorio sigue
+// con su criterio propio, que incluye los payouts de Airbnb todavía sin cobrar.
+function renderResCards(containerId, sumId, data, modo, totalNeto) {
+  const cont = document.getElementById(containerId);
+  const sum  = document.getElementById(sumId);
+  if (!cont) return;
+  if (!data.length) {
+    cont.innerHTML = '<div class="empty-state">No hay reservas para este filtro</div>';
+    if (sum) sum.innerHTML = '';
+    return;
+  }
+  cont.innerHTML = data.map(r => resCardHtml(r, modo)).join('');
+  if (sum) {
+    const pend = data.reduce((s, r) => s + _faltaCobrar(r), 0);
+    sum.innerHTML = `<span><strong style="color:var(--text);">${data.length}</strong> reserva${data.length !== 1 ? 's' : ''}`
+      + ` · <strong style="color:var(--verde-dark);">$${totalNeto.toFixed(2)}</strong></span>`
+      + (pend > 0.01
+          ? `<span style="color:#c0392b;font-weight:700;">Falta $${pend.toFixed(2)}</span>`
+          : '<span style="color:var(--verde-dark);font-weight:700;">✓ Todo cobrado</span>');
+  }
+}
+
 let _resTab = 'fechaReserva';
 function setReservasTab(tab) {
   _resTab = tab;
@@ -7098,18 +7301,19 @@ function renderList() {
   if (cabin)  dataFR = dataFR.filter(r => r.cabin === cabin);
   if (month)  dataFR = dataFR.filter(r => matchesFilter(r.fechaReserva||''));
   if (search) dataFR = dataFR.filter(r => (r.name||'').toLowerCase().includes(search));
+  if (_soloFalta) dataFR = dataFR.filter(r => _faltaCobrar(r) > 0);
 
   const tbodyFR = document.getElementById('reservationsTbody');
+  const totalNetoFR  = dataFR.reduce((s,r) => s + parseFloat(r.neto||r.amount||0), 0);
+  const totalAbonoFR = dataFR.reduce((s,r) => {
+    if (r.origin === 'Airbnb') return s + (r.fechaPago ? parseFloat(r.neto||r.amount||0) : 0);
+    const sinPago = SIN_PAGO_ORIGINS;
+    if (sinPago.includes(r.origin)) return s;
+    return s + montoRecibido(r);
+  }, 0);
   if (!dataFR.length) {
     tbodyFR.innerHTML = '<tr><td colspan="10"><div class="empty-state">No hay reservas para este filtro</div></td></tr>';
   } else {
-    const totalNetoFR  = dataFR.reduce((s,r) => s + parseFloat(r.neto||r.amount||0), 0);
-    const totalAbonoFR = dataFR.reduce((s,r) => {
-      if (r.origin === 'Airbnb') return s + (r.fechaPago ? parseFloat(r.neto||r.amount||0) : 0);
-      const sinPago = SIN_PAGO_ORIGINS;
-      if (sinPago.includes(r.origin)) return s;
-      return s + montoRecibido(r);
-    }, 0);
     const totalRowFR = `<tr style="background:var(--bg);font-weight:600;border-top:2px solid var(--border);">
       <td colspan="4" style="text-align:right;font-size:12px;color:var(--text-muted);padding-right:12px;">${dataFR.length} reservas</td>
       <td style="color:var(--verde-dark);">$${totalNetoFR.toFixed(2)}</td>
@@ -7119,6 +7323,7 @@ function renderList() {
     </tr>`;
     tbodyFR.innerHTML = dataFR.map(recentRowHtml).join('') + totalRowFR;
   }
+  renderResCards('resCardsFR', 'resSumFR', dataFR, 'fechaReserva', totalNetoFR);
 
   // ── Tab: Por check-in ────────────────────────────────────────
   let dataCi = [...reservations]
@@ -7127,18 +7332,19 @@ function renderList() {
   if (cabin)  dataCi = dataCi.filter(r => r.cabin === cabin);
   if (month)  dataCi = dataCi.filter(r => matchesFilter(r.checkin||''));
   if (search) dataCi = dataCi.filter(r => (r.name||'').toLowerCase().includes(search));
+  if (_soloFalta) dataCi = dataCi.filter(r => _faltaCobrar(r) > 0);
 
   const tbodyCi = document.getElementById('reservationsTbodyCheckin');
+  const totalNetoCi  = dataCi.reduce((s,r) => s + parseFloat(r.neto||r.amount||0), 0);
+  const totalAbonoCi = dataCi.reduce((s,r) => {
+    if (r.origin === 'Airbnb') return s + (r.fechaPago ? parseFloat(r.neto||r.amount||0) : 0);
+    const sinPago = SIN_PAGO_ORIGINS;
+    if (sinPago.includes(r.origin)) return s;
+    return s + montoRecibido(r);
+  }, 0);
   if (!dataCi.length) {
     tbodyCi.innerHTML = '<tr><td colspan="10"><div class="empty-state">No hay reservas para este filtro</div></td></tr>';
   } else {
-    const totalNetoCi  = dataCi.reduce((s,r) => s + parseFloat(r.neto||r.amount||0), 0);
-    const totalAbonoCi = dataCi.reduce((s,r) => {
-      if (r.origin === 'Airbnb') return s + (r.fechaPago ? parseFloat(r.neto||r.amount||0) : 0);
-      const sinPago = SIN_PAGO_ORIGINS;
-      if (sinPago.includes(r.origin)) return s;
-      return s + montoRecibido(r);
-    }, 0);
     const totalRowCi = `<tr style="background:var(--bg);font-weight:600;border-top:2px solid var(--border);">
       <td colspan="5" style="text-align:right;font-size:12px;color:var(--text-muted);padding-right:12px;">${dataCi.length} reservas</td>
       <td style="color:var(--verde-dark);">$${totalNetoCi.toFixed(2)}</td>
@@ -7148,6 +7354,7 @@ function renderList() {
     </tr>`;
     tbodyCi.innerHTML = dataCi.map(r => checkinRowHtml(r)).join('') + totalRowCi;
   }
+  renderResCards('resCardsCi', 'resSumCi', dataCi, 'checkin', totalNetoCi);
   console.timeEnd('renderList');
 }
 
