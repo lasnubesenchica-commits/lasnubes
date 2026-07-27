@@ -74,6 +74,61 @@
   .disp-cabin-tab.azul.active  { background:var(--azul-dark);  color:#fff; border-color:var(--azul-dark); }
   .disp-cabin-tab.lila         { border-color:var(--lila);     color:var(--lila-dark); }
   .disp-cabin-tab.lila.active  { background:var(--lila-dark);  color:#fff; border-color:var(--lila-dark); }
+  /* ── Timeline ancho (escritorio) ────────────────────────────────
+     Un renglón por día con las horas en horizontal. Ver la nota de
+     `_buildDispTimelineDayWide` para el porqué. */
+  .disp-tlw-day {
+    display:flex; gap:16px; align-items:flex-start;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:12px; padding:12px 16px; margin-bottom:8px;
+  }
+  .disp-tlw-day.is-past  { opacity:.55; }
+  .disp-tlw-day.is-today { border-color:var(--verde-dark); box-shadow:0 0 0 1px var(--verde-dark); }
+  .disp-tlw-label {
+    flex:0 0 132px; font-family:'Cormorant Garamond',serif; font-size:17px;
+    color:var(--text); text-transform:capitalize; padding-top:14px;
+    display:flex; flex-direction:column; gap:4px; align-items:flex-start;
+  }
+  .disp-tlw-main { flex:1 1 auto; min-width:0; }
+  .disp-tlw-hours { position:relative; height:13px; font-size:10px; color:var(--text-muted); }
+  .disp-tlw-hour  { position:absolute; top:0; white-space:nowrap; }
+  .disp-tlw-track {
+    position:relative; height:30px; border-radius:8px;
+    background:var(--bg); border:1px solid var(--border); overflow:hidden;
+  }
+  .disp-tlw-block {
+    position:absolute; top:0; bottom:0; color:#fff; font-size:11px; font-weight:500;
+    display:flex; align-items:center; padding:0 6px; cursor:pointer;
+    overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
+  }
+  .disp-tlw-block:hover { filter:brightness(1.08); }
+  .disp-tlw-slot {
+    position:absolute; top:2px; bottom:2px; border:1.5px dashed var(--verde-dark);
+    border-radius:6px; background:var(--verde-light); color:var(--verde-dark);
+    font-size:10px; font-weight:600; display:flex; align-items:center;
+    justify-content:center; cursor:pointer; overflow:hidden; white-space:nowrap;
+  }
+  .disp-tlw-now { position:absolute; top:-3px; bottom:-3px; width:2px; background:#dc2626; z-index:3; }
+  .disp-tlw-events {
+    display:flex; flex-wrap:wrap; gap:4px 12px; margin-top:7px;
+    font-size:12px; color:var(--text-muted); line-height:1.5;
+  }
+  .disp-tlw-ev time    { font-variant-numeric:tabular-nums; color:var(--text-muted); }
+  .disp-tlw-ev strong  { color:var(--text); font-weight:600; }
+  .disp-tlw-ev i       { font-style:normal; opacity:.75; }
+  .disp-tlw-ev.in, .disp-tlw-ev.out, .disp-tlw-ev.slot { cursor:pointer; }
+  .disp-tlw-ev.in:hover, .disp-tlw-ev.out:hover, .disp-tlw-ev.slot:hover { color:var(--text); }
+  .disp-tlw-ev.carry   { font-style:italic; opacity:.7; }
+  .disp-tlw-ev.clean strong          { color:#8a6d3b; }
+  .disp-tlw-ev.clean.tight strong    { color:#c0956a; }
+  .disp-tlw-ev.clean.critical strong { color:#c0392b; }
+  .disp-tlw-ev.slot strong { color:var(--verde-dark); }
+  .disp-tlw-ev.vacio   { opacity:.6; font-style:italic; }
+  @media (max-width: 1050px) {
+    .disp-tlw-day   { flex-direction:column; gap:6px; }
+    .disp-tlw-label { flex:none; padding-top:0; flex-direction:row; align-items:center; gap:8px; }
+  }
+
   .disp-calendars { display:flex; flex-direction:column; gap:24px; }
   /* Dos meses por fila en escritorio. Con uno solo a todo el ancho, cada celda
      quedaba de 154×154px para un número de 13px —espacio desperdiciado y el
@@ -4672,6 +4727,22 @@ let dispViewMode = (function () {
 // Timeline: cuántos días arranca cargados (ayer + rolling 7). Se incrementa
 // en +7 con "Cargar semana siguiente ↓".
 const DISP_TL_START_DAYS = 8;
+// Ancho a partir del cual el timeline se dibuja horizontal. Por debajo, el
+// eje de 24h no tiene lugar y el layout vertical lee mejor.
+const DISP_TL_WIDE_MQ = '(min-width: 820px)';
+
+// Cruzar el breakpoint (rotar una tablet, achicar la ventana) tiene que
+// redibujar: el HTML de cada layout es distinto, no es solo CSS.
+if (window.matchMedia) {
+  const _mqTl = window.matchMedia(DISP_TL_WIDE_MQ);
+  const _onTl = () => {
+    const sec = document.getElementById('disponibilidad');
+    if (sec && sec.classList.contains('active') && dispViewMode === 'timeline') renderDispTimeline();
+  };
+  if (_mqTl.addEventListener) _mqTl.addEventListener('change', _onTl);
+  else if (_mqTl.addListener) _mqTl.addListener(_onTl);
+}
+
 let dispTimelineDaysLoaded = DISP_TL_START_DAYS;
 
 function updateDispLegend() {
@@ -4849,9 +4920,14 @@ function renderDispTimeline() {
   const yesterdayISO = _addDaysISO(todayISO, -1);
   const tomorrowISO  = _addDaysISO(todayISO, 1);
 
+  // Escritorio: eje de horas horizontal, un renglón por día. Móvil: el layout
+  // vertical de siempre, que ahí funciona bien y no se toca.
+  const _build = window.matchMedia(DISP_TL_WIDE_MQ).matches
+    ? _buildDispTimelineDayWide
+    : _buildDispTimelineDay;
   let daysHtml = '';
   days.forEach((day, idx) => {
-    daysHtml += _buildDispTimelineDay({
+    daysHtml += _build({
       day, idx, cabin, todayISO, yesterdayISO, tomorrowISO,
       HOUR_H, DAY_H, DOW, MON, TIPO_BG, TIPO_SHORT,
       allEvents, filteredSlots,
@@ -4876,6 +4952,156 @@ function renderDispTimeline() {
     + '<div class="disp-tl-more-wrap">'
     +   '<button class="disp-tl-more" onclick="loadMoreDispTimeline()">Cargar semana siguiente ↓</button>'
     + '</div>';
+}
+
+// Los eventos de un día: quién entra, quién sale, las ventanas de limpieza entre
+// medio y los huecos vendibles. Se extrajo de `_buildDispTimelineDay` cuando el
+// escritorio pasó a tener su propio dibujo: los dos layouts comparten ESTE
+// cálculo, así que no pueden mostrar agendas distintas para el mismo día.
+function _dispTimelineAgenda(a) {
+  const { dayEvents, dayEventsSorted, dayStart, dayEnd, day, filteredSlots, _hoursDiff } = a;
+  const carries = dayEvents.filter(e => e.start < dayStart);
+  const items = [];
+  dayEvents.forEach(e => {
+    if (e.start >= dayStart && e.start < dayEnd) items.push({ type: 'entra', at: e.start, e: e });
+    if (e.end > dayStart && e.end <= dayEnd)     items.push({ type: 'sale',  at: e.end,   e: e });
+  });
+  for (let i = 0; i < dayEventsSorted.length - 1; i++) {
+    const cur = dayEventsSorted[i], nxt = dayEventsSorted[i + 1];
+    if (cur.end < nxt.start && cur.end >= dayStart && nxt.start <= dayEnd) {
+      const gapH = _hoursDiff(cur.end, nxt.start);
+      if (gapH > 0.05) {
+        const level = gapH < 1 ? 'critical' : (gapH <= 2 ? 'tight' : '');
+        items.push({ type: 'clean', at: cur.end, endAt: nxt.start, gapH: gapH, level: level });
+      }
+    }
+  }
+  filteredSlots.forEach(slot => {
+    if (slot.originDay === day) items.push({ type: 'slot', at: slot.start, slot: slot });
+  });
+  items.sort((a, b) => a.at - b.at);
+  return { carries, items };
+}
+
+// ── Timeline ANCHO (escritorio) ────────────────────────────────────────
+// El layout vertical dibuja 24h en un eje de arriba a abajo, así que no usa el
+// ancho por construcción: medido, el alto total del scroll era el MISMO a
+// 342px que a 1152px de contenedor. En escritorio se rota — las horas van en
+// horizontal y cada día es un renglón — y un día pasa de ~470px de alto a ~90.
+//
+// Comparte con el vertical toda la preparación de datos (`allEvents`,
+// `filteredSlots`, `_dispTimelineAgenda`); lo único propio es el dibujo.
+function _buildDispTimelineDayWide(ctx) {
+  const { day, idx, cabin, todayISO, yesterdayISO, tomorrowISO,
+          DOW, MON, TIPO_BG, TIPO_SHORT, allEvents, filteredSlots,
+          _fmtDT, _fmtHM, _hoursDiff, _fmtDuration } = ctx;
+
+  const dayStart = new Date(day + 'T00:00:00');
+  const dayEnd   = new Date(_addDaysISO(day, 1) + 'T00:00:00');
+  const isToday  = (day === todayISO);
+  const isPast   = dayEnd < new Date(new Date().setHours(0,0,0,0));
+  const d = new Date(day + 'T00:00:00');
+  const labelDate = DOW[d.getDay()] + ' ' + d.getDate() + ' ' + MON[d.getMonth()];
+
+  const dayEvents = allEvents.filter(e => e.start < dayEnd && e.end > dayStart);
+  const dayEventsSorted = dayEvents.slice().sort((a, b) => a.start - b.start);
+  const { carries, items } = _dispTimelineAgenda({
+    dayEvents, dayEventsSorted, dayStart, dayEnd, day, filteredSlots, _hoursDiff
+  });
+
+  // Porcentaje del ancho para una hora del día: la barra escala sola con la
+  // pantalla, sin pixeles fijos que se desalineen al cambiar de ventana.
+  const pct = (dt) => Math.max(0, Math.min(100, ((dt - dayStart) / 3600000) / 24 * 100));
+
+  let barHtml = '';
+  dayEvents.forEach(e => {
+    const l = pct(e.start), r = pct(e.end);
+    const w = Math.max(0.6, r - l);
+    const tipo = e.r.tipo || 'noche';
+    const bg = TIPO_BG[tipo] || '#6a9e62';
+    const short = TIPO_SHORT[tipo] || tipo;
+    // Con menos de ~9% del día (2h) el nombre no entra y se ve peor que vacío.
+    const inner = w >= 9 ? escapeHtml(e.r.name || '?') : '';
+    const tip = e.r.name + ' · ' + short + ' · ' + _fmtDT(e.start) + ' → ' + _fmtDT(e.end) + ' · click para ver detalle';
+    barHtml += '<div class="disp-tlw-block" onclick="event.stopPropagation();_timelineBlockClick(\'' + escapeHtml(String(e.r.id)) + '\')"'
+             + ' style="left:' + l.toFixed(2) + '%;width:' + w.toFixed(2) + '%;background:' + bg + ';"'
+             + ' title="' + escapeHtml(tip) + '">' + inner + '</div>';
+  });
+  filteredSlots.forEach(slot => {
+    if (slot.end <= dayStart || slot.start >= dayEnd) return;
+    const l = pct(slot.start), r = pct(slot.end);
+    const w = Math.max(0.6, r - l);
+    const slotTip = 'Ventana libre · ' + _fmtDT(slot.start) + ' → ' + _fmtDT(slot.end) + ' · click para cotizar/registrar';
+    barHtml += '<div class="disp-tlw-slot" onclick="event.stopPropagation();showAvailabilityDetail(\'' + cabin + '\',\'' + slot.originDay + '\',\'' + slot.tipo + '\')"'
+             + ' style="left:' + l.toFixed(2) + '%;width:' + w.toFixed(2) + '%;"'
+             + ' title="' + escapeHtml(slotTip) + '">' + (w >= 6 ? '＋ libre' : '＋') + '</div>';
+  });
+  if (isToday) {
+    const nowPct = pct(new Date());
+    if (nowPct > 0 && nowPct < 100) {
+      barHtml += '<div class="disp-tlw-now" style="left:' + nowPct.toFixed(2) + '%;"></div>';
+    }
+  }
+
+  let hoursHtml = '';
+  [0, 6, 12, 18, 24].forEach(h => {
+    const label = h === 0 ? '12a' : h === 24 ? '12a' : h === 12 ? '12p' : (h < 12 ? h + 'a' : (h - 12) + 'p');
+    const align = h === 0 ? 'left:0;' : h === 24 ? 'right:0;' : 'left:' + (h / 24 * 100) + '%;transform:translateX(-50%);';
+    hoursHtml += '<span class="disp-tlw-hour" style="' + align + '">' + label + '</span>';
+  });
+
+  // Los eventos van en una línea corrida bajo la barra: la barra da la forma,
+  // la línea el detalle. Vertical los ponía uno debajo de otro, que es lo que
+  // hacía que un día ocupara media pantalla.
+  let evHtml = '';
+  carries.forEach(e => {
+    const short = TIPO_SHORT[e.r.tipo || 'noche'] || 'Noche';
+    evHtml += '<span class="disp-tlw-ev carry">' + escapeHtml(e.r.name) + ' · ' + short
+           +  ' continúa desde ' + _fmtDT(e.start) + '</span>';
+  });
+  items.forEach(it => {
+    if (it.type === 'entra') {
+      const tipo = it.e.r.tipo || 'noche';
+      const tag = [TIPO_SHORT[tipo] || 'Noche', it.e.r.persons ? it.e.r.persons + ' pers' : '',
+                   'sale ' + _fmtDT(it.e.end)].filter(Boolean).join(' · ');
+      evHtml += '<span class="disp-tlw-ev in" onclick="event.stopPropagation();_timelineBlockClick(\'' + escapeHtml(String(it.e.r.id)) + '\')"'
+             +  ' title="' + escapeHtml(tag) + '"><time>' + _fmtHM(it.at) + '</time> <strong>'
+             +  escapeHtml(it.e.r.name) + ' entra</strong> <i>' + escapeHtml(tag) + '</i></span>';
+    } else if (it.type === 'sale') {
+      evHtml += '<span class="disp-tlw-ev out" onclick="event.stopPropagation();_timelineBlockClick(\'' + escapeHtml(String(it.e.r.id)) + '\')">'
+             +  '<time>' + _fmtHM(it.at) + '</time> <strong>' + escapeHtml(it.e.r.name) + ' sale</strong></span>';
+    } else if (it.type === 'clean') {
+      const desc = it.level === 'critical' ? 'turnover al límite'
+                 : it.level === 'tight'    ? 'limpieza · ajustado'
+                 :                            'limpieza';
+      evHtml += '<span class="disp-tlw-ev clean' + (it.level ? ' ' + it.level : '') + '">'
+             +  '<strong>' + _fmtDuration(it.gapH) + (it.level === 'critical' ? ' ⚠' : '') + '</strong> ' + desc + '</span>';
+    } else if (it.type === 'slot') {
+      const slot = it.slot;
+      const tipoLabel = slot.tipo === 'pasatarde' ? 'PT' : 'PN';
+      const horas = slot.tipo === 'pasatarde' ? '12:30–7 pm' : slot.tipo === 'pasanoche' ? '8 pm–12:30 pm sig.' : '';
+      const precio = TARIFA_TIPO[slot.tipo] ? '$' + TARIFA_TIPO[slot.tipo] : '';
+      evHtml += '<span class="disp-tlw-ev slot" onclick="event.stopPropagation();showAvailabilityDetail(\'' + cabin + '\',\'' + slot.originDay + '\',\'' + slot.tipo + '\')"'
+             +  ' title="Ventana libre — click para cotizar/registrar">💡 <strong>' + tipoLabel + ' libre</strong> '
+             +  horas + ' ' + precio + '</span>';
+    }
+  });
+  if (!evHtml) evHtml = '<span class="disp-tlw-ev vacio">Sin ocupación registrada</span>';
+
+  let badges = '';
+  if (isToday)                 badges += '<span class="disp-tl-badge disp-tl-badge-today">Hoy</span>';
+  if (day === yesterdayISO)    badges += '<span class="disp-tl-badge disp-tl-badge-yesterday">Ayer</span>';
+  if (day === tomorrowISO)     badges += '<span class="disp-tl-badge disp-tl-badge-tomorrow">Mañana</span>';
+
+  return '<div class="disp-tlw-day' + (isPast ? ' is-past' : '') + (isToday ? ' is-today' : '') + '"'
+       +   (isToday ? ' id="dispTimelineTodayAnchor"' : '') + ' data-day-idx="' + idx + '">'
+       +   '<div class="disp-tlw-label">' + escapeHtml(labelDate) + badges + '</div>'
+       +   '<div class="disp-tlw-main">'
+       +     '<div class="disp-tlw-hours">' + hoursHtml + '</div>'
+       +     '<div class="disp-tlw-track">' + barHtml + '</div>'
+       +     '<div class="disp-tlw-events">' + evHtml + '</div>'
+       +   '</div>'
+       + '</div>';
 }
 
 function _buildDispTimelineDay(ctx) {
@@ -4964,27 +5190,10 @@ function _buildDispTimelineDay(ctx) {
     _addGuide(((t - dayStart) / 3600000) * HOUR_H);
   });
 
-  // ─── Columna agenda (items posicionados por hora) ────────
-  const carries = dayEvents.filter(e => e.start < dayStart);
-  const items = [];
-  dayEvents.forEach(e => {
-    if (e.start >= dayStart && e.start < dayEnd) items.push({ type: 'entra', at: e.start, e: e });
-    if (e.end > dayStart && e.end <= dayEnd)     items.push({ type: 'sale',  at: e.end,   e: e });
+  // ─── Agenda del día: entradas, salidas, limpiezas y huecos ──
+  const { carries, items } = _dispTimelineAgenda({
+    dayEvents, dayEventsSorted, dayStart, dayEnd, day, filteredSlots, _hoursDiff
   });
-  for (let i = 0; i < dayEventsSorted.length - 1; i++) {
-    const cur = dayEventsSorted[i], nxt = dayEventsSorted[i + 1];
-    if (cur.end < nxt.start && cur.end >= dayStart && nxt.start <= dayEnd) {
-      const gapH = _hoursDiff(cur.end, nxt.start);
-      if (gapH > 0.05) {
-        const level = gapH < 1 ? 'critical' : (gapH <= 2 ? 'tight' : '');
-        items.push({ type: 'clean', at: cur.end, endAt: nxt.start, gapH: gapH, level: level });
-      }
-    }
-  }
-  filteredSlots.forEach(slot => {
-    if (slot.originDay === day) items.push({ type: 'slot', at: slot.start, slot: slot });
-  });
-  items.sort((a, b) => a.at - b.at);
 
   const _estHeight = (it) => it.type === 'entra' ? 40 : 18;
   const ITEM_SHIFT = 3;
