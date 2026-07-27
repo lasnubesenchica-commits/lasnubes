@@ -2797,38 +2797,29 @@
       </div>
     </div>
 
-    <!-- Ingresos por Origen e Ingresos por Cabaña side by side -->
-    <div class="ocu-charts-grid" style="margin-bottom:16px;">
-      <div class="ocu-chart-card">
-        <div class="ocu-chart-title">Ingresos por origen</div>
-        <div class="ocu-rev-grid" id="ocuOriginRevCards" style="grid-template-columns:1fr 1fr;"></div>
-        <table class="ocu-table" id="ocuOriginTable">
+    <!-- Ingresos: UNA tabla cruzada origen × cabaña.
+         "Ingresos por origen" eran sus filas e "Ingresos por cabaña" sus
+         columnas: dos tarjetas mostrando los márgenes de una tabla que ya
+         estaba en pantalla, cada una además con sus propios widgets repetidos. -->
+    <div class="ocu-chart-card" style="margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+        <div class="ocu-chart-title" style="margin-bottom:0;">Ingresos del período</div>
+        <div style="font-size:12px;color:var(--text-muted);" id="ocuRevResumen"></div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="ocu-table" id="ocuRevTable">
           <thead>
             <tr>
-              <th>Origen</th><th style="text-align:right;">Reservas</th><th style="text-align:right;">%</th><th style="text-align:right;">Ingresos</th>
+              <th>Origen</th>
+              <th style="text-align:right;">Paseo</th>
+              <th style="text-align:right;">Portal</th>
+              <th style="text-align:right;">Puente</th>
+              <th style="text-align:right;">Total</th>
+              <th style="width:90px;"></th>
             </tr>
           </thead>
-          <tbody id="ocuOriginBody"></tbody>
+          <tbody id="ocuRevTableBody"></tbody>
         </table>
-      </div>
-      <div class="ocu-chart-card">
-        <div class="ocu-chart-title">Ingresos por cabaña</div>
-        <div class="ocu-rev-grid" id="ocuRevCards"></div>
-        <div style="display:none;"><span id="ocuRevTotal"></span></div>
-        <div style="overflow-x:auto;">
-          <table class="ocu-table" id="ocuRevTable">
-            <thead>
-              <tr>
-                <th>Origen</th>
-                <th style="text-align:right;">Paseo</th>
-                <th style="text-align:right;">Portal</th>
-                <th style="text-align:right;">Puente</th>
-                <th style="text-align:right;">Total</th>
-              </tr>
-            </thead>
-            <tbody id="ocuRevTableBody"></tbody>
-          </table>
-        </div>
       </div>
     </div>
 
@@ -12125,66 +12116,29 @@ function showToast(msg) {
 
 
 // ─── OCUPACIÓN ───────────────────────────────────────────────
-let ocuMonths = 1;
 
 function exportOcuPDF() {
-  // Update print period label
-  const fromVal = document.getElementById('ocuFrom').value;
-  const toVal   = document.getElementById('ocuTo').value;
+  // El rótulo sale de getOcuDateRange(), no de los inputs #ocuFrom/#ocuTo: esos
+  // desaparecieron al unificar el selector con Contabilidad y esta función
+  // quedó tirando TypeError al tocar "Exportar PDF".
+  const { fromStr, toStr } = getOcuDateRange();
   const MONTHS_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   const fmt = v => {
     if (!v) return '';
-    const [y,m] = v.split('-');
-    return MONTHS_ES[parseInt(m)-1] + ' ' + y;
+    const [y, m] = v.split('-');
+    return MONTHS_ES[parseInt(m) - 1] + ' ' + y;
   };
-  const label = fromVal === toVal
-    ? fmt(fromVal)
-    : fmt(fromVal) + ' — ' + fmt(toVal);
+  const label = fromStr.slice(0, 7) === toStr.slice(0, 7)
+    ? fmt(fromStr)
+    : fmt(fromStr) + ' — ' + fmt(toStr);
   document.getElementById('printPeriodLabel').textContent = 'Período: ' + label;
   window.print();
 }
 
-function setOcuMonth(offset, btn) {
-  // offset=1 → next month, offset=2 → month after next
-  document.querySelectorAll('.ocu-period-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  const now  = new Date();
-  const target = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-  const monthStr = target.getFullYear() + '-' + String(target.getMonth()+1).padStart(2,'0');
-  document.getElementById('ocuFrom').value = monthStr;
-  document.getElementById('ocuTo').value   = monthStr;
-  renderOcupacion();
-}
+// (setOcuMonth, initOcuMonthBtns y setOcuPeriod se eliminaron con el selector
+//  viejo: no tenían botones que las llamaran y escribían en #ocuFrom/#ocuTo,
+//  que ya no existen.)
 
-function initOcuMonthBtns() {
-  const MONTHS_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-  const now = new Date();
-  const m1  = new Date(now.getFullYear(), now.getMonth()+1, 1);
-  const m2  = new Date(now.getFullYear(), now.getMonth()+2, 1);
-  const b1  = document.getElementById('ocuNextMonth1Btn');
-  const b2  = document.getElementById('ocuNextMonth2Btn');
-  if (b1) b1.textContent = MONTHS_ES[m1.getMonth()];
-  if (b2) b2.textContent = MONTHS_ES[m2.getMonth()];
-}
-
-function setOcuPeriod(months, btn) {
-  ocuMonths = months;
-  document.querySelectorAll('.ocu-period-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  // Set date inputs to match
-  const now   = new Date();
-  const toStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
-  const from  = new Date(now.getFullYear(), now.getMonth() - months + 1, 1);
-  const fromStr = from.getFullYear() + '-' + String(from.getMonth()+1).padStart(2,'0');
-  document.getElementById('ocuFrom').value = fromStr;
-  document.getElementById('ocuTo').value   = toStr;
-  renderOcupacion();
-}
-
-// El rango sale del estado COMPARTIDO con Contabilidad (selectedMonth /
-// selectedRange), no de un <select> propio. Antes Ocupación tenía su propia
-// implementación de períodos y ni siquiera coincidía con la otra en qué es
-// "Custom": dos controles distintos para la misma pregunta.
 function getOcuDateRange() {
   const pad = n => String(n).padStart(2, '0');
   if (selectedRange && selectedRange.from && selectedRange.to) {
@@ -12812,102 +12766,21 @@ function renderOcupacion() {
     'Airbnb':'#FF5A5F','Directa':'#6a9e62','Cortesia':'#5a85b0',
     'Colaboracion':'#8060b0','Personal':'#e9a84c','Otro':'#aaa'
   };
-  const originCount = {};
-  periodRes.forEach(r => {
-    const o = r.origin || 'Otro';
-    if (o !== 'Airbnb' && o !== 'Directa') return; // solo Airbnb y Directa
-    originCount[o] = (originCount[o]||0) + 1;
-  });
-  const originEntries = Object.entries(originCount).sort((a,b)=>b[1]-a[1]);
-  const totalRes = originEntries.reduce((s,[,v])=>s+v,0);
-
-  const revByOrigin2 = {};
-  periodRes.forEach(r => {
-    const o = r.origin||'Otro';
-    if (o !== 'Airbnb' && o !== 'Directa') return;
-    revByOrigin2[o] = (revByOrigin2[o]||0) + (parseFloat(r.neto)||parseFloat(r.amount)||0);
-  });
-
-  // ── Ingresos por origen: widgets + tabla ───────────────────────
-  const totalRevOrigin = Object.values(revByOrigin2).reduce((s,v)=>s+v,0);
-
-  // Widgets (misma estructura que ocuRevCards)
-  const ocuOriginRevCards = document.getElementById('ocuOriginRevCards');
-  if (ocuOriginRevCards) {
-    ocuOriginRevCards.innerHTML = originEntries.map(([name, count]) => {
-      const rev   = revByOrigin2[name] || 0;
-      const pct   = totalRevOrigin > 0 ? Math.round(rev / totalRevOrigin * 100) : 0;
-      const color = ORIGIN_COLORS[name] || '#bbb';
-      return `<div style="display:flex;flex-direction:column;gap:4px;padding:10px 12px;background:var(--bg);border-radius:10px;border:1px solid var(--border);">
-        <div style="display:flex;align-items:center;gap:6px;">
-          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0;"></span>
-          <span style="font-size:12px;font-weight:600;color:var(--text);">${name}</span>
-        </div>
-        <div style="font-size:18px;font-weight:700;color:var(--text);">$${rev.toLocaleString('es-PA',{minimumFractionDigits:0,maximumFractionDigits:0})}</div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <div style="flex:1;height:4px;background:var(--border);border-radius:2px;">
-            <div style="width:${pct}%;height:100%;background:${color};border-radius:2px;"></div>
-          </div>
-          <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">${pct}% · ${count} res.</span>
-        </div>
-      </div>`;
-    }).join('');
-  }
-
-  document.getElementById('ocuOriginBody').innerHTML = [
-    ...originEntries.map(([name,count]) => {
-      const pct  = Math.round(count/(totalRes||1)*100);
-      const rev  = revByOrigin2[name]||0;
-      const color= ORIGIN_COLORS[name]||'#bbb';
-      return `<tr>
-        <td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};"></span> ${name}</td>
-        <td style="text-align:right;">${count}</td>
-        <td style="text-align:right;">${pct}%</td>
-        <td style="text-align:right;">$${rev.toLocaleString('es-PA',{minimumFractionDigits:0,maximumFractionDigits:0})}</td>
-      </tr>`;
-    }),
-    `<tr style="font-weight:600;border-top:2px solid var(--border);">
-      <td>Total</td>
-      <td style="text-align:right;">${totalRes}</td>
-      <td style="text-align:right;">100%</td>
-      <td style="text-align:right;">$${totalRevOrigin.toLocaleString('es-PA',{minimumFractionDigits:0,maximumFractionDigits:0})}</td>
-    </tr>`
-  ].join('')
-
-  // ── Revenue por cabaña ───────────────────────────────────────────
-  const revByCabin = { verde:0, azul:0, lila:0 };
-  periodRes.forEach(r => {
-    if (!esIngresoOcu(r)) return;
-    if (revByCabin[r.cabin]!==undefined) revByCabin[r.cabin]+=montoDe(r);
-  });
-  const totalRev = Object.values(revByCabin).reduce((s,v)=>s+v,0);
-  const maxRev   = Math.max(...Object.values(revByCabin),1);
-  const revCabins = CABINS_LIST;
-
-  document.getElementById('ocuRevCards').innerHTML = revCabins.map(c => {
-    const amt  = revByCabin[c.key];
-    const pct  = Math.round(amt/maxRev*100);
-    const share= totalRev>0 ? Math.round(amt/totalRev*100) : 0;
-    return `<div class="ocu-rev-card">
-      <div class="ocu-rev-cabin" style="color:${c.color};">${c.name}</div>
-      <div class="ocu-rev-amount" style="color:${c.color};">$${amt.toLocaleString('es-PA',{minimumFractionDigits:0,maximumFractionDigits:0})}</div>
-      <div class="ocu-rev-sub">${share}% del total</div>
-      <div class="ocu-rev-bar-track">
-        <div class="ocu-rev-bar-fill" style="width:${pct}%;background:${c.color};"></div>
-      </div>
-    </div>`;
-  }).join('');
-
-  document.getElementById('ocuRevTotal').textContent =
-    '$'+totalRev.toLocaleString('es-PA',{minimumFractionDigits:2,maximumFractionDigits:2});
+  // (los widgets de "Ingresos por origen" y "por cabaña" se eliminaron: eran
+  //  los márgenes de la tabla cruzada de abajo, repetidos dos veces cada uno)
 
   // ── Revenue table: cabin × origin ────────────────────────────────
+  // OJO: acá faltaba el criterio de ingreso. La tabla seguía sumando `Abierta`
+  // mientras las tarjetas ya lo excluían, así que su total no coincidía con el
+  // resto del panel — el mismo descuadre que veníamos arreglando, escondido en
+  // el único lugar que no habíamos tocado.
+  const revCabins = CABINS_LIST;
   const revMatrix = {};
   periodRes.forEach(r => {
-    const o   = r.origin||'Otro';
-    const amt = parseFloat(r.neto)||parseFloat(r.amount)||0;
+    if (!esIngresoOcu(r)) return;
+    const o = r.origin || 'Otro';
     if (!revMatrix[o]) revMatrix[o] = { verde:0, azul:0, lila:0 };
-    if (revMatrix[o][r.cabin]!==undefined) revMatrix[o][r.cabin]+=amt;
+    if (revMatrix[o][r.cabin] !== undefined) revMatrix[o][r.cabin] += montoDe(r);
   });
   const allOriginsSorted = Object.keys(revMatrix).sort((a,b) => {
     const totA = revCabins.reduce((s,c)=>s+(revMatrix[a][c.key]||0),0);
@@ -12921,21 +12794,45 @@ function renderOcupacion() {
     ? '$'+v.toLocaleString('es-PA',{minimumFractionDigits:0,maximumFractionDigits:0})
     : '<span style="color:var(--text-muted);">—</span>';
 
+  const money = v => '$' + v.toLocaleString('es-PA',{minimumFractionDigits:0,maximumFractionDigits:0});
   const tableRows = allOriginsSorted.map(o => {
     const rowTotal = revCabins.reduce((s,c)=>s+(revMatrix[o][c.key]||0),0);
     const color = ORIGIN_COLORS[o]||'#aaa';
+    const pct   = grandTotal > 0 ? Math.round(rowTotal/grandTotal*100) : 0;
     return `<tr>
       <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px;"></span><strong>${o}</strong></td>
       ${revCabins.map(c=>`<td style="text-align:right;">${fmt(revMatrix[o][c.key]||0)}</td>`).join('')}
-      <td style="text-align:right;font-weight:500;">$${rowTotal.toLocaleString('es-PA',{minimumFractionDigits:0,maximumFractionDigits:0})}</td>
+      <td style="text-align:right;font-weight:500;">${money(rowTotal)}</td>
+      <td style="padding-left:8px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden;">
+            <div style="width:${pct}%;height:100%;background:${color};border-radius:3px;"></div>
+          </div>
+          <span style="font-size:11px;color:var(--text-muted);min-width:26px;text-align:right;">${pct}%</span>
+        </div>
+      </td>
     </tr>`;
   });
+  // El pie lleva el % por cabaña, que es lo que decían las tarjetas eliminadas.
   tableRows.push(`<tr style="font-weight:600;border-top:2px solid var(--border);background:var(--bg);">
     <td>Total</td>
-    ${revCabins.map(c=>`<td style="text-align:right;">$${colTotals[c.key].toLocaleString('es-PA',{minimumFractionDigits:0,maximumFractionDigits:0})}</td>`).join('')}
-    <td style="text-align:right;">$${grandTotal.toLocaleString('es-PA',{minimumFractionDigits:0,maximumFractionDigits:0})}</td>
+    ${revCabins.map(c=>{
+      const pc = grandTotal > 0 ? Math.round(colTotals[c.key]/grandTotal*100) : 0;
+      return `<td style="text-align:right;">${money(colTotals[c.key])}
+        <div style="font-size:10px;font-weight:400;color:var(--text-muted);">${pc}%</div></td>`;
+    }).join('')}
+    <td style="text-align:right;">${money(grandTotal)}</td>
+    <td></td>
   </tr>`);
   document.getElementById('ocuRevTableBody').innerHTML = tableRows.join('');
+
+  // Resumen al lado del título: reservas facturables + total.
+  const _resumenEl = document.getElementById('ocuRevResumen');
+  if (_resumenEl) {
+    const nRes = periodRes.filter(esIngresoOcu).length;
+    _resumenEl.innerHTML = nRes + (nRes === 1 ? ' reserva' : ' reservas')
+      + ' · <strong style="color:var(--text);font-size:14px;">' + money(grandTotal) + '</strong>';
+  }
 
   // ── Print period label ───────────────────────────────────────────
   const fmtMonth = v => { if(!v) return ''; const [y,m]=v.split('-'); return MONTHS_ES[parseInt(m)-1]+' '+y; };
