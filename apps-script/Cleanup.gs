@@ -1929,9 +1929,19 @@ function verificarSaludAirbnb() {
   // ── D) Neto coherente con el monto ─────────────────────────
   // La comisión de Airbnb es 3% hasta el 23-dic-2025 y 15.5% desde el 24.
   // Un neto IGUAL al monto significa que nunca se calculó (le pasó a Mairanis).
+  //
+  // Solo se mira si la fila YA tiene payout. Sin cobro registrado el Neto es un
+  // campo dormido: el widget de Ingresos lee `fechaPago ? (neto||amount) : 0`,
+  // así que no se usa, y cuando la plata llega lo llenan
+  // actualizarEstadoPagoAirbnb + recalcularNetosAirbnb con el dato real. Marcarlo
+  // antes reportaba 10 filas que no tenían nada que arreglar —3 de ellas
+  // canceladas sin cobro, donde el neto no significa nada— y enterraba el único
+  // hallazgo real del reporte.
   filas.forEach(f => {
     const mo = num(f.r[_R.MONTO]), ne = num(f.r[_R.NETO]);
     if (!mo || !ne) return;
+    if (num(f.r[_R.MONTOPAGADO]) <= 0) return;                       // espera payout
+    if (String(f.r[_R.ESTADO] || '').trim().toUpperCase() === 'CANCELADA') return;
     const ref  = iso(f.r[15]) || iso(f.r[_R.ENTRADA]);
     const pct  = ref && ref < '2025-12-24' ? 0.03 : 0.155;
     const esp  = Math.round(mo * (1 - pct) * 100) / 100;
