@@ -1811,6 +1811,22 @@ function repararAlteracionesAPLICAR() { return repararAlteracionesHuerfanas(fals
 //
 // Cada chequeo nació de un problema real de la auditoría de jul-2026, así que si
 // alguno vuelve a dar positivo es una regresión concreta, no una sospecha.
+// Hallazgos ya analizados que son correctos y no van a cambiar. El reporte los
+// cuenta y los resume al pie con su motivo, en vez de repetirlos como si fueran
+// problemas nuevos. Para dejar de aceptar uno, borrar su línea.
+var EXCEPCIONES_SALUD = [
+  { que: 'alteración aceptada sin aplicar', clave: 'HMD4ESKMPX',
+    motivo: 'Kj tuvo 3 alteraciones encadenadas (16-18 → 17-19 → 18-21 mar). La del medio se rehúsa a propósito: la fila ya avanzó al rango final.' },
+  { que: 'confirmación sin pareja', clave: 'HMJN58AQTF',
+    motivo: 'La solicitud de Kaz quedó a 9 días de su confirmación, fuera de la ventana de 7. Emparejarla sería adivinar.' },
+  { que: 'código raro', clave: '1782149615204',
+    motivo: 'Fila creada a mano para el crédito honrado de Mairanis (7-9 ago). Nunca va a tener código HM porque no nació de una reserva de Airbnb.' },
+  { que: 'neto no cuadra con la comisión', clave: 'Nidemis',
+    motivo: 'Su payout incluye una resolución de +$30.00 que se paga sin comisión, así que el neto ($113.65) supera al bruto ($99.00). Es correcto.' },
+  { que: 'neto no cuadra con la comisión', clave: 'Carla Bonilla',
+    motivo: 'Ajuste de resolución de -$99.00 sobre una reserva de $198.00: Airbnb terminó pagando $68.31. Es un reembolso real.' }
+];
+
 function verificarSaludAirbnb() {
   const ss   = SpreadsheetApp.openById(SHEET_ID);
   const hoja = getOrCreateSheet();
@@ -2000,6 +2016,23 @@ function verificarSaludAirbnb() {
     P('alta', 'noche vendida dos veces', k.replace('|', ' · ') + ' → ' + noches[k].join('  vs  '));
   });
 
+  // ── Excepciones aceptadas ──────────────────────────────────
+  // Hallazgos ya analizados que son correctos y no van a cambiar. Sin esto el
+  // reporte semanal repite las mismas 5 líneas para siempre, uno aprende a
+  // ignorarlo entero y el día que aparezca algo real se pasa por alto.
+  // Se cuentan y se resumen al pie con su motivo, no desaparecen.
+  //
+  // `clave` es un fragmento del detalle. Si se omite, se acepta la categoría
+  // completa. Para dejar de aceptar algo, basta con borrar su línea de acá.
+  const aceptadas = [], reales = [];
+  problemas.forEach(p => {
+    const ex = EXCEPCIONES_SALUD.filter(e =>
+      p.que.indexOf(e.que) >= 0 && (!e.clave || p.detalle.indexOf(e.clave) >= 0))[0];
+    if (ex) aceptadas.push({ p: p, motivo: ex.motivo }); else reales.push(p);
+  });
+  problemas.length = 0;
+  reales.forEach(p => problemas.push(p));
+
   // ── Reporte ────────────────────────────────────────────────
   const orden = { alta: 0, media: 1, baja: 2 };
   problemas.sort((a, b) => orden[a.sev] - orden[b.sev] || a.que.localeCompare(b.que));
@@ -2009,11 +2042,25 @@ function verificarSaludAirbnb() {
   Logger.log('═══ SALUD DE LOS DATOS DE AIRBNB · ' + hoy + ' ═══');
   Logger.log(filas.length + ' reservas de Airbnb revisadas');
   Logger.log('');
+  const pieAceptadas = () => {
+    if (!aceptadas.length) return;
+    Logger.log('');
+    Logger.log('─────────────────────────────────────────');
+    Logger.log('Además hay ' + aceptadas.length + ' hallazgo(s) ya revisado(s) y aceptado(s):');
+    aceptadas.forEach(a => {
+      Logger.log('   · ' + a.p.que + ' — ' + a.p.detalle.slice(0, 70));
+      Logger.log('     ' + a.motivo);
+    });
+    Logger.log('Se listan acá para no olvidarlos, pero no son problemas.');
+    Logger.log('(se configuran en EXCEPCIONES_SALUD, arriba de esta función)');
+  };
+
   if (!problemas.length) {
-    Logger.log('✅ Sin problemas. Los 8 chequeos pasaron:');
+    Logger.log('✅ Sin novedades. Los 8 chequeos pasaron:');
     Logger.log('   código HM válido · sin duplicados · con cabaña · neto coherente');
     Logger.log('   estadías pasadas cobradas · alteraciones aplicadas');
     Logger.log('   cancelaciones reflejadas · ninguna noche vendida dos veces');
+    pieAceptadas();
     return 0;
   }
   // Se listan hasta MAX_DETALLE por categoría. Un hallazgo sistémico de 167
@@ -2044,6 +2091,7 @@ function verificarSaludAirbnb() {
   Logger.log('🔴 = afecta plata u ocupación, revisar uno por uno.');
   Logger.log('🟠 = revisar el patrón; si son muchas suele ser una condición histórica.');
   Logger.log('🟡 = informativo.');
+  pieAceptadas();
   return problemas.length;
 }
 
