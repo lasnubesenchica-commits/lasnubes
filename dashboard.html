@@ -486,8 +486,19 @@
   #ocuTrendTip .tip-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
   #ocuTrendTip b { color: var(--text); font-variant-numeric: tabular-nums; }
   @media (max-width: 700px) {
-    #ocuTrendCard { display: none !important; }
+    /* La tarjeta SÍ se ve en móvil, pero solo la vista por día de semana y en
+       barras horizontales: siete filas con su etiqueta a la izquierda se leen
+       bien en 342px, mientras que un gráfico de líneas de 500×160 no. La vista
+       Mensual sigue afuera por lo mismo. */
+    #ocuTrendCard .ocu-trend-wrap,
+    #ocuTrendCard #ocuTrendTabs,
+    #ocuTrendCard #ocuTrendLegend { display: none !important; }
+    #ocuTrendCard #ocuDowBars { display: flex !important; }
+    #ocuTrendCard.solo-mensual { display: none !important; }
   }
+  .ocu-dow-row .ocu-bar-label span { white-space: nowrap; }
+  .ocu-dow-row.baja .ocu-bar-label strong { color: #c0956a; }
+  .ocu-dow-sub { font-size: 11px; color: var(--text-light); margin-top: 3px; }
 
   .ocu-charts-grid {
     display: grid;
@@ -3124,6 +3135,10 @@
         <svg class="ocu-trend-svg" id="ocuTrendSvg" viewBox="0 0 500 160"></svg>
         <div id="ocuTrendTip"></div>
       </div>
+      <!-- Móvil: las mismas barras pero horizontales. En un teléfono no hay
+           hover, así que no hay tooltip; los números van inline. Se renderizan
+           siempre y el CSS decide cuál se ve, sin re-render al rotar. -->
+      <div id="ocuDowBars" style="display:none;flex-direction:column;gap:12px;"></div>
       <div id="ocuTrendLegend" style="display:flex;gap:14px;margin-top:10px;flex-wrap:wrap;"></div>
     </div>
 
@@ -13434,6 +13449,7 @@ function _renderOcuTrend() {
            + ` style="cursor:crosshair" onmousemove="_ocuTrendHover(${i},${xOf(i)},${yOf(p.pct)})" onmouseenter="_ocuTrendHover(${i},${xOf(i)},${yOf(p.pct)})"/>`);
   }
   svgEl.innerHTML = svg;
+  _renderDowBarras();
 
   const leg = document.getElementById('ocuTrendLegend');
   if (leg) {
@@ -13456,6 +13472,45 @@ function _renderOcuTrend() {
     }
   }
   _ocuTrendOut();
+}
+
+// Versión móvil: barras horizontales. Sin hover no hay tooltip, así que todo
+// lo que en escritorio vive ahí —muestra, desglose por cabaña, ingreso— tiene
+// que estar escrito. Reusa `.ocu-bar-row`, el mismo patrón de "% Ocupación por
+// origen/cabaña", para no inventar un componente nuevo.
+function _renderDowBarras() {
+  const cont = document.getElementById('ocuDowBars');
+  if (!cont) return;
+  const serie = _ocuDowSerie || [];
+  const conDatos = serie.filter(d => d.dias > 0);
+  if (!conDatos.length) { cont.innerHTML = ''; return; }
+  const minPct = conDatos.length > 1 ? Math.min(...conDatos.map(d => d.pct)) : -1;
+
+  const nota = _ocuTrendCtx.futuro
+    ? 'Reservado hasta ahora — el período todavía no ocurre.'
+    : (_ocuTrendCtx.diasFuera > 0
+        ? 'Se excluyen ' + _ocuTrendCtx.diasFuera + ' día' + (_ocuTrendCtx.diasFuera === 1 ? '' : 's') + ' que aún no ocurrieron.'
+        : '');
+
+  cont.innerHTML = serie.map(d => {
+    const esMin = d.dias > 0 && d.pct === minPct;
+    const color = esMin ? '#c0956a' : 'var(--verde-dark)';
+    const sub = d.dias
+      ? d.dias + ' ' + _pluralDia(d.largo, d.dias)
+        + (d.adr > 0 ? ' · $' + d.adr.toFixed(0) + ' por noche' : '')
+        + ' · ' + d.porCabana.map(c => c.name + ' ' + c.pct + '%').join(' · ')
+      : 'sin días medibles';
+    return `<div class="ocu-bar-row ocu-dow-row${esMin ? ' baja' : ''}">
+      <div class="ocu-bar-label">
+        <strong>${d.largo}</strong>
+        <span style="color:${d.dias ? color : 'var(--text-light)'};font-weight:700;">${d.dias ? d.pct + '%' : '—'}</span>
+      </div>
+      <div class="ocu-bar-track"><div class="ocu-bar-fill" style="width:${d.dias ? d.pct : 0}%;background:${color};"></div></div>
+      <div class="ocu-dow-sub">${escapeHtml(sub)}</div>
+    </div>`;
+  }).join('') + (nota
+    ? `<div style="font-size:11px;color:var(--text-muted);font-style:italic;">${escapeHtml(nota)}</div>`
+    : '');
 }
 
 // Cabañas con su color, tomadas de la primera fila de la serie mensual para no
@@ -14135,7 +14190,12 @@ function renderOcupacion() {
 
   // Sin días medibles no hay nada que graficar (rango futuro sin reservas).
   const _hayDatos = dow.some(d => d.dias > 0);
-  if (trendCard) trendCard.style.display = (_hayDatos || _hayMensual) ? '' : 'none';
+  if (trendCard) {
+    trendCard.style.display = (_hayDatos || _hayMensual) ? '' : 'none';
+    // Si lo único que hay es la vista Mensual, en móvil la tarjeta quedaría
+    // vacía (ahí solo se muestran las barras por día de semana): se oculta.
+    trendCard.classList.toggle('solo-mensual', !_hayDatos && _hayMensual);
+  }
   if (_hayDatos || _hayMensual) _renderOcuTrend();
 
   // ── Month table ──────────────────────────────────────────────────
