@@ -11,8 +11,7 @@
 //   - Tiene FechaNacimiento (col 28) registrada
 //   - Aun no se le mando este año (hoja CumpleanosEnviados)
 //
-//  Descuento: monto FIJO en dolares sobre la noche del cumpleanos ($25 entre
-//  semana, $20 viernes y sabado).
+//  Descuento: $20 fijos sobre la noche del cumpleanos, cualquier dia.
 //  Antes era un porcentaje por dia de semana (20% Dom-Jue / 10% Vie-Sab). Con
 //  el tarifario por tipo de dia eso regalaba mas en las noches mas caras: un
 //  martes que ademas es vispera de feriado ($135) recibia $27, contra $18 de un
@@ -31,11 +30,11 @@
 function _cumpleanosConfig() {
   const props = PropertiesService.getScriptProperties();
   return {
-    // Montos fijos en dolares. Dos y no uno porque un mismo monto en fin de
-    // semana dejaba el sabado por debajo de la tarifa de entre semana: $110-$25
-    // = $85 contra $90 de un martes normal. Configurables sin deploy.
-    descMonto:  parseInt(props.getProperty('CUMPLE_DESCUENTO_MONTO'), 10) || 25,
-    descFinde:  parseInt(props.getProperty('CUMPLE_DESCUENTO_FINDE'), 10) || 20,
+    // Un solo monto para todos los dias. $20 es tambien lo que da el referido,
+    // asi que es la unica cifra de todo el programa: $20 por tu cumpleanos,
+    // $20 para tu amigo, $20 de credito para vos. Ademas deja el sabado en $90,
+    // que es el piso de la tarifa de entre semana. Configurable sin deploy.
+    descMonto:  parseInt(props.getProperty('CUMPLE_DESCUENTO_MONTO'), 10) || 20,
     diasAntes:  parseInt(props.getProperty('CUMPLE_DIAS_ANTES'), 10)        || 30
   };
 }
@@ -164,7 +163,6 @@ function _sendCumpleEmail(huesped, cfg) {
     nombre: huesped.nombre,
     fechaCumple,
     descMonto:  cfg.descMonto,
-    descFinde:  cfg.descFinde,
     diasAntes:  cfg.diasAntes,
     waLink
   });
@@ -188,14 +186,13 @@ function buildCumpleEmailHTML(opts) {
 '<tr><td style="padding:24px 28px;">' +
 '<p style="margin:0 0 10px;font-size:13px;color:#2c5e22;letter-spacing:0.05em;text-transform:uppercase;font-weight:600;">Tu regalo</p>' +
 '<p style="margin:0 0 14px;font-size:26px;font-weight:300;color:#2c5e22;font-family:Georgia,serif;">$' + opts.descMonto + ' off tu noche</p>' +
-'<p style="margin:0 0 12px;font-size:13px;color:#4a6b40;">Si tu cumpleaños cae viernes o sábado, $' + opts.descFinde + ' off.</p>' +
 '<p style="margin:0;font-size:13px;color:#4a6b40;line-height:1.6;">Sobre la noche de tu cumpleaños (' + opts.fechaCumple + '), reservando directo por WhatsApp. Se descuenta de la tarifa vigente ese día.</p>' +
 '</td></tr></table>' +
 '<p style="margin:0 0 20px;font-size:14px;color:#6b6560;line-height:1.7;">Cómo funciona:</p>' +
 '<ul style="margin:0 0 20px;padding-left:20px;color:#6b6560;font-size:14px;line-height:1.7;">' +
 '<li>Escríbenos por WhatsApp para coordinar.</li>' +
 '<li>Aplica solo la noche de tu cumpleaños — el resto a tarifa normal.</li>' +
-'<li>Cualquier día de la semana. No aplica en feriados, vísperas de feriado ni vacaciones escolares.</li>' +
+'<li>Cualquier día de la semana — el mismo monto. No aplica en feriados, vísperas de feriado ni vacaciones escolares.</li>' +
 '<li>Sujeto a disponibilidad. Reserva con tiempo.</li>' +
 '<li>Solo para reservas directas (no aplica si reservas vía Airbnb).</li>' +
 '</ul>' +
