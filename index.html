@@ -64,7 +64,7 @@
      entre las tarjetas y el borde. */
   .hero.hero-disp { padding-bottom: 26px; }
   @media (min-width: 820px) {
-    .hero.hero-disp { padding-bottom: 40px; }
+    .hero.hero-disp { padding-bottom: 40px; padding-top: 64px; }
     .hero {
       min-height: 480px;
       padding: 110px 24px 96px;
@@ -104,6 +104,16 @@
   /* Fuera de Disponibilidad no hay cabaña que anunciar: el titular vuelve a ser
      "Las Nubes" (lo pone _heroDispClass) y esta copia de la marca sobraría. */
   .hero:not(.hero-disp) .hb-name { display: none; }
+
+  /* Desktop. Va DESPUÉS de las reglas base a propósito: el @media de arriba
+     está antes en la hoja y, a igual especificidad, perdía por orden.
+     Los tamaños base están calibrados para 390px de ancho; en desktop el
+     titular llega a 50px y con 26/10.5px la marca se leía como pie de página. */
+  @media (min-width: 820px) {
+    .hb-name { font-size: 34px; }
+    .hero-brand { margin-bottom: 22px; }
+    .hero-brand .hero-location { font-size: 12px; letter-spacing: 0.16em; margin-top: 8px; }
+  }
 
   /* Instrucción del calendario, ya fuera del hero. */
   /* Pertenece al calendario, no a los filtros: por eso el aire va arriba. El
