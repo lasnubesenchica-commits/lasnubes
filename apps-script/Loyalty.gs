@@ -1,5 +1,21 @@
 // ═══════════════════════════════════════════════════════════
-//  Programa Cliente Fiel — credito automatico tras 2da estadia
+//  Programa Cliente Fiel — DISCONTINUADO (jul 2026)
+// ═══════════════════════════════════════════════════════════
+//
+//  El Programa Amigos se redujo a dos beneficios: Referidos y Cumpleanos.
+//  Cliente Fiel salio por costo — una noche completa ($90) contra $20-25 de
+//  los otros dos — y porque acumulaba deuda sin vencimiento definido.
+//
+//  El codigo NO se borra: los creditos YA EMITIDOS se honran hasta que
+//  venzan, y para eso hacen falta la hoja, la busqueda y el marcado de uso.
+//  Lo que se apaga es la EMISION de creditos nuevos:
+//
+//   · desinstalarTriggerLoyalty() quita el trigger diario.
+//   · enviarLoyaltyUnlockEmails() aborta si LOYALTY_ACTIVO no es 'true',
+//     por si el trigger sobrevive en algun proyecto.
+//
+//  Para reactivarlo: Script Property LOYALTY_ACTIVO = 'true' y correr
+//  instalarTriggerLoyalty().
 // ═══════════════════════════════════════════════════════════
 //
 //  Trigger diario que escanea Reservas y emite credito de cortesia
@@ -103,7 +119,18 @@ function _countCompletedNightStaysForGuest(email, telefono, allRows) {
   return { count, latestId };
 }
 
+// Interruptor de la EMISION. No toca la consulta ni el marcado de uso de los
+// creditos ya entregados: esos siguen valiendo hasta su vencimiento.
+function _loyaltyActivo() {
+  return PropertiesService.getScriptProperties().getProperty('LOYALTY_ACTIVO') === 'true';
+}
+
 function enviarLoyaltyUnlockEmails() {
+  if (!_loyaltyActivo()) {
+    Logger.log('⊘ Cliente Fiel discontinuado — no se emiten créditos nuevos. ' +
+               'Para reactivar: LOYALTY_ACTIVO = true en Script Properties.');
+    return;
+  }
   const sheet  = getOrCreateSheet();
   _ensureHuespedIdColumns(sheet);
   const data   = sheet.getDataRange().getValues();
@@ -277,6 +304,17 @@ function handleUnmarkLoyaltyUsed(payload) {
   } catch(err) {
     return _jsonOut({ ok: false, error: err.message });
   }
+}
+
+// Quita el trigger diario. El programa quedo discontinuado, asi que dejarlo
+// corriendo solo genera trabajo que despues hay que deshacer.
+function desinstalarTriggerLoyalty() {
+  let n = 0;
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'enviarLoyaltyUnlockEmails') { ScriptApp.deleteTrigger(t); n++; }
+  });
+  Logger.log('✓ Triggers de Cliente Fiel eliminados: ' + n);
+  Logger.log('  Los créditos ya emitidos siguen válidos hasta su vencimiento.');
 }
 
 function instalarTriggerLoyalty() {
