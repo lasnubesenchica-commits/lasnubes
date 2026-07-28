@@ -1621,6 +1621,48 @@ function doGet(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
+    // ── FERIADOS (alta/baja desde el modal de Tarifas) ────────
+    // Se manda el DIFF, no la lista entera: los nombres son largos y treinta
+    // feriados en la URL rozan el límite. Con add/del la request queda corta
+    // sin importar cuántos haya cargados.
+    //   add=2026-07-04|Feria de Chame;2026-07-05|Otro
+    //   del=2026-11-02,2026-11-05
+    if (action === 'saveFeriados') {
+      const sh = getOrCreateFeriados();
+      const rows = sh.getDataRange().getValues();
+      const p = e.parameter;
+
+      const borrar = {};
+      (p.del || '').split(',').forEach(function(f) { f = f.trim(); if (f) borrar[f] = true; });
+
+      let quitados = 0;
+      // De abajo hacia arriba: borrar hacia adelante corre las filas y se
+      // saltearía la siguiente.
+      for (let i = rows.length - 1; i >= 1; i--) {
+        let f = rows[i][0];
+        if (f instanceof Date) f = Utilities.formatDate(f, 'America/Panama', 'yyyy-MM-dd');
+        f = (f || '').toString().trim();
+        if (borrar[f]) { sh.deleteRow(i + 1); quitados++; }
+      }
+
+      // La fila centinela __sembrado__<año> sobrevive a los borrados, así que
+      // un feriado que el admin quita no vuelve en la próxima siembra.
+      const nuevas = [];
+      (p.add || '').split(';').forEach(function(item) {
+        const parte = item.split('|');
+        const fecha = (parte[0] || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return;
+        nuevas.push([fecha, (parte[1] || 'Feriado').trim()]);
+      });
+      if (nuevas.length) sh.getRange(sh.getLastRow() + 1, 1, nuevas.length, 2).setValues(nuevas);
+
+      Logger.log('✓ Feriados: +' + nuevas.length + ' / -' + quitados);
+      return ContentService
+        .createTextOutput(JSON.stringify({ ok: true, agregados: nuevas.length, quitados: quitados,
+                                           feriados: getFeriadosSet() }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     // ── MALAYA iCAL FEED (para importar en Airbnb) ────────────
     // Devuelve un .ics con todas las reservas directas activas de Malaya.
     // Airbnb polla esta URL cada pocas horas y bloquea esas fechas para

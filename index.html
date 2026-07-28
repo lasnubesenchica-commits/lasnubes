@@ -861,6 +861,35 @@
     .hc-meta { gap: 2px 10px; }
   }
 
+  .rt-tabs { display: flex; gap: 6px; margin-bottom: 16px; }
+  .rt-tab {
+    flex: 1; background: none; border: 1px solid var(--border); border-radius: 999px;
+    padding: 6px 10px; font-size: 12.5px; font-family: inherit; color: var(--muted);
+    cursor: pointer; touch-action: manipulation; transition: background .15s, color .15s;
+  }
+  .rt-tab.on { background: var(--text); border-color: var(--text); color: #fff; }
+
+  /* Alto fijo con scroll: la lista pasa de 28 feriados con dos años sembrados
+     y sin tope el modal se saldría de la pantalla en móvil. */
+  .fer-list { max-height: 240px; overflow-y: auto; border: 1px solid var(--border);
+              border-radius: 10px; padding: 4px; }
+  .fer-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+             border-radius: 8px; font-size: 12.5px; }
+  .fer-row.nuevo { background: #f0f7ee; }
+  .fer-row.baja  { opacity: .45; text-decoration: line-through; }
+  .fer-fecha { color: var(--text); font-weight: 500; white-space: nowrap; }
+  .fer-nombre { color: var(--muted); flex: 1; min-width: 0; overflow: hidden;
+                text-overflow: ellipsis; white-space: nowrap; }
+  .fer-x { background: none; border: none; color: var(--muted); cursor: pointer;
+           font-size: 14px; line-height: 1; padding: 2px 4px; font-family: inherit; }
+  .fer-x:hover { color: #c0392b; }
+  .fer-year { font-size: 10.5px; color: var(--muted); text-transform: uppercase;
+              letter-spacing: 0.08em; padding: 8px 8px 4px; }
+  .fer-add { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; margin-top: 10px; }
+  .fer-add-btn { background: var(--verde); color: #fff; border: none; border-radius: 8px;
+                 padding: 7px 12px; font-size: 12.5px; font-family: inherit; cursor: pointer;
+                 touch-action: manipulation; white-space: nowrap; }
+
   .rate-in {
     width: 100%; border: 1px solid var(--border); border-radius: 8px;
     padding: 7px 8px; font-size: 14px; font-family: 'DM Sans', sans-serif;
@@ -2552,10 +2581,20 @@
 
 <!-- RATES CONFIG MODAL (admin only) -->
 <div class="tooltip-overlay" id="ratesOverlay" onclick="if(event.target===this)closeRates()">
-  <div class="tooltip-box" style="max-width:340px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+  <div class="tooltip-box" style="max-width:380px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
       <div style="font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:400;color:var(--text);">⚙️ Configurar tarifas</div>
     </div>
+
+    <!-- Dos pestañas: los precios y el calendario que decide qué día es
+         feriado. Van juntas porque una tarifa de "víspera" no significa nada
+         sin la lista que define de qué es víspera. -->
+    <div class="rt-tabs">
+      <button class="rt-tab on" id="rtTabPrecios"  onclick="setRatesTab('precios')">Precios</button>
+      <button class="rt-tab"    id="rtTabFeriados" onclick="setRatesTab('feriados')">Feriados</button>
+    </div>
+
+    <div id="rtPanePrecios">
 
     <!-- Una fila por tipo de día, con su precio normal y su promocional. En
          columnas y no en bloques sueltos porque lo que el admin compara es
@@ -2602,6 +2641,23 @@
       se cobra <strong>la más alta</strong>.
       <span id="ratesFeriadosNota"></span>
     </p>
+
+    </div><!-- /rtPanePrecios -->
+
+    <div id="rtPaneFeriados" style="display:none;">
+      <p style="font-size:11.5px;color:var(--muted);line-height:1.55;margin:0 0 12px;">
+        Las fechas de esta lista cobran tarifa de <strong>feriado</strong>, y el día anterior
+        tarifa de <strong>víspera</strong>. Quita los que no te llenen la cabaña y agrega los
+        tuyos — una feria local, un puente.
+      </p>
+      <div id="ferList" class="fer-list"></div>
+      <div class="fer-add">
+        <input type="date" id="ferFecha" class="rate-in" style="text-align:left;">
+        <input type="text" id="ferNombre" class="rate-in" placeholder="Nombre" style="text-align:left;">
+        <button onclick="ferAgregar()" class="fer-add-btn">Agregar</button>
+      </div>
+      <p id="ferPend" style="font-size:11.5px;color:#c2700a;margin:10px 0 0;display:none;"></p>
+    </div>
 
     <div id="ratesSaveStatus" style="display:none;font-size:12px;color:var(--verde);text-align:center;margin-bottom:10px;"></div>
 
@@ -3633,19 +3689,123 @@ function _rateSet(v, n) {
   }
 }
 
+// ── Pestaña de feriados ─────────────────────────────────────────────
+// Los cambios se acumulan y se guardan con el mismo botón "Aplicar" que las
+// tarifas: son una sola decisión de precio, y guardar por separado dejaría
+// medias configuraciones si algo falla en el camino.
+let _ferAdd = {};      // { fecha: nombre }  altas pendientes
+let _ferDel = {};      // { fecha: true }    bajas pendientes
+
+function setRatesTab(t) {
+  const esP = t === 'precios';
+  document.getElementById('rtPanePrecios').style.display  = esP ? '' : 'none';
+  document.getElementById('rtPaneFeriados').style.display = esP ? 'none' : '';
+  document.getElementById('rtTabPrecios').classList.toggle('on', esP);
+  document.getElementById('rtTabFeriados').classList.toggle('on', !esP);
+  if (!esP) renderFeriados();
+}
+
+function _ferFmt(iso) {
+  const D = ['dom','lun','mar','mié','jue','vie','sáb'];
+  const M = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const d = new Date(iso + 'T12:00:00');
+  return D[d.getDay()] + ' ' + d.getDate() + ' ' + M[d.getMonth()];
+}
+function _escFer(t) {
+  return String(t || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+function renderFeriados() {
+  const cont = document.getElementById('ferList');
+  if (!cont) return;
+  // Solo de hoy en adelante: los pasados no se pueden cotizar y llenarían la
+  // lista con años viejos.
+  const hoy = new Date().toISOString().slice(0, 10);
+  const todas = {};
+  Object.keys(FERIADOS).forEach(f => { todas[f] = FERIADOS[f]; });
+  Object.keys(_ferAdd).forEach(f => { todas[f] = _ferAdd[f]; });
+  const fechas = Object.keys(todas).filter(f => f >= hoy).sort();
+
+  if (!fechas.length) {
+    cont.innerHTML = '<div style="padding:14px;text-align:center;color:var(--muted);font-size:12.5px;">Sin feriados próximos.</div>';
+    _ferPend(); return;
+  }
+  let html = '', año = '';
+  fechas.forEach(f => {
+    if (f.slice(0, 4) !== año) { año = f.slice(0, 4); html += '<div class="fer-year">' + año + '</div>'; }
+    const cls = _ferDel[f] ? ' baja' : (_ferAdd[f] ? ' nuevo' : '');
+    const accion = _ferDel[f]
+      ? '<button class="fer-x" onclick="ferRestaurar(\'' + f + '\')" title="Restaurar">↺</button>'
+      : '<button class="fer-x" onclick="ferQuitar(\'' + f + '\')" title="Quitar">✕</button>';
+    html += '<div class="fer-row' + cls + '">'
+          + '<span class="fer-fecha">' + _ferFmt(f) + '</span>'
+          + '<span class="fer-nombre">' + _escFer(todas[f]) + '</span>'
+          + accion + '</div>';
+  });
+  cont.innerHTML = html;
+  _ferPend();
+}
+
+function _ferPend() {
+  const el = document.getElementById('ferPend');
+  if (!el) return;
+  const a = Object.keys(_ferAdd).length, b = Object.keys(_ferDel).length;
+  if (!a && !b) { el.style.display = 'none'; return; }
+  const partes = [];
+  if (a) partes.push(a + (a === 1 ? ' alta' : ' altas'));
+  if (b) partes.push(b + (b === 1 ? ' baja' : ' bajas'));
+  el.textContent = '● ' + partes.join(' y ') + ' sin guardar — toca Aplicar.';
+  el.style.display = 'block';
+}
+
+function ferQuitar(f) {
+  // Un alta pendiente se descarta sin más: nunca llegó a existir en la hoja.
+  if (_ferAdd[f]) delete _ferAdd[f]; else _ferDel[f] = true;
+  renderFeriados();
+}
+function ferRestaurar(f) { delete _ferDel[f]; renderFeriados(); }
+
+function ferAgregar() {
+  const fEl = document.getElementById('ferFecha'), nEl = document.getElementById('ferNombre');
+  const f = (fEl.value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(f)) { fEl.focus(); return; }
+  // Volver a agregar una fecha marcada de baja es simplemente cancelar la baja.
+  if (_ferDel[f]) delete _ferDel[f];
+  else if (!FERIADOS[f]) _ferAdd[f] = (nEl.value || '').trim() || 'Feriado';
+  fEl.value = ''; nEl.value = '';
+  renderFeriados();
+}
+
+async function _guardarFeriados() {
+  const add = Object.keys(_ferAdd).map(f => f + '|' + _ferAdd[f]).join(';');
+  const del = Object.keys(_ferDel).join(',');
+  if (!add && !del) return true;
+  const url = SHEETS_API_URL + '?action=saveFeriados'
+            + '&add=' + encodeURIComponent(add) + '&del=' + encodeURIComponent(del)
+            + '&_=' + Date.now();
+  const data = await (await fetch(url)).json();
+  if (!data || !data.ok) return false;
+  // La hoja es la fuente de verdad: se relee de la respuesta en vez de
+  // reconstruirla acá, así una baja que el backend no aplicó no queda
+  // "aplicada" en pantalla.
+  FERIADOS = data.feriados || FERIADOS;
+  _ferAdd = {}; _ferDel = {};
+  renderFeriados();
+  return true;
+}
+
 function openRates() {
   RATE_FIELDS.forEach(([id, v]) => { document.getElementById(id).value = _rateGet(v); });
   setPromoToggleUI(PROMO_ACTIVE);
+  _ferAdd = {}; _ferDel = {};
+  setRatesTab('precios');
   // Los próximos feriados, para no tener que abrir la hoja solo para ver si la
   // fecha que se está por cotizar cuenta como uno.
   const nota = document.getElementById('ratesFeriadosNota');
   if (nota) {
-    const hoy = new Date().toISOString().slice(0,10);
-    const prox = Object.keys(FERIADOS).filter(f => f >= hoy).sort().slice(0, 3)
-      .map(f => formatDayShort(new Date(f + 'T12:00:00')) + ' ' + FERIADOS[f]);
-    nota.innerHTML = prox.length
-      ? '<br>Próximos feriados: ' + prox.join(' · ') + '. Se editan en la hoja <strong>Feriados</strong>.'
-      : '<br>No hay feriados cargados. Se editan en la hoja <strong>Feriados</strong>.';
+    const n = Object.keys(FERIADOS).length;
+    nota.innerHTML = '<br>Hay <strong>' + n + '</strong> ' + (n === 1 ? 'fecha marcada' : 'fechas marcadas')
+                   + ' como feriado — se editan en la pestaña <strong>Feriados</strong>.';
   }
   document.getElementById('ratesSaveStatus').style.display = 'none';
   document.getElementById('ratesOverlay').classList.add('open');
@@ -3698,10 +3858,15 @@ async function applyRates() {
     console.log('saveTarifas:', res.status, rawText);
     let data;
     try { data = JSON.parse(rawText); } catch(e) { data = null; }
-    if (data && data.ok) {
+    const okFer = await _guardarFeriados();
+    if (data && data.ok && okFer) {
+      render();   // los feriados nuevos cambian precios en el calendario
       statusEl.textContent = '✓ Tarifas guardadas';
       statusEl.style.color = 'var(--verde)';
       setTimeout(() => closeRates(), 1200);
+    } else if (!okFer) {
+      statusEl.textContent = '⚠ Tarifas guardadas, pero falló el guardado de feriados';
+      statusEl.style.color = '#e07b39';
     } else {
       statusEl.textContent = '⚠ Error: ' + (data && data.error ? data.error : rawText.slice(0, 80));
       statusEl.style.color = '#e07b39';
