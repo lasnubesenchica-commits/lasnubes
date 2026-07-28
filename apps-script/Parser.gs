@@ -824,7 +824,11 @@ const _TARIFAS_NUEVAS = [
   ['feriado',       'weekend', 'Tarifa feriado'],
   ['promoFeriado',  null,      'Tarifa promocional feriado (0 = sin promo)'],
   ['escolar',       'weekend', 'Tarifa vacaciones escolares'],
-  ['promoEscolar',  null,      'Tarifa promocional vacaciones escolares (0 = sin promo)']
+  ['promoEscolar',  null,      'Tarifa promocional vacaciones escolares (0 = sin promo)'],
+  // Cuántos meses dura la promo contando desde el ACTUAL. 0 = sin límite.
+  // Es una cantidad y no una fecha de fin a propósito: así la ventana se corre
+  // sola al pasar el mes, en vez de vencer y obligar a reconfigurar.
+  ['promoMeses',    null,      'Meses de promo desde el actual (0 = sin límite)']
 ];
 
 function _migrarTarifasPorTipoDia_(cfg) {
@@ -1648,7 +1652,8 @@ function doGet(e) {
       // default por cada una ausente pisaría tarifas que el admin no tocó.
       const updates = { promoActive: (p.promoActive === 'true' || p.promoActive === '1') ? 'true' : 'false' };
       ['weekday','weekend','promo','viernes','sabado','vispera','feriado','escolar',
-       'promoViernes','promoSabado','promoVispera','promoFeriado','promoEscolar'].forEach(function(k) {
+       'promoViernes','promoSabado','promoVispera','promoFeriado','promoEscolar',
+       'promoMeses'].forEach(function(k) {
         if (p[k] !== undefined && p[k] !== '' && !isNaN(parseFloat(p[k]))) updates[k] = parseFloat(p[k]);
       });
       for (let i = 1; i < rows.length; i++) {
@@ -1761,6 +1766,7 @@ function doGet(e) {
         promoFeriado: parseFloat(map['promoFeriado']) || 0,
         escolar:      parseFloat(map['escolar'])      || parseFloat(map['weekend']) || 110,
         promoEscolar: parseFloat(map['promoEscolar']) || 0,
+        promoMeses:   parseInt(map['promoMeses'], 10)  || 0,
         feriados:     _fe.feriados,
         escolares:    _fe.escolares,
         // Interruptor global de las ventanas cortas en el calendario público
@@ -2095,7 +2101,8 @@ function doPost(e) {
         promoVispera: parseFloat(t.promoVispera) || 0,
         promoFeriado: parseFloat(t.promoFeriado) || 0,
         escolar:      parseFloat(t.escolar)      || 110,
-        promoEscolar: parseFloat(t.promoEscolar) || 0
+        promoEscolar: parseFloat(t.promoEscolar) || 0,
+        promoMeses:   parseInt(t.promoMeses, 10) || 0
       };
 
       for (let i = 1; i < rows.length; i++) {
