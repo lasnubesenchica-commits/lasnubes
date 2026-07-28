@@ -1199,10 +1199,14 @@ function _airbnbMontosDesdeEmail_(dryRun) {
     .forEach(t => t.getMessages().forEach(m => {
       const body = m.getPlainBody() || '';
       nMsgs++;
-      const tm = body.match(/Total\s*\(USD\)[^$]*\$\s*([\d,.]+)/i);
-      const monto = tm ? _montoAirbnbANumero(tm[1]) : 0;
+      // Mismo extractor que el sync: tolera "$243,00" y "243,00 $". Airbnb
+      // cambió a la segunda forma y por eso estas filas entraron en cero.
+      const monto = _montoEtiquetadoAirbnb_(body, 'Total\\s*\\(USD\\)');
       if (monto <= 0) return;
-      const info = { monto: monto, asunto: m.getSubject().slice(0, 46) };
+      // "Ganas" es lo que queda después de la comisión de Airbnb: es el neto
+      // esperado de esta reserva, mejor dato que el bruto para el Neto.
+      const ganas = _montoEtiquetadoAirbnb_(body, '\\bGanas\\b');
+      const info = { monto: monto, ganas: ganas, asunto: m.getSubject().slice(0, 46) };
       const cm = body.match(/\b(HM[A-Z0-9]{8})\b/);
       if (cm) porCod[cm[1].toUpperCase()] = info;
       // Fallback por nombre: hay filas sin código HM (el id quedó de timestamp).
@@ -1251,14 +1255,17 @@ function _airbnbMontosDesdeEmail_(dryRun) {
       Logger.log('   ✗ ' + base + ' → sin email' + (via ? ' · ' + via : ''));
       return;
     }
-    Logger.log((dryRun ? '   [dry] ' : '   ✓ ') + base + ' → $' + hit.monto.toFixed(2)
-      + '   [por ' + via + ' · ' + hit.asunto + ']');
+    // El Neto es lo que realmente entra. Si el email trae "Ganas" se usa eso —
+    // ya viene sin la comisión de Airbnb; si no, se cae al bruto para que la
+    // reserva al menos no valga cero. `actualizarEstadoPagoAirbnb` lo pisa con
+    // el neto real cuando el payout llega.
+    const neto = hit.ganas > 0 ? hit.ganas : hit.monto;
+    Logger.log((dryRun ? '   [dry] ' : '   ✓ ') + base + ' → bruto $' + hit.monto.toFixed(2)
+      + (hit.ganas > 0 ? ' · neto $' + hit.ganas.toFixed(2) : ' · sin "Ganas", neto = bruto')
+      + '   [por ' + via + ']');
     if (!dryRun) {
       sheet.getRange(c.fila, _R.MONTO + 1).setValue(hit.monto);
-      // El Neto real de Airbnb sale del payout. Mientras no haya cobro se pone
-      // el bruto para que la reserva no valga cero en los reportes;
-      // `actualizarEstadoPagoAirbnb` lo pisa con el neto cuando el payout llega.
-      if (c.pagado <= 0) sheet.getRange(c.fila, _R.NETO + 1).setValue(hit.monto);
+      if (c.pagado <= 0) sheet.getRange(c.fila, _R.NETO + 1).setValue(neto);
     }
     n++;
   });
