@@ -848,7 +848,13 @@ const _TARIFAS_NUEVAS = [
   // Descuento del combo Puente+Portal sobre el precio de las dos por separado.
   // Reemplaza a recargoCombo5/6, que eran montos planos: no seguían la tarifa
   // de la noche, así que solo cuadraban en un tipo de día.
-  ['comboDescuento',          null, 'Descuento combo por noche',            30]
+  ['comboDescuento',          null, 'Descuento combo por noche',            30],
+  // Early check-in y late check-out son una NOCHE con horas extra, así que se
+  // cobran como recargo sobre el hospedaje y no como tarifa propia: heredan
+  // solas el precio del tipo de día, la promo y el recargo por persona.
+  // Por estadía, no por noche — la cortesía es solo el primer o último día.
+  ['recargoEarly',            null, 'Recargo early check-in (por estadía)',  25],
+  ['recargoLate',             null, 'Recargo late check-out (por estadía)',  25]
 ];
 
 function _migrarTarifasPorTipoDia_(cfg) {
@@ -1676,7 +1682,8 @@ function doGet(e) {
        'promoMeses',
        'pasatarde','pasanoche','pasadia',
        'recargoPasatardePersona','recargoPasanochePersona','recargoPasadiaPersona',
-       'recargoPersonaGrande','recargoPersonaPortal','comboDescuento'].forEach(function(k) {
+       'recargoPersonaGrande','recargoPersonaPortal','comboDescuento',
+       'recargoEarly','recargoLate'].forEach(function(k) {
         if (p[k] !== undefined && p[k] !== '' && !isNaN(parseFloat(p[k]))) updates[k] = parseFloat(p[k]);
       });
       for (let i = 1; i < rows.length; i++) {
@@ -1771,6 +1778,8 @@ function doGet(e) {
         recargoPersonaGrande:   parseFloat(map['recargoPersonaGrande'])   || 20,
         recargoPersonaPortal:   parseFloat(map['recargoPersonaPortal'])   || 10,
         comboDescuento:         parseFloat(map['comboDescuento'])         || 0,
+        recargoEarly:           parseFloat(map['recargoEarly'])           || 0,
+        recargoLate:            parseFloat(map['recargoLate'])            || 0,
         recargoPasatardePersona: parseFloat(map['recargoPasatardePersona']) || 20,
         recargoPasanochePersona: parseFloat(map['recargoPasanochePersona']) || 25,
         recargoPasadiaPersona:   parseFloat(map['recargoPasadiaPersona'])   || 25,
