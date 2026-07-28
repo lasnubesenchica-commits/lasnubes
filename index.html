@@ -2564,6 +2564,8 @@
       <button data-tipo="pasatarde" onclick="setAdminTipo('pasatarde')" class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Pasatarde</button>
       <button data-tipo="pasanoche" onclick="setAdminTipo('pasanoche')" class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Pasanoche</button>
       <button data-tipo="pasadia"   onclick="setAdminTipo('pasadia')"   class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Pasadía</button>
+      <button data-tipo="early"     onclick="setAdminTipo('early')"     class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Early</button>
+      <button data-tipo="late"      onclick="setAdminTipo('late')"      class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Late</button>
     </div>
     <div id="ttNightsRow" style="display:none;align-items:center;justify-content:center;gap:14px;margin:8px 0 4px;">
       <button onclick="changeNights(-1)" style="width:34px;height:34px;border-radius:50%;border:1px solid var(--border);background:none;font-size:20px;cursor:pointer;color:var(--text);display:flex;align-items:center;justify-content:center;touch-action:manipulation;">−</button>
@@ -2721,6 +2723,10 @@
         <input id="recPortal" type="number" min="0" step="1" class="rate-in">
         <label style="font-size:12.5px;color:var(--text);">Descuento del combo <span style="color:var(--muted);font-size:11px;">· por noche</span></label>
         <input id="comboDescuento" type="number" min="0" step="1" class="rate-in">
+        <label style="font-size:12.5px;color:var(--text);">Early check-in <span style="color:var(--muted);font-size:11px;">· 9am · por estadía</span></label>
+        <input id="recargoEarly" type="number" min="0" step="1" class="rate-in">
+        <label style="font-size:12.5px;color:var(--text);">Late check-out <span style="color:var(--muted);font-size:11px;">· 4pm · por estadía</span></label>
+        <input id="recargoLate" type="number" min="0" step="1" class="rate-in">
       </div>
       <p style="font-size:11.5px;color:var(--muted);line-height:1.55;margin:8px 0 0;">
         El combo <strong>Puente + Portal</strong> cobra lo mismo que las dos cabañas por
@@ -2916,6 +2922,8 @@ async function loadData() {
       if (t.recargoPersonaGrande   !== undefined) RECARGO_PERSONA_GRANDE    = t.recargoPersonaGrande;
       if (t.recargoPersonaPortal   !== undefined) RECARGO_PERSONA_PORTAL    = t.recargoPersonaPortal;
       if (t.comboDescuento         !== undefined) COMBO_DESCUENTO           = t.comboDescuento;
+      if (t.recargoEarly           !== undefined) RECARGO_EARLY             = t.recargoEarly;
+      if (t.recargoLate            !== undefined) RECARGO_LATE              = t.recargoLate;
       if (t.recargoPasatardePersona!== undefined) RECARGO_PASATARDE_PERSONA = t.recargoPasatardePersona;
       if (t.recargoPasanochePersona!== undefined) RECARGO_PASANOCHE_PERSONA = t.recargoPasanochePersona;
       if (t.recargoPasadiaPersona  !== undefined) RECARGO_PASADIA_PERSONA   = t.recargoPasadiaPersona;
@@ -3373,6 +3381,11 @@ let RECARGO_PERSONA_PORTAL  = 10;  // Portal (azul)
 // noche, que es al revés de lo que conviene. Con un descuento sobre el precio
 // real, el combo sigue a cualquier tarifa y el ahorro es el mismo siempre.
 let COMBO_DESCUENTO = 30;
+// Early check-in (9am en vez de 2pm) y late check-out (4pm en vez de 11am).
+// Son una noche con horas extra, así que se cobran como recargo sobre el
+// hospedaje: heredan el precio del tipo de día, la promo y el recargo por
+// persona sin duplicar nada. Por estadía, no por noche.
+let RECARGO_EARLY = 25, RECARGO_LATE = 25;
 
 // Pasatarde / Pasanoche / Pasadía: recargo por persona desde la 3ra.
 let RECARGO_PASATARDE_PERSONA = 20;  // 12:30 pm – 7:00 pm
@@ -3403,6 +3416,23 @@ function _precioComboSeparado(dateStr, nights, personas) {
   const enPuente = Math.max(2, (parseInt(personas, 10) || 5) - 2);
   return _precioCabinTotal('lila', dateStr, nights, enPuente)
        + _precioCabinTotal('azul', dateStr, nights, 2);
+}
+
+// Precio de una estadía cualquiera. Un solo lugar donde vive la relación
+// tipo → precio, para que el modal, el texto del portapapeles y el mensaje al
+// cliente no puedan discrepar.
+function _precioEstadia(tipo, cabinKey, dateStr, nights, personas) {
+  if (tipo === 'pasatarde' || tipo === 'pasanoche' || tipo === 'pasadia') {
+    return _precioPasadia(tipo, personas);
+  }
+  const base = cabinKey === 'combo'
+    ? _precioComboTotal(dateStr, nights, personas)
+    : _precioCabinTotal(cabinKey, dateStr, nights, personas);
+  // El recargo va una sola vez por estadía: las horas extra son del primer o
+  // del último día, no de cada noche.
+  if (tipo === 'early') return base + (RECARGO_EARLY || 0);
+  if (tipo === 'late')  return base + (RECARGO_LATE  || 0);
+  return base;
 }
 
 function _precioComboTotal(dateStr, nights, personas) {
@@ -3501,27 +3531,33 @@ function updateModalPriceAndCabins() {
   const dateStr  = _adminBaseDate;
   const tipo     = _adminTipo;
   const isHosp   = tipo === 'hospedaje';
+  // Early y late son hospedaje con horas extra: llevan noches, selector de
+  // noches y pueden ir en combo. Solo las estadías de un día quedan afuera.
+  const conNoches = isHosp || tipo === 'early' || tipo === 'late';
   const personas = _adminPersonas;
-  const isCombo  = isHosp && personas >= 5;
-  const nights   = isHosp ? _adminNights : 1;
-  const dates    = isHosp ? getNightDates(dateStr, nights) : [dateStr];
+  const isCombo  = conNoches && personas >= 5;
+  const nights   = conNoches ? _adminNights : 1;
+  const dates    = conNoches ? getNightDates(dateStr, nights) : [dateStr];
 
   // Chequeo de días necesarios por tipo:
   // - pasadia (9-5): incluye día-1 (cortesía, cabaña lista 9am)
   // - pasanoche (8pm día X → 12:30pm día X+1): incluye día+1 (checkout en el siguiente)
   // - pasatarde (12:30-7pm): solo día actual
   // - hospedaje: rango de noches
+  // Días que hay que mirar. early ocupa desde las 9am, así que necesita libre
+  // la noche ANTERIOR; late sale a las 4pm y necesita la SIGUIENTE.
   let datesToCheck;
-  if (tipo === 'pasadia')        datesToCheck = [_addDaysISO(dateStr, -1)].concat(dates);
-  else if (tipo === 'pasanoche') datesToCheck = dates.concat([_addDaysISO(dateStr, 1)]);
-  else                           datesToCheck = dates;
+  if (tipo === 'pasadia' || tipo === 'early') datesToCheck = [_addDaysISO(dateStr, -1)].concat(dates);
+  else if (tipo === 'pasanoche')              datesToCheck = dates.concat([_addDaysISO(dateStr, 1)]);
+  else if (tipo === 'late')                   datesToCheck = dates.concat([_addDaysISO(dateStr, nights)]);
+  else                                        datesToCheck = dates;
 
   const nightsRow   = document.getElementById('ttNightsRow');
   const personasRow = document.getElementById('ttPersonasRow');
-  if (nightsRow)   nightsRow.style.display   = (IS_ADMIN && isHosp) ? 'flex' : 'none';
+  if (nightsRow)   nightsRow.style.display   = (IS_ADMIN && conNoches) ? 'flex' : 'none';
   if (personasRow) personasRow.style.display = IS_ADMIN ? 'flex' : 'none';
   if (IS_ADMIN) {
-    if (isHosp) {
+    if (conNoches) {
       document.getElementById('ttNightsLabel').textContent =
         nights === 1 ? '1 noche' : nights + ' noches';
     }
@@ -3530,10 +3566,23 @@ function updateModalPriceAndCabins() {
   }
 
   const priceEl = document.getElementById('ttPrice');
-  if (!isHosp) {
+  if (!conNoches) {
     const total   = _precioPasadia(tipo, personas);
     priceEl.textContent = '$' + total + ' · ' + _rangoVentana(tipo, dateStr)
                         + (personas > 2 ? ' · ' + personas + ' pers' : '');
+  } else if (tipo === 'early' || tipo === 'late') {
+    // El encabezado dice la hora que se está vendiendo: sin eso, un early y un
+    // hospedaje normal se ven idénticos salvo por el precio.
+    const co = _addDaysISO(dateStr, nights);
+    const rec = tipo === 'early' ? RECARGO_EARLY : RECARGO_LATE;
+    const hs = tipo === 'early'
+      ? 'entra 9:00 am · sale 11:00 am'
+      : 'entra 2:00 pm · sale 4:00 pm';
+    const rango = isCombo
+      ? _precioEstadia(tipo, 'combo', dateStr, nights, personas)
+      : _precioEstadia(tipo, 'lila', dateStr, nights, personas);
+    priceEl.textContent = '$' + rango + ' · ' + hs + ' ' + formatDayShort(new Date(co + 'T12:00:00'))
+      + ' · incluye +$' + rec + (nights > 1 ? ' · ' + nights + ' noches' : '');
   } else if (isCombo) {
     const total = _precioComboTotal(dateStr, nights, personas);
     priceEl.textContent = '$' + total + ' · combo Puente + Portal · ' + personas + ' personas' + (nights > 1 ? ' · ' + nights + ' noches' : '');
@@ -3571,13 +3620,22 @@ function updateModalPriceAndCabins() {
   // si la franja concreta cabe entre las reservas con su margen de limpieza.
   // Antes esto solo contemplaba la cortesía de early/pasadía y por eso una
   // pasanoche detrás de un late check-out se daba por imposible.
-  const FRANJA_TIPO = { pasatarde: [12.5, 19, true], pasanoche: [20, 12.5, false], pasadia: [9, 17, true] };
+  // [horaInicio, horaFin, díasHastaElFin] — `null` en el tercero significa
+  // "hasta el final de la estadía", que es lo que hace falta para early y late:
+  // son de N noches, no de una franja fija.
+  const FRANJA_TIPO = {
+    pasatarde: [12.5, 19,   0],
+    pasanoche: [20,   12.5, 1],
+    pasadia:   [9,    17,   0],
+    early:     [9,    11,   null],   // entra 9am, sale 11am del último día
+    late:      [14,   16,   null]    // entra 2pm, sale 4pm del último día
+  };
   const blocksTipo = (cabinKey, ds) => {
     const f = FRANJA_TIPO[tipo];
     if (!f) return occMap[cabinKey].has(ds);
     // La franja se ancla en el día base: es una sola estadía, no una noche por
     // fecha, así que o cabe entera o no cabe.
-    const finDia = f[2] ? dateStr : _addDaysISO(dateStr, 1);
+    const finDia = _addDaysISO(dateStr, f[2] === null ? nights : f[2]);
     return !_cabe(ivMap[cabinKey], _t(dateStr, f[0]), _t(finDia, f[1]));
   };
 
@@ -3647,12 +3705,12 @@ function updateModalPriceAndCabins() {
       const blockedNights = datesToCheck.filter(ds => blocksTipo(c.key, ds));
       const rangeAvail    = blockedNights.length === 0;
       const firstAvail    = !blocksTipo(c.key, dateStr);
-      const cabinTotal    = isHosp ? _precioCabinTotal(c.key, dateStr, nights, personas) : null;
-      const priceTag      = (isHosp && personas >= 3)
+      const cabinTotal    = conNoches ? _precioEstadia(tipo, c.key, dateStr, nights, personas) : null;
+      const priceTag      = (conNoches && personas >= 3)
         ? ' <span style="color:var(--muted);font-size:12px;">· $' + cabinTotal + (nights > 1 ? ' total' : '/noche') + '</span>'
         : '';
 
-      if (firstAvail || (nights > 1 && rangeAvail) || (!isHosp && rangeAvail)) {
+      if (firstAvail || (nights > 1 && rangeAvail) || (!conNoches && rangeAvail)) {
         let copyBtn = '';
         if (IS_ADMIN) {
           copyBtn = rangeAvail
@@ -3660,6 +3718,8 @@ function updateModalPriceAndCabins() {
             : '<button disabled style="background:none;border:1px solid var(--border);border-radius:8px;padding:3px 8px;font-size:12px;margin-right:6px;cursor:default;opacity:0.3;">📋</button>';
         }
         // Hospedaje single-cabin → picker WA/Airbnb. Ventanas cortas → WA directo.
+        // El picker (WA/Airbnb) es solo para hospedaje puro: early y late no
+        // existen como producto en Airbnb, así que van derecho a WhatsApp.
         const reservarCall = isHosp
           ? 'openReservaPicker(\'' + dateStr + '\',\'' + c.key + '\',' + nights + ',' + personas + ')'
           : 'openWA(\'' + dateStr + '\',\'' + c.key + '\')';
@@ -3667,7 +3727,10 @@ function updateModalPriceAndCabins() {
         // un "Reservar" verde igual al de una noche. Sin esto, un día que solo
         // vende pasanoche mostraba "Portal · Reservar" y nada en la fila decía
         // que eran 8pm–12:30pm: se leía como una noche a $75.
-        if (!isHosp) return filaVentana(c, tipo, reservarCall, copyBtn);
+        // early y late NO entran acá: son noches, no franjas — con `!isHosp`
+        // caían en este renderer y mostraban "🌇 early $75", la tarifa de
+        // pasadía, porque _precioPasadia no conoce esos tipos.
+        if (!conNoches) return filaVentana(c, tipo, reservarCall, copyBtn);
         return '<div class="tooltip-cabin avail">'
           + '<div class="tc-left" onclick="' + reservarCall + '" style="cursor:pointer;flex:1;">'
           + '<div class="tc-dot" style="background:var(--' + c.key + ');"></div>'
@@ -3828,6 +3891,8 @@ function _buildClientReservaMessage(opts) {
   } else {
     fechaLine = '*Fecha:* ' + formatDayLong(d) + ' al ' + formatDayLong(dCheckout) + ' · ' + nights + ' noches';
   }
+  if (tipo === 'early') fechaLine += ' · entrada anticipada';
+  if (tipo === 'late')  fechaLine += ' · salida extendida';
 
   // Linea de cabaña
   let cabinLine;
@@ -3838,15 +3903,13 @@ function _buildClientReservaMessage(opts) {
   }
 
   // Total
-  let total;
-  if (isCombo) {
-    total = _precioComboTotal(dateStr, nights || 1, personas);
-  } else if (isPasadiaLike) {
-    total = _precioPasadia(tipo, personas);
-  } else {
-    total = _precioCabinTotal(cabinKey, dateStr, nights || 1, personas);
-  }
-  const promoNote = (!isPasadiaLike && PROMO_ACTIVE) ? ' (tarifa promocional)' : '';
+  const total = _precioEstadia(tipo, isCombo ? 'combo' : cabinKey, dateStr, nights || 1, personas);
+  // Igual que en copyPromo: solo se dice "tarifa promocional" si el precio está
+  // realmente por debajo del normal. Con el toggle prendido pero fuera de la
+  // ventana de meses, o en un tipo de día sin promo, el precio es el de lista.
+  const totalSin = conPreciosSinPromo(() =>
+    _precioEstadia(tipo, isCombo ? 'combo' : cabinKey, dateStr, nights || 1, personas));
+  const promoNote = totalSin > total ? ' (tarifa promocional)' : '';
 
   let msg = 'Hola! Deseo reservar:\n\n';
   msg += fechaLine + '\n';
@@ -3854,9 +3917,13 @@ function _buildClientReservaMessage(opts) {
   msg += '*Personas:* ' + personas + '\n';
   msg += '*Total:* $' + total + '.00' + promoNote + '\n';
   if (!isPasadiaLike) {
+    // early entra 9am (no 2pm) y late sale 4pm (no 11am): es justo lo que se
+    // está vendiendo, así que tiene que estar en el mensaje.
+    const hIn  = tipo === 'early' ? '9:00 am' : '2:00 pm';
+    const hOut = tipo === 'late'  ? '4:00 pm' : '11:00 am';
     msg += '\n';
-    msg += 'Check-in '  + formatDayShort(d)         + ': 2:00 pm\n';
-    msg += 'Check-out ' + formatDayShort(dCheckout) + ': 11:00 am\n';
+    msg += 'Check-in '  + formatDayShort(d)         + ': ' + hIn + '\n';
+    msg += 'Check-out ' + formatDayShort(dCheckout) + ': ' + hOut + '\n';
   }
   msg += '\n'
     + '*Cocina & Alimentación*\n'
@@ -3923,14 +3990,17 @@ const RATE_FIELDS = [
   ['recPasanoche',  'RECARGO_PASANOCHE_PERSONA', 'recargoPasanochePersona', true],
   ['recGrande',     'RECARGO_PERSONA_GRANDE',    'recargoPersonaGrande',    true],
   ['recPortal',     'RECARGO_PERSONA_PORTAL',    'recargoPersonaPortal',    true],
-  ['comboDescuento','COMBO_DESCUENTO',           'comboDescuento',          true]
+  ['comboDescuento','COMBO_DESCUENTO',           'comboDescuento',          true],
+  ['recargoEarly',  'RECARGO_EARLY',             'recargoEarly',            true],
+  ['recargoLate',   'RECARGO_LATE',              'recargoLate',             true]
 ];
 const _rateGet = v => ({ RATE_WEEKDAY, RATE_PROMO, RATE_VIERNES, PROMO_VIERNES,
   RATE_SABADO, PROMO_SABADO, RATE_VISPERA, PROMO_VISPERA, RATE_FERIADO, PROMO_FERIADO,
   RATE_ESCOLAR, PROMO_ESCOLAR,
   PASADIA_RATE, PASATARDE_RATE, PASANOCHE_RATE,
   RECARGO_PASADIA_PERSONA, RECARGO_PASATARDE_PERSONA, RECARGO_PASANOCHE_PERSONA,
-  RECARGO_PERSONA_GRANDE, RECARGO_PERSONA_PORTAL, COMBO_DESCUENTO })[v];
+  RECARGO_PERSONA_GRANDE, RECARGO_PERSONA_PORTAL, COMBO_DESCUENTO,
+  RECARGO_EARLY, RECARGO_LATE })[v];
 function _rateSet(v, n) {
   switch (v) {
     case 'RATE_WEEKDAY':  RATE_WEEKDAY  = n; break;
@@ -3954,6 +4024,8 @@ function _rateSet(v, n) {
     case 'RECARGO_PERSONA_GRANDE': RECARGO_PERSONA_GRANDE = n; break;
     case 'RECARGO_PERSONA_PORTAL': RECARGO_PERSONA_PORTAL = n; break;
     case 'COMBO_DESCUENTO':        COMBO_DESCUENTO        = n; break;
+    case 'RECARGO_EARLY':          RECARGO_EARLY          = n; break;
+    case 'RECARGO_LATE':           RECARGO_LATE           = n; break;
   }
 }
 
@@ -4392,26 +4464,22 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
       + '\n'
       + seccionesComunes;
   } else {
-    let total;
-    if (isCombo) {
-      total = _precioComboTotal(dateStr, nights, personas);
-    } else {
-      total = _precioCabinTotal(cabinKey, dateStr, nights, personas);
-    }
+    const total = _precioEstadia(tipo, isCombo ? 'combo' : cabinKey, dateStr, nights, personas);
     const personasLabel = personas + ' personas';
     // "Tarifa promocional" solo si el precio REALMENTE está por debajo del
     // normal. Antes bastaba con que el toggle estuviera prendido, y eso ya no
     // alcanza: la promo puede estar activa pero fuera de su ventana de meses, o
     // ese tipo de día puede no entrar en la promoción (promo en 0). El texto
     // afirmaba un descuento que el precio no tenía.
-    const totalSin = conPreciosSinPromo(() => isCombo
-      ? _precioComboTotal(dateStr, nights, personas)
-      : _precioCabinTotal(cabinKey, dateStr, nights, personas));
+    const totalSin = conPreciosSinPromo(() =>
+      _precioEstadia(tipo, isCombo ? 'combo' : cabinKey, dateStr, nights, personas));
     const hayDescuento = totalSin > total;
     const antes  = hayDescuento ? ' (antes $' + totalSin + '.00)' : '';
-    const cuando = nights === 1
+    const extra = tipo === 'early' ? ' con entrada anticipada (9:00 am)'
+                : tipo === 'late'  ? ' con salida extendida (4:00 pm)' : '';
+    const cuando = (nights === 1
       ? 'Tengo la noche del ' + fechaLong + ' disponible'
-      : 'Tengo las noches del ' + fechaLong + ' al ' + fechaCheckoutLong + ' disponibles';
+      : 'Tengo las noches del ' + fechaLong + ' al ' + fechaCheckoutLong + ' disponibles') + extra;
     const introLine = cuando + ' para reserva '
       + (hayDescuento ? 'en tarifa promocional de $' : 'a $')
       + total + '.00' + antes + ' para ' + personasLabel + '.';
@@ -4433,8 +4501,8 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
 
     texto = introLine + '\n\n'
       + cabinaBlock
-      + 'Check in ' + checkinLabel + ': 2:00 pm\n'
-      + 'Check out ' + checkoutLabel + ': 11:00 am\n'
+      + 'Check in ' + checkinLabel + ': ' + (tipo === 'early' ? '9:00 am' : '2:00 pm') + '\n'
+      + 'Check out ' + checkoutLabel + ': ' + (tipo === 'late' ? '4:00 pm' : '11:00 am') + '\n'
       + (nights > 1 ? dias + ' dias, ' + nights + ' noches\n' : '')
       + '\n'
       + seccionesComunes;
