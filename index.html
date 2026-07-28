@@ -730,6 +730,58 @@
   .load-more-btn:hover { border-color: var(--muted); color: var(--text); }
 
   /* ── LEGEND FILTERS ── */
+  /* ── Panel "¿Cuál es cuál?" ──────────────────────────────────────
+     Va pegado a la leyenda porque ahí nace la pregunta: tres nombres de
+     colores sin explicación, justo encima del calendario. */
+  .cabins-intro { max-width: 1100px; margin: 0 auto 18px; padding: 0 16px; }
+  .ci-head {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    font-size: 13px; color: var(--muted);
+  }
+  .ci-toggle {
+    background: none; border: 1px solid var(--border); border-radius: 999px;
+    padding: 5px 14px; font-size: 12.5px; color: var(--text); cursor: pointer;
+    font-family: inherit; touch-action: manipulation; transition: border-color .15s;
+  }
+  .ci-toggle:hover { border-color: var(--muted); }
+  .ci-body { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
+  .ci-body[hidden] { display: none; }
+  /* Tarjeta horizontal, no vertical: con la foto arriba cada una medía ~330px
+     y las tres juntas empujaban el calendario fuera de pantalla. Esta página
+     existe para ver disponibilidad; el resumen informa, no puede tapar. */
+  .ci-card {
+    border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+    background: #fff; cursor: pointer; text-align: left;
+    transition: transform .15s, box-shadow .15s, border-color .15s;
+    display: flex; align-items: stretch; min-width: 0;
+  }
+  .ci-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,.07); }
+  .ci-card.verde:hover { border-color: var(--verde); }
+  .ci-card.azul:hover  { border-color: var(--azul);  }
+  .ci-card.lila:hover  { border-color: var(--lila);  }
+  .ci-photo { width: 92px; flex: 0 0 92px; object-fit: cover; display: block; background: #f0eeea; }
+  .ci-ph { width: 92px; flex: 0 0 92px; display: flex; align-items: center;
+           justify-content: center; font-size: 26px; background: #f0eeea; }
+  .ci-txt { padding: 9px 11px; min-width: 0; }
+  .ci-name { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; color: var(--text); }
+  .ci-name .ci-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .ci-meta { margin-top: 4px; font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+  .ci-links { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 4px 11px; font-size: 11.5px; }
+  /* nowrap: sin esto la flecha se despega del texto y cae sola a la línea
+     siguiente, que se lee como un link roto. */
+  .ci-links span { color: var(--muted); border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .ci-links span:hover { color: var(--text); }
+  @media (max-width: 700px) {
+    /* En móvil las tres tarjetas en columna empujarían el calendario fuera de
+       pantalla; en carrusel se ven las tres y el calendario sigue a la vista. */
+    .ci-body {
+      display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch; padding-bottom: 4px;
+    }
+    .ci-card { flex: 0 0 82%; scroll-snap-align: start; }
+    .ci-head { font-size: 12.5px; }
+  }
+
   .legend-filter {
     display: flex;
     align-items: center;
@@ -1324,6 +1376,18 @@
   <div class="legend-item" id="legendVentanas" style="display:none;">
     <div class="legend-dot" style="background:#f59e0b;"></div> Ventana corta
   </div>
+</div>
+
+<!-- ¿Cuál es cuál? Resumen de las 3 cabañas, para quien llega sin conocerlas.
+     Abierto en la primera visita y cerrado después (ver _ciInit): el que no
+     sabe qué es "Paseo" es justo el que no abriría un acordeón cerrado, y el
+     cliente que ya se los sabe es el que quiere el calendario compacto. -->
+<div class="cabins-intro" id="cabinsIntro">
+  <div class="ci-head">
+    <span>Tenemos 3 cabañas independientes</span>
+    <button class="ci-toggle" id="ciToggle" onclick="toggleCabinsIntro()"></button>
+  </div>
+  <div class="ci-body" id="ciBody"></div>
 </div>
 
 <!-- PROMO BANNER (visible solo si PROMO_ACTIVE) -->
@@ -3847,8 +3911,85 @@ function updateLightbox() {
 }
 
 // Render verde grid on page load
+// ── Panel "¿Cuál es cuál?" ──────────────────────────────────────────
+// Resumen de las 3 cabañas sobre el calendario. Los datos son los mismos que
+// muestra el tab Cabañas, resumidos a lo que responde la pregunta: cuánta
+// gente entra y cómo se duerme. La foto sale de GALERIA, así que no hay una
+// segunda lista de imágenes que mantener sincronizada.
+const CABINS_INTRO = [
+  { key:'verde', nombre:'Paseo por Las Nubes',   personas:'Hasta 4 personas', cama:'Cama king + cama twin',
+    nota:'Baño al aire libre entre árboles' },
+  { key:'azul',  nombre:'Portal hacia Las Nubes', personas:'2 personas',       cama:'Cama full matrimonial',
+    nota:'Cocina exterior con vista a las montañas' },
+  { key:'lila',  nombre:'Puente entre Las Nubes', personas:'Hasta 4 personas', cama:'Cama queen + auxiliar full',
+    nota:'120 m² de jardines · terraza techada' }
+];
+
+function _ciFoto(key) {
+  const g = (typeof GALERIA !== 'undefined' && GALERIA[key]) || [];
+  return g.length ? g[0].thumb : '';
+}
+
+function renderCabinsIntro() {
+  const body = document.getElementById('ciBody');
+  if (!body) return;
+  body.innerHTML = CABINS_INTRO.map(c => {
+    const foto = _ciFoto(c.key);
+    // onerror: si Drive no sirve la miniatura, cae a un placeholder en vez de
+    // dejar el hueco roto de una imagen que no carga.
+    const img = foto
+      ? '<img class="ci-photo" src="' + foto + '" alt="' + c.nombre + '" loading="lazy"'
+        + ' onerror="this.outerHTML=\'<div class=ci-ph>🏡</div>\'">'
+      : '<div class="ci-ph">🏡</div>';
+    return '<div class="ci-card ' + c.key + '" onclick="ciFiltrar(\'' + c.key + '\')">'
+      + img
+      + '<div class="ci-txt">'
+      +   '<div class="ci-name"><span class="ci-dot" style="background:var(--' + c.key + ');"></span>' + c.nombre + '</div>'
+      +   '<div class="ci-meta">👥 ' + c.personas + '<br>🛏 ' + c.cama + '<br>✨ ' + c.nota + '</div>'
+      +   '<div class="ci-links">'
+      +     '<span>Ver solo esta ↑</span>'
+      +     '<span onclick="event.stopPropagation();ciFotos(\'' + c.key + '\')">Fotos y detalles →</span>'
+      +   '</div>'
+      + '</div></div>';
+  }).join('');
+}
+
+// Click en la tarjeta → filtra el calendario a esa cabaña. Mantiene al
+// visitante en el flujo de disponibilidad, que es de lo que trata la página.
+function ciFiltrar(key) {
+  const btn = document.querySelector('.legend-filter[data-filter="' + key + '"]');
+  if (btn) { setFilter(key, btn); btn.scrollIntoView({ behavior:'smooth', block:'center' }); }
+}
+// El link explícito sí lleva a la galería completa.
+function ciFotos(key) {
+  showSection('cabanas');
+  if (typeof _activarGaleria === 'function') _activarGaleria(key);
+}
+
+const _CI_KEY = 'lnCabinsIntro';
+function _ciAplicar(abierto) {
+  const body = document.getElementById('ciBody');
+  const btn  = document.getElementById('ciToggle');
+  if (!body || !btn) return;
+  body.hidden = !abierto;
+  btn.textContent = abierto ? 'Ocultar ✕' : '¿Cuál es cuál? ↓';
+}
+function toggleCabinsIntro() {
+  const abierto = document.getElementById('ciBody').hidden;   // se invierte
+  _ciAplicar(abierto);
+  try { localStorage.setItem(_CI_KEY, abierto ? 'open' : 'closed'); } catch(e) {}
+}
+function _ciInit() {
+  renderCabinsIntro();
+  // Sin preferencia guardada = primera visita → abierto.
+  let pref = null;
+  try { pref = localStorage.getItem(_CI_KEY); } catch(e) {}
+  _ciAplicar(pref !== 'closed');
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   renderGaleriaGrid('verde');
+  _ciInit();
 });
 
 
