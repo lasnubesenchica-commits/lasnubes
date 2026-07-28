@@ -845,8 +845,10 @@ const _TARIFAS_NUEVAS = [
   ['recargoPasadiaPersona',   null, 'Recargo pasadía por persona (3ra+)',   25],
   ['recargoPersonaGrande',    null, 'Recargo por persona Paseo/Puente',     20],
   ['recargoPersonaPortal',    null, 'Recargo por persona Portal',           10],
-  ['recargoCombo5',           null, 'Recargo combo 5 personas',             80],
-  ['recargoCombo6',           null, 'Recargo combo 6 personas',            100]
+  // Descuento del combo Puente+Portal sobre el precio de las dos por separado.
+  // Reemplaza a recargoCombo5/6, que eran montos planos: no seguían la tarifa
+  // de la noche, así que solo cuadraban en un tipo de día.
+  ['comboDescuento',          null, 'Descuento combo por noche',            30]
 ];
 
 function _migrarTarifasPorTipoDia_(cfg) {
@@ -1674,7 +1676,7 @@ function doGet(e) {
        'promoMeses',
        'pasatarde','pasanoche','pasadia',
        'recargoPasatardePersona','recargoPasanochePersona','recargoPasadiaPersona',
-       'recargoPersonaGrande','recargoPersonaPortal','recargoCombo5','recargoCombo6'].forEach(function(k) {
+       'recargoPersonaGrande','recargoPersonaPortal','comboDescuento'].forEach(function(k) {
         if (p[k] !== undefined && p[k] !== '' && !isNaN(parseFloat(p[k]))) updates[k] = parseFloat(p[k]);
       });
       for (let i = 1; i < rows.length; i++) {
@@ -1768,8 +1770,7 @@ function doGet(e) {
         // Recargos por persona extra (desde la 3ra).
         recargoPersonaGrande:   parseFloat(map['recargoPersonaGrande'])   || 20,
         recargoPersonaPortal:   parseFloat(map['recargoPersonaPortal'])   || 10,
-        recargoCombo5:          parseFloat(map['recargoCombo5'])          || 80,
-        recargoCombo6:          parseFloat(map['recargoCombo6'])          || 100,
+        comboDescuento:         parseFloat(map['comboDescuento'])         || 0,
         recargoPasatardePersona: parseFloat(map['recargoPasatardePersona']) || 20,
         recargoPasanochePersona: parseFloat(map['recargoPasanochePersona']) || 25,
         recargoPasadiaPersona:   parseFloat(map['recargoPasadiaPersona'])   || 25,
