@@ -822,7 +822,9 @@ const _TARIFAS_NUEVAS = [
   ['vispera',       'weekend', 'Tarifa víspera de feriado'],
   ['promoVispera',  null,      'Tarifa promocional víspera (0 = sin promo)'],
   ['feriado',       'weekend', 'Tarifa feriado'],
-  ['promoFeriado',  null,      'Tarifa promocional feriado (0 = sin promo)']
+  ['promoFeriado',  null,      'Tarifa promocional feriado (0 = sin promo)'],
+  ['escolar',       'weekend', 'Tarifa vacaciones escolares'],
+  ['promoEscolar',  null,      'Tarifa promocional vacaciones escolares (0 = sin promo)']
 ];
 
 function _migrarTarifasPorTipoDia_(cfg) {
@@ -858,14 +860,48 @@ function getOrCreateFeriados() {
   let sh   = ss.getSheetByName('Feriados');
   if (!sh) {
     sh = ss.insertSheet('Feriados');
-    sh.getRange(1, 1, 1, 2).setValues([['Fecha', 'Nombre']]);
-    sh.getRange(1, 1, 1, 2).setFontWeight('bold');
+    sh.getRange(1, 1, 1, 3).setValues([['Fecha', 'Nombre', 'Tipo']]);
+    sh.getRange(1, 1, 1, 3).setFontWeight('bold');
     sh.setFrozenRows(1);
   }
+  // Columna Tipo para hojas que se crearon antes: `feriado` | `escolar`. Vacío
+  // se lee como feriado, que es lo único que existía.
+  if (sh.getLastColumn() < 3) sh.getRange(1, 3).setValue('Tipo');
   const año = new Date().getFullYear();
   _sembrarFeriados_(sh, año);
   _sembrarFeriados_(sh, año + 1);
+  _sembrarEscolares_(sh);
   return sh;
+}
+
+// Recesos escolares de MEDUCA. Solo 2026: el calendario de cada año se publica
+// alrededor de septiembre del anterior, así que hardcodear 2027 hoy sería
+// inventar fechas. Cuando salga, se cargan desde la pestaña de Tarifas.
+const _RECESOS_ESCOLARES = {
+  2026: [
+    ['2026-06-01', '2026-06-05', 'Receso 1er trimestre'],
+    ['2026-09-07', '2026-09-11', 'Receso 2do trimestre']
+  ]
+};
+
+function _sembrarEscolares_(sh) {
+  const rows = sh.getDataRange().getValues();
+  Object.keys(_RECESOS_ESCOLARES).forEach(function(año) {
+    const marca = '__escolar__' + año;
+    for (let i = 1; i < rows.length; i++) {
+      if ((rows[i][0] || '').toString().trim() === marca) return;
+    }
+    const filas = [];
+    _RECESOS_ESCOLARES[año].forEach(function(r) {
+      const desde = new Date(r[0] + 'T12:00:00'), hasta = new Date(r[1] + 'T12:00:00');
+      for (let d = new Date(desde); d <= hasta; d.setDate(d.getDate() + 1)) {
+        filas.push([_isoDia_(d), r[2], 'escolar']);
+      }
+    });
+    filas.push([marca, 'no borrar — evita resembrar ' + año, '']);
+    sh.getRange(sh.getLastRow() + 1, 1, filas.length, 3).setValues(filas);
+    Logger.log('✓ Recesos escolares ' + año + ' sembrados (' + (filas.length - 1) + ' días)');
+  });
 }
 
 // Domingo de Pascua (algoritmo gregoriano anónimo, Meeus/Jones/Butcher).
@@ -922,21 +958,29 @@ function _sembrarFeriados_(sh, año) {
   Logger.log('✓ Feriados ' + año + ' sembrados (' + (filas.length - 1) + ')');
 }
 
-// Set de fechas ISO marcadas como feriado. Ignora la fila centinela.
-function getFeriadosSet() {
+// Dos mapas separados —{fecha: nombre}— en vez de uno con el tipo adentro: el
+// frontend consulta "¿es feriado?" y "¿es vacaciones escolares?" por separado
+// para decidir la tarifa, y un solo mapa lo obligaría a mirar el tipo en cada
+// lectura. Ignora las filas centinela.
+function getFechasEspeciales() {
   const sh = getOrCreateFeriados();
   const rows = sh.getDataRange().getValues();
-  const out = {};
+  const feriados = {}, escolares = {};
   for (let i = 1; i < rows.length; i++) {
     let f = rows[i][0];
     if (!f) continue;
     if (f instanceof Date) f = Utilities.formatDate(f, 'America/Panama', 'yyyy-MM-dd');
     f = f.toString().trim();
-    if (f.indexOf('__sembrado__') === 0) continue;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(f)) out[f] = (rows[i][1] || '').toString();
+    if (f.indexOf('__') === 0) continue;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(f)) continue;
+    const tipo = (rows[i][2] || 'feriado').toString().trim().toLowerCase();
+    (tipo === 'escolar' ? escolares : feriados)[f] = (rows[i][1] || '').toString();
   }
-  return out;
+  return { feriados: feriados, escolares: escolares };
 }
+
+// Compat: quedaba usada por getTarifas antes de separar los tipos.
+function getFeriadosSet() { return getFechasEspeciales().feriados; }
 
 // ─── BLACKLIST ───────────────────────────────────────────────
 function getOrCreateBlacklist() {
@@ -1603,8 +1647,8 @@ function doGet(e) {
       // Solo se escriben las claves que vinieron en la request: mandar un
       // default por cada una ausente pisaría tarifas que el admin no tocó.
       const updates = { promoActive: (p.promoActive === 'true' || p.promoActive === '1') ? 'true' : 'false' };
-      ['weekday','weekend','promo','viernes','sabado','vispera','feriado',
-       'promoViernes','promoSabado','promoVispera','promoFeriado'].forEach(function(k) {
+      ['weekday','weekend','promo','viernes','sabado','vispera','feriado','escolar',
+       'promoViernes','promoSabado','promoVispera','promoFeriado','promoEscolar'].forEach(function(k) {
         if (p[k] !== undefined && p[k] !== '' && !isNaN(parseFloat(p[k]))) updates[k] = parseFloat(p[k]);
       });
       for (let i = 1; i < rows.length; i++) {
@@ -1652,14 +1696,17 @@ function doGet(e) {
         const parte = item.split('|');
         const fecha = (parte[0] || '').trim();
         if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return;
-        nuevas.push([fecha, (parte[1] || 'Feriado').trim()]);
+        // fecha|nombre|tipo — el tipo es opcional y cae a feriado.
+        const tipo = (parte[2] || 'feriado').trim().toLowerCase() === 'escolar' ? 'escolar' : 'feriado';
+        nuevas.push([fecha, (parte[1] || 'Feriado').trim(), tipo]);
       });
-      if (nuevas.length) sh.getRange(sh.getLastRow() + 1, 1, nuevas.length, 2).setValues(nuevas);
+      if (nuevas.length) sh.getRange(sh.getLastRow() + 1, 1, nuevas.length, 3).setValues(nuevas);
 
-      Logger.log('✓ Feriados: +' + nuevas.length + ' / -' + quitados);
+      Logger.log('✓ Fechas especiales: +' + nuevas.length + ' / -' + quitados);
+      const _fe2 = getFechasEspeciales();
       return ContentService
         .createTextOutput(JSON.stringify({ ok: true, agregados: nuevas.length, quitados: quitados,
-                                           feriados: getFeriadosSet() }))
+                                           feriados: _fe2.feriados, escolares: _fe2.escolares }))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -1682,6 +1729,7 @@ function doGet(e) {
         const key = r[0] ? r[0].toString().trim() : '';
         if (key) map[key] = r[1];
       });
+      const _fe = getFechasEspeciales();
       const tarifas = {
         weekday:     parseFloat(map['weekday'])    || 90,
         weekend:     parseFloat(map['weekend'])    || 110,
@@ -1711,7 +1759,10 @@ function doGet(e) {
         promoSabado:  parseFloat(map['promoSabado'])  || 0,
         promoVispera: parseFloat(map['promoVispera']) || 0,
         promoFeriado: parseFloat(map['promoFeriado']) || 0,
-        feriados:     getFeriadosSet(),
+        escolar:      parseFloat(map['escolar'])      || parseFloat(map['weekend']) || 110,
+        promoEscolar: parseFloat(map['promoEscolar']) || 0,
+        feriados:     _fe.feriados,
+        escolares:    _fe.escolares,
         // Interruptor global de las ventanas cortas en el calendario público
         // (pasatarde/pasanoche en los huecos que dejan early/late/pasadía).
         // Default ENCENDIDO: solo se apaga poniendo 'false' en la hoja Config,
@@ -2042,7 +2093,9 @@ function doPost(e) {
         promoViernes: parseFloat(t.promoViernes) || 0,
         promoSabado:  parseFloat(t.promoSabado)  || 0,
         promoVispera: parseFloat(t.promoVispera) || 0,
-        promoFeriado: parseFloat(t.promoFeriado) || 0
+        promoFeriado: parseFloat(t.promoFeriado) || 0,
+        escolar:      parseFloat(t.escolar)      || 110,
+        promoEscolar: parseFloat(t.promoEscolar) || 0
       };
 
       for (let i = 1; i < rows.length; i++) {
