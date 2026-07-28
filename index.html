@@ -745,75 +745,59 @@
   .load-more-btn:hover { border-color: var(--muted); color: var(--text); }
 
   /* ── LEGEND FILTERS ── */
-  /* ── Panel "¿Cuál es cuál?" ──────────────────────────────────────
-     Va pegado a la leyenda porque ahí nace la pregunta: tres nombres de
-     colores sin explicación, justo encima del calendario. */
-  /* Vive DENTRO del hero, sobre la foto: por eso todo va en escala clara y con
-     fondo translúcido en vez de blanco sólido. */
-  .cabins-intro { max-width: 1100px; margin: 26px auto 0; padding: 0 24px; }
-  /* El hero es global; las cabañas solo tienen sentido en Disponibilidad. La
+  /* ── Hero rotativo de cabañas ───────────────────────────────────
+     El fondo va cambiando entre las 3 cabañas y el pie describe la que se ve.
+     Las capas van DETRÁS del contenido; cada una trae su propio degradado
+     oscuro para que el texto se lea sobre cualquier foto, clara u oscura. */
+  .hero-slides { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
+  .hero-slide {
+    position: absolute; inset: 0;
+    background-size: cover; background-position: center; background-repeat: no-repeat;
+    opacity: 0; transition: opacity 1.1s ease;
+  }
+  .hero-slide.on { opacity: 1; }
+  /* El contenido del hero por encima de las capas. */
+  .hero > *:not(.hero-slides) { position: relative; z-index: 1; }
+
+  .hero-cabins { margin-top: 24px; }
+  /* El hero es global; el pie de cabañas solo aplica en Disponibilidad. La
      clase la pone showSection. */
-  .hero:not(.hero-disp) .cabins-intro { display: none; }
-  .ci-head {
-    display: flex; align-items: center; justify-content: center; gap: 10px;
-    font-size: 13px; color: rgba(255,255,255,0.85);
-    text-shadow: 0 1px 6px rgba(0,0,0,0.3);
-  }
-  .ci-toggle {
-    background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.3);
-    border-radius: 999px; padding: 5px 14px; font-size: 12.5px; color: #fff;
+  .hero:not(.hero-disp) .hero-cabins { display: none; }
+
+  .hc-tabs { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
+  .hc-tab {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: rgba(18,26,20,0.38); border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 999px; padding: 6px 14px; font-size: 12.5px; color: rgba(255,255,255,0.85);
     cursor: pointer; font-family: inherit; touch-action: manipulation;
-    transition: background .15s; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    transition: background .2s, border-color .2s, color .2s;
   }
-  .ci-toggle:hover { background: rgba(255,255,255,0.24); }
-  .ci-body { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
-  .ci-body[hidden] { display: none; }
-  /* Tarjeta horizontal, no vertical: con la foto arriba cada una medía ~330px
-     y las tres juntas empujaban el calendario fuera de pantalla. Esta página
-     existe para ver disponibilidad; el resumen informa, no puede tapar. */
-  /* Tarjeta horizontal y translúcida sobre la foto del hero. Horizontal y no
-     vertical con la foto arriba: así medían ~330px y las tres empujaban el
-     calendario fuera de pantalla. */
-  .ci-card {
-    border: 1px solid rgba(255,255,255,0.22); border-radius: 14px; overflow: hidden;
-    background: rgba(18,26,20,0.42); cursor: pointer; text-align: left;
-    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-    transition: transform .15s, background .15s, border-color .15s;
-    display: flex; align-items: stretch; min-width: 0;
+  .hc-tab:hover { background: rgba(18,26,20,0.55); color: #fff; }
+  .hc-tab.on { background: rgba(255,255,255,0.92); border-color: transparent; color: #2c342c; font-weight: 600; }
+  .hc-tab .hc-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  .hc-detail {
+    margin-top: 12px; min-height: 44px;
+    font-size: 13px; color: rgba(255,255,255,0.92);
+    text-shadow: 0 1px 8px rgba(0,0,0,0.45);
+    transition: opacity .35s ease;
   }
-  .ci-card:hover { transform: translateY(-2px); background: rgba(18,26,20,0.55); border-color: rgba(255,255,255,0.45); }
-  .ci-photo { width: 92px; flex: 0 0 92px; object-fit: cover; display: block; background: rgba(0,0,0,0.25); }
-  .ci-ph { width: 92px; flex: 0 0 92px; display: flex; align-items: center;
-           justify-content: center; font-size: 26px; background: rgba(0,0,0,0.25); }
-  .ci-txt { padding: 9px 11px; min-width: 0; }
-  .ci-name { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600;
-             color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,0.35); }
-  .ci-name .ci-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-                     box-shadow: 0 0 0 2px rgba(255,255,255,0.35); }
-  .ci-meta { margin-top: 4px; font-size: 11.5px; color: rgba(255,255,255,0.88); line-height: 1.5;
-             text-shadow: 0 1px 5px rgba(0,0,0,0.35); }
-  .ci-links { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 4px 11px; font-size: 11.5px; }
-  /* nowrap: sin esto la flecha se despega del texto y cae sola a la línea
-     siguiente, que se lee como un link roto. */
-  .ci-links span { color: rgba(255,255,255,0.8); border-bottom: 1px solid rgba(255,255,255,0.35);
-                   white-space: nowrap; }
-  .ci-links span:hover { color: #fff; }
+  .hc-detail.fading { opacity: 0; }
+  .hc-meta { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px 14px; }
+  .hc-links { margin-top: 9px; display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; }
+  .hc-links button {
+    background: none; border: none; padding: 0; font-family: inherit; font-size: 12px;
+    color: rgba(255,255,255,0.85); border-bottom: 1px solid rgba(255,255,255,0.4);
+    cursor: pointer; touch-action: manipulation; white-space: nowrap;
+  }
+  .hc-links button:hover { color: #fff; }
+
   @media (max-width: 700px) {
-    /* El padding lateral es solo de desktop (alinea con el resto de la
-       página); en móvil quita ancho a las tarjetas y las hace más altas. */
-    .cabins-intro { padding: 0; }
-    /* En móvil las tres tarjetas en columna empujarían el calendario fuera de
-       pantalla; en carrusel se ven las tres y el calendario sigue a la vista.
-       Los márgenes negativos cancelan el padding lateral del hero para que el
-       carrusel llegue al borde: gana ancho (menos texto envuelto = tarjeta más
-       baja) y el corte en el filo anuncia que hay más para deslizar. */
-    .ci-body {
-      display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory;
-      -webkit-overflow-scrolling: touch; padding: 0 20px 4px;
-      margin: 0 -20px;
-    }
-    .ci-card { flex: 0 0 82%; scroll-snap-align: start; }
-    .ci-head { font-size: 12.5px; }
+    .hero-cabins { margin-top: 18px; }
+    .hc-tab { padding: 5px 11px; font-size: 11.5px; gap: 6px; }
+    .hc-detail { font-size: 12px; margin-top: 10px; }
+    .hc-meta { gap: 2px 10px; }
   }
 
   .legend-filter {
@@ -1362,8 +1346,13 @@
   <button class="mobile-nav-item" id="btnRatesMobile" onclick="openRates();closeMobileNav()" style="display:none;">⚙️ Tarifas</button>
 </div>
 
-<!-- HERO -->
+<!-- HERO — el fondo rota entre las 3 cabañas y el pie describe la que se ve.
+     Solo en Disponibilidad (clase .hero-disp, ver showSection): el hero es
+     global, y en Gastronomía o Actividades un pie de cabaña no viene al caso. -->
 <div class="hero">
+  <!-- Capas de imagen. Van detrás del contenido y cada una trae su propio
+       degradado oscuro, para que el texto se lea sobre cualquier foto. -->
+  <div class="hero-slides" id="heroSlides" aria-hidden="true"></div>
   <div class="hero-eyebrow">
     <a class="hero-location" href="https://maps.google.com/?q=8.639400,-79.945900" target="_blank">
       📍 Buenos Aires, Chame · En las faldas de Chicá · Panamá Oeste
@@ -1384,19 +1373,13 @@
     </a>
   </div>
 
-  <!-- ¿Cuál es cuál? Las 3 cabañas DENTRO del hero: son el producto, así que
-       ocupan el lugar de más peso de la página en vez de un bloque aparte
-       debajo. Abierto en la primera visita y cerrado después (ver _ciInit) —
-       el que no sabe qué es "Paseo" no abriría un acordeón cerrado, y el
-       cliente que ya se los sabe quiere el calendario arriba.
-       Solo en Disponibilidad: el hero es global, y en Gastronomía o
-       Actividades tres tarjetas de cabañas no pintan nada (ver showSection). -->
-  <div class="cabins-intro" id="cabinsIntro">
-    <div class="ci-head">
-      <span>Tenemos 3 cabañas independientes</span>
-      <button class="ci-toggle" id="ciToggle" onclick="toggleCabinsIntro()"></button>
-    </div>
-    <div class="ci-body" id="ciBody"></div>
+  <!-- Pie del hero: los nombres de las 3 cabañas siempre visibles y, debajo,
+       el detalle de la que se está mostrando. Tener los tres a la vista es lo
+       que responde "¿cuál es cuál?" sin obligar a esperar a que la rotación
+       pase por las tres. -->
+  <div class="hero-cabins" id="heroCabins">
+    <div class="hc-tabs" id="hcTabs"></div>
+    <div class="hc-detail" id="hcDetail"></div>
   </div>
 </div>
 
@@ -3954,98 +3937,120 @@ function updateLightbox() {
 }
 
 // Render verde grid on page load
-// ── Panel "¿Cuál es cuál?" ──────────────────────────────────────────
-// Resumen de las 3 cabañas sobre el calendario. Los datos son los mismos que
-// muestra el tab Cabañas, resumidos a lo que responde la pregunta: cuánta
-// gente entra y cómo se duerme. La foto sale de GALERIA, así que no hay una
-// segunda lista de imágenes que mantener sincronizada.
-// `foto` (opcional) fija la imagen de la tarjeta. Sin ella se usa la primera
-// de GALERIA, que es la de la galería y no siempre es la que mejor vende la
-// cabaña en una miniatura de 92px.
+// ── Hero rotativo de cabañas ────────────────────────────────────────
+// El fondo del hero va pasando por las 3 cabañas y el pie describe la que se
+// está mostrando. Los datos son los mismos del tab Cabañas, resumidos a lo que
+// responde la pregunta: cuánta gente entra y cómo se duerme.
+//
+// `foto` fija la imagen; sin ella se usa la primera de GALERIA, que es la de la
+// galería y no siempre es la que mejor representa a la cabaña.
 const CABINS_INTRO = [
-  { key:'verde', nombre:'Paseo por Las Nubes',   personas:'Hasta 4 personas', cama:'Cama king + cama twin',
-    nota:'Baño al aire libre entre árboles' },
-  { key:'azul',  nombre:'Portal hacia Las Nubes', personas:'2 personas',       cama:'Cama full matrimonial',
-    nota:'Cocina exterior con vista a las montañas',
+  { key:'verde', nombre:'Paseo por Las Nubes',   corto:'Paseo',
+    personas:'Hasta 4 personas', cama:'Cama king + cama twin', nota:'Baño al aire libre entre árboles' },
+  { key:'azul',  nombre:'Portal hacia Las Nubes', corto:'Portal',
+    personas:'2 personas', cama:'Cama full matrimonial', nota:'Cocina exterior con vista a las montañas',
     // Silla colgante. La alternativa es .../d/1Nds1GCD5K44A4Ap4P9_-jMjWbBpJwYa3
     foto:'https://lh3.googleusercontent.com/d/171GVtaWLZAZCqds8yXLOVfVUgbT1URfy' },
-  { key:'lila',  nombre:'Puente entre Las Nubes', personas:'Hasta 4 personas', cama:'Cama queen + auxiliar full',
-    nota:'120 m² de jardines · terraza techada' }
+  { key:'lila',  nombre:'Puente entre Las Nubes', corto:'Puente',
+    personas:'Hasta 4 personas', cama:'Cama queen + auxiliar full', nota:'120 m² de jardines · terraza techada' }
 ];
 
-function _ciFoto(c) {
-  if (c.foto) return c.foto;
-  const g = (typeof GALERIA !== 'undefined' && GALERIA[c.key]) || [];
-  return g.length ? g[0].thumb : '';
+const HERO_ROTA_MS = 6500;
+let _heroIdx = 0, _heroTimer = null;
+
+function _heroFoto(c) {
+  const url = c.foto || (((typeof GALERIA !== 'undefined' && GALERIA[c.key]) || [])[0] || {}).full || '';
+  // lh3 acepta el tamaño en la URL. Sin él sirve la original, que para un fondo
+  // de pantalla completa son varios MB por cabaña.
+  return url && url.indexOf('googleusercontent') >= 0 ? url + '=w1600' : url;
 }
 
-function renderCabinsIntro() {
-  const body = document.getElementById('ciBody');
-  if (!body) return;
-  body.innerHTML = CABINS_INTRO.map(c => {
-    const foto = _ciFoto(c);
-    // onerror: si Drive no sirve la miniatura, cae a un placeholder en vez de
-    // dejar el hueco roto de una imagen que no carga.
-    const img = foto
-      ? '<img class="ci-photo" src="' + foto + '" alt="' + c.nombre + '" loading="lazy"'
-        + ' onerror="this.outerHTML=\'<div class=ci-ph>🏡</div>\'">'
-      : '<div class="ci-ph">🏡</div>';
-    return '<div class="ci-card ' + c.key + '" onclick="ciFiltrar(\'' + c.key + '\')">'
-      + img
-      + '<div class="ci-txt">'
-      +   '<div class="ci-name"><span class="ci-dot" style="background:var(--' + c.key + ');"></span>' + c.nombre + '</div>'
-      +   '<div class="ci-meta">👥 ' + c.personas + '<br>🛏 ' + c.cama + '<br>✨ ' + c.nota + '</div>'
-      +   '<div class="ci-links">'
-      +     '<span>Ver solo esta ↓</span>'
-      +     '<span onclick="event.stopPropagation();ciFotos(\'' + c.key + '\')">Fotos y detalles →</span>'
-      +   '</div>'
-      + '</div></div>';
+function renderHeroCabins() {
+  const slides = document.getElementById('heroSlides');
+  const tabs   = document.getElementById('hcTabs');
+  if (!slides || !tabs) return;
+  // El degradado va en cada capa, no en el contenedor: así el texto se lee
+  // igual sobre una foto clara que sobre una oscura.
+  const grad = 'linear-gradient(rgba(20,28,22,0.55), rgba(20,28,22,0.72))';
+  slides.innerHTML = CABINS_INTRO.map((c, i) => {
+    const f = _heroFoto(c);
+    return '<div class="hero-slide' + (i === 0 ? ' on' : '') + '" data-i="' + i + '"'
+         + (f ? ' style="background-image:' + grad + ',url(\'' + f + '\');"' : '') + '></div>';
   }).join('');
+  tabs.innerHTML = CABINS_INTRO.map((c, i) =>
+    '<button class="hc-tab' + (i === 0 ? ' on' : '') + '" data-i="' + i + '" onclick="heroIr(' + i + ',true)">'
+    + '<span class="hc-dot" style="background:var(--' + c.key + ');"></span>' + c.corto + '</button>').join('');
+  _heroPintarDetalle(0);
 }
 
-// Click en la tarjeta → filtra el calendario a esa cabaña. Mantiene al
-// visitante en el flujo de disponibilidad, que es de lo que trata la página.
-function ciFiltrar(key) {
+function _heroPintarDetalle(i) {
+  const el = document.getElementById('hcDetail');
+  if (!el) return;
+  const c = CABINS_INTRO[i];
+  el.innerHTML =
+      '<div class="hc-meta"><span>👥 ' + c.personas + '</span><span>🛏 ' + c.cama + '</span><span>✨ ' + c.nota + '</span></div>'
+    + '<div class="hc-links">'
+    +   '<button onclick="heroVerSolo(\'' + c.key + '\')">Ver disponibilidad de ' + c.corto + ' ↓</button>'
+    +   '<button onclick="heroFotos(\'' + c.key + '\')">Fotos y detalles →</button>'
+    + '</div>';
+}
+
+function heroIr(i, manual) {
+  const n = CABINS_INTRO.length;
+  _heroIdx = ((i % n) + n) % n;
+  document.querySelectorAll('.hero-slide').forEach(el =>
+    el.classList.toggle('on', +el.dataset.i === _heroIdx));
+  document.querySelectorAll('.hc-tab').forEach(el =>
+    el.classList.toggle('on', +el.dataset.i === _heroIdx));
+  // El detalle cruza por opacidad para que el cambio de texto acompañe al de la
+  // foto en vez de saltar de golpe.
+  const det = document.getElementById('hcDetail');
+  if (det) {
+    det.classList.add('fading');
+    setTimeout(() => { _heroPintarDetalle(_heroIdx); det.classList.remove('fading'); }, 300);
+  }
+  if (manual) _heroArrancar();   // tocar una pestaña reinicia el reloj
+}
+
+function _heroArrancar() {
+  clearInterval(_heroTimer);
+  // Sin auto-rotación si el sistema pide menos movimiento, o si la pestaña no
+  // está visible (si no, al volver se han quemado varias vueltas en vano).
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  _heroTimer = setInterval(() => {
+    if (document.hidden) return;
+    const hero = document.querySelector('.hero');
+    if (!hero || !hero.classList.contains('hero-disp')) return;
+    heroIr(_heroIdx + 1, false);
+  }, HERO_ROTA_MS);
+}
+
+// Filtra el calendario a esa cabaña y baja hasta él: la rotación es vitrina,
+// pero la página sigue siendo de disponibilidad.
+function heroVerSolo(key) {
   const btn = document.querySelector('.legend-filter[data-filter="' + key + '"]');
   if (btn) { setFilter(key, btn); btn.scrollIntoView({ behavior:'smooth', block:'center' }); }
 }
-// El link explícito sí lleva a la galería completa.
-function ciFotos(key) {
+function heroFotos(key) {
   showSection('cabanas');
   if (typeof _activarGaleria === 'function') _activarGaleria(key);
 }
 
-// El hero muestra las cabañas solo en la sección de disponibilidad.
+// El pie de cabañas (y la rotación) solo en la sección de disponibilidad.
 function _heroDispClass(name) {
   const hero = document.querySelector('.hero');
   if (hero) hero.classList.toggle('hero-disp', name === 'disponibilidad');
 }
 
-const _CI_KEY = 'lnCabinsIntro';
-function _ciAplicar(abierto) {
-  const body = document.getElementById('ciBody');
-  const btn  = document.getElementById('ciToggle');
-  if (!body || !btn) return;
-  body.hidden = !abierto;
-  btn.textContent = abierto ? 'Ocultar ✕' : '¿Cuál es cuál? ↓';
-}
-function toggleCabinsIntro() {
-  const abierto = document.getElementById('ciBody').hidden;   // se invierte
-  _ciAplicar(abierto);
-  try { localStorage.setItem(_CI_KEY, abierto ? 'open' : 'closed'); } catch(e) {}
-}
-function _ciInit() {
-  renderCabinsIntro();
+function _heroInit() {
+  renderHeroCabins();
   _heroDispClass('disponibilidad');   // la carga inicial abre en Disponibilidad
-  // Sin preferencia guardada = primera visita → abierto.
-  let pref = null;
-  try { pref = localStorage.getItem(_CI_KEY); } catch(e) {}
-  _ciAplicar(pref !== 'closed');
+  _heroArrancar();
 }
 
 window.addEventListener('DOMContentLoaded', () => {
   renderGaleriaGrid('verde');
-  _ciInit();
+  _heroInit();
 });
 
 
