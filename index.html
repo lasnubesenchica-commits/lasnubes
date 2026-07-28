@@ -45,6 +45,17 @@
     text-align: center;
     color: #fff;
   }
+  /* En móvil el hero se comía ~40% de la pantalla y empujaba el calendario
+     —que es a lo que viene la gente— por debajo del pliegue. Se recorta el
+     aire, no el contenido: siguen el eyebrow, el título y el subtítulo. */
+  @media (max-width: 700px) {
+    .hero { padding: 28px 20px 24px; }
+    .hero-eyebrow { margin-bottom: 9px; font-size: 10px; }
+    .hero-title { font-size: clamp(32px, 8vw, 44px); margin-bottom: 8px; }
+    .hero-sub { font-size: 13px; line-height: 1.5; }
+    .hero-socials { margin-top: 16px; gap: 10px; }
+    .hero-social { width: 34px; height: 34px; }
+  }
   @media (min-width: 820px) {
     .hero {
       min-height: 480px;
@@ -3922,17 +3933,23 @@ function updateLightbox() {
 // muestra el tab Cabañas, resumidos a lo que responde la pregunta: cuánta
 // gente entra y cómo se duerme. La foto sale de GALERIA, así que no hay una
 // segunda lista de imágenes que mantener sincronizada.
+// `foto` (opcional) fija la imagen de la tarjeta. Sin ella se usa la primera
+// de GALERIA, que es la de la galería y no siempre es la que mejor vende la
+// cabaña en una miniatura de 92px.
 const CABINS_INTRO = [
   { key:'verde', nombre:'Paseo por Las Nubes',   personas:'Hasta 4 personas', cama:'Cama king + cama twin',
     nota:'Baño al aire libre entre árboles' },
   { key:'azul',  nombre:'Portal hacia Las Nubes', personas:'2 personas',       cama:'Cama full matrimonial',
-    nota:'Cocina exterior con vista a las montañas' },
+    nota:'Cocina exterior con vista a las montañas',
+    // Silla colgante. La alternativa es .../d/1Nds1GCD5K44A4Ap4P9_-jMjWbBpJwYa3
+    foto:'https://lh3.googleusercontent.com/d/171GVtaWLZAZCqds8yXLOVfVUgbT1URfy' },
   { key:'lila',  nombre:'Puente entre Las Nubes', personas:'Hasta 4 personas', cama:'Cama queen + auxiliar full',
     nota:'120 m² de jardines · terraza techada' }
 ];
 
-function _ciFoto(key) {
-  const g = (typeof GALERIA !== 'undefined' && GALERIA[key]) || [];
+function _ciFoto(c) {
+  if (c.foto) return c.foto;
+  const g = (typeof GALERIA !== 'undefined' && GALERIA[c.key]) || [];
   return g.length ? g[0].thumb : '';
 }
 
@@ -3940,7 +3957,7 @@ function renderCabinsIntro() {
   const body = document.getElementById('ciBody');
   if (!body) return;
   body.innerHTML = CABINS_INTRO.map(c => {
-    const foto = _ciFoto(c.key);
+    const foto = _ciFoto(c);
     // onerror: si Drive no sirve la miniatura, cae a un placeholder en vez de
     // dejar el hueco roto de una imagen que no carga.
     const img = foto
