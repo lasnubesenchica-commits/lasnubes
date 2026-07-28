@@ -474,6 +474,29 @@ function _montoAirbnbANumero(raw) {
   return isNaN(n) ? 0 : n;
 }
 
+// Monto que sigue a una etiqueta en el email de Airbnb ("Total (USD)",
+// "Ganas"…), tolerando las DOS posiciones del símbolo de moneda.
+//
+// Airbnb cambió la plantilla: antes escribía "$243,00" y ahora "243,00 $" (con
+// un espacio duro, =A0 en el iso-8859-1 del email). El regex viejo exigía el
+// "$" ANTES de los dígitos:
+//
+//     /Total\s*\(USD\)[^$]*\$\s*([\d,.]+)/
+//
+// así que con la plantilla nueva no matcheaba y `amount` quedaba en 0 — sin
+// alerta, porque el aviso "⚠ Monto no detectado" solo se agrega si además
+// faltan otros datos. Resultado: TODA reserva de Airbnb creada después del
+// cambio entró con monto cero, en silencio. Se detectó con Everett Richardson
+// (HMSPN4MZFH): la app decía $243.00 y la hoja tenía $0.
+function _montoEtiquetadoAirbnb_(body, etiquetaRegex) {
+  // `[^\n$]{0,40}?` no cruza saltos de línea ni otro "$": evita que la etiqueta
+  // se enganche con el monto de la fila siguiente si la suya viniera vacía.
+  const re = new RegExp(etiquetaRegex + '[^\\n$]{0,40}?(?:\\$\\s*([\\d.,]+)|([\\d.,]+)\\s*\\$)', 'i');
+  const m = String(body || '').match(re);
+  if (!m) return 0;
+  return _montoAirbnbANumero(m[1] || m[2]);
+}
+
 // Un `confirmCode` nunca puede ser un id interno. El dashboard manda
 // `confirmCode: id` (correcto en reservas Directas, donde el código ES el id),
 // pero en una reserva de Airbnb sin código el id llega como `airbnb_<msgId>` y
@@ -587,8 +610,7 @@ function parseAirbnbEmail(body, msgId, msgDate) {
     const ninos    = ninosM   ? parseInt(ninosM[1],   10) : 0;
     const persons  = (adultos + ninos) || 2;
 
-    const totalMatch = body.match(/Total\s*\(USD\)[^\$]*\$\s*([\d,\.]+)/i);
-    const amount = totalMatch ? _montoAirbnbANumero(totalMatch[1]) : 0;
+    const amount = _montoEtiquetadoAirbnb_(body, 'Total\\s*\\(USD\\)');
 
     // Código de confirmación: varios patrones antes de rendirse. Con el código
     // vacío la reserva no puede cruzarse nunca con un payout, y la
