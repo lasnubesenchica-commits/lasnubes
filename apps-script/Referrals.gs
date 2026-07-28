@@ -265,7 +265,10 @@ function buildReferralCodeEmailHTML(opts) {
 '</ul>' +
 '<p style="margin:0 0 8px;font-size:13px;color:#8a8078;line-height:1.6;font-weight:600;">Restricciones:</p>' +
 '<ul style="margin:0 0 20px;padding-left:20px;color:#8a8078;font-size:13px;line-height:1.7;">' +
-'<li>Aplica solo a noches <strong>Domingo a Jueves</strong>.</li>' +
+// Se define por TIPO de día y no por día de semana: un martes feriado o de
+// vacaciones escolares sigue siendo "Dom–Jue", y ahí el descuento caía justo
+// en las noches de mayor demanda.
+'<li>Aplica a noches de <strong>domingo a jueves</strong>, sin feriados, vísperas de feriado ni vacaciones escolares.</li>' +
 '<li>Solo para reservas directas (no Airbnb).</li>' +
 '<li>No combinable con tarifa promocional ni otras promociones.</li>' +
 '<li>El crédito vence a los <strong>6 meses</strong> de la estadía del referido.</li>' +
