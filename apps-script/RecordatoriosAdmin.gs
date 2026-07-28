@@ -212,6 +212,9 @@ function enviarRecordatorioServiciosEspeciales() {
 //  - Estadía multi-noche  → ✅ no limpiar (huésped sigue)
 //  - Entra hoy, vacía ayer→ 👀 no cambiar sábanas, solo verificar
 //  - Sin actividad        → ⚪ libre
+// Toda llegada y toda salida llevan su hora (con overrides por reserva y
+// cortesía de 12:30), y cuando el mismo día hay salida y llegada se calcula la
+// ventana de limpieza entre las dos.
 // Se envia: (a) por trigger 8am a LIMPIEZA_PHONE, y (b) on-demand cuando
 // ese numero le escribe al Agente (ver WhatsAppWebhook).
 function _buildLimpiezaMessage(greeting) {
@@ -238,21 +241,60 @@ function _buildLimpiezaMessage(greeting) {
     const ci = r[4] instanceof Date ? Utilities.formatDate(r[4], BOT_TZ, 'yyyy-MM-dd') : (r[4] || '').toString().slice(0,10);
     const co = r[5] instanceof Date ? Utilities.formatDate(r[5], BOT_TZ, 'yyyy-MM-dd') : (r[5] || '').toString().slice(0,10);
     if (!ci || !co) continue;
+    const tipo = (r[24] || 'noche').toString();
+
+    // Fechas de display (mirror de _formFromStored). Hacen falta para las
+    // horas: en pasadía/early/late el rango almacenado incluye días de
+    // cortesía, así que comparar el storage contra hoy hacía caer la llegada o
+    // la salida en el día equivocado — y ahí la hora sería del huésped que no
+    // es. Las comparaciones de OCUPACIÓN de abajo siguen usando ci/co crudos, a
+    // propósito: un 'late' sí bloquea la noche extra aunque el huésped ya se
+    // haya ido.
+    let displayCi = ci, displayCo = co;
+    if (tipo === 'pasatarde')                                 { displayCo = ci; }
+    else if (tipo === 'pasadia' || tipo === 'pasadia-largo')  { displayCi = _botAddDaysISO(ci, 1); displayCo = displayCi; }
+    else if (tipo === 'early')                                { displayCi = _botAddDaysISO(ci, 1); }
+    else if (tipo === 'late')                                 { displayCo = _botAddDaysISO(co, -1); }
+
     byCabin[cabin].push({
       id: r[0], name: r[1] || '?', ci: ci, co: co,
+      displayCi: displayCi, displayCo: displayCo,
       persons: parseInt(r[6], 10) || 0,
-      comentarios: (r[22] || '').toString()
+      comentarios: (r[22] || '').toString(),
+      // Sin estas cuatro, _horaPlantilla devuelve el default del tipo y se
+      // pierden los overrides por reserva y la cortesía de 12:30.
+      tipo: tipo,
+      checkoutExtendido: !!r[28],
+      horaEntrada: (typeof _normalizeHora === 'function') ? _normalizeHora(r[29]) : (r[29] || ''),
+      horaSalida:  (typeof _normalizeHora === 'function') ? _normalizeHora(r[30]) : (r[30] || '')
     });
   }
+
+  // Horas reales de la reserva. _horaPlantilla aplica los defaults por tipo, la
+  // cortesía 12:30 y el guard de salida inválida en pasadía/pasatarde.
+  const horaLlegada = x => _horaPlantilla(x.tipo, 'checkin',  false, x.horaEntrada);
+  const horaSalidaD = x => _horaPlantilla(x.tipo, 'checkout', x.checkoutExtendido, x.horaEntrada, x.horaSalida);
+
+  // Minutos desde medianoche a partir del texto ya formateado ("11:00 am",
+  // "12:30 pm (cortesía)"). Solo para comparar salida vs llegada.
+  const _minDeHora12 = s => {
+    const m = /(\d{1,2}):(\d{2})\s*(a|p)\.?m/i.exec(String(s || ''));
+    if (!m) return null;
+    let h = parseInt(m[1], 10) % 12;
+    if (/p/i.test(m[3])) h += 12;
+    return h * 60 + parseInt(m[2], 10);
+  };
 
   // Línea con personas + alerta de cama auxiliar si aplica. Se inserta
   // bajo cualquier "llega" para que Erika tenga la misma info que en la
   // plantilla alerta_limpieza.
-  const guestInfoLine = (persons, comentarios) => {
+  // sinCama: en estadías de un solo día nadie duerme, así que avisar de la cama
+  // auxiliar sería mandarla a armar una cama que no se va a usar.
+  const guestInfoLine = (persons, comentarios, sinCama) => {
     const p = parseInt(persons, 10) || 0;
     if (!p) return '';
     let s = '\n👥 ' + p + (p === 1 ? ' huésped' : ' huéspedes') + '.';
-    if (_botNeedsCamaAuxiliar({ persons: p, comentarios: comentarios })) {
+    if (!sinCama && _botNeedsCamaAuxiliar({ persons: p, comentarios: comentarios })) {
       s += '\n🛏 *Preparar cama auxiliar.*';
     }
     return s;
@@ -261,23 +303,58 @@ function _buildLimpiezaMessage(greeting) {
   let limpiar = 0;
   const lines = CABINS.map(cab => {
     const res = byCabin[cab.key];
-    const checkoutToday = res.find(x => x.co === today);
-    const checkinToday  = res.find(x => x.ci === today);
+    // Llegada/salida por fecha de display; ocupación por el rango almacenado.
+    const checkoutToday = res.find(x => x.displayCo === today);
+    const checkinToday  = res.find(x => x.displayCi === today);
     const occLastNight  = res.find(x => x.ci <= yesterday && x.co > yesterday);
     const occTonight    = res.find(x => x.ci <= today && x.co > today);
 
+    // Pasadía / pasatarde: entra y sale el MISMO día, así que la misma reserva
+    // cae a la vez en checkoutToday y en checkinToday. Sin tratarla aparte, el
+    // parte decía "sale X … llega X" y marcaba los horarios como cruzados
+    // contra sí misma.
+    const mismoDia = res.find(x => x.displayCi === today && x.displayCo === today);
+
     let line = '🏡 *' + cab.name + '*\n';
-    if (checkoutToday) {
+    if (mismoDia) {
       limpiar++;
-      line += '🧹 *LIMPIAR* — salió ' + checkoutToday.name + '. Cambiar sábanas y dejar la cabaña lista.';
+      const etiqueta = mismoDia.tipo === 'pasatarde' ? 'pasatarde' : 'pasadía';
+      line += '🧹 *' + etiqueta.toUpperCase() + '* — llega ' + mismoDia.name + ' a las ' + horaLlegada(mismoDia)
+            + ' y sale a las ' + horaSalidaD(mismoDia) + '. Dejarla lista antes de que llegue y limpiar cuando salga.';
+      line += guestInfoLine(mismoDia.persons, mismoDia.comentarios, true);
+      const otro = res.find(x => x.id !== mismoDia.id && x.displayCi === today);
+      if (otro) {
+        line += '\n⚠️ Además llega ' + otro.name + ' a las ' + horaLlegada(otro) + '.';
+        line += guestInfoLine(otro.persons, otro.comentarios);
+      }
+    } else if (checkoutToday) {
+      limpiar++;
+      const hSale = horaSalidaD(checkoutToday);
+      // "sale", no "salió": el parte se manda 8am y la salida casi siempre
+      // está por delante. Con la hora al lado, el pasado sonaba mal.
+      line += '🧹 *LIMPIAR* — sale ' + checkoutToday.name + ' a las ' + hSale + '. Cambiar sábanas y dejar la cabaña lista.';
       if (checkinToday) {
-        line += '\n⚠️ ¡Hoy mismo llega ' + checkinToday.name + '! Dejarla lista a tiempo.';
+        const hLlega = horaLlegada(checkinToday);
+        line += '\n⚠️ ¡Hoy mismo llega ' + checkinToday.name + ' a las ' + hLlega + '! Dejarla lista a tiempo.';
+        // Lo que Erika realmente necesita de las dos horas: cuánto tiempo tiene.
+        const mSale = _minDeHora12(hSale), mLlega = _minDeHora12(hLlega);
+        if (mSale != null && mLlega != null) {
+          line += mLlega > mSale
+            ? '\n⏱ Ventana de limpieza: ' + hSale + ' → ' + hLlega + '.'
+            : '\n⚠️ *Ojo:* los horarios se cruzan (sale ' + hSale + ' y llega ' + hLlega + '). Avísale a Josh.';
+        }
         line += guestInfoLine(checkinToday.persons, checkinToday.comentarios);
       } else {
-        // Sin llegada hoy → mirar próxima reserva en esa cabaña.
-        const next = _botFindNextReservationForCabin(cab.key, checkoutToday.id);
+        // Próxima reserva de esta cabaña. Se busca acá y no con
+        // _botFindNextReservationForCabin porque ese helper no devuelve el tipo
+        // ni las horas custom, y sin eso no hay con qué decir a qué hora llega.
+        // El filtro es el mismo: misma cabaña, no cancelada, no Abierta (ambas
+        // ya excluidas al armar byCabin) y display de llegada >= hoy.
+        const next = res
+          .filter(x => x.id !== checkoutToday.id && x.displayCi >= today)
+          .sort((a, b) => (a.displayCi < b.displayCi ? -1 : 1))[0];
         if (next) {
-          line += '\n🛬 Próxima reserva: ' + _botFmtFecha(next.displayCheckin) + '.';
+          line += '\n🛬 Próxima reserva: ' + _botFmtFecha(next.displayCi) + ' a las ' + horaLlegada(next) + '.';
           line += guestInfoLine(next.persons, next.comentarios);
         }
       }
@@ -285,7 +362,7 @@ function _buildLimpiezaMessage(greeting) {
       line += '✅ *No limpiar* — ' + occTonight.name + ' sigue hospedado (estadía de varias noches).';
     } else if (checkinToday && !occLastNight) {
       limpiar++;
-      line += '👀 Llega ' + checkinToday.name + ' hoy. Anoche estuvo vacía: no hace falta cambiar sábanas, solo pasa a verificar que todo esté en orden.';
+      line += '👀 Llega ' + checkinToday.name + ' hoy a las ' + horaLlegada(checkinToday) + '. Anoche estuvo vacía: no hace falta cambiar sábanas, solo pasa a verificar que todo esté en orden.';
       line += guestInfoLine(checkinToday.persons, checkinToday.comentarios);
     } else if (occTonight) {
       line += '✅ *No limpiar* — ocupada.';
