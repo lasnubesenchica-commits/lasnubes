@@ -25,7 +25,11 @@
 const REFERRAL_CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';  // sin 0/O/I/l/1
 const REFERRAL_CODE_LEN      = 6;
 const REFERRAL_REWARD_AMOUNT = 20;
-const REFERRAL_CREDIT_EXPIRY_DAYS = 180; // 6 meses desde la redención del referido
+// 12 meses, igual que el credito de Cliente Fiel. Antes eran 6 y el otro 12:
+// dos vencimientos distintos para el mismo tipo de credito obligaban a mirar
+// de cual venia cada uno. Se unifico hacia arriba porque alargar nunca rompe
+// una promesa hecha; acortar si.
+const REFERRAL_CREDIT_EXPIRY_DAYS = 365;
 
 function _getOrCreateReferralsSheet() {
   const ss = SpreadsheetApp.openById(SHEET_ID);
@@ -271,7 +275,7 @@ function buildReferralCodeEmailHTML(opts) {
 '<li>Aplica a noches de <strong>domingo a jueves</strong>, sin feriados, vísperas de feriado ni vacaciones escolares.</li>' +
 '<li>Solo para reservas directas (no Airbnb).</li>' +
 '<li>No combinable con tarifa promocional ni otras promociones.</li>' +
-'<li>El crédito vence a los <strong>6 meses</strong> de la estadía del referido.</li>' +
+'<li>El crédito vence a los <strong>12 meses</strong> de la estadía del referido.</li>' +
 '<li>Sujeto a disponibilidad.</li>' +
 '</ul>' +
 '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;"><tr><td align="center">' +

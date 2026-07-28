@@ -12777,14 +12777,13 @@ function renderProgramaMetrics() {
     <!-- LOYALTY -->
     <div class="contab-panel" style="margin-bottom:18px;">
       <div class="contab-panel-header">
-        <div class="contab-panel-title">🌟 Cliente Fiel <span style="font-size:11px;font-weight:400;color:var(--text-muted);">· discontinuado</span></div>
+        <div class="contab-panel-title">🌟 Cliente Fiel</div>
       </div>
-      <!-- El programa salió en jul 2026, pero el panel se queda: los créditos
-           ya emitidos siguen valiendo y hay que poder verlos y marcarlos como
-           usados. Lo que ya no crece es "emitidos". -->
+      <!-- Los créditos emitidos antes de jul 2026 eran una NOCHE gratis; los
+           nuevos son $20. La obligación futura mezcla las dos cosas hasta que
+           venzan los viejos. -->
       <p style="font-size:11.5px;color:var(--text-muted);margin:8px 0 0;line-height:1.5;">
-        Ya no se emiten créditos nuevos. Los de abajo se honran hasta su vencimiento —
-        el botón para aplicarlos sigue en el detalle de cada reserva.
+        Los créditos emitidos antes de julio 2026 eran una noche de cortesía; los nuevos son de $20.
       </p>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;padding:14px 0 4px;">
         ${_kpiCell('Créditos emitidos', loyaltyEmitidos)}
