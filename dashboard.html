@@ -475,6 +475,25 @@
     margin-bottom: 24px;
   }
   @media (max-width: 700px) {
+    /* Una columna. A 342px de ancho cada tarjeta quedaba en ~163px y las
+       etiquetas se pegaban entre sí ("Directa312 días ·", "Puente156 días").
+       El grid-template-columns viene inline en el HTML, de ahí el !important. */
+    .ocu-charts-grid { grid-template-columns: 1fr !important; gap: 12px; }
+  }
+
+  /* Las tablas que NO se pueden volver tarjetas —son matrices: mes × cabaña,
+     origen × cabaña— scrollean adentro de su tarjeta. El scroll existía pero
+     no se veía: la tabla aparecía cortada al borde y nada indicaba que hubiera
+     más a la derecha. El degradado marca el corte y el pie lo dice. */
+  .ocu-scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; position: relative; }
+  .ocu-scroll-hint {
+    display: none; font-size: 11px; color: var(--text-muted);
+    margin-top: 6px; text-align: right; font-style: italic;
+  }
+  /* El JS lo enciende solo cuando la tabla DE VERDAD desborda: decirle a
+     alguien que deslice cuando no hay nada que deslizar es peor que no decir
+     nada. Ver `_ocuScrollHints()`. */
+  @media (max-width: 700px) {
     .ocu-charts-grid { grid-template-columns: 1fr; }
   }
   .ocu-chart-card {
@@ -3061,7 +3080,7 @@
     </div>
 
     <!-- Detalle por mes (tabla, sin card wrapper) -->
-    <div style="overflow-x:auto;margin-bottom:16px;">
+    <div class="ocu-scroll-x" style="margin-bottom:4px;">
       <table class="ocu-table">
         <thead>
           <tr>
@@ -3080,6 +3099,7 @@
         <tbody id="ocuTableBody"></tbody>
       </table>
     </div>
+    <div class="ocu-scroll-hint">→ Deslizá la tabla para ver el resto</div>
 
     <!-- Charts row: % por origen (izq) y % por cabaña (der) -->
     <div class="ocu-charts-grid" style="grid-template-columns:1fr 1fr;margin-bottom:16px;">
@@ -3102,7 +3122,7 @@
         <div class="ocu-chart-title" style="margin-bottom:0;">Ingresos del período</div>
         <div style="font-size:12px;color:var(--text-muted);" id="ocuRevResumen"></div>
       </div>
-      <div style="overflow-x:auto;">
+      <div class="ocu-scroll-x">
         <table class="ocu-table" id="ocuRevTable">
           <thead>
             <tr>
@@ -3117,6 +3137,7 @@
           <tbody id="ocuRevTableBody"></tbody>
         </table>
       </div>
+      <div class="ocu-scroll-hint">→ Deslizá la tabla para ver el resto</div>
     </div>
 
     <!-- Reservas del período -->
@@ -3151,7 +3172,13 @@
            esta tabla lista RESERVAS, así que "42 días → 15 reservas" es
            correcto pero no se explica solo. El chip dice qué se clickeó. -->
       <div id="ocuResFiltroChip" style="display:none;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding:8px 12px;border-radius:10px;background:var(--bg);border:1px solid var(--border);font-size:12.5px;color:var(--text-muted);"></div>
-      <div style="overflow-x:auto;">
+      <!-- Móvil: tarjetas, igual que la lista de Reservas. La tabla tiene 8
+           columnas y en un teléfono se cortaba a la mitad sin ningún indicio
+           de que hubiera más a la derecha. `.res-cards` / `.res-table-wrap`
+           se alternan solas por el breakpoint de 700px. -->
+      <div class="res-cards-sum" id="ocuResSum"></div>
+      <div class="res-cards" id="ocuResCards"></div>
+      <div class="res-table-wrap" style="overflow-x:auto;">
         <table class="ocu-table">
           <thead>
             <tr>
@@ -10555,6 +10582,17 @@ function setPeriod(preset) {
 // Re-render tras un cambio de período. Contabilidad y Ocupación comparten el
 // estado, así que hay que refrescar la vista que esté a la vista — antes solo
 // existía Contabilidad y el período de Ocupación era otro.
+// Muestra el aviso de "deslizá" solo en las tablas que realmente se cortan.
+// Se llama después de renderizar porque el desborde depende del contenido y del
+// ancho, no solo del breakpoint.
+function _ocuScrollHints() {
+  document.querySelectorAll('#ocupacion .ocu-scroll-x').forEach(box => {
+    const hint = box.parentElement && box.parentElement.querySelector(':scope > .ocu-scroll-hint');
+    if (!hint) return;
+    hint.style.display = (box.scrollWidth - box.clientWidth > 4) ? 'block' : 'none';
+  });
+}
+
 function _rerenderPorPeriodo() {
   const ocu = document.getElementById('ocupacion');
   if (ocu && ocu.classList.contains('active')) { renderOcupacion(); return; }
@@ -13143,9 +13181,13 @@ function renderOcuResTable(res, ctx) {
 
   _renderDrillChip(filterOrigen, filterCabin, C, rows.length, setDrill);
 
+  const cardsEl = document.getElementById('ocuResCards');
+  const sumEl   = document.getElementById('ocuResSum');
   if (!rows.length) {
     tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Sin reservas para este filtro</td></tr>';
     if (tfoot) tfoot.innerHTML = '';
+    if (cardsEl) cardsEl.innerHTML = '<div class="empty-state">Sin reservas para este filtro</div>';
+    if (sumEl)   sumEl.innerHTML = '';
     return;
   }
 
@@ -13193,6 +13235,17 @@ function renderOcuResTable(res, ctx) {
     ? sub(`${nochesPeriodo} en el período`) : '';
   const montoSub  = (ctx && Math.abs(montoIngreso - totalMonto) > 0.005)
     ? sub(`$${montoIngreso.toFixed(2)} ingreso`) : '';
+
+  // Mismas filas, en tarjetas. Un crédito abierto (drill "Créditos por usar")
+  // usa el modo 'abiertas' para que no muestre fechas ni duración, que no tiene.
+  if (cardsEl) cardsEl.innerHTML = rows.map(r => resCardHtml(r, r.origin === 'Abierta' ? 'abiertas' : 'checkin')).join('');
+  if (sumEl) {
+    sumEl.innerHTML = `<span><strong style="color:var(--text);">${rows.length}</strong> reserva${rows.length !== 1 ? 's' : ''}`
+      + ` · <strong style="color:var(--verde-dark);">$${totalMonto.toFixed(2)}</strong></span>`
+      + (ctx && Math.abs(montoIngreso - totalMonto) > 0.005
+          ? `<span style="color:var(--text-muted);">$${montoIngreso.toFixed(2)} ingreso</span>`
+          : `<span style="color:var(--text-muted);">${nochesPeriodo} noche${nochesPeriodo !== 1 ? 's' : ''} en el período</span>`);
+  }
 
   if (tfoot) tfoot.innerHTML = `<tr style="font-weight:700;border-top:2px solid var(--border);background:var(--bg);">
     <td colspan="2" style="padding:6px 10px 6px 12px;">${rows.length} reserva${rows.length!==1?'s':''}</td>
@@ -13524,13 +13577,22 @@ function renderOcupacion() {
       // Compacto: seis cajas para contar cinco pasadías era más marco que dato.
       // Dos filas de texto — por tipo y por cabaña — dicen lo mismo y se leen
       // de un vistazo. Las cabañas sin pasadías no se listan.
-      const linea = (items) => items.map(x =>
+      // Flex con wrap, no spans inline: el `join` pegaba los items al separador
+      // SIN espacio y cada item lleva `white-space:nowrap`, así que no quedaba
+      // ningún punto de corte y la línea se desbordaba en vez de envolver —
+      // "7 pasadía · 9–5 · $54" cortado a mitad del número. Con flex-wrap cada
+      // item es una caja que puede pasar al renglón siguiente.
+      // Sin separador "|": al envolver quedaba huérfano en su propio renglón.
+      // El cuadrito de color ya delimita cada item; alcanza con el gap.
+      const linea = (items) => '<div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 16px;">'
+        + items.map(x =>
         `<span style="white-space:nowrap;">
            <span style="width:8px;height:8px;border-radius:2px;background:${x.color};display:inline-block;margin-right:5px;vertical-align:middle;"></span>
            <strong style="color:var(--text);">${x.n}</strong>
            <span style="color:var(--text-muted);">${x.label}</span>
            <span style="color:var(--text-muted);">· ${fmtM(x.rev)}</span>
-         </span>`).join('<span style="color:var(--border);margin:0 10px;">|</span>');
+         </span>`).join('')
+        + '</div>';
 
       const porTipo = [];
       if (pCorta.length) porTipo.push({ n: pCorta.length, label: 'pasatarde · 12:30–7pm', rev: sumRev(pCorta), color: '#f59e0b' });
@@ -13874,6 +13936,7 @@ function renderOcupacion() {
   renderOcuResTable(checkinRes, {
     nochesPeriodo: _nochesPeriodo, ingresoIds: _ingresoIds, sets: _sets
   });
+  _ocuScrollHints();
 }
 
 
