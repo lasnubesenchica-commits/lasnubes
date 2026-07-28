@@ -3062,6 +3062,11 @@
         <div id="sumUncuadradasBadge"></div>
       </div>
 
+      <!-- El mismo selector significa dos cosas según la vista: en Timeline
+           POSICIONA (la serie es todo el año), en Detalle FILTRA. Sin decirlo
+           es la clase de ambigüedad que hace desconfiar de los números. -->
+      <div id="sumPeriodoNota" style="font-size:11.5px;color:var(--text-muted);margin-bottom:10px;line-height:1.5;"></div>
+
       <!-- Leyenda de colores de la última barra (semáforo de recompra) -->
       <div id="sumTimelineLegend" style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;margin:0 0 10px;padding:0 4px;font-size:11px;color:var(--text-muted);line-height:1.5;">
         <span style="font-weight:600;">Color de la última barra:</span>
@@ -10552,14 +10557,24 @@ function _ensureSumPeriodDefault() {
   if (_sumPeriodInit) return;
   _sumPeriodInit = true;
   if (!sumMonth && !sumRange) {
+    // "Este mes". El timeline ya no depende de esto —muestra el año entero— y
+    // el selector solo lo posiciona, así que arrancar en el mes actual abre la
+    // vista donde está la acción. Para el Detalle y los widgets, que sí
+    // filtran, el mes en curso es el default natural.
     const now = new Date();
-    const _f = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0')
-                  + '-' + String(d.getDate()).padStart(2,'0');
-    sumRange = { from: now.getFullYear() + '-01-01', to: _f(now), presetKey: 'ytd', label: 'YTD' };
+    sumMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
   }
 }
 
 // Espejo de `_matchesSelectedPeriod` sobre el estado de Suministros.
+// 'YYYY-MM' → 'julio 2026', para los rótulos.
+function _sumMesLargo(m) {
+  const MESES = ['enero','febrero','marzo','abril','mayo','junio',
+                 'julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const [y, mo] = String(m).split('-').map(Number);
+  return (MESES[mo - 1] || m) + ' ' + y;
+}
+
 function _matchesSumPeriod(iso) {
   if (!iso) return false;
   const s = String(iso);
@@ -14818,6 +14833,22 @@ async function renderSuministrosTab() {
   wrap.style.display    = view === 'timeline' ? '' : 'none';
   const legEl = document.getElementById('sumTimelineLegend');
   if (legEl) legEl.style.display = view === 'timeline' ? 'flex' : 'none';
+
+  // Qué hace el selector de período en esta vista.
+  const notaEl = document.getElementById('sumPeriodoNota');
+  if (notaEl) {
+    const _per = sumRange && sumRange.label === 'Custom'
+      ? sumRange.from + ' → ' + sumRange.to
+      : (sumRange ? sumRange.label : (sumMonth ? _sumMesLargo(sumMonth) : 'todo'));
+    // Precisión importa: en Timeline el selector posiciona la serie, pero los
+    // widgets de "Mayores gastos" de arriba SÍ filtran por el período. Decir
+    // "no filtra" a secas sería falso para lo que está a la vista.
+    notaEl.innerHTML = view === 'timeline'
+      ? '📅 El timeline muestra <strong>todo ' + new Date().getFullYear() + '</strong> — el selector solo '
+        + '<strong>ubica la vista</strong> en ' + escapeHtml(_per) + '. '
+        + 'Los widgets de arriba y el Detalle sí filtran por ese período.'
+      : '🔎 Facturas de <strong>' + escapeHtml(_per) + '</strong>. Acá el selector sí filtra.';
+  }
   if (detWrap) detWrap.style.display = view === 'detalle' ? '' : 'none';
   if (view === 'detalle' && detWrap) _renderSumDetalle(detWrap, kws);
   else _renderSumTimeline(wrap, kws.filter(kw => !_sumIsNoTimeline(kw)));  // timeline excluye "solo detalle" (ej. Delivery)
@@ -14920,11 +14951,18 @@ function _renderSumTimeline(wrap, kws) {
   // una factura es compartida (matchea ≥2 items) al calcular el ganchito ✓.
   const allNkw = (_suministrosKeywords || []).map(_sumNormalize).filter(Boolean);
 
+  // El timeline muestra TODO EL AÑO, no el período. Un ciclo de recompra no se
+  // ve con un mes de datos: recortar la serie era justo lo que hacía que la
+  // mitad de los items dijera "sin compras aún". El selector de arriba no
+  // filtra acá — POSICIONA el scroll en ese mes (ver `scrollTargetX`).
+  const _anioTL = new Date().getFullYear();
+  const _enAnio = iso => (iso || '').slice(0, 4) === String(_anioTL);
+
   // Compras por keyword (búsqueda en descripción, sin acentos).
   const rows = kws.map(kw => {
     const nkw = _sumNormalize(kw);
     const ps = egresos
-      .filter(e => _sumCatOk(e) && e.date && _matchesSumPeriod(e.date) && _sumMatchesKw(e, nkw))
+      .filter(e => _sumCatOk(e) && e.date && _enAnio(e.date) && _sumMatchesKw(e, nkw))
       .map(e => {
         const total = parseFloat(e.amount||0);
         const ov = _sumItemAmount(e, nkw); // porción asignada a este item (o null)
