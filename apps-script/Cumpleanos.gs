@@ -32,7 +32,7 @@ function _cumpleanosConfig() {
   return {
     // Un solo monto para todos los dias. $20 es tambien lo que da el referido,
     // asi que es la unica cifra de todo el programa: $20 por tu cumpleanos,
-    // $20 para tu amigo, $20 de credito para vos. Ademas deja el sabado en $90,
+    // $20 para tu amigo, $20 de credito para ti. Ademas deja el sabado en $90,
     // que es el piso de la tarifa de entre semana. Configurable sin deploy.
     descMonto:  parseInt(props.getProperty('CUMPLE_DESCUENTO_MONTO'), 10) || 20,
     diasAntes:  parseInt(props.getProperty('CUMPLE_DIAS_ANTES'), 10)        || 30

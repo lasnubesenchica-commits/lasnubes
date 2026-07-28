@@ -3423,7 +3423,7 @@
       <div id="detailRegalo" style="color:var(--text);line-height:1.5;"></div>
     </div>
     <div id="detailCumpleBadge" style="display:none;background:#f0f8ed;border-left:3px solid #6a9e62;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;color:#2c5e22;">
-      🎂 <strong>Cumpleaños en esta estadía</strong> — <span id="detailCumpleText"></span>. Aplicar descuento <strong>20% Dom–Jue / 10% Vie–Sáb</strong> sobre la noche del cumpleaños.
+      🎂 <strong>Cumpleaños en esta estadía</strong> — <span id="detailCumpleText"></span>. Aplicar <strong>$20 de descuento</strong> sobre la noche del cumpleaños, cualquier día. No aplica en feriados, vísperas ni vacaciones escolares.
     </div>
     <div id="detailLoyaltyBadge" style="display:none;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;"></div>
     <!-- Resumen de pagos (misma caja que el modal de edición, solo lectura).
@@ -6156,7 +6156,7 @@ function showDispDetail(id) {
                         :                '💬 WhatsApp';
     linkBtn.textContent = defaultLabel;
     linkBtn.title       = autoWAInit
-      ? 'El Agente ya envía la confirmación automáticamente. Esto copia el mensaje por si querés reenviarlo.'
+      ? 'El Agente ya envía la confirmación automáticamente. Esto copia el mensaje por si quieres reenviarlo.'
       : hasPhoneInit
         ? 'Abrir WhatsApp del cliente con texto pre-cargado'
         : 'Copiar link publico para cliente';
@@ -9838,7 +9838,7 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
       const waLabel = autoWA ? '🔗 Copiar mensaje' : '💬 Enviar a WhatsApp';
       waBtn.style.display = '';
       waBtn.textContent = waLabel;
-      waBtn.title = autoWA ? 'El Agente ya envió la confirmación. Esto copia el mensaje por si querés reenviarlo.' : '';
+      waBtn.title = autoWA ? 'El Agente ya envió la confirmación. Esto copia el mensaje por si quieres reenviarlo.' : '';
       waBtn.onclick = async () => {
         waBtn.disabled = true;
         waBtn.textContent = '⏳';
@@ -12457,7 +12457,7 @@ function _renderLoyaltyBadge(r) {
       // Cortesia ya usada
       const usedIn = credit.usedInReservaId || '—';
       el.style.cssText = 'display:block;background:#f5f4f0;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;color:var(--text-muted);';
-      el.innerHTML = '✓ <strong>Cortesía Cliente Fiel ya aplicada</strong> · reserva <code>' + usedIn + '</code>'
+      el.innerHTML = '✓ <strong>Crédito Cliente Fiel ya aplicado</strong> · reserva <code>' + usedIn + '</code>'
         + (credit.usedAt ? ' · ' + credit.usedAt : '')
         + ' <button onclick="_unmarkLoyalty(' + JSON.stringify(r.email||'').replace(/"/g,'&quot;') + ',' + JSON.stringify(r.telefono||'').replace(/"/g,'&quot;') + ')" '
         + 'style="margin-left:8px;background:none;border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;color:var(--text-muted);">Deshacer</button>';
@@ -12467,7 +12467,7 @@ function _renderLoyaltyBadge(r) {
       const btn = '<button onclick="_markLoyaltyUsedHere(' + JSON.stringify(r.email||'').replace(/"/g,'&quot;') + ',' + JSON.stringify(r.telefono||'').replace(/"/g,'&quot;') + ',' + JSON.stringify(r.id).replace(/"/g,'&quot;') + ')" '
         + 'style="margin-left:8px;background:#d4a44c;border:none;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;color:#fff;font-weight:500;">Marcar usada en esta reserva</button>';
       el.style.cssText = 'display:block;background:#fffbeb;border-left:3px solid #d4a44c;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;color:#7a5a1f;';
-      el.innerHTML = '🌟 <strong>Cliente fiel</strong> — noche cortesía <strong>Dom–Jue</strong> disponible' + vence + '. ' + btn;
+      el.innerHTML = '🌟 <strong>Cliente fiel</strong> — crédito de <strong>$20</strong> disponible' + vence + '. ' + btn;
     }
   } else if (prev >= 2) {
     // Es elegible pero el trigger aun no emitio el credito
@@ -12483,7 +12483,7 @@ function _renderLoyaltyBadge(r) {
 }
 
 async function _markLoyaltyUsedHere(email, telefono, reservaId) {
-  if (!confirm('¿Marcar la cortesía Cliente Fiel como aplicada en esta reserva?')) return;
+  if (!confirm('¿Marcar el crédito de Cliente Fiel como aplicado en esta reserva?')) return;
   try {
     const res = await fetch(SHEETS_API_URL, {
       method: 'POST',

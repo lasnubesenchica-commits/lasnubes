@@ -876,6 +876,88 @@ function _migrarTarifasPorTipoDia_(cfg) {
   if (añadidas) Logger.log('✓ Config: ' + añadidas + ' tarifas por tipo de día agregadas');
 }
 
+// ─── PRECIO PÚBLICO POR NOCHE ────────────────────────────────
+// ESPEJO de getPrecio() en index.html. Si se toca la lógica de precios hay que
+// tocar los dos: uno corre en el navegador y el otro en Apps Script, no hay
+// forma de compartir el código. La alternativa era peor — el bot tenía su
+// propia tabla ($90 entre semana / $110 fin de semana) y por eso cotizaba $90
+// en una víspera de feriado que el calendario cobra a $135.
+//
+// Reglas, iguales que en el front:
+//  · una fecha puede caer en varias categorías (un sábado que además es
+//    víspera) y GANA LA MÁS ALTA;
+//  · el promocional de una categoría solo aplica si está activo, si vale > 0 y
+//    si la fecha cae en la ventana de meses vigente.
+
+let _tarifasCache = null;   // memo por ejecución; el bot lee esto por mensaje
+function tarifasPublicas() {
+  if (_tarifasCache) return _tarifasCache;
+  const rows = getOrCreateConfig().getDataRange().getValues();
+  const m = {};
+  for (let i = 1; i < rows.length; i++) {
+    const k = rows[i][0] ? rows[i][0].toString().trim() : '';
+    if (k) m[k] = rows[i][1];
+  }
+  const n = (k, d) => { const v = parseFloat(m[k]); return isNaN(v) ? d : v; };
+  _tarifasCache = {
+    semana:  n('weekday', 90),  promoSemana:  n('promo', 0),
+    viernes: n('viernes', 110), promoViernes: n('promoViernes', 0),
+    sabado:  n('sabado', 110),  promoSabado:  n('promoSabado', 0),
+    vispera: n('vispera', 110), promoVispera: n('promoVispera', 0),
+    feriado: n('feriado', 110), promoFeriado: n('promoFeriado', 0),
+    escolar: n('escolar', 110), promoEscolar: n('promoEscolar', 0),
+    promoActiva: m['promoActive'] === true || String(m['promoActive']).toLowerCase() === 'true',
+    promoMeses:  parseInt(m['promoMeses'], 10) || 0
+  };
+  return _tarifasCache;
+}
+
+// Último mes 'yyyy-MM' con promo, o '' si no hay límite. Se calcula desde hoy,
+// así la ventana se corre sola al cambiar de mes.
+function _promoUltimoMesBackend() {
+  const t = tarifasPublicas();
+  if (!t.promoMeses || t.promoMeses <= 0) return '';
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + t.promoMeses - 1);
+  return Utilities.formatDate(d, 'America/Panama', 'yyyy-MM');
+}
+
+function _promoVigenteBackend(dateStr) {
+  const t = tarifasPublicas();
+  if (!t.promoActiva) return false;
+  const hasta = _promoUltimoMesBackend();
+  if (!hasta) return true;
+  const mes = String(dateStr).slice(0, 7);
+  const hoyMes = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM');
+  return mes >= hoyMes && mes <= hasta;
+}
+
+function precioNochePublico(dateStr) {
+  const t = tarifasPublicas();
+  const esp = getFechasEspeciales();
+  const dow = new Date(dateStr + 'T12:00:00').getDay();
+  const cats = [dow === 5 ? 'viernes' : dow === 6 ? 'sabado' : 'semana'];
+  if (esp.feriados[dateStr]) cats.push('feriado');
+  // La víspera se ata solo a feriados; dentro de una semana escolar cada día
+  // sería víspera del siguiente y la categoría perdería sentido.
+  const manana = Utilities.formatDate(
+    new Date(new Date(dateStr + 'T12:00:00').getTime() + 86400000), 'America/Panama', 'yyyy-MM-dd');
+  if (esp.feriados[manana]) cats.push('vispera');
+  if (esp.escolares[dateStr]) cats.push('escolar');
+
+  const PROMO = { semana:'promoSemana', viernes:'promoViernes', sabado:'promoSabado',
+                  vispera:'promoVispera', feriado:'promoFeriado', escolar:'promoEscolar' };
+  let max = 0;
+  cats.forEach(function(c) {
+    const base  = t[c] || t.semana;
+    const promo = t[PROMO[c]] || 0;
+    const val = (promo > 0 && _promoVigenteBackend(dateStr)) ? promo : base;
+    if (val > max) max = val;
+  });
+  return max;
+}
+
 // ─── FERIADOS ────────────────────────────────────────────────
 // Hoja editable: el admin puede borrar los que no le interesan (un feriado no
 // siempre llena la cabaña) y agregar fechas propias — un puente local, una

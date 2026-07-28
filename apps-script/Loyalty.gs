@@ -195,7 +195,7 @@ function _sendLoyaltyUnlockEmail(opts) {
   const props = PropertiesService.getScriptProperties();
   const waNum = (props.getProperty('CONTACT_WHATSAPP_NUMBER') || '50769812266').replace(/\D/g, '');
   const firstName = (opts.nombre || '').split(/\s+/)[0] || opts.nombre;
-  const subject = '¡Tu próxima noche en Las Nubes va por la casa!';
+  const subject = 'Tienes $' + LOYALTY_MONTO + ' de crédito en Las Nubes';
   const waText  = encodeURIComponent('Hola! Recibi el correo del programa Cliente Fiel — me interesa usar mi credito de $' + LOYALTY_MONTO + '.');
   const waLink  = 'https://wa.me/' + waNum + '?text=' + waText;
   const html = buildLoyaltyUnlockEmailHTML({
