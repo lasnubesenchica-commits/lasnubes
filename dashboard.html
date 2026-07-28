@@ -7841,13 +7841,8 @@ function renderList() {
   // "Julio 2026" mientras la lista traía las 502 reservas del histórico: el
   // rótulo y los datos no podían desincronizarse más.
   _ensurePeriodDefault();
-  // Hasta el último mes con llegadas registradas, para poder mirar hacia
-  // adelante desde la pestaña Check-in.
-  const _ultCheckin = reservations.reduce((mx, r) => {
-    const m = (r.checkin || '').slice(0, 7);
-    return m > mx ? m : mx;
-  }, '');
-  _renderChipsPeriodo('resMonthFilter', { hastaMes: _ultCheckin });
+  // Hasta el último mes con llegadas registradas, igual que Ocupación.
+  _renderChipsPeriodo('resMonthFilter', { hastaMes: _ultimoMesConCheckin() });
   const _pop = document.getElementById('resCustomRangePopover');
   if (_pop) _pop.style.display = (_customRangeOpen && _resTab !== 'abiertas') ? 'flex' : 'none';
 
@@ -13326,8 +13321,23 @@ function renderOcuResTable(res, ctx) {
   </tr>`;
 }
 
+// Último mes con check-in registrado. Lo usan Ocupación y Reservas para estirar
+// los chips de período hasta donde hay reservas: son las dos vistas que miran
+// hacia ADELANTE. Contabilidad y Suministros no lo usan porque miran hacia
+// atrás (ingresos por fecha de cobro, compras ya hechas) y ahí un mes futuro
+// sería un chip vacío.
+function _ultimoMesConCheckin() {
+  return reservations.reduce((mx, r) => {
+    const m = (r.checkin || '').slice(0, 7);
+    return m > mx ? m : mx;
+  }, '');
+}
+
 function renderOcupacion() {
-  _renderChipsPeriodo('ocuMonthFilter');
+  // Sin esto los chips se cortaban en el mes siguiente y una reserva de
+  // septiembre o noviembre quedaba inalcanzable salvo por Custom — justo en la
+  // pantalla donde se mira la ocupación que viene.
+  _renderChipsPeriodo('ocuMonthFilter', { hastaMes: _ultimoMesConCheckin() });
   const _ocuPop = document.getElementById('ocuCustomRangePopover');
   if (_ocuPop) _ocuPop.style.display = _customRangeOpen ? 'flex' : 'none';
 
