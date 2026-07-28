@@ -1153,6 +1153,99 @@ function sincronizarEstadoPagoConAbonoESCRIBIR() {
 
 
 // ═══════════════════════════════════════════════════════════
+//  Reservas de Airbnb sin monto en la hoja
+// ═══════════════════════════════════════════════════════════
+//
+// Caso Everett Richardson (HMSPN4MZFH, 26-29 jul 2026): la app de Airbnb dice
+// $243.00 brutos / $205.33 de payout, pero la fila quedó con Monto y Neto en
+// cero. En el dashboard eso se veía como "$0.00", indistinguible de una
+// cortesía; ahora dice "sin monto", y esta función busca de dónde sacarlo.
+//
+// Ojo con la diferencia: que el payout no haya llegado es NORMAL —el neto de
+// Airbnb se llena al cobrarse— pero el BRUTO se conoce desde el email de la
+// reserva. Sin él, la reserva vale $0 en "Ingresos del período", diluye el ADR
+// y resta a "Noches vendidas".
+//
+// Para cada fila sin monto busca su email por el código HM y extrae el Total
+// con el mismo parser que usa el sync (`_montoAirbnbANumero`), así se ve qué
+// habría que cargar antes de escribir nada.
+//
+// Solo lee y reporta. Para escribir: corregirMontosAirbnbDesdeEmailESCRIBIR().
+function diagnosticarAirbnbSinMonto() {
+  return _airbnbMontosDesdeEmail_(true);
+}
+
+function corregirMontosAirbnbDesdeEmailESCRIBIR() {
+  return _airbnbMontosDesdeEmail_(false);
+}
+
+function _airbnbMontosDesdeEmail_(dryRun) {
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+  const iso   = v => v instanceof Date ? Utilities.formatDate(v, 'America/Panama', 'yyyy-MM-dd') : (v || '').toString().slice(0, 10);
+
+  const casos = [];
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    if (!r[_R.ID]) continue;
+    if (String(r[_R.ORIGEN] || '').trim() !== 'Airbnb') continue;
+    if ((r[_R.ESTADO] || '').toString().toUpperCase() === 'CANCELADA') continue;
+    if (_cleanMoney_(r[_R.MONTO]) > 0 || _cleanMoney_(r[_R.NETO]) > 0) continue;
+    casos.push({ fila: i + 1, nombre: r[1], entrada: iso(r[_R.ENTRADA]),
+                 cod: (r[_R.COD] || '').toString().trim(),
+                 pagado: _cleanMoney_(r[_R.MONTOPAGADO]) });
+  }
+
+  Logger.log('');
+  Logger.log('═══ ' + (dryRun ? 'DRY-RUN · ' : '') + 'AIRBNB SIN MONTO EN LA HOJA ═══');
+  if (!casos.length) { Logger.log('✓ Todas las reservas de Airbnb activas tienen monto.'); return 0; }
+  Logger.log(casos.length + ' fila(s) con Monto y Neto en cero.');
+  Logger.log('');
+
+  let n = 0, sinEmail = 0;
+  casos.forEach(c => {
+    let recuperado = null, via = '';
+    if (c.cod) {
+      try {
+        const hilos = GmailApp.search('from:airbnb.com "' + c.cod + '" newer_than:730d', 0, 5);
+        for (const h of hilos) {
+          for (const m of h.getMessages()) {
+            const mm = (m.getPlainBody() || '').match(/Total\s*\(USD\)[^$]*\$\s*([\d,.]+)/i);
+            const v  = mm ? _montoAirbnbANumero(mm[1]) : 0;
+            if (v > 0) { recuperado = v; via = m.getSubject().slice(0, 40); break; }
+          }
+          if (recuperado) break;
+        }
+      } catch (e) { Logger.log('   (error buscando ' + c.cod + ': ' + e.message + ')'); }
+    }
+    const base = 'fila ' + c.fila + ' · ' + c.entrada + ' · ' + c.nombre
+               + ' · ' + (c.cod || '(SIN CÓDIGO HM)');
+    if (recuperado == null) {
+      sinEmail++;
+      Logger.log('   ✗ ' + base + ' → no se encontró el Total en ningún email'
+        + (c.cod ? '' : ' (sin código no hay por dónde buscar)'));
+      return;
+    }
+    Logger.log((dryRun ? '   [dry] ' : '   ✓ ') + base + ' → $' + recuperado.toFixed(2)
+      + '   [' + via + ']');
+    if (!dryRun) {
+      sheet.getRange(c.fila, _R.MONTO + 1).setValue(recuperado);
+      // El Neto real de Airbnb sale del payout. Mientras no haya cobro, se pone
+      // el bruto para que la reserva no valga cero en los reportes;
+      // `actualizarEstadoPagoAirbnb` lo pisa con el neto cuando el payout llega.
+      if (c.pagado <= 0) sheet.getRange(c.fila, _R.NETO + 1).setValue(recuperado);
+    }
+    n++;
+  });
+  if (!dryRun) SpreadsheetApp.flush();
+  Logger.log('');
+  Logger.log((dryRun ? '[dry-run] ' : '') + n + (dryRun ? ' recuperables del email' : ' corregidas')
+    + ' · ' + sinEmail + ' sin email que las respalde (cargar a mano).');
+  return n;
+}
+
+
+// ═══════════════════════════════════════════════════════════
 //  Voucher compartido cargado COMPLETO en cada cabaña
 // ═══════════════════════════════════════════════════════════
 //
