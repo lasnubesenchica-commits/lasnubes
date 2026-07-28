@@ -243,13 +243,16 @@ function _buildLimpiezaMessage(greeting) {
     if (!ci || !co) continue;
     const tipo = (r[24] || 'noche').toString();
 
-    // Fechas de display (mirror de _formFromStored). Hacen falta para las
-    // horas: en pasadía/early/late el rango almacenado incluye días de
-    // cortesía, así que comparar el storage contra hoy hacía caer la llegada o
-    // la salida en el día equivocado — y ahí la hora sería del huésped que no
-    // es. Las comparaciones de OCUPACIÓN de abajo siguen usando ci/co crudos, a
-    // propósito: un 'late' sí bloquea la noche extra aunque el huésped ya se
-    // haya ido.
+    // Fechas de display (mirror de _formFromStored). En pasadía/early/late el
+    // rango almacenado incluye días de cortesía, así que comparar el storage
+    // contra hoy hacía caer la llegada o la salida en el día equivocado — y ahí
+    // la hora sería la del huésped que no es.
+    //
+    // Todo el parte razona en display, incluida la ocupación, porque acá la
+    // pregunta es "¿había alguien adentro?" y no "¿estaba bloqueada?". Un día
+    // de cortesía es justamente una noche reservada con la cabaña VACÍA: con el
+    // rango crudo, una pasadía de ayer (storage día−1 → día+1) marcaba la
+    // cabaña como ocupada anoche y el parte de hoy decía "no limpiar".
     let displayCi = ci, displayCo = co;
     if (tipo === 'pasatarde')                                 { displayCo = ci; }
     else if (tipo === 'pasadia' || tipo === 'pasadia-largo')  { displayCi = _botAddDaysISO(ci, 1); displayCo = displayCi; }
@@ -287,14 +290,13 @@ function _buildLimpiezaMessage(greeting) {
 
   // Línea con personas + alerta de cama auxiliar si aplica. Se inserta
   // bajo cualquier "llega" para que Erika tenga la misma info que en la
-  // plantilla alerta_limpieza.
-  // sinCama: en estadías de un solo día nadie duerme, así que avisar de la cama
-  // auxiliar sería mandarla a armar una cama que no se va a usar.
-  const guestInfoLine = (persons, comentarios, sinCama) => {
+  // plantilla alerta_limpieza. Aplica también a pasadía/pasatarde: usan la
+  // recámara igual que una estadía de noche.
+  const guestInfoLine = (persons, comentarios) => {
     const p = parseInt(persons, 10) || 0;
     if (!p) return '';
     let s = '\n👥 ' + p + (p === 1 ? ' huésped' : ' huéspedes') + '.';
-    if (!sinCama && _botNeedsCamaAuxiliar({ persons: p, comentarios: comentarios })) {
+    if (_botNeedsCamaAuxiliar({ persons: p, comentarios: comentarios })) {
       s += '\n🛏 *Preparar cama auxiliar.*';
     }
     return s;
@@ -303,11 +305,16 @@ function _buildLimpiezaMessage(greeting) {
   let limpiar = 0;
   const lines = CABINS.map(cab => {
     const res = byCabin[cab.key];
-    // Llegada/salida por fecha de display; ocupación por el rango almacenado.
     const checkoutToday = res.find(x => x.displayCo === today);
     const checkinToday  = res.find(x => x.displayCi === today);
-    const occLastNight  = res.find(x => x.ci <= yesterday && x.co > yesterday);
-    const occTonight    = res.find(x => x.ci <= today && x.co > today);
+    // "Durmió alguien acá" = display, no storage (ver comentario de arriba).
+    const occLastNight  = res.find(x => x.displayCi <= yesterday && x.displayCo > yesterday);
+    const occTonight    = res.find(x => x.displayCi <= today     && x.displayCo > today);
+    // Anoche y esta noche tienen que ser la MISMA reserva para decir "sigue
+    // hospedado". Con dos reservas encimadas (una doble reserva, o una que
+    // empalma) `find` puede devolver filas distintas, y ahí no es una estadía
+    // que continúa sino un cambio de huésped.
+    const mismaEstadia = occTonight && occLastNight && occTonight.id === occLastNight.id;
 
     // Pasadía / pasatarde: entra y sale el MISMO día, así que la misma reserva
     // cae a la vez en checkoutToday y en checkinToday. Sin tratarla aparte, el
@@ -319,9 +326,11 @@ function _buildLimpiezaMessage(greeting) {
     if (mismoDia) {
       limpiar++;
       const etiqueta = mismoDia.tipo === 'pasatarde' ? 'pasatarde' : 'pasadía';
+      // Los pasadías usan la recámara, así que llevan cambio de sábanas igual
+      // que una estadía de noche: es limpieza completa, no un repaso.
       line += '🧹 *' + etiqueta.toUpperCase() + '* — llega ' + mismoDia.name + ' a las ' + horaLlegada(mismoDia)
-            + ' y sale a las ' + horaSalidaD(mismoDia) + '. Dejarla lista antes de que llegue y limpiar cuando salga.';
-      line += guestInfoLine(mismoDia.persons, mismoDia.comentarios, true);
+            + ' y sale a las ' + horaSalidaD(mismoDia) + '. Dejarla lista antes de que llegue; cuando salga, limpiar y cambiar sábanas.';
+      line += guestInfoLine(mismoDia.persons, mismoDia.comentarios);
       const otro = res.find(x => x.id !== mismoDia.id && x.displayCi === today);
       if (otro) {
         line += '\n⚠️ Además llega ' + otro.name + ' a las ' + horaLlegada(otro) + '.';
@@ -358,11 +367,19 @@ function _buildLimpiezaMessage(greeting) {
           line += guestInfoLine(next.persons, next.comentarios);
         }
       }
-    } else if (occTonight && occLastNight) {
+    } else if (mismaEstadia) {
       line += '✅ *No limpiar* — ' + occTonight.name + ' sigue hospedado (estadía de varias noches).';
     } else if (checkinToday && !occLastNight) {
       limpiar++;
-      line += '👀 Llega ' + checkinToday.name + ' hoy a las ' + horaLlegada(checkinToday) + '. Anoche estuvo vacía: no hace falta cambiar sábanas, solo pasa a verificar que todo esté en orden.';
+      // "Anoche estuvo vacía" no alcanza para decir "no hace falta cambiar
+      // sábanas": si ayer salió alguien —incluida una pasadía, que usa la
+      // recámara— las sábanas se usaron y la limpieza le tocaba al parte de
+      // ayer. Se lo recordamos en vez de afirmar que está limpia.
+      const salioAyer = res.find(x => x.displayCo === yesterday);
+      line += '👀 Llega ' + checkinToday.name + ' hoy a las ' + horaLlegada(checkinToday) + '.';
+      line += salioAyer
+        ? ' Ayer salió ' + salioAyer.name + ': si ya la limpiaste queda solo verificar que todo esté en orden; si no, cámbiale las sábanas antes de que llegue.'
+        : ' Anoche estuvo vacía: no hace falta cambiar sábanas, solo pasa a verificar que todo esté en orden.';
       line += guestInfoLine(checkinToday.persons, checkinToday.comentarios);
     } else if (occTonight) {
       line += '✅ *No limpiar* — ocupada.';
