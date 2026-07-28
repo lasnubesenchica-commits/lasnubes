@@ -861,6 +861,20 @@
     font-size: 11.5px; font-weight: 700; color: #8a6d3b;
     background: #f5ecd8; border-radius: 20px; padding: 2px 8px;
   }
+  /* Eliminar. En móvil no había ninguna forma de borrar una reserva: la
+     tarjeta abre el modal de edición y ese camino no ofrece borrar. Va apagado
+     y separado por una línea para que no compita con el área principal — y de
+     todos modos `deleteReservation` abre un modal de confirmación con nombre y
+     fechas, así que un toque accidental no borra nada. */
+  .res-card-del {
+    flex-shrink: 0; width: 42px; align-self: stretch;
+    border: none; border-left: 1px solid var(--border);
+    background: none; cursor: pointer;
+    font-size: 14px; opacity: .35;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .res-card-del:active { background: #fdecea; opacity: 1; }
+  @media (hover: hover) { .res-card-del:hover { background: #fdecea; opacity: 1; } }
 
   /* Resumen del filtro. En la tabla vive en el <tfoot>; acá la tabla no se
      dibuja, así que el total tiene que ir arriba o se pierde. */
@@ -7272,6 +7286,8 @@ function resCardHtml(r, modo) {
         ${falta ? `<span class="res-card-falta">Falta $${falta.toFixed(2)}</span>` : ''}
       </div>
     </button>
+    <button class="res-card-del" onclick="event.stopPropagation();deleteReservation('${r.id}')"
+            title="Eliminar reserva" aria-label="Eliminar reserva">🗑</button>
   </div>`;
 }
 
