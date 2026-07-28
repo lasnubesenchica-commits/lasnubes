@@ -2566,7 +2566,16 @@ const VENTANAS_CORTAS = [
   { tipo: 'pasatarde', ini: 12.5, fin: 19,   mismoDia: true,  label: 'Pasatarde', horario: PASATARDE_HORARIO, corto: '12:30–7pm' },
   { tipo: 'pasanoche', ini: 20,   fin: 12.5, mismoDia: false, label: 'Pasanoche', horario: PASANOCHE_HORARIO, corto: '8pm–12:30pm' }
 ];
-const LIMPIEZA_MIN = 3 * 60;     // margen mínimo entre dos estadías
+// Margen mínimo de limpieza entre dos estadías. 90 min y no 3h porque el
+// propio negocio ya define ese piso: el check-out estándar es 11am y la
+// pasatarde entra 12:30pm. Con 3h —el turnover de una noche, 11am → 2pm— se
+// descartaba justo el caso más común: la tarde libre entre un check-out normal
+// y un early/pasadía del día siguiente. Los márgenes reales que quedan:
+//   11am → pasatarde 12:30pm .... 90 min  (turnover diseñado)
+//   pasadía 5pm → pasanoche 8pm .. 3 h
+//   late 4pm → pasanoche 8pm ..... 4 h
+//   pasatarde 7pm → pasanoche 8pm  1 h → se descarta, y así debe ser
+const LIMPIEZA_MIN = 90;
 
 const _diaIdx = iso => Math.round(new Date(iso + 'T12:00:00').getTime() / 86400000);
 const _t = (iso, hora) => _diaIdx(iso) * 1440 + Math.round(hora * 60);
