@@ -1522,7 +1522,14 @@ function doGet(e) {
         recargoCombo6:          parseFloat(map['recargoCombo6'])          || 100,
         recargoPasatardePersona: parseFloat(map['recargoPasatardePersona']) || 20,
         recargoPasanochePersona: parseFloat(map['recargoPasanochePersona']) || 25,
-        recargoPasadiaPersona:   parseFloat(map['recargoPasadiaPersona'])   || 25
+        recargoPasadiaPersona:   parseFloat(map['recargoPasadiaPersona'])   || 25,
+        // Interruptor global de las ventanas cortas en el calendario público
+        // (pasatarde/pasanoche en los huecos que dejan early/late/pasadía).
+        // Default ENCENDIDO: solo se apaga poniendo 'false' en la hoja Config,
+        // así una fila ausente no desactiva la función en silencio.
+        ventanasPublicas: !(map['ventanasPublicas'] === false ||
+                            String(map['ventanasPublicas']).toLowerCase() === 'false' ||
+                            map['ventanasPublicas'] === 0)
       };
       return ContentService
         .createTextOutput(JSON.stringify({ ok: true, tarifas }))
@@ -1682,7 +1689,14 @@ function doGet(e) {
           checkout:   r[5] instanceof Date ? Utilities.formatDate(r[5], 'America/Panama', 'yyyy-MM-dd') : r[5],
           origin:     r[9],
           estadoPago: r[20] || '',
-          tipo:       r[24] || 'noche'
+          tipo:       r[24] || 'noche',
+          // Horas reales de la reserva. El calendario público las necesita para
+          // calcular qué ventana corta cabe en el hueco que deja una reserva
+          // que rompe el patrón 2pm–11am; sin ellas caería al default del tipo
+          // e ignoraría los overrides. No son datos sensibles.
+          checkoutExtendido: !!r[28],
+          horaEntrada:       _normalizeHora(r[29]),
+          horaSalida:        _normalizeHora(r[30])
         }));
       return ContentService
         .createTextOutput(JSON.stringify({ ok: true, reservations }))

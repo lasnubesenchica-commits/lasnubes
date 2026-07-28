@@ -295,7 +295,7 @@
     cursor: pointer;
   }
   .cal-day.pasatarde-only:hover { transform: scale(1.04); border-style: solid; }
-  .cal-day.pasatarde-only .pt-mark {
+  .cal-day .pt-mark {
     position: absolute; top: 3px; right: 4px;
     font-size: 9px; line-height: 1; opacity: 0.9;
   }
@@ -458,6 +458,10 @@
 
   .tc-badge.avail { background: var(--verde-light); color: var(--verde); }
   .tc-badge.occ   { background: #eee; color: var(--muted); }
+  /* Ventana corta: mismo chip, paleta ámbar y sin encogerse al lado de un
+     nombre de cabaña de dos líneas. */
+  .tc-badge.ventana { background: #fbecd0; color: #a65f04; white-space: nowrap; flex-shrink: 0; }
+  .tooltip-cabin.ventana-row { border-color: #f0d9a8; background: #fdf8ee; }
 
   .tooltip-close {
     width: 100%;
@@ -1314,6 +1318,11 @@
   </button>
   <div class="legend-item" style="margin-left:8px;">
     <div class="legend-dot" style="background:var(--border);"></div> Ocupado
+  </div>
+  <!-- Se muestra solo si hay ventanas publicadas en el rango visible: si no
+       hay ninguna, explicar un color que no aparece confunde más que ayuda. -->
+  <div class="legend-item" id="legendVentanas" style="display:none;">
+    <div class="legend-dot" style="background:#f59e0b;"></div> Ventana corta
   </div>
 </div>
 
@@ -2469,7 +2478,10 @@ async function loadData() {
     if (resData && resData.reservations) {
       reservations = resData.reservations.map(r => ({
         cabin: r.cabin, checkin: r.checkin, checkout: r.checkout,
-        origin: r.origin, estadoPago: r.estadoPago, tipo: r.tipo || 'noche'
+        origin: r.origin, estadoPago: r.estadoPago, tipo: r.tipo || 'noche',
+        // Horas reales: sin ellas el cálculo de ventanas cae al default del tipo.
+        checkoutExtendido: !!r.checkoutExtendido,
+        horaEntrada: r.horaEntrada || '', horaSalida: r.horaSalida || ''
       }));
     }
 
@@ -2485,6 +2497,7 @@ async function loadData() {
       if (t.pasatarde !== undefined)              PASATARDE_RATE            = t.pasatarde;
       if (t.pasanoche !== undefined)              PASANOCHE_RATE            = t.pasanoche;
       if (t.pasadia   !== undefined)              PASADIA_RATE              = t.pasadia;
+      if (t.ventanasPublicas !== undefined)       VENTANAS_PUBLICAS         = !!t.ventanasPublicas;
       if (t.recargoPersonaGrande   !== undefined) RECARGO_PERSONA_GRANDE    = t.recargoPersonaGrande;
       if (t.recargoPersonaPortal   !== undefined) RECARGO_PERSONA_PORTAL    = t.recargoPersonaPortal;
       if (t.recargoCombo5          !== undefined) RECARGO_COMBO_5           = t.recargoCombo5;
@@ -2518,34 +2531,106 @@ function buildOccupied(cabin) {
   return set;
 }
 
-// Días donde la cabaña está bloqueada SÓLO por cortesía (early/pasadia de
-// una reserva cuya storage.checkin cae ese día) y NINGUNA otra reserva la
-// ocupa físicamente. En esos días una pasatarde 12:30-7pm cabe técnicamente,
-// aunque implica doble limpieza — decisión operativa del admin.
-function buildCourtesyOnly(cabin) {
-  const courtesy = new Set();
-  const occupied = new Set();
-  reservations.filter(r => r.cabin === cabin && r.origin !== 'Abierta' && r.estadoPago !== 'CANCELADA').forEach(r => {
-    if (!r.checkin || !r.checkout) return;
-    const tipo = r.tipo || 'noche';
-    const startISO = r.checkin;
-    const start = new Date(startISO + 'T12:00:00');
-    const end   = new Date(r.checkout + 'T12:00:00');
-    for (let c = new Date(start); c < end; c.setDate(c.getDate()+1)) {
-      const ds = c.toISOString().slice(0,10);
-      // early: storage.checkin = arrival - 1 (cortesía prep 9am siguiente).
-      // pasadia: storage.checkin = pasadia - 1 (cortesía prep 9am siguiente).
-      // late: cortesía es storage.checkout - 1 pero la cabaña queda ocupada
-      //       hasta 4pm — pasatarde no cabe. Se excluye.
-      const isCourtesy = (tipo === 'early' || tipo === 'pasadia') && ds === startISO;
-      if (isCourtesy) courtesy.add(ds);
-      else            occupied.add(ds);
-    }
+// ─── Ventanas cortas en los huecos que rompen el patrón ───────────────
+//
+// El hospedaje regular ocupa 2pm → 11am del día siguiente. Cuando entra una
+// reserva que rompe ese patrón (early check-in 9am, late check-out 4pm,
+// pasadía 9am–5pm) queda un pedazo de día libre que ya NO se puede vender como
+// noche completa. Esas son las únicas franjas que se publican.
+//
+// El cálculo NO va por días sino por intervalos de tiempo reales: se arma la
+// ocupación en minutos absolutos y se pregunta si una ventana cabe. Razonar en
+// días enteros era justamente lo que hacía que el late check-out y la noche
+// posterior a una pasadía no se detectaran — su hueco vive dentro de un día
+// marcado como ocupado.
+const OCUPADO_HORAS = {          // [entrada, salida] en horas decimales
+  noche:           [14, 11],     // 2pm → 11am del checkout
+  early:           [ 9, 11],     // llega 9am (storage.checkin = llegada − 1)
+  late:            [14, 16],     // sale 4pm (storage.checkout = salida + 1)
+  pasadia:         [ 9, 17],
+  'pasadia-largo': [ 9, 17],
+  pasatarde:       [12.5, 19],
+  pasanoche:       [20, 12.5]
+};
+// Horarios de las ventanas cortas. Declarados acá y no junto a las tarifas
+// porque VENTANAS_CORTAS (abajo) los consume, y un `const` más abajo en el
+// archivo queda en zona muerta temporal: el calendario reventaba al cargar.
+const PASATARDE_HORARIO = '12:30 pm – 7:00 pm';
+const PASANOCHE_HORARIO = '8:00 pm – 12:30 pm día siguiente';
+const PASADIA_HORARIO   = '9:00 am – 5:00 pm';
+
+// Ventanas que se ofrecen al público cuando la noche ya no es vendible.
+const VENTANAS_CORTAS = [
+  // `horario` es el texto largo (mensaje de WhatsApp); `corto` cabe en una
+  // línea de la fila del modal, al lado del chip de acción.
+  { tipo: 'pasatarde', ini: 12.5, fin: 19,   mismoDia: true,  label: 'Pasatarde', horario: PASATARDE_HORARIO, corto: '12:30–7pm' },
+  { tipo: 'pasanoche', ini: 20,   fin: 12.5, mismoDia: false, label: 'Pasanoche', horario: PASANOCHE_HORARIO, corto: '8pm–12:30pm' }
+];
+const LIMPIEZA_MIN = 3 * 60;     // margen mínimo entre dos estadías
+
+const _diaIdx = iso => Math.round(new Date(iso + 'T12:00:00').getTime() / 86400000);
+const _t = (iso, hora) => _diaIdx(iso) * 1440 + Math.round(hora * 60);
+const _horaNum = (hhmm, fallback) => {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || ''));
+  return m ? parseInt(m[1],10) + parseInt(m[2],10)/60 : fallback;
+};
+
+// Un intervalo [desde, hasta) en minutos absolutos por reserva. Traduce el
+// rango de storage (que incluye días de cortesía) al tiempo en que la cabaña
+// está REALMENTE ocupada, respetando los overrides de hora de la reserva.
+function _intervaloReserva(r) {
+  const tipo = r.tipo || 'noche';
+  const def  = OCUPADO_HORAS[tipo] || OCUPADO_HORAS.noche;
+  let ciDia = r.checkin, coDia = r.checkout;
+  // Storage → días reales (mirror de _formFromStored).
+  if (tipo === 'early' || tipo === 'pasadia' || tipo === 'pasadia-largo') ciDia = _addDaysISO(r.checkin, 1);
+  if (tipo === 'late')                                                    coDia = _addDaysISO(r.checkout, -1);
+  if (tipo === 'pasadia' || tipo === 'pasadia-largo')                     coDia = ciDia;
+  if (tipo === 'pasatarde')                                               coDia = r.checkin;
+
+  let hIni = _horaNum(r.horaEntrada, def[0]);
+  let hFin = _horaNum(r.horaSalida,  def[1]);
+  // Cortesía de check-out 12:30 (solo aplica si no hay hora explícita).
+  if (!r.horaSalida && r.checkoutExtendido && (tipo === 'noche' || tipo === 'early')) hFin = 12.5;
+  // Guard: en estadías de un día la salida tiene que ser posterior a la
+  // entrada. Una hora inválida en datos viejos se ignora (misma red de
+  // seguridad que _horaPlantilla en el backend).
+  if (coDia === ciDia && hFin <= hIni) { hIni = def[0]; hFin = def[1]; }
+  return [_t(ciDia, hIni), _t(coDia, hFin)];
+}
+
+function buildIntervalos(cabin) {
+  return reservations
+    .filter(r => r.cabin === cabin && r.origin !== 'Abierta' && r.estadoPago !== 'CANCELADA' && r.checkin && r.checkout)
+    .map(_intervaloReserva)
+    .filter(iv => iv[1] > iv[0])
+    .sort((a, b) => a[0] - b[0]);
+}
+
+// ¿Cabe [desde, hasta) sin pisar ninguna reserva, dejando el margen de
+// limpieza a cada lado?
+function _cabe(intervalos, desde, hasta) {
+  return !intervalos.some(iv => desde < iv[1] + LIMPIEZA_MIN && iv[0] - LIMPIEZA_MIN < hasta);
+}
+
+// Ventanas publicables para una cabaña en un día.
+//
+// Primera condición, y la que manda: si el día sigue libre para hospedaje NO
+// se ofrece nada. La prioridad es vender la noche, así que las ventanas cortas
+// solo aparecen donde el patrón ya está roto.
+//
+// El "¿está libre?" se pregunta a `occSet` —el mismo Set que pinta el
+// calendario— y no a un cálculo propio sobre intervalos. Un criterio más
+// estricto podría declarar invendible una noche que el calendario muestra como
+// disponible, y terminaría ofreciendo una pasatarde de $60 donde todavía se
+// puede vender una noche de $90. Ante la duda, gana el hospedaje.
+function ventanasDelDia(intervalos, occSet, dateStr) {
+  if (!VENTANAS_PUBLICAS) return [];
+  if (!occSet.has(dateStr)) return [];        // día libre → se vende como noche
+  return VENTANAS_CORTAS.filter(v => {
+    const finDia = v.mismoDia ? dateStr : _addDaysISO(dateStr, 1);
+    return _cabe(intervalos, _t(dateStr, v.ini), _t(finDia, v.fin));
   });
-  // Si otra reserva ocupa físicamente el día → no cabe pasatarde tampoco.
-  const result = new Set();
-  courtesy.forEach(d => { if (!occupied.has(d)) result.add(d); });
-  return result;
 }
 
 let activeFilter  = 'all';
@@ -2583,12 +2668,21 @@ function _updatePromoBanner() {
 function render() {
   _updatePromoBanner();
   const today = new Date(); today.setHours(0,0,0,0);
-  const occMap = {};
-  const courtesyMap = {};
+  const occMap  = {};
+  const ivMap   = {};
   CABINS.forEach(c => {
-    occMap[c.key]      = buildOccupied(c.key);
-    courtesyMap[c.key] = buildCourtesyOnly(c.key);
+    occMap[c.key] = buildOccupied(c.key);
+    ivMap[c.key]  = buildIntervalos(c.key);
   });
+  // Cache por día: ventanasDelDia recorre todas las reservas de la cabaña y se
+  // llama una vez por cabaña y por celda del calendario.
+  const _venCache = {};
+  let _diasConVentana = 0;
+  const ventanasDe = (cabinKey, ds) => {
+    const k = cabinKey + '|' + ds;
+    if (!(k in _venCache)) _venCache[k] = ventanasDelDia(ivMap[cabinKey], occMap[cabinKey], ds);
+    return _venCache[k];
+  };
 
   // Which cabins to show based on filter
   const visibleCabins = activeFilter === 'all' ? CABINS : CABINS.filter(c => c.key === activeFilter);
@@ -2615,20 +2709,26 @@ function render() {
       const isToday  = thisDate.getTime() === today.getTime();
 
       const avail    = {};
-      const cortesia = {};
+      const ventanas = {};
       CABINS.forEach(c => {
         avail[c.key]    = !occMap[c.key].has(dateStr);
-        cortesia[c.key] = courtesyMap[c.key].has(dateStr);
+        ventanas[c.key] = isPast ? [] : ventanasDe(c.key, dateStr);
         if (avail[c.key] && !isPast) freeDays[c.key]++;
       });
 
       // Availability considering only visible cabins
       const visibleAvail    = visibleCabins.map(c => avail[c.key]);
-      const visibleCortesia = visibleCabins.map(c => cortesia[c.key]);
+      const visibleVentanas = visibleCabins.map(c => ventanas[c.key]);
       const anyFree      = visibleAvail.some(Boolean);
-      const anyCortesia  = visibleCortesia.some(Boolean);
+      const anyCortesia  = visibleVentanas.some(v => v.length > 0);
       const allOccupied  = !anyFree && !anyCortesia;
       const pasatardeOnly = !anyFree && anyCortesia;
+      if (anyCortesia && !isPast) _diasConVentana++;
+      // Etiqueta del día: si en las cabañas visibles solo se ofrece un tipo de
+      // ventana se nombra ("Pasatarde"); si hay de las dos, "Ventanas".
+      const tiposVentana = new Set();
+      visibleVentanas.forEach(vs => vs.forEach(v => tiposVentana.add(v.label)));
+      const ventanaLabel = tiposVentana.size === 1 ? [...tiposVentana][0] : 'Ventanas';
 
       let cls = 'cal-day';
       if      (allOccupied)                     cls += ' all-occupied';
@@ -2644,14 +2744,19 @@ function render() {
       const onclick   = clickable ? ` onclick="showDetail('${dateStr}')"` : '';
 
       const dots = visibleCabins.map(c => {
-        const state = avail[c.key] ? 'avail' : (cortesia[c.key] ? 'pasatarde-only' : 'occupied');
+        const state = avail[c.key] ? 'avail' : (ventanas[c.key].length ? 'pasatarde-only' : 'occupied');
         return `<div class="cdot ${c.key} ${state}"></div>`;
       }).join('');
 
       const priceHtml = anyFree && !isPast
         ? `<div class="day-price">$${precio}</div>`
-        : (pasatardeOnly && !isPast ? `<div class="day-price" style="color:#c2700a;">Pasatarde</div>` : '');
-      const ptMark = pasatardeOnly && !isPast ? '<span class="pt-mark">🌇</span>' : '';
+        : (pasatardeOnly && !isPast ? `<div class="day-price" style="color:#c2700a;">${ventanaLabel}</div>` : '');
+      // La marca 🌇 sale en CUALQUIER día con ventana, aunque otra cabaña
+      // tenga la noche libre. El color de la celda lo sigue mandando la
+      // disponibilidad de hospedaje —esa es la prioridad—; la ventana es un
+      // extra que se anuncia sin competirle. El punto de la cabaña (ámbar) dice
+      // cuál es.
+      const ptMark = anyCortesia && !isPast ? '<span class="pt-mark">🌇</span>' : '';
 
       cells += `<div class="${cls}"${onclick}>
         ${ptMark}
@@ -2682,6 +2787,8 @@ function render() {
   </div>`;
 
   document.getElementById('root').innerHTML = html || '<div style="text-align:center;padding:40px;color:var(--muted);">Sin datos.</div>';
+  const legVen = document.getElementById('legendVentanas');
+  if (legVen) legVen.style.display = _diasConVentana > 0 ? 'flex' : 'none';
 }
 
 // ── ADMIN MODE (?admin=1) ─────────────────────────────────────────
@@ -2698,9 +2805,9 @@ let _adminPersonas = 2;           // 2..6 (solo aplica a hospedaje)
 let PASATARDE_RATE    = 60;  // pasatarde 12:30 pm – 7:00 pm
 let PASANOCHE_RATE    = 75;  // pasanoche 8:00 pm día X – 12:30 pm día X+1
 let PASADIA_RATE      = 75;  // pasadía 9:00 am – 5:00 pm
-const PASATARDE_HORARIO = '12:30 pm – 7:00 pm';
-const PASANOCHE_HORARIO = '8:00 pm – 12:30 pm día siguiente';
-const PASADIA_HORARIO   = '9:00 am – 5:00 pm';
+// Interruptor de las ventanas cortas en el calendario público. Encendido por
+// defecto; se apaga con la fila `ventanasPublicas` = false en la hoja Config.
+let VENTANAS_PUBLICAS = true;
 
 // Recargos por persona extra en hospedaje (3-4 personas), por noche.
 // Portal solo tiene 1 cama matrimonial → traer colchon inflable.
@@ -2767,12 +2874,14 @@ function showDetail(dateStr) {
   _adminNights   = 1;
   _adminPersonas = 2;
 
-  // Auto-detectar día pasatarde-only: si NO hay hospedaje libre pero SÍ
-  // hay al menos una cabaña libre por cortesía → forzar tipo=pasatarde para
-  // que la ventana 12:30-7pm sea la que se cotice / reserve por defecto.
+  // Si NO hay hospedaje libre pero sí alguna ventana corta, se abre el modal
+  // ya cotizando esa ventana en vez del hospedaje: es lo único que se puede
+  // vender ese día. Si hay más de un tipo, gana el primero de VENTANAS_CORTAS
+  // (pasatarde), que es el de la franja más temprana.
   const anyHospFree = CABINS.some(c => !buildOccupied(c.key).has(dateStr));
-  const anyPtOnly   = CABINS.some(c =>  buildCourtesyOnly(c.key).has(dateStr));
-  _adminTipo = (!anyHospFree && anyPtOnly) ? 'pasatarde' : 'hospedaje';
+  const ventanasHoy = CABINS.map(c => ventanasDelDia(buildIntervalos(c.key), buildOccupied(c.key), dateStr));
+  const primeraVen  = VENTANAS_CORTAS.find(v => ventanasHoy.some(vs => vs.some(x => x.tipo === v.tipo)));
+  _adminTipo = (!anyHospFree && primeraVen) ? primeraVen.tipo : 'hospedaje';
 
   const d     = new Date(dateStr + 'T12:00:00');
   const label = d.toLocaleDateString('es-PA', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
@@ -2870,18 +2979,36 @@ function updateModalPriceAndCabins() {
     priceEl.textContent = '$' + getTotalPrecio(dateStr, nights) + ' total · ' + nights + ' noches · check-out ' + formatDayShort(checkoutD);
   }
 
-  const occMap = {};
-  const courtesyMap = {};
+  const occMap  = {};
+  const ivMap   = {};
   CABINS.forEach(c => {
-    occMap[c.key]      = buildOccupied(c.key);
-    courtesyMap[c.key] = buildCourtesyOnly(c.key);
+    occMap[c.key] = buildOccupied(c.key);
+    ivMap[c.key]  = buildIntervalos(c.key);
   });
-  // Para pasatarde, un día de cortesía NO bloquea la cabaña (la ventana
-  // 12:30-7pm queda libre). Helper de bloqueo aware de tipo.
+  // Cache por día: ventanasDelDia recorre todas las reservas de la cabaña y se
+  // llama una vez por cabaña y por celda del calendario.
+  const _venCache = {};
+  const ventanasDe = (cabinKey, ds) => {
+    const k = cabinKey + '|' + ds;
+    if (!(k in _venCache)) _venCache[k] = ventanasDelDia(ivMap[cabinKey], occMap[cabinKey], ds);
+    return _venCache[k];
+  };
+  // ¿Esta cabaña queda descartada para el tipo elegido?
+  //
+  // Para hospedaje manda el Set de días ocupados, como siempre. Para las
+  // ventanas cortas la pregunta es otra: no si el día está ocupado —casi
+  // siempre lo está, porque justamente viven dentro de días bloqueados— sino
+  // si la franja concreta cabe entre las reservas con su margen de limpieza.
+  // Antes esto solo contemplaba la cortesía de early/pasadía y por eso una
+  // pasanoche detrás de un late check-out se daba por imposible.
+  const FRANJA_TIPO = { pasatarde: [12.5, 19, true], pasanoche: [20, 12.5, false], pasadia: [9, 17, true] };
   const blocksTipo = (cabinKey, ds) => {
-    if (!occMap[cabinKey].has(ds)) return false;
-    if (tipo === 'pasatarde' && courtesyMap[cabinKey].has(ds)) return false;
-    return true;
+    const f = FRANJA_TIPO[tipo];
+    if (!f) return occMap[cabinKey].has(ds);
+    // La franja se ancla en el día base: es una sola estadía, no una noche por
+    // fecha, así que o cabe entera o no cabe.
+    const finDia = f[2] ? dateStr : _addDaysISO(dateStr, 1);
+    return !_cabe(ivMap[cabinKey], _t(dateStr, f[0]), _t(finDia, f[1]));
   };
 
   let cabinsHtml;
@@ -2954,6 +3081,27 @@ function updateModalPriceAndCabins() {
           + '</div>'
           + '</div>';
       } else {
+        // La noche está tomada, pero puede quedar una ventana corta vendible.
+        // Se ofrece aunque el modal esté cotizando hospedaje: cada cabaña es
+        // inventario aparte, así que una pasatarde en Portal no le quita nada
+        // a una noche libre en Paseo. Solo aplica en modo hospedaje; con una
+        // ventana ya seleccionada, blocksTipo ya decidió arriba.
+        const vs = isHosp ? ventanasDelDia(ivMap[c.key], occMap[c.key], dateStr) : [];
+        if (vs.length) {
+          const v = vs[0];
+          const precio = _precioPasadia(v.tipo, personas);
+          const call = 'openVentana(\'' + dateStr + '\',\'' + c.key + '\',\'' + v.tipo + '\')';
+          return '<div class="tooltip-cabin avail ventana-row">'
+            + '<div class="tc-left" onclick="' + call + '" style="cursor:pointer;flex:1;min-width:0;">'
+            + '<div class="tc-dot" style="background:var(--' + c.key + ');"></div>'
+            + '<span style="line-height:1.45;">' + c.name
+            +   '<br><span style="color:#a65f04;font-size:12px;font-weight:600;">🌇 ' + v.label + ' $' + precio + '</span>'
+            +   '<span style="color:var(--muted);font-size:11.5px;"> · ' + v.corto + '</span>'
+            + '</span>'
+            + '</div>'
+            + '<span class="tc-badge ventana" onclick="' + call + '" style="cursor:pointer;">Solicitar</span>'
+            + '</div>';
+        }
         return '<div class="tooltip-cabin occ">'
           + '<div class="tc-left"><div class="tc-dot" style="background:var(--border);"></div><span>' + c.name + '</span></div>'
           + '<span class="tc-badge occ">Ocupada</span>'
@@ -3047,6 +3195,16 @@ function openWA(dateStr, cabinKey) {
     personas: pers,
     tipo: tipo,
     isCombo: false
+  });
+  window.open('https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg), '_blank');
+}
+
+// Solicitar una ventana corta desde una fila que el modal está cotizando como
+// hospedaje. No toca _adminTipo: el modal sigue mostrando hospedaje para las
+// cabañas que sí lo tienen libre, y solo este mensaje sale con la ventana.
+function openVentana(dateStr, cabinKey, tipo) {
+  const msg = _buildClientReservaMessage({
+    dateStr, cabinKey, nights: 1, personas: _adminPersonas || 2, tipo: tipo, isCombo: false
   });
   window.open('https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg), '_blank');
 }
