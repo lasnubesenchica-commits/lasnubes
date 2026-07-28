@@ -106,10 +106,14 @@
   .hero:not(.hero-disp) .hb-name { display: none; }
 
   /* Instrucción del calendario, ya fuera del hero. */
+  /* Pertenece al calendario, no a los filtros: por eso el aire va arriba. El
+     padding superior de <main> se recorta en esta sección para que quede
+     pegado a la reja de días. */
   .cal-hint {
-    max-width: 560px; margin: 0 auto 12px; padding: 0 20px;
+    max-width: 560px; margin: 26px auto 0; padding: 0 20px;
     text-align: center; font-size: 13px; line-height: 1.55; color: var(--muted);
   }
+  #section-disponibilidad main { padding-top: 10px; }
 
   .hero-title {
     font-family: 'Cormorant Garamond', serif;
@@ -124,6 +128,9 @@
   }
 
   .hero-title span { font-style: italic; color: #b3e0a8; }
+  /* La palabra de la cabaña va en su color, en redonda: el itálico es de la
+     marca ("Las *Nubes*") y aquí confundiría los dos. */
+  .hero-title .ht-cab { font-style: normal; }
 
   .hero-sub {
     font-size: 14px;
@@ -1392,7 +1399,7 @@
   <div class="hero-brand">
     <span class="hb-name">Las <span>Nubes</span></span>
     <a class="hero-location" href="https://maps.google.com/?q=8.639400,-79.945900" target="_blank">
-      📍 Buenos Aires, Chame · En las faldas de Chicá · Panamá Oeste
+      📍 Buenos Aires, Chame · En las faldas de Chicá
     </a>
   </div>
   <h1 class="hero-title" id="heroTitle">Las <span>Nubes</span></h1>
@@ -3985,15 +3992,22 @@ function updateLightbox() {
 // `foto` fija la imagen; sin ella se usa la primera de GALERIA, que es la de la
 // galería y no siempre es la que mejor representa a la cabaña.
 const CABINS_INTRO = [
-  { key:'verde', nombre:'Paseo por Las Nubes',   corto:'Paseo',
+  { key:'verde', nombre:'Paseo por Las Nubes',   corto:'Paseo',  tono:'#b3e0a8',
     personas:'Hasta 4 personas', cama:'Cama king + cama twin', nota:'Baño al aire libre entre árboles' },
-  { key:'azul',  nombre:'Portal hacia Las Nubes', corto:'Portal',
+  { key:'azul',  nombre:'Portal hacia Las Nubes', corto:'Portal', tono:'#a8cdf0',
     personas:'2 personas', cama:'Cama full matrimonial', nota:'Cocina exterior con vista a las montañas',
     // Silla colgante. La alternativa es .../d/1Nds1GCD5K44A4Ap4P9_-jMjWbBpJwYa3
     foto:'https://lh3.googleusercontent.com/d/171GVtaWLZAZCqds8yXLOVfVUgbT1URfy' },
-  { key:'lila',  nombre:'Puente entre Las Nubes', corto:'Puente',
+  { key:'lila',  nombre:'Puente entre Las Nubes', corto:'Puente', tono:'#cbb4ef',
     personas:'Hasta 4 personas', cama:'Cama queen + auxiliar full', nota:'120 m² de jardines · terraza techada' }
 ];
+
+// "Paseo por Las Nubes" → "<Paseo en su color> por Las Nubes". `corto` es
+// siempre la primera palabra del nombre, así que basta con cortar por su largo.
+function _heroTitularHTML(c) {
+  return '<span class="ht-cab" style="color:' + c.tono + ';">' + c.corto + '</span>'
+       + c.nombre.slice(c.corto.length);
+}
 
 const HERO_ROTA_MS = 6500;
 let _heroIdx = 0, _heroTimer = null;
@@ -4029,7 +4043,7 @@ function _heroPintarDetalle(i) {
   const c = CABINS_INTRO[i];
   // El titular grande ES la cabaña que se está mostrando.
   const t = document.getElementById('heroTitle');
-  if (t && document.querySelector('.hero.hero-disp')) t.textContent = c.nombre;
+  if (t && document.querySelector('.hero.hero-disp')) t.innerHTML = _heroTitularHTML(c);
   el.innerHTML =
       '<div class="hc-meta"><span>👥 ' + c.personas + '</span><span>🛏 ' + c.cama + '</span><span>✨ ' + c.nota + '</span></div>'
     + '<div class="hc-links">'
@@ -4089,8 +4103,8 @@ function _heroDispClass(name) {
   // cabaña en Gastronomía o Actividades no viene al caso.
   const t = document.getElementById('heroTitle');
   if (t) {
-    if (disp) t.textContent = (CABINS_INTRO[_heroIdx] || CABINS_INTRO[0]).nombre;
-    else      t.innerHTML   = 'Las <span>Nubes</span>';
+    if (disp) t.innerHTML = _heroTitularHTML(CABINS_INTRO[_heroIdx] || CABINS_INTRO[0]);
+    else      t.innerHTML = 'Las <span>Nubes</span>';
   }
 }
 
