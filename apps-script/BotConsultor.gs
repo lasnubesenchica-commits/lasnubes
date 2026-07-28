@@ -15,8 +15,34 @@
 const BOT_TZ = 'America/Panama';
 
 // ─── Tarifas (espejo de index.html — eventualmente leer de Config) ──
+// Fallback si no se puede leer Config. El precio real sale de
+// precioNochePublico() en Parser.gs, que lee la hoja y aplica tipo de día,
+// promoción vigente y feriados. Estos dos números NO se usan para cotizar
+// salvo que la lectura falle.
 const BOT_RATE_WEEKDAY = 90;
 const BOT_RATE_WEEKEND = 110;
+
+// Texto de tarifas armado desde Config, para que el bot nunca anuncie un
+// precio que el calendario no cobra.
+function _botTextoTarifas() {
+  const t = tarifasPublicas();
+  const vig = function(cat, promoCat) {
+    const p = t[promoCat] || 0;
+    return (p > 0 && t.promoActiva) ? '*$' + p + '* (antes $' + t[cat] + ')' : '*$' + t[cat] + '*';
+  };
+  let s = '• Domingo a jueves: ' + vig('semana', 'promoSemana') + '/noche\n'
+        + '• Viernes: ' + vig('viernes', 'promoViernes') + '/noche\n'
+        + '• Sábado: ' + vig('sabado', 'promoSabado') + '/noche\n';
+  // Solo se nombran si cuestan distinto: listar categorías que valen lo mismo
+  // que un día normal es ruido que además suena a letra chica.
+  const extras = [];
+  if (t.feriado !== t.semana) extras.push('feriados $' + t.feriado);
+  if (t.vispera !== t.semana) extras.push('vísperas de feriado $' + t.vispera);
+  if (t.escolar !== t.semana || (t.promoSemana > 0 && t.promoEscolar === 0))
+    extras.push('vacaciones escolares $' + t.escolar);
+  if (extras.length) s += '\n_' + extras.join(' · ') + '._\n';
+  return s;
+}
 const BOT_RECARGO_PERSONA_GRANDE = 20;  // Paseo, Puente
 const BOT_RECARGO_PERSONA_PORTAL = 10;  // Portal
 const BOT_RECARGO_COMBO_5 = 80;          // 5 personas: Puente + Portal contiguas, por noche
@@ -437,8 +463,7 @@ function _botSendPricingInfo(from, contactName, conv) {
   const msg =
     '💰 *Tarifas por noche · 2 personas*\n\n' +
     'Mismo precio en las tres cabañas (*Paseo*, *Portal* y *Puente*):\n\n' +
-    '• Domingo a jueves: *$' + BOT_RATE_WEEKDAY + '/noche*\n' +
-    '• Viernes y sábado: *$' + BOT_RATE_WEEKEND + '/noche*\n\n' +
+    _botTextoTarifas() + '\n' +
     '_Para 3 o 4 personas hay un pequeño recargo por persona adicional._\n\n' +
     '¿Quieres verificar disponibilidad para alguna fecha? Dime *fechas* y *personas* (ej: _"del 5 al 8 de junio, 2 personas"_) y te cotizo al instante. 🤝';
   sendWhatsAppText(from, msg);
@@ -766,8 +791,8 @@ function _botKnowledgeBase() {
 '- *Puente entre Las Nubes*: 2-4 personas (cama queen + cama auxiliar)\n' +
 'Las tres son independientes, privadas y de uso exclusivo de quienes reservan.\n\n' +
 '## TARIFAS POR NOCHE (2 personas)\n' +
-'- Domingo a jueves: $' + BOT_RATE_WEEKDAY + '/noche (mismo precio en las 3 cabañas)\n' +
-'- Viernes y sábado: $' + BOT_RATE_WEEKEND + '/noche\n' +
+_botTextoTarifas().replace(/\*/g, '').replace(/^•/gm, '-') +
+'- Mismo precio en las 3 cabañas\n' +
 '- 3-4 personas: recargo pequeño por persona adicional ($' + BOT_RECARGO_PERSONA_PORTAL + ' en Portal, $' + BOT_RECARGO_PERSONA_GRANDE + ' en Paseo/Puente)\n' +
 '- Niños menores de 5 años NO pagan\n' +
 '- 5-6 personas: combo Puente + Portal (cabañas contiguas), cotización aparte\n\n' +
@@ -1120,9 +1145,20 @@ function _botNightsBreakdown(checkin, checkout, personas) {
   return out;
 }
 
+// Delega en el tarifario real (Parser.gs · precioNochePublico). Antes tenía su
+// propia tabla de dos precios: en una víspera de feriado cotizaba $90 cuando el
+// calendario cobra $135, y durante una promoción cotizaba $90 cuando el precio
+// vigente era $75. El bot y el sitio deben decir el mismo número.
 function _botPrecioPorNoche(dateStr) {
-  const dow = new Date(dateStr + 'T12:00:00').getDay();
-  return (dow === 5 || dow === 6) ? BOT_RATE_WEEKEND : BOT_RATE_WEEKDAY;
+  try {
+    return precioNochePublico(dateStr);
+  } catch (e) {
+    // Si Config o la hoja de feriados fallan, cotizar de menos sería peor que
+    // cotizar el fallback histórico.
+    logDebugEntry('bot-precio-fallback', { fecha: dateStr, error: e.message });
+    const dow = new Date(dateStr + 'T12:00:00').getDay();
+    return (dow === 5 || dow === 6) ? BOT_RATE_WEEKEND : BOT_RATE_WEEKDAY;
+  }
 }
 
 function _botPrecioCabin(cabin, checkin, checkout, personas) {
