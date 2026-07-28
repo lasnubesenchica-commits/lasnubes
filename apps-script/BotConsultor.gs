@@ -2528,11 +2528,14 @@ function _botFindNextReservationForCabin(cabinKey, excludeReservaId) {
     if (!ci) continue;
     const tipo = (r[24] || 'noche').toString();
     let displayCi = ci;
-    if (tipo === 'pasadia' || tipo === 'early') displayCi = _botAddDaysISO(ci, 1);
+    if (tipo === 'pasadia' || tipo === 'pasadia-largo' || tipo === 'early') displayCi = _botAddDaysISO(ci, 1);
     if (displayCi < today) continue;   // ya pasó
     const next = {
       persons: parseInt(r[6], 10) || 0,
       comentarios: (r[22] || '').toString(),
+      // Sin el tipo no se puede decidir la cama auxiliar: una pasadía no la
+      // lleva. Ver _botTextoCamaAuxiliar.
+      tipo: tipo,
       displayCheckin: displayCi
     };
     if (!best || displayCi < best.displayCheckin) best = next;
@@ -2546,16 +2549,59 @@ function _botFindNextReservationForCabin(cabinKey, excludeReservaId) {
 function _botNeedsCamaAuxiliar(reserva) {
   if (!reserva) return false;
   if ((reserva.persons || 0) >= 3) return true;
-  const lower = String(reserva.comentarios || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return _botComentarioPideCama(reserva);
+}
+
+// Solo la parte de comentarios. Separada porque en las cabañas sin cama
+// auxiliar el motivo cambia el mensaje: 3+ personas es un acuerdo previo
+// (el cliente trae colchón), un pedido escrito no lo es.
+function _botComentarioPideCama(reserva) {
+  const lower = String((reserva && reserva.comentarios) || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   return /cama auxiliar|cama adicional|cama extra|preparar cama|cuna/.test(lower);
 }
 
+// Cabañas que NO tienen cama auxiliar. Portal no tiene: cuando una reserva de
+// 3+ personas cae ahí es porque el cliente acordó traer colchón inflable, así
+// que pedir "preparar cama auxiliar" sería mandar a buscar algo que no existe.
+const CABANAS_SIN_CAMA_AUXILIAR = { azul: true };   // azul = Portal hacia Las Nubes
+
+// Estadías de un solo día (pasadía / pasadía largo / pasatarde): nadie duerme,
+// así que no llevan cama auxiliar. Ojo, `pasanoche` NO entra acá — ese sí es
+// una noche. Y no llevar cama auxiliar no significa no limpiar: usan la
+// recámara igual, así que el cambio de sábanas va completo.
+function _esEstadiaUnDia(tipo) {
+  const t = (tipo || '').toString();
+  return t === 'pasadia' || t === 'pasadia-largo' || t === 'pasatarde';
+}
+
+// Texto del aviso de cama para una reserva, o '' si no aplica. Fuente única
+// para el parte diario de limpieza y para la plantilla alerta_limpieza: si cada
+// una decidiera por su cuenta, terminarían diciéndole cosas distintas a Erika
+// sobre la misma reserva.
+function _botTextoCamaAuxiliar(reserva, cabinKey) {
+  if (!reserva) return '';
+  if (_esEstadiaUnDia(reserva.tipo)) return '';
+  const porPersonas   = (reserva.persons || 0) >= 3;
+  const porComentario = _botComentarioPideCama(reserva);
+  if (!porPersonas && !porComentario) return '';
+  if (!CABANAS_SIN_CAMA_AUXILIAR[cabinKey]) return 'Preparar cama auxiliar.';
+  // En una cabaña sin cama auxiliar el motivo importa. Con 3+ personas está
+  // acordado de antemano que el cliente trae colchón inflable. Si el pedido
+  // sale de un comentario (una cuna, una cama extra) no hay tal acuerdo, así
+  // que no se puede afirmar que traiga nada: se avisa para confirmarlo.
+  return porPersonas
+    ? 'Sin cama auxiliar en esta cabaña: el cliente trae colchón inflable.'
+    : 'Ojo: piden cama/cuna en los comentarios y esta cabaña no tiene cama auxiliar. Confírmalo con Josh.';
+}
+
 // Texto del {{3}} de la plantilla alerta_limpieza. Siempre devuelve algo
-// (Meta no acepta variables vacías).
-function _botBuildLimpiezaContextLine(nextReserva) {
+// (Meta no acepta variables vacías) y en una sola línea (Meta rechaza los
+// params con saltos de línea).
+function _botBuildLimpiezaContextLine(nextReserva, cabinKey) {
   if (!nextReserva) return '📅 Sin próxima reserva agendada por ahora.';
-  if (_botNeedsCamaAuxiliar(nextReserva)) {
-    return '🛏 Preparar cama auxiliar para la próxima reserva (' + nextReserva.persons + ' huéspedes).';
+  const cama = _botTextoCamaAuxiliar(nextReserva, cabinKey);
+  if (cama) {
+    return '🛏 ' + cama + ' Próxima reserva: ' + nextReserva.persons + ' huéspedes.';
   }
   return '📅 Próxima reserva: ' + nextReserva.persons + ' huéspedes (cama normal).';
 }
@@ -2697,7 +2743,7 @@ function _botHandleCheckoutDone(from, contactName, reservaId) {
     const limpiezaPhone = PropertiesService.getScriptProperties().getProperty('LIMPIEZA_PHONE');
     if (limpiezaPhone) {
       const next = _botFindNextReservationForCabin(reserva && reserva.cabin, reserva && reserva.id);
-      const ctxLine = _botBuildLimpiezaContextLine(next);
+      const ctxLine = _botBuildLimpiezaContextLine(next, reserva && reserva.cabin);
       sendWhatsAppTemplate(limpiezaPhone, 'alerta_limpieza_', 'es_ES', [
         cabinName,
         guestName,
