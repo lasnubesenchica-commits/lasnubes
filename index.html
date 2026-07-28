@@ -365,6 +365,12 @@
     cursor: pointer;
   }
   .cal-day.pasatarde-only:hover { transform: scale(1.04); border-style: solid; }
+  /* Estrella llena = feriado · vacía = víspera. Va a la izquierda para no
+     chocar con el 🌇 de ventana corta, que ocupa la esquina derecha. */
+  .cal-day .fer-mark {
+    position: absolute; top: 2px; left: 4px;
+    font-size: 9px; line-height: 1; color: #c2700a; opacity: .85;
+  }
   .cal-day .pt-mark {
     position: absolute; top: 3px; right: 4px;
     font-size: 9px; line-height: 1; opacity: 0.9;
@@ -854,6 +860,13 @@
     .hc-detail { font-size: 12px; margin-top: 10px; }
     .hc-meta { gap: 2px 10px; }
   }
+
+  .rate-in {
+    width: 100%; border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 8px; font-size: 14px; font-family: 'DM Sans', sans-serif;
+    color: var(--text); background: var(--bg); outline: none; text-align: center;
+  }
+  .rate-in.promo-in:disabled { opacity: .45; }
 
   .legend-filter {
     display: flex;
@@ -1451,7 +1464,7 @@
   <div class="promo-banner-body">
     <div class="promo-banner-title">Tarifa promocional activa</div>
     <div class="promo-banner-text">
-      Domingo a jueves desde <strong>$<span id="promoBannerPrice"></span></strong> por noche
+      <span id="promoBannerDias">Domingo a jueves</span> desde <strong>$<span id="promoBannerPrice"></span></strong> por noche
       <span class="promo-banner-strike">antes $<span id="promoBannerOrig"></span></span>
     </div>
     <div class="promo-banner-note">Aplica solo para reservas <strong>directas</strong> vía WhatsApp</div>
@@ -2544,41 +2557,51 @@
       <div style="font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:400;color:var(--text);">⚙️ Configurar tarifas</div>
     </div>
 
-    <div style="margin-bottom:14px;">
-      <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Dom – Jue (semana)</label>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:14px;color:var(--muted);">$</span>
-        <input id="rateWeekday" type="number" min="1" step="1" value="90"
-          style="flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:15px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--bg);outline:none;">
+    <!-- Una fila por tipo de día, con su precio normal y su promocional. En
+         columnas y no en bloques sueltos porque lo que el admin compara es
+         justamente normal vs promo del mismo día, y viernes contra sábado. -->
+    <div style="display:grid;grid-template-columns:1fr 84px 84px;gap:8px 10px;align-items:center;margin-bottom:16px;">
+      <div></div>
+      <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;text-align:center;">Normal</div>
+      <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;text-align:center;">Promo</div>
+
+      <label style="font-size:12.5px;color:var(--text);">Dom – Jue</label>
+      <input id="rateWeekday" type="number" min="0" step="1" class="rate-in">
+      <input id="ratePromo"   type="number" min="0" step="1" class="rate-in promo-in">
+
+      <label style="font-size:12.5px;color:var(--text);">Viernes</label>
+      <input id="rateViernes"  type="number" min="0" step="1" class="rate-in">
+      <input id="promoViernes" type="number" min="0" step="1" class="rate-in promo-in">
+
+      <label style="font-size:12.5px;color:var(--text);">Sábado</label>
+      <input id="rateSabado"  type="number" min="0" step="1" class="rate-in">
+      <input id="promoSabado" type="number" min="0" step="1" class="rate-in promo-in">
+
+      <label style="font-size:12.5px;color:var(--text);">Víspera feriado</label>
+      <input id="rateVispera"  type="number" min="0" step="1" class="rate-in">
+      <input id="promoVispera" type="number" min="0" step="1" class="rate-in promo-in">
+
+      <label style="font-size:12.5px;color:var(--text);">Feriado</label>
+      <input id="rateFeriado"  type="number" min="0" step="1" class="rate-in">
+      <input id="promoFeriado" type="number" min="0" step="1" class="rate-in promo-in">
+    </div>
+
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+      <label style="font-size:12px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Aplicar tarifas promocionales</label>
+      <div style="position:relative;display:inline-block;flex-shrink:0;">
+        <input type="checkbox" id="promoToggle" onchange="togglePromo()" style="opacity:0;position:absolute;width:0;height:0;">
+        <label for="promoToggle" id="promoToggleLabel" style="display:flex;align-items:center;width:38px;height:22px;background:var(--border);border-radius:11px;cursor:pointer;transition:background 0.2s;padding:2px;">
+          <span id="promoToggleThumb" style="width:18px;height:18px;background:#fff;border-radius:50%;transition:transform 0.2s;display:block;box-shadow:0 1px 3px rgba(0,0,0,0.2);"></span>
+        </label>
       </div>
     </div>
 
-    <div style="margin-bottom:14px;">
-      <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Vie – Sáb (fin de semana)</label>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:14px;color:var(--muted);">$</span>
-        <input id="rateWeekend" type="number" min="1" step="1" value="110"
-          style="flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:15px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--bg);outline:none;">
-      </div>
-    </div>
-
-    <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:20px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <label style="font-size:12px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Tarifa promocional (Dom–Jue)</label>
-        <div style="position:relative;display:inline-block;">
-          <input type="checkbox" id="promoToggle" onchange="togglePromo()" style="opacity:0;position:absolute;width:0;height:0;">
-          <label for="promoToggle" id="promoToggleLabel" style="display:flex;align-items:center;width:38px;height:22px;background:var(--border);border-radius:11px;cursor:pointer;transition:background 0.2s;padding:2px;">
-            <span id="promoToggleThumb" style="width:18px;height:18px;background:#fff;border-radius:50%;transition:transform 0.2s;display:block;box-shadow:0 1px 3px rgba(0,0,0,0.2);"></span>
-          </label>
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:14px;color:var(--muted);">$</span>
-        <input id="ratePromo" type="number" min="1" step="1" value="75"
-          style="flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:15px;font-family:'DM Sans',sans-serif;color:var(--text);background:#fff;outline:none;"
-          disabled>
-      </div>
-    </div>
+    <p style="font-size:11.5px;color:var(--muted);line-height:1.55;margin:0 0 14px;">
+      Promo en <strong>0</strong> = ese tipo de día no entra en la promoción.
+      Si una fecha cae en dos categorías (un sábado que además es víspera),
+      se cobra <strong>la más alta</strong>.
+      <span id="ratesFeriadosNota"></span>
+    </p>
 
     <div id="ratesSaveStatus" style="display:none;font-size:12px;color:var(--verde);text-align:center;margin-bottom:10px;"></div>
 
@@ -2611,10 +2634,43 @@ let RATE_WEEKEND = 110;
 let RATE_PROMO   = 75;
 let PROMO_ACTIVE = false;
 
+// ── Precio de una noche ──────────────────────────────────────────────
+// Una fecha puede caer en varias categorías a la vez: un sábado que además es
+// víspera de feriado es las dos cosas. La regla es GANA EL MÁS ALTO, para no
+// perder plata por un cruce y para no tener que recordar una jerarquía.
+//
+// El precio efectivo de cada categoría es su promocional si la promo está
+// activa Y esa categoría tiene uno; si vale 0 significa "sin promo acá" y se
+// cobra el normal. Así se puede tener promo entre semana sin regalar feriados.
+function _catsDelDia(dateStr) {
+  const dow  = new Date(dateStr + 'T12:00:00').getDay();
+  const cats = [dow === 5 ? 'viernes' : dow === 6 ? 'sabado' : 'semana'];
+  if (FERIADOS[dateStr]) cats.push('feriado');
+  if (FERIADOS[_addDaysISO(dateStr, 1)]) cats.push('vispera');
+  return cats;
+}
+
+function _precioCat(cat) {
+  const base  = { semana: RATE_WEEKDAY, viernes: RATE_VIERNES, sabado: RATE_SABADO,
+                  vispera: RATE_VISPERA, feriado: RATE_FERIADO }[cat] || RATE_WEEKDAY;
+  const promo = { semana: RATE_PROMO,   viernes: PROMO_VIERNES, sabado: PROMO_SABADO,
+                  vispera: PROMO_VISPERA, feriado: PROMO_FERIADO }[cat] || 0;
+  return (PROMO_ACTIVE && promo > 0) ? promo : base;
+}
+
 function getPrecio(dateStr) {
-  const dow = new Date(dateStr + 'T12:00:00').getDay();
-  if (dow === 5 || dow === 6) return RATE_WEEKEND;
-  return PROMO_ACTIVE ? RATE_PROMO : RATE_WEEKDAY;
+  return _catsDelDia(dateStr).reduce((max, c) => Math.max(max, _precioCat(c)), 0);
+}
+
+// Motivo del precio, para el tooltip de la celda: sin esto un día suelto a $130
+// en medio de la semana parece un error.
+function precioMotivo(dateStr) {
+  const LBL = { semana:'entre semana', viernes:'viernes', sabado:'sábado',
+                vispera:'víspera de feriado', feriado:'feriado' };
+  const cats = _catsDelDia(dateStr);
+  const gana = cats.reduce((a, c) => _precioCat(c) > _precioCat(a) ? c : a, cats[0]);
+  const fer  = FERIADOS[dateStr] || FERIADOS[_addDaysISO(dateStr, 1)] || '';
+  return '$' + getPrecio(dateStr) + ' · ' + LBL[gana] + (fer ? ' (' + fer + ')' : '');
 }
 
 async function loadData() {
@@ -2648,6 +2704,15 @@ async function loadData() {
       if (t.pasanoche !== undefined)              PASANOCHE_RATE            = t.pasanoche;
       if (t.pasadia   !== undefined)              PASADIA_RATE              = t.pasadia;
       if (t.ventanasPublicas !== undefined)       VENTANAS_PUBLICAS         = !!t.ventanasPublicas;
+      if (t.viernes      !== undefined)           RATE_VIERNES  = t.viernes;
+      if (t.sabado       !== undefined)           RATE_SABADO   = t.sabado;
+      if (t.vispera      !== undefined)           RATE_VISPERA  = t.vispera;
+      if (t.feriado      !== undefined)           RATE_FERIADO  = t.feriado;
+      if (t.promoViernes !== undefined)           PROMO_VIERNES = t.promoViernes;
+      if (t.promoSabado  !== undefined)           PROMO_SABADO  = t.promoSabado;
+      if (t.promoVispera !== undefined)           PROMO_VISPERA = t.promoVispera;
+      if (t.promoFeriado !== undefined)           PROMO_FERIADO = t.promoFeriado;
+      if (t.feriados     !== undefined)           FERIADOS      = t.feriados || {};
       if (t.recargoPersonaGrande   !== undefined) RECARGO_PERSONA_GRANDE    = t.recargoPersonaGrande;
       if (t.recargoPersonaPortal   !== undefined) RECARGO_PERSONA_PORTAL    = t.recargoPersonaPortal;
       if (t.recargoCombo5          !== undefined) RECARGO_COMBO_5           = t.recargoCombo5;
@@ -2833,18 +2898,33 @@ function loadMore() {
   if (btn) btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
+// El banner se arma desde los tipos de día que realmente tienen promo activa,
+// no desde un texto fijo: desde que viernes, sábado y feriados pueden tener la
+// suya, decir siempre "Domingo a jueves" sería mentir en cuanto se ponga una.
 function _updatePromoBanner() {
   const banner = document.getElementById('promoBanner');
   if (!banner) return;
-  if (PROMO_ACTIVE && RATE_PROMO > 0 && RATE_PROMO < RATE_WEEKDAY) {
-    const pe = document.getElementById('promoBannerPrice');
-    const oe = document.getElementById('promoBannerOrig');
-    if (pe) pe.textContent = RATE_PROMO;
-    if (oe) oe.textContent = RATE_WEEKDAY;
-    banner.style.display = 'flex';
-  } else {
-    banner.style.display = 'none';
+  const TIPOS = [
+    { lbl: 'Domingo a jueves', promo: RATE_PROMO,    base: RATE_WEEKDAY },
+    { lbl: 'viernes',          promo: PROMO_VIERNES, base: RATE_VIERNES },
+    { lbl: 'sábados',          promo: PROMO_SABADO,  base: RATE_SABADO  },
+    { lbl: 'vísperas',         promo: PROMO_VISPERA, base: RATE_VISPERA },
+    { lbl: 'feriados',         promo: PROMO_FERIADO, base: RATE_FERIADO }
+  ].filter(t => t.promo > 0 && t.promo < t.base);
+
+  if (!PROMO_ACTIVE || !TIPOS.length) { banner.style.display = 'none'; return; }
+
+  const barato = TIPOS.reduce((a, t) => t.promo < a.promo ? t : a, TIPOS[0]);
+  const de = document.getElementById('promoBannerDias');
+  if (de) {
+    de.textContent = TIPOS.length === 1 ? TIPOS[0].lbl
+      : TIPOS.map(t => t.lbl).slice(0, -1).join(', ') + ' y ' + TIPOS[TIPOS.length - 1].lbl;
   }
+  const pe = document.getElementById('promoBannerPrice');
+  const oe = document.getElementById('promoBannerOrig');
+  if (pe) pe.textContent = barato.promo;
+  if (oe) oe.textContent = barato.base;
+  banner.style.display = 'flex';
 }
 
 function render() {
@@ -2940,8 +3020,17 @@ function render() {
       // cuál es.
       const ptMark = anyCortesia && !isPast ? '<span class="pt-mark">🌇</span>' : '';
 
-      cells += `<div class="${cls}"${onclick}>
-        ${ptMark}
+      // Marca de feriado + tooltip con el motivo del precio: un día suelto a
+      // $130 en medio de la semana parece un error si no se dice por qué.
+      const esFer  = !!FERIADOS[dateStr];
+      const esVisp = !!FERIADOS[_addDaysISO(dateStr, 1)];
+      const ferMark = (esFer || esVisp) && !isPast
+        ? `<span class="fer-mark" title="${esFer ? FERIADOS[dateStr] : 'Víspera de ' + FERIADOS[_addDaysISO(dateStr,1)]}">${esFer ? '★' : '☆'}</span>`
+        : '';
+      const tip = isPast ? '' : ` title="${precioMotivo(dateStr)}"`;
+
+      cells += `<div class="${cls}"${onclick}${tip}>
+        ${ferMark}${ptMark}
         <span class="day-num">${day}</span>
         ${priceHtml}
         <div class="cabin-dots">${dots}</div>
@@ -2990,6 +3079,13 @@ let PASADIA_RATE      = 75;  // pasadía 9:00 am – 5:00 pm
 // Interruptor de las ventanas cortas en el calendario público. Encendido por
 // defecto; se apaga con la fila `ventanasPublicas` = false en la hoja Config.
 let VENTANAS_PUBLICAS = true;
+
+// Tarifas por tipo de día. Los promocionales en 0 significan "sin promo para
+// este tipo": permite tener promo entre semana sin regalar viernes ni feriados.
+let RATE_VIERNES = 110, RATE_SABADO = 110, RATE_VISPERA = 110, RATE_FERIADO = 110;
+let PROMO_VIERNES = 0, PROMO_SABADO = 0, PROMO_VISPERA = 0, PROMO_FERIADO = 0;
+// { 'YYYY-MM-DD': 'Nombre del feriado' }
+let FERIADOS = {};
 
 // Recargos por persona extra en hospedaje (3-4 personas), por noche.
 // Portal solo tiene 1 cama matrimonial → traer colchon inflable.
@@ -3505,11 +3601,52 @@ function closeTooltip() {
 }
 
 // ── RATES MODAL ───────────────────────────────────────────────────
+// Campo del modal → variable global. Una sola lista para poblar, leer y
+// guardar: con tres copias de los mismos diez nombres, agregar un tipo de día
+// significaba acordarse de tocar los tres sitios.
+const RATE_FIELDS = [
+  ['rateWeekday',  'RATE_WEEKDAY',  'weekday'],
+  ['ratePromo',    'RATE_PROMO',    'promo'],
+  ['rateViernes',  'RATE_VIERNES',  'viernes'],
+  ['promoViernes', 'PROMO_VIERNES', 'promoViernes'],
+  ['rateSabado',   'RATE_SABADO',   'sabado'],
+  ['promoSabado',  'PROMO_SABADO',  'promoSabado'],
+  ['rateVispera',  'RATE_VISPERA',  'vispera'],
+  ['promoVispera', 'PROMO_VISPERA', 'promoVispera'],
+  ['rateFeriado',  'RATE_FERIADO',  'feriado'],
+  ['promoFeriado', 'PROMO_FERIADO', 'promoFeriado']
+];
+const _rateGet = v => ({ RATE_WEEKDAY, RATE_PROMO, RATE_VIERNES, PROMO_VIERNES,
+  RATE_SABADO, PROMO_SABADO, RATE_VISPERA, PROMO_VISPERA, RATE_FERIADO, PROMO_FERIADO })[v];
+function _rateSet(v, n) {
+  switch (v) {
+    case 'RATE_WEEKDAY':  RATE_WEEKDAY  = n; break;
+    case 'RATE_PROMO':    RATE_PROMO    = n; break;
+    case 'RATE_VIERNES':  RATE_VIERNES  = n; break;
+    case 'PROMO_VIERNES': PROMO_VIERNES = n; break;
+    case 'RATE_SABADO':   RATE_SABADO   = n; break;
+    case 'PROMO_SABADO':  PROMO_SABADO  = n; break;
+    case 'RATE_VISPERA':  RATE_VISPERA  = n; break;
+    case 'PROMO_VISPERA': PROMO_VISPERA = n; break;
+    case 'RATE_FERIADO':  RATE_FERIADO  = n; break;
+    case 'PROMO_FERIADO': PROMO_FERIADO = n; break;
+  }
+}
+
 function openRates() {
-  document.getElementById('rateWeekday').value = RATE_WEEKDAY;
-  document.getElementById('rateWeekend').value = RATE_WEEKEND;
-  document.getElementById('ratePromo').value   = RATE_PROMO;
+  RATE_FIELDS.forEach(([id, v]) => { document.getElementById(id).value = _rateGet(v); });
   setPromoToggleUI(PROMO_ACTIVE);
+  // Los próximos feriados, para no tener que abrir la hoja solo para ver si la
+  // fecha que se está por cotizar cuenta como uno.
+  const nota = document.getElementById('ratesFeriadosNota');
+  if (nota) {
+    const hoy = new Date().toISOString().slice(0,10);
+    const prox = Object.keys(FERIADOS).filter(f => f >= hoy).sort().slice(0, 3)
+      .map(f => formatDayShort(new Date(f + 'T12:00:00')) + ' ' + FERIADOS[f]);
+    nota.innerHTML = prox.length
+      ? '<br>Próximos feriados: ' + prox.join(' · ') + '. Se editan en la hoja <strong>Feriados</strong>.'
+      : '<br>No hay feriados cargados. Se editan en la hoja <strong>Feriados</strong>.';
+  }
   document.getElementById('ratesSaveStatus').style.display = 'none';
   document.getElementById('ratesOverlay').classList.add('open');
 }
@@ -3526,23 +3663,20 @@ function setPromoToggleUI(active) {
   document.getElementById('promoToggle').checked = active;
   document.getElementById('promoToggleLabel').style.background = active ? 'var(--verde)' : 'var(--border)';
   document.getElementById('promoToggleThumb').style.transform  = active ? 'translateX(16px)' : 'translateX(0)';
-  document.getElementById('ratePromo').disabled    = !active;
-  document.getElementById('ratePromo').style.opacity = active ? '1' : '0.45';
+  document.querySelectorAll('.promo-in').forEach(el => { el.disabled = !active; });
 }
 
 async function applyRates() {
-  const wd = parseFloat(document.getElementById('rateWeekday').value);
-  const we = parseFloat(document.getElementById('rateWeekend').value);
-  const pa = document.getElementById('promoToggle').checked;
-  // ratePromo puede tener disabled=true cuando promo está inactiva → leer .value directamente
-  const promoEl = document.getElementById('ratePromo');
-  const pr = parseFloat(promoEl.value) || RATE_PROMO;
-  if (isNaN(wd) || wd <= 0 || isNaN(we) || we <= 0 || isNaN(pr) || pr <= 0) return;
-
-  RATE_WEEKDAY = wd;
-  RATE_WEEKEND = we;
-  RATE_PROMO   = pr;
-  PROMO_ACTIVE = pa;
+  const vals = {};
+  for (const [id, v, key] of RATE_FIELDS) {
+    const n = parseFloat(document.getElementById(id).value);
+    // Los promocionales admiten 0 (= ese tipo de día no entra en la promo); los
+    // precios normales no, un 0 ahí sería regalar la noche.
+    const esPromo = key.indexOf('promo') === 0 || key === 'promo';
+    if (isNaN(n) || n < 0 || (!esPromo && n <= 0)) return;
+    vals[key] = n; _rateSet(v, n);
+  }
+  PROMO_ACTIVE = document.getElementById('promoToggle').checked;
 
   render();
   if (_adminBaseDate) updateModalPriceAndCabins();
@@ -3555,12 +3689,9 @@ async function applyRates() {
   try {
     // Apps Script: el redirect 302 convierte POST en GET perdiendo el body.
     // Usamos doGet con params en URL (mismo patrón que getTarifas/getReservations).
-    const url = SHEETS_API_URL
-      + '?action=saveTarifas'
-      + '&weekday=' + wd
-      + '&weekend=' + we
-      + '&promo='   + pr
-      + '&promoActive=' + (pa ? 'true' : 'false')
+    const url = SHEETS_API_URL + '?action=saveTarifas'
+      + Object.keys(vals).map(k => '&' + k + '=' + vals[k]).join('')
+      + '&promoActive=' + (PROMO_ACTIVE ? 'true' : 'false')
       + '&_=' + Date.now();
     const res = await fetch(url);
     const rawText = await res.text();

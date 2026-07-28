@@ -797,12 +797,145 @@ function getOrCreateConfig() {
     cfg.setFrozenRows(1);
     const hoy = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd');
     cfg.appendRow(['weekday',     90,      'Tarifa Dom-Jue',             hoy, 'sistema']);
-    cfg.appendRow(['weekend',     110,     'Tarifa Vie-Sab',             hoy, 'sistema']);
+    cfg.appendRow(['weekend',     110,     'Tarifa Vie-Sab (legado)',    hoy, 'sistema']);
     cfg.appendRow(['promo',       75,      'Tarifa promocional Dom-Jue', hoy, 'sistema']);
     cfg.appendRow(['promoActive', 'false', 'Promo activa (true/false)',  hoy, 'sistema']);
     Logger.log('✓ Hoja Config creada con valores por defecto');
   }
+  _migrarTarifasPorTipoDia_(cfg);
   return cfg;
+}
+
+// Tarifas por tipo de día. Antes viernes y sábado compartían `weekend` y el
+// promocional solo existía para entre semana; ahora cada tipo tiene su precio
+// normal y su promocional, y se agregan feriado y víspera de feriado.
+//
+// Se siembra desde lo que ya había —viernes y sábado heredan `weekend`— para
+// que el precio publicado no cambie el día que se despliega esto. `weekend`
+// queda en la hoja como legado: ya nadie lo lee, pero borrarlo sería tirar el
+// valor del que salieron los nuevos.
+const _TARIFAS_NUEVAS = [
+  ['viernes',       'weekend', 'Tarifa viernes'],
+  ['sabado',        'weekend', 'Tarifa sábado'],
+  ['promoViernes',  null,      'Tarifa promocional viernes (0 = sin promo)'],
+  ['promoSabado',   null,      'Tarifa promocional sábado (0 = sin promo)'],
+  ['vispera',       'weekend', 'Tarifa víspera de feriado'],
+  ['promoVispera',  null,      'Tarifa promocional víspera (0 = sin promo)'],
+  ['feriado',       'weekend', 'Tarifa feriado'],
+  ['promoFeriado',  null,      'Tarifa promocional feriado (0 = sin promo)']
+];
+
+function _migrarTarifasPorTipoDia_(cfg) {
+  const rows = cfg.getDataRange().getValues();
+  const map  = {};
+  for (let i = 1; i < rows.length; i++) {
+    const k = rows[i][0] ? rows[i][0].toString().trim() : '';
+    if (k) map[k] = rows[i][1];
+  }
+  const hoy = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd');
+  let añadidas = 0;
+  _TARIFAS_NUEVAS.forEach(function(t) {
+    const clave = t[0], hereda = t[1], desc = t[2];
+    if (map.hasOwnProperty(clave)) return;
+    const valor = hereda ? (parseFloat(map[hereda]) || 110) : 0;
+    cfg.appendRow([clave, valor, desc, hoy, 'sistema']);
+    añadidas++;
+  });
+  if (añadidas) Logger.log('✓ Config: ' + añadidas + ' tarifas por tipo de día agregadas');
+}
+
+// ─── FERIADOS ────────────────────────────────────────────────
+// Hoja editable: el admin puede borrar los que no le interesan (un feriado no
+// siempre llena la cabaña) y agregar fechas propias — un puente local, una
+// feria de la zona. Por eso la lista vive en la hoja y no en el código.
+//
+// Se siembra con los feriados nacionales de Panamá del año en curso y el
+// siguiente. Los móviles (carnaval y viernes santo) se calculan desde la fecha
+// de Pascua, no se hardcodean: hardcodearlos significa que en enero de cada año
+// las tarifas de carnaval quedan mal sin que nadie se entere.
+function getOrCreateFeriados() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  let sh   = ss.getSheetByName('Feriados');
+  if (!sh) {
+    sh = ss.insertSheet('Feriados');
+    sh.getRange(1, 1, 1, 2).setValues([['Fecha', 'Nombre']]);
+    sh.getRange(1, 1, 1, 2).setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+  const año = new Date().getFullYear();
+  _sembrarFeriados_(sh, año);
+  _sembrarFeriados_(sh, año + 1);
+  return sh;
+}
+
+// Domingo de Pascua (algoritmo gregoriano anónimo, Meeus/Jones/Butcher).
+function _pascua_(año) {
+  const a = año % 19, b = Math.floor(año / 100), c = año % 100;
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mes = Math.floor((h + l - 7 * m + 114) / 31);
+  const dia = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(año, mes - 1, dia);
+}
+
+function _isoDia_(d) {
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+}
+function _masDias_(d, n) { const x = new Date(d.getTime()); x.setDate(x.getDate() + n); return x; }
+
+function feriadosPanama(año) {
+  const p = _pascua_(año);
+  return [
+    [año + '-01-01', 'Año Nuevo'],
+    [año + '-01-09', 'Día de los Mártires'],
+    [_isoDia_(_masDias_(p, -48)), 'Lunes de Carnaval'],
+    [_isoDia_(_masDias_(p, -47)), 'Martes de Carnaval'],
+    [_isoDia_(_masDias_(p,  -2)), 'Viernes Santo'],
+    [año + '-05-01', 'Día del Trabajador'],
+    [año + '-11-02', 'Día de Difuntos'],
+    [año + '-11-03', 'Separación de Panamá de Colombia'],
+    [año + '-11-04', 'Día de los Símbolos Patrios'],
+    [año + '-11-05', 'Día de Colón'],
+    [año + '-11-10', 'Primer Grito de Independencia'],
+    [año + '-11-28', 'Independencia de España'],
+    [año + '-12-08', 'Día de la Madre'],
+    [año + '-12-25', 'Navidad']
+  ];
+}
+
+// Agrega los que falten SIN tocar los existentes: si el admin borró un feriado
+// a propósito, volver a sembrarlo cada vez que corre esto anularía su decisión.
+// Por eso solo se siembra un año una vez — se marca con la fila `__sembrado__`.
+function _sembrarFeriados_(sh, año) {
+  const rows = sh.getDataRange().getValues();
+  const marca = '__sembrado__' + año;
+  for (let i = 1; i < rows.length; i++) {
+    if ((rows[i][0] || '').toString().trim() === marca) return;
+  }
+  const filas = feriadosPanama(año).map(function(f) { return [f[0], f[1]]; });
+  filas.push([marca, 'no borrar — evita resembrar ' + año]);
+  sh.getRange(sh.getLastRow() + 1, 1, filas.length, 2).setValues(filas);
+  Logger.log('✓ Feriados ' + año + ' sembrados (' + (filas.length - 1) + ')');
+}
+
+// Set de fechas ISO marcadas como feriado. Ignora la fila centinela.
+function getFeriadosSet() {
+  const sh = getOrCreateFeriados();
+  const rows = sh.getDataRange().getValues();
+  const out = {};
+  for (let i = 1; i < rows.length; i++) {
+    let f = rows[i][0];
+    if (!f) continue;
+    if (f instanceof Date) f = Utilities.formatDate(f, 'America/Panama', 'yyyy-MM-dd');
+    f = f.toString().trim();
+    if (f.indexOf('__sembrado__') === 0) continue;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(f)) out[f] = (rows[i][1] || '').toString();
+  }
+  return out;
 }
 
 // ─── BLACKLIST ───────────────────────────────────────────────
@@ -1467,12 +1600,13 @@ function doGet(e) {
       const cfg = getOrCreateConfig();
       const rows = cfg.getDataRange().getValues();
       const hoy  = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd');
-      const updates = {
-        weekday:     parseFloat(p.weekday)  || 90,
-        weekend:     parseFloat(p.weekend)  || 110,
-        promo:       parseFloat(p.promo)    || 75,
-        promoActive: (p.promoActive === 'true' || p.promoActive === '1') ? 'true' : 'false'
-      };
+      // Solo se escriben las claves que vinieron en la request: mandar un
+      // default por cada una ausente pisaría tarifas que el admin no tocó.
+      const updates = { promoActive: (p.promoActive === 'true' || p.promoActive === '1') ? 'true' : 'false' };
+      ['weekday','weekend','promo','viernes','sabado','vispera','feriado',
+       'promoViernes','promoSabado','promoVispera','promoFeriado'].forEach(function(k) {
+        if (p[k] !== undefined && p[k] !== '' && !isNaN(parseFloat(p[k]))) updates[k] = parseFloat(p[k]);
+      });
       for (let i = 1; i < rows.length; i++) {
         const clave = rows[i][0] ? rows[i][0].toString().trim() : '';
         if (updates.hasOwnProperty(clave)) {
@@ -1523,6 +1657,19 @@ function doGet(e) {
         recargoPasatardePersona: parseFloat(map['recargoPasatardePersona']) || 20,
         recargoPasanochePersona: parseFloat(map['recargoPasanochePersona']) || 25,
         recargoPasadiaPersona:   parseFloat(map['recargoPasadiaPersona'])   || 25,
+        // Tarifas por tipo de día. `weekend` queda de fallback para instalaciones
+        // que todavía no corrieron la migración.
+        viernes:      parseFloat(map['viernes'])      || parseFloat(map['weekend']) || 110,
+        sabado:       parseFloat(map['sabado'])       || parseFloat(map['weekend']) || 110,
+        vispera:      parseFloat(map['vispera'])      || parseFloat(map['weekend']) || 110,
+        feriado:      parseFloat(map['feriado'])      || parseFloat(map['weekend']) || 110,
+        // Los promocionales admiten 0 = "sin promo para este tipo de día", así
+        // que NO llevan `||` con un default: eso convertiría el 0 en un precio.
+        promoViernes: parseFloat(map['promoViernes']) || 0,
+        promoSabado:  parseFloat(map['promoSabado'])  || 0,
+        promoVispera: parseFloat(map['promoVispera']) || 0,
+        promoFeriado: parseFloat(map['promoFeriado']) || 0,
+        feriados:     getFeriadosSet(),
         // Interruptor global de las ventanas cortas en el calendario público
         // (pasatarde/pasanoche en los huecos que dejan early/late/pasadía).
         // Default ENCENDIDO: solo se apaga poniendo 'false' en la hoja Config,
@@ -1843,7 +1990,17 @@ function doPost(e) {
         weekday:     parseFloat(t.weekday)    || 90,
         weekend:     parseFloat(t.weekend)    || 110,
         promo:       parseFloat(t.promo)      || 75,
-        promoActive: t.promoActive ? 'true' : 'false'
+        promoActive: t.promoActive ? 'true' : 'false',
+        // Tipos de día. Los promocionales pueden ser 0 (= sin promo), así que
+        // se leen con `|| 0` y no con un default de precio.
+        viernes:      parseFloat(t.viernes)      || 110,
+        sabado:       parseFloat(t.sabado)       || 110,
+        vispera:      parseFloat(t.vispera)      || 110,
+        feriado:      parseFloat(t.feriado)      || 110,
+        promoViernes: parseFloat(t.promoViernes) || 0,
+        promoSabado:  parseFloat(t.promoSabado)  || 0,
+        promoVispera: parseFloat(t.promoVispera) || 0,
+        promoFeriado: parseFloat(t.promoFeriado) || 0
       };
 
       for (let i = 1; i < rows.length; i++) {
