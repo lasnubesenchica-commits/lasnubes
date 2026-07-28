@@ -389,11 +389,14 @@ function instalarTriggerCheckout() {
   Logger.log('✓ Trigger de check-out instalado: 9am diario → enviarRecordatoriosCheckout');
 }
 
-// Funciones para probar manualmente desde el editor
+// Funciones para probar manualmente desde el editor.
+// OJO: estas disparan el envío REAL a sus destinatarios reales — sirven para
+// forzar un trigger fuera de hora, no para previsualizar. Para ver un mensaje
+// sin escribirle a nadie, usar los `_test*AMiNumero` de más abajo.
 function _testRecordatorio11am()  { return enviarRecordatorioAdminReservasHoy(); }
 function _testRecordatorio9am()   { return enviarRecordatorioServiciosEspeciales(); }
-function _testRecordatorioLimpieza() { return enviarRecordatorioLimpieza(); }
-function _testCheckout()          { return enviarRecordatoriosCheckout(); }
+function _testRecordatorioLimpieza() { return enviarRecordatorioLimpieza(); }  // → le llega a Erika
+function _testCheckout()          { return enviarRecordatoriosCheckout(); }    // → les llega a los huéspedes que salen hoy
 
 // Test SEGURO: envía la plantilla de checkout a TU número (no a clientes).
 // OJO: si tocas el botón "Ya me retiré", se dispara el aviso real al admin
@@ -409,6 +412,60 @@ function _testCheckoutAMiNumero() {
   );
   Logger.log('Enviado: ' + JSON.stringify(r));
   return r;
+}
+
+// ─── Previews de los mensajes de LIMPIEZA (no le escriben a Erika) ────
+// Son dos mensajes distintos y se prueban por separado:
+//   1. el parte diario de las 8am (texto de sesión, _buildLimpiezaMessage);
+//   2. la alerta puntual cuando un huésped toca "Ya me retiré" (plantilla HSM
+//      alerta_limpieza_).
+// Ambos previews usan la MISMA lógica de producción que el envío real, así que
+// lo que se ve acá es literalmente lo que le llegaría a Erika hoy.
+
+// 1. Parte diario de las 8am. Lee la hoja de verdad, así que refleja el estado
+// real de las cabañas de hoy. Se loguea SIEMPRE, aunque el envío falle: es un
+// texto de sesión y solo se entrega si hay ventana de 24h abierta con tu
+// número (Meta responde 200 igual y no entrega). El Logger nunca miente.
+function _testLimpiezaAMiNumero() {
+  const msg = _buildLimpiezaMessage('¡Buenos días, Erika! 🌿 (PRUEBA)');
+  Logger.log('─── Parte de limpieza · lo que Erika recibiría hoy ───\n\n' + msg + '\n');
+  try {
+    sendWhatsAppText(BOT_ADMIN_PHONE, msg);
+    Logger.log('✓ Enviado a ' + BOT_ADMIN_PHONE);
+    Logger.log('  Si no te llega: la ventana de 24h está cerrada. Escríbele algo al');
+    Logger.log('  Agente y vuelve a correrlo. El texto de arriba es el mismo igual.');
+  } catch(e) {
+    Logger.log('✗ No se pudo enviar (' + e.message + ') — vale el texto de arriba.');
+  }
+  return msg;
+}
+
+// 2. Alerta puntual de check-out. Arma el {{3}} con la lógica real
+// (_botFindNextReservationForCabin + _botBuildLimpiezaContextLine), que es lo
+// que decide si dice "preparar cama auxiliar". Los tests viejos hardcodeaban
+// esa línea, así que probaban el render de la plantilla pero NO la decisión.
+// cabinKey: 'verde' | 'azul' | 'lila' (default 'azul').
+function _testAlertaLimpiezaAMiNumero(cabinKey) {
+  const cab      = cabinKey || 'azul';
+  const cabName  = BOT_CABIN_NAMES[cab] || cab;
+  const next     = _botFindNextReservationForCabin(cab, null);
+  const ctxLine  = _botBuildLimpiezaContextLine(next);
+  Logger.log('Cabaña: ' + cabName);
+  // _botFindNextReservationForCabin devuelve solo {persons, comentarios,
+  // displayCheckin} — no hay nombre de huésped que loguear.
+  Logger.log('Próxima reserva: ' + (next ? next.displayCheckin + ' · ' + next.persons + ' huésp.' : '(ninguna)'));
+  Logger.log('Línea de contexto {{3}}: ' + ctxLine);
+  try {
+    const r = sendWhatsAppTemplate(BOT_ADMIN_PHONE, 'alerta_limpieza_', 'es_ES',
+      [cabName, 'Huésped de prueba', ctxLine], null, null);
+    Logger.log('✓ Enviado: ' + JSON.stringify(r));
+    return r;
+  } catch(e) {
+    Logger.log('✗ Falló el envío: ' + e.message);
+    Logger.log('  Si es por idioma, correr testAlertaLimpiezaAllLangs() — pero ojo,');
+    Logger.log('  ese sí le escribe a Erika.');
+    throw e;
+  }
 }
 
 // ─── Tests SEGUROS a tu número (no escriben a clientes) ──────────────
