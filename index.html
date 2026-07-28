@@ -2559,13 +2559,30 @@ const PASATARDE_HORARIO = '12:30 pm – 7:00 pm';
 const PASANOCHE_HORARIO = '8:00 pm – 12:30 pm día siguiente';
 const PASADIA_HORARIO   = '9:00 am – 5:00 pm';
 
+// Rango explícito de una estadía corta, con los días nombrados:
+//   "mié 29 jul, 8:00 pm → jue 30 jul, 12:30 pm"
+// Una pasanoche cruza la medianoche, así que decir solo "8:00 pm – 12:30 pm día
+// siguiente" obliga a deducir cuál es el día de llegada, y se presta a leerlo
+// como el día en que uno se va. Con las dos fechas escritas no hay nada que
+// deducir. Las de un solo día se quedan en su forma corta, que ya es
+// inequívoca.
+function _rangoVentana(tipoVen, dateStr) {
+  const m = TIPO_META[tipoVen];
+  if (!m) return '';
+  if (!m.cruzaDia) return formatDayShort(new Date(dateStr + 'T12:00:00')) + ', ' + m.horario;
+  const d1 = new Date(dateStr + 'T12:00:00');
+  const d2 = new Date(_addDaysISO(dateStr, 1) + 'T12:00:00');
+  return formatDayShort(d1) + ', ' + m.hIni + '  →  ' + formatDayShort(d2) + ', ' + m.hFin;
+}
+
 // Metadatos de las estadías cortas. Fuente única del nombre y el horario para
 // todas las superficies del modal: `horario` es el texto largo (encabezado,
 // mensaje de WhatsApp) y `corto` el que cabe en una línea de la fila.
 const TIPO_META = {
-  pasatarde: { label: 'Pasatarde', horario: PASATARDE_HORARIO, corto: '12:30–7pm' },
-  pasanoche: { label: 'Pasanoche', horario: PASANOCHE_HORARIO, corto: '8pm–12:30pm' },
-  pasadia:   { label: 'Pasadía',   horario: PASADIA_HORARIO,   corto: '9am–5pm' }
+  pasatarde: { label: 'Pasatarde', horario: PASATARDE_HORARIO, corto: '12:30–7pm',  cruzaDia: false },
+  pasanoche: { label: 'Pasanoche', horario: PASANOCHE_HORARIO, corto: '8pm–12:30pm', cruzaDia: true,
+               hIni: '8:00 pm', hFin: '12:30 pm' },
+  pasadia:   { label: 'Pasadía',   horario: PASADIA_HORARIO,   corto: '9am–5pm',    cruzaDia: false }
 };
 // Ventanas que se ofrecen al público cuando la noche ya no es vendible.
 const VENTANAS_CORTAS = [
@@ -2975,10 +2992,8 @@ function updateModalPriceAndCabins() {
   const priceEl = document.getElementById('ttPrice');
   if (!isHosp) {
     const total   = _precioPasadia(tipo, personas);
-    const horario = tipo === 'pasatarde' ? PASATARDE_HORARIO
-                  : tipo === 'pasanoche' ? PASANOCHE_HORARIO
-                  :                        PASADIA_HORARIO;
-    priceEl.textContent = '$' + total + ' · ' + horario + (personas > 2 ? ' · ' + personas + ' pers' : '');
+    priceEl.textContent = '$' + total + ' · ' + _rangoVentana(tipo, dateStr)
+                        + (personas > 2 ? ' · ' + personas + ' pers' : '');
   } else if (isCombo) {
     const total = _precioComboTotal(dateStr, nights, personas);
     priceEl.textContent = '$' + total + ' · combo Puente + Portal · ' + personas + ' personas' + (nights > 1 ? ' · ' + nights + ' noches' : '');
@@ -3038,7 +3053,8 @@ function updateModalPriceAndCabins() {
       + '<div class="tc-dot" style="background:var(--' + c.key + ');"></div>'
       + '<span style="line-height:1.45;">' + c.name
       +   '<br><span style="color:#a65f04;font-size:12px;font-weight:600;">🌇 ' + meta.label + ' $' + precio + '</span>'
-      +   '<span style="color:var(--muted);font-size:11.5px;white-space:nowrap;"> · ' + meta.corto + '</span>'
+      +   '<span style="color:var(--muted);font-size:11.5px;white-space:nowrap;"> · '
+      +     (meta.cruzaDia ? 'entra ' + meta.hIni : meta.corto) + '</span>'
       + '</span>'
       + '</div>'
       + '<div style="display:flex;align-items:center;">'
@@ -3260,7 +3276,11 @@ function _buildClientReservaMessage(opts) {
   if (tipo === 'pasatarde') {
     fechaLine = '*Fecha:* ' + formatDayLong(d) + ' · Pasatarde 12:30 pm – 7:00 pm';
   } else if (tipo === 'pasanoche') {
-    fechaLine = '*Fecha:* ' + formatDayLong(d) + ' · Pasanoche 8:00 pm – 12:30 pm día siguiente';
+    // La única estadía que cruza la medianoche: se nombran los dos días en vez
+    // de decir "día siguiente". Un huésped puede leer "Pasanoche del miércoles"
+    // como la noche que TERMINA el miércoles, y presentarse un día antes.
+    fechaLine = '*Fecha:* Pasanoche · entra ' + formatDayLong(d) + ' 8:00 pm · sale '
+              + formatDayLong(new Date(_addDaysISO(dateStr, 1) + 'T12:00:00')) + ' 12:30 pm';
   } else if (tipo === 'pasadia') {
     fechaLine = '*Fecha:* ' + formatDayLong(d) + ' · Pasadía 9:00 am – 5:00 pm';
   } else if (nights === 1) {
