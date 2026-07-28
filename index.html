@@ -56,7 +56,11 @@
     .hero-socials { margin-top: 16px; gap: 10px; }
     .hero-social { width: 34px; height: 34px; }
   }
+  /* Con las cabañas al pie, el padding inferior del hero deja un hueco muerto
+     entre las tarjetas y el borde. */
+  .hero.hero-disp { padding-bottom: 26px; }
   @media (min-width: 820px) {
+    .hero.hero-disp { padding-bottom: 40px; }
     .hero {
       min-height: 480px;
       padding: 110px 24px 96px;
@@ -744,53 +748,69 @@
   /* ── Panel "¿Cuál es cuál?" ──────────────────────────────────────
      Va pegado a la leyenda porque ahí nace la pregunta: tres nombres de
      colores sin explicación, justo encima del calendario. */
-  /* Ahora es lo primero bajo el hero (la barra de filtros bajó al calendario),
-     así que el aire de arriba lo pone este margen y no el elemento anterior.
-     Abajo no hace falta: promo y filtros ya traen su propio margen superior. */
-  .cabins-intro { max-width: 1100px; margin: 20px auto 0; padding: 0 16px; }
+  /* Vive DENTRO del hero, sobre la foto: por eso todo va en escala clara y con
+     fondo translúcido en vez de blanco sólido. */
+  .cabins-intro { max-width: 1100px; margin: 26px auto 0; padding: 0 24px; }
+  /* El hero es global; las cabañas solo tienen sentido en Disponibilidad. La
+     clase la pone showSection. */
+  .hero:not(.hero-disp) .cabins-intro { display: none; }
   .ci-head {
     display: flex; align-items: center; justify-content: center; gap: 10px;
-    font-size: 13px; color: var(--muted);
+    font-size: 13px; color: rgba(255,255,255,0.85);
+    text-shadow: 0 1px 6px rgba(0,0,0,0.3);
   }
   .ci-toggle {
-    background: none; border: 1px solid var(--border); border-radius: 999px;
-    padding: 5px 14px; font-size: 12.5px; color: var(--text); cursor: pointer;
-    font-family: inherit; touch-action: manipulation; transition: border-color .15s;
+    background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 999px; padding: 5px 14px; font-size: 12.5px; color: #fff;
+    cursor: pointer; font-family: inherit; touch-action: manipulation;
+    transition: background .15s; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
   }
-  .ci-toggle:hover { border-color: var(--muted); }
+  .ci-toggle:hover { background: rgba(255,255,255,0.24); }
   .ci-body { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
   .ci-body[hidden] { display: none; }
   /* Tarjeta horizontal, no vertical: con la foto arriba cada una medía ~330px
      y las tres juntas empujaban el calendario fuera de pantalla. Esta página
      existe para ver disponibilidad; el resumen informa, no puede tapar. */
+  /* Tarjeta horizontal y translúcida sobre la foto del hero. Horizontal y no
+     vertical con la foto arriba: así medían ~330px y las tres empujaban el
+     calendario fuera de pantalla. */
   .ci-card {
-    border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
-    background: #fff; cursor: pointer; text-align: left;
-    transition: transform .15s, box-shadow .15s, border-color .15s;
+    border: 1px solid rgba(255,255,255,0.22); border-radius: 14px; overflow: hidden;
+    background: rgba(18,26,20,0.42); cursor: pointer; text-align: left;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    transition: transform .15s, background .15s, border-color .15s;
     display: flex; align-items: stretch; min-width: 0;
   }
-  .ci-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,.07); }
-  .ci-card.verde:hover { border-color: var(--verde); }
-  .ci-card.azul:hover  { border-color: var(--azul);  }
-  .ci-card.lila:hover  { border-color: var(--lila);  }
-  .ci-photo { width: 92px; flex: 0 0 92px; object-fit: cover; display: block; background: #f0eeea; }
+  .ci-card:hover { transform: translateY(-2px); background: rgba(18,26,20,0.55); border-color: rgba(255,255,255,0.45); }
+  .ci-photo { width: 92px; flex: 0 0 92px; object-fit: cover; display: block; background: rgba(0,0,0,0.25); }
   .ci-ph { width: 92px; flex: 0 0 92px; display: flex; align-items: center;
-           justify-content: center; font-size: 26px; background: #f0eeea; }
+           justify-content: center; font-size: 26px; background: rgba(0,0,0,0.25); }
   .ci-txt { padding: 9px 11px; min-width: 0; }
-  .ci-name { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; color: var(--text); }
-  .ci-name .ci-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .ci-meta { margin-top: 4px; font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+  .ci-name { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600;
+             color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,0.35); }
+  .ci-name .ci-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+                     box-shadow: 0 0 0 2px rgba(255,255,255,0.35); }
+  .ci-meta { margin-top: 4px; font-size: 11.5px; color: rgba(255,255,255,0.88); line-height: 1.5;
+             text-shadow: 0 1px 5px rgba(0,0,0,0.35); }
   .ci-links { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 4px 11px; font-size: 11.5px; }
   /* nowrap: sin esto la flecha se despega del texto y cae sola a la línea
      siguiente, que se lee como un link roto. */
-  .ci-links span { color: var(--muted); border-bottom: 1px solid var(--border); white-space: nowrap; }
-  .ci-links span:hover { color: var(--text); }
+  .ci-links span { color: rgba(255,255,255,0.8); border-bottom: 1px solid rgba(255,255,255,0.35);
+                   white-space: nowrap; }
+  .ci-links span:hover { color: #fff; }
   @media (max-width: 700px) {
+    /* El padding lateral es solo de desktop (alinea con el resto de la
+       página); en móvil quita ancho a las tarjetas y las hace más altas. */
+    .cabins-intro { padding: 0; }
     /* En móvil las tres tarjetas en columna empujarían el calendario fuera de
-       pantalla; en carrusel se ven las tres y el calendario sigue a la vista. */
+       pantalla; en carrusel se ven las tres y el calendario sigue a la vista.
+       Los márgenes negativos cancelan el padding lateral del hero para que el
+       carrusel llegue al borde: gana ancho (menos texto envuelto = tarjeta más
+       baja) y el corte en el filo anuncia que hay más para deslizar. */
     .ci-body {
       display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory;
-      -webkit-overflow-scrolling: touch; padding-bottom: 4px;
+      -webkit-overflow-scrolling: touch; padding: 0 20px 4px;
+      margin: 0 -20px;
     }
     .ci-card { flex: 0 0 82%; scroll-snap-align: start; }
     .ci-head { font-size: 12.5px; }
@@ -1363,22 +1383,25 @@
       </svg>
     </a>
   </div>
+
+  <!-- ¿Cuál es cuál? Las 3 cabañas DENTRO del hero: son el producto, así que
+       ocupan el lugar de más peso de la página en vez de un bloque aparte
+       debajo. Abierto en la primera visita y cerrado después (ver _ciInit) —
+       el que no sabe qué es "Paseo" no abriría un acordeón cerrado, y el
+       cliente que ya se los sabe quiere el calendario arriba.
+       Solo en Disponibilidad: el hero es global, y en Gastronomía o
+       Actividades tres tarjetas de cabañas no pintan nada (ver showSection). -->
+  <div class="cabins-intro" id="cabinsIntro">
+    <div class="ci-head">
+      <span>Tenemos 3 cabañas independientes</span>
+      <button class="ci-toggle" id="ciToggle" onclick="toggleCabinsIntro()"></button>
+    </div>
+    <div class="ci-body" id="ciBody"></div>
+  </div>
 </div>
 
 <!-- SECTION: DISPONIBILIDAD -->
 <div class="page-section active" id="section-disponibilidad">
-
-<!-- ¿Cuál es cuál? Resumen de las 3 cabañas, para quien llega sin conocerlas.
-     Abierto en la primera visita y cerrado después (ver _ciInit): el que no
-     sabe qué es "Paseo" es justo el que no abriría un acordeón cerrado, y el
-     cliente que ya se los sabe es el que quiere el calendario compacto. -->
-<div class="cabins-intro" id="cabinsIntro">
-  <div class="ci-head">
-    <span>Tenemos 3 cabañas independientes</span>
-    <button class="ci-toggle" id="ciToggle" onclick="toggleCabinsIntro()"></button>
-  </div>
-  <div class="ci-body" id="ciBody"></div>
-</div>
 
 <!-- PROMO BANNER (visible solo si PROMO_ACTIVE) -->
 <div id="promoBanner" class="promo-banner" style="display:none;">
@@ -3792,6 +3815,9 @@ function showSection(name) {
   document.querySelectorAll('.top-nav-link').forEach(b => b.classList.remove('active'));
   document.getElementById('section-' + name).classList.add('active');
   document.querySelector(`[onclick="showSection('${name}')"]`).classList.add('active');
+  // Las 3 cabañas dentro del hero solo en Disponibilidad: el hero es global y
+  // en Gastronomía o Actividades serían ruido, y en Cabañas, duplicado.
+  _heroDispClass(name);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -3989,6 +4015,12 @@ function ciFotos(key) {
   if (typeof _activarGaleria === 'function') _activarGaleria(key);
 }
 
+// El hero muestra las cabañas solo en la sección de disponibilidad.
+function _heroDispClass(name) {
+  const hero = document.querySelector('.hero');
+  if (hero) hero.classList.toggle('hero-disp', name === 'disponibilidad');
+}
+
 const _CI_KEY = 'lnCabinsIntro';
 function _ciAplicar(abierto) {
   const body = document.getElementById('ciBody');
@@ -4004,6 +4036,7 @@ function toggleCabinsIntro() {
 }
 function _ciInit() {
   renderCabinsIntro();
+  _heroDispClass('disponibilidad');   // la carga inicial abre en Disponibilidad
   // Sin preferencia guardada = primera visita → abierto.
   let pref = null;
   try { pref = localStorage.getItem(_CI_KEY); } catch(e) {}
