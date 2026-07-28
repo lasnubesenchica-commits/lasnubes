@@ -2534,8 +2534,10 @@ function _botFindNextReservationForCabin(cabinKey, excludeReservaId) {
       persons: parseInt(r[6], 10) || 0,
       comentarios: (r[22] || '').toString(),
       // Sin el tipo no se puede decidir la cama auxiliar: una pasadía no la
-      // lleva. Ver _botTextoCamaAuxiliar.
+      // lleva. Ver _botTextoCamaAuxiliar. Y sin horaEntrada, _horaPlantilla
+      // devuelve el default del tipo y se pierde el override de la reserva.
       tipo: tipo,
+      horaEntrada: (typeof _normalizeHora === 'function') ? _normalizeHora(r[29]) : (r[29] || ''),
       displayCheckin: displayCi
     };
     if (!best || displayCi < best.displayCheckin) best = next;
@@ -2599,11 +2601,26 @@ function _botTextoCamaAuxiliar(reserva, cabinKey) {
 // params con saltos de línea).
 function _botBuildLimpiezaContextLine(nextReserva, cabinKey) {
   if (!nextReserva) return '📅 Sin próxima reserva agendada por ahora.';
-  const cama = _botTextoCamaAuxiliar(nextReserva, cabinKey);
-  if (cama) {
-    return '🛏 ' + cama + ' Próxima reserva: ' + nextReserva.persons + ' huéspedes.';
-  }
-  return '📅 Próxima reserva: ' + nextReserva.persons + ' huéspedes (cama normal).';
+  // Cuándo y a qué hora llega el siguiente. Es lo primero que Erika necesita al
+  // recibir esta alerta: sin eso no puede saber si tiene el día entero o dos
+  // horas. El parte diario ya lo daba; acá faltaba.
+  const cuando = _botCuandoLlega(nextReserva.displayCheckin);
+  const hora   = _horaPlantilla(nextReserva.tipo, 'checkin', false, nextReserva.horaEntrada);
+  const p      = parseInt(nextReserva.persons, 10) || 0;
+  const quien  = p ? ', ' + p + (p === 1 ? ' huésped' : ' huéspedes') : '';
+  const base   = 'Próxima reserva: ' + cuando + ' a las ' + hora + quien + '.';
+  const cama   = _botTextoCamaAuxiliar(nextReserva, cabinKey);
+  return cama ? '🛏 ' + cama + ' ' + base : '📅 ' + base;
+}
+
+// "HOY" / "mañana" / "sáb 2 ago". En mayúscula el caso urgente: si llega hoy,
+// esa es la única palabra que cambia lo que Erika hace a continuación.
+function _botCuandoLlega(iso) {
+  if (!iso) return 'sin fecha';
+  const hoy = _botToday();
+  if (iso === hoy) return 'HOY';
+  if (iso === _botAddDaysISO(hoy, 1)) return 'mañana';
+  return _botFmtFecha(iso);
 }
 
 // Envía la plantilla HSM alerta_porton al admin. Llega siempre, sin importar
@@ -2736,9 +2753,10 @@ function _botHandleCheckoutDone(from, contactName, reservaId) {
     logDebugEntry('email-portón-FAIL', { from: from, error: e.message });
   }
 
-  // Aviso a Erika via plantilla HSM (alerta_limpieza). {{3}} indica si la
-  // próxima reserva requiere cama auxiliar (personas >= 3 o keywords en
-  // comentarios).
+  // Aviso a Erika via plantilla HSM (alerta_limpieza). {{3}} dice cuándo y a
+  // qué hora llega la próxima reserva, y si requiere cama auxiliar — con las
+  // reglas por cabaña y por tipo de _botTextoCamaAuxiliar, las mismas que usa
+  // el parte diario de las 8am.
   try {
     const limpiezaPhone = PropertiesService.getScriptProperties().getProperty('LIMPIEZA_PHONE');
     if (limpiezaPhone) {
