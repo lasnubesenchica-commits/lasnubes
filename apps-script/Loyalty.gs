@@ -1,21 +1,33 @@
 // ═══════════════════════════════════════════════════════════
-//  Programa Cliente Fiel — DISCONTINUADO (jul 2026)
+//  Programa Cliente Fiel — $20 de credito tras la 2da estadia
 // ═══════════════════════════════════════════════════════════
 //
-//  El Programa Amigos se redujo a dos beneficios: Referidos y Cumpleanos.
-//  Cliente Fiel salio por costo — una noche completa ($90) contra $20-25 de
-//  los otros dos — y porque acumulaba deuda sin vencimiento definido.
+//  Trigger diario que escanea Reservas y emite el credito a los huespedes
+//  que ya completaron 2 estadias y aun no lo recibieron.
 //
-//  El codigo NO se borra: los creditos YA EMITIDOS se honran hasta que
-//  venzan, y para eso hacen falta la hoja, la busqueda y el marcado de uso.
-//  Lo que se apaga es la EMISION de creditos nuevos:
+//  Antes el beneficio era una NOCHE GRATIS. Salio del programa por costo
+//  ($90 contra $20 de los otros dos) y porque acumulaba deuda: 10 creditos
+//  vivos valian ~$890. Volvio como $20 de credito, que es la misma cifra
+//  del cumpleanos y del referido — asi el programa entero se dice en una
+//  linea y los mismos 10 creditos valen $200.
 //
-//   · desinstalarTriggerLoyalty() quita el trigger diario.
-//   · enviarLoyaltyUnlockEmails() aborta si LOYALTY_ACTIVO no es 'true',
-//     por si el trigger sobrevive en algun proyecto.
+//  Que esperar: $20 no provoca una segunda visita como lo hacia una noche
+//  gratis. El valor de este programa es el CORREO — una excusa para
+//  escribirle a alguien que ya vino — mas que el descuento.
 //
-//  Para reactivarlo: Script Property LOYALTY_ACTIVO = 'true' y correr
-//  instalarTriggerLoyalty().
+//  Filtros para que una estadia cuente:
+//   - origin = 'Directa'
+//   - estadoPago != 'CANCELADA'
+//   - tipo en [noche, early, late]
+//   - checkout < hoy (ya completada)
+//
+//  El credito se guarda en hoja LoyaltyCreditos. Cuando admin lo aplica,
+//  lo marca como usado (boton en dashboard).
+//
+//  Vencimiento: 12 meses desde EarnedAt — el mismo que el credito de
+//  referido, para que no haya dos reglas.
+//
+//  Para apagarlo: Script Property LOYALTY_ACTIVO = 'false'.
 // ═══════════════════════════════════════════════════════════
 //
 //  Trigger diario que escanea Reservas y emite credito de cortesia
@@ -37,7 +49,8 @@
 //  Preview:    ejecutar enviarLoyaltyPrueba() desde el editor.
 // ═══════════════════════════════════════════════════════════
 
-const LOYALTY_DIAS_VENCIMIENTO = 365; // 12 meses
+const LOYALTY_DIAS_VENCIMIENTO = 365; // 12 meses — igual que el credito de referido
+const LOYALTY_MONTO = 20;             // mismo monto que cumpleanos y referido
 
 function _getOrCreateLoyaltySheet() {
   const ss = SpreadsheetApp.openById(SHEET_ID);
@@ -119,16 +132,16 @@ function _countCompletedNightStaysForGuest(email, telefono, allRows) {
   return { count, latestId };
 }
 
-// Interruptor de la EMISION. No toca la consulta ni el marcado de uso de los
-// creditos ya entregados: esos siguen valiendo hasta su vencimiento.
+// Interruptor de la EMISION. Opt-OUT y no opt-in: el programa esta activo
+// salvo que alguien lo apague a proposito. Con opt-in, un proyecto nuevo o una
+// property borrada dejaba el programa mudo sin que nadie se enterara.
 function _loyaltyActivo() {
-  return PropertiesService.getScriptProperties().getProperty('LOYALTY_ACTIVO') === 'true';
+  return PropertiesService.getScriptProperties().getProperty('LOYALTY_ACTIVO') !== 'false';
 }
 
 function enviarLoyaltyUnlockEmails() {
   if (!_loyaltyActivo()) {
-    Logger.log('⊘ Cliente Fiel discontinuado — no se emiten créditos nuevos. ' +
-               'Para reactivar: LOYALTY_ACTIVO = true en Script Properties.');
+    Logger.log('⊘ Cliente Fiel apagado (LOYALTY_ACTIVO = false) — no se emiten créditos.');
     return;
   }
   const sheet  = getOrCreateSheet();
@@ -183,7 +196,7 @@ function _sendLoyaltyUnlockEmail(opts) {
   const waNum = (props.getProperty('CONTACT_WHATSAPP_NUMBER') || '50769812266').replace(/\D/g, '');
   const firstName = (opts.nombre || '').split(/\s+/)[0] || opts.nombre;
   const subject = '¡Tu próxima noche en Las Nubes va por la casa!';
-  const waText  = encodeURIComponent('Hola! Recibi el correo del programa Cliente Fiel — me interesa usar mi noche de cortesia entre semana.');
+  const waText  = encodeURIComponent('Hola! Recibi el correo del programa Cliente Fiel — me interesa usar mi credito de $' + LOYALTY_MONTO + '.');
   const waLink  = 'https://wa.me/' + waNum + '?text=' + waText;
   const html = buildLoyaltyUnlockEmailHTML({
     firstName,
@@ -210,7 +223,7 @@ function buildLoyaltyUnlockEmailHTML(opts) {
 '<table width="100%" cellpadding="0" cellspacing="0" style="background:#fffbeb;border:1px solid #d4a44c;border-radius:14px;margin:24px 0;">' +
 '<tr><td style="padding:24px 28px;text-align:center;">' +
 '<p style="margin:0 0 10px;font-size:13px;color:#7a5a1f;letter-spacing:0.05em;text-transform:uppercase;font-weight:600;">Tu regalo</p>' +
-'<p style="margin:0 0 14px;font-size:24px;font-weight:300;color:#7a5a1f;font-family:Georgia,serif;">Una noche cortesía entre semana</p>' +
+'<p style="margin:0 0 14px;font-size:26px;font-weight:300;color:#7a5a1f;font-family:Georgia,serif;">$' + LOYALTY_MONTO + ' de crédito</p>' +
 '<p style="margin:0;font-size:13px;color:#7a5a1f;line-height:1.6;">Sobre cualquier cabaña, según disponibilidad.</p>' +
 '</td></tr></table>' +
 '<p style="margin:0 0 20px;font-size:14px;color:#6b6560;line-height:1.7;">Cómo funciona:</p>' +
@@ -222,11 +235,11 @@ function buildLoyaltyUnlockEmailHTML(opts) {
 '<li>No combinable con otras promociones.</li>' +
 '</ul>' +
 '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;"><tr><td align="center">' +
-'<a href="' + opts.waLink + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:15px;font-weight:600;padding:14px 28px;border-radius:10px;text-decoration:none;">&#128172; Usar mi noche cortesía</a>' +
+'<a href="' + opts.waLink + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:15px;font-weight:600;padding:14px 28px;border-radius:10px;text-decoration:none;">&#128172; Usar mi crédito</a>' +
 '</td></tr></table>' +
 // Los beneficios NO son combinables — decirlo al revés en el email era una
 // promesa que el programa no cumple.
-'<p style="margin:0;font-size:13px;color:#8a8078;line-height:1.6;text-align:center;">Aplica domingo a jueves, sin feriados, vísperas de feriado ni vacaciones escolares. No se combina con otras promociones.</p>' +
+'<p style="margin:0;font-size:13px;color:#8a8078;line-height:1.6;text-align:center;">Aplica a noches de domingo a jueves, sin feriados, vísperas de feriado ni vacaciones escolares. Vence a los 12 meses. No se combina con otras promociones.</p>' +
 '</td></tr>' +
 '<tr><td style="background:#3a3530;border-radius:0 0 16px 16px;padding:24px 40px;text-align:center;">' +
 '<p style="margin:0 0 8px;font-size:18px;font-weight:300;color:#ffffff;font-family:Georgia,serif;">Las <em>Nubes</em></p>' +
@@ -306,8 +319,8 @@ function handleUnmarkLoyaltyUsed(payload) {
   }
 }
 
-// Quita el trigger diario. El programa quedo discontinuado, asi que dejarlo
-// corriendo solo genera trabajo que despues hay que deshacer.
+// Quita el trigger diario. Util si se apaga el programa: dejarlo corriendo
+// solo genera trabajo que despues hay que deshacer.
 function desinstalarTriggerLoyalty() {
   let n = 0;
   ScriptApp.getProjectTriggers().forEach(t => {
