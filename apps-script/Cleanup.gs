@@ -1183,6 +1183,35 @@ function _airbnbMontosDesdeEmail_(dryRun) {
   const sheet = getOrCreateSheet();
   const data  = sheet.getDataRange().getValues();
   const iso   = v => v instanceof Date ? Utilities.formatDate(v, 'America/Panama', 'yyyy-MM-dd') : (v || '').toString().slice(0, 10);
+  const norm  = t => (t || '').toString().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+
+  // ── Índice de emails, UNA sola pasada ──────────────────────────────
+  // El código HM NO se puede poner en la query de Gmail: viene dentro de una
+  // URL (/details/HMXXXXXXXX) y Gmail no lo indexa como palabra. Buscar
+  // `"HMSPN4MZFH"` devolvía cero para las nueve filas. El sync nunca lo hizo
+  // así — trae todos los "Reserva confirmada:" y filtra el cuerpo en JS.
+  // Además se indexa una vez y no una búsqueda por fila: nueve barridos de
+  // Gmail es lento y arriesga la cuota.
+  const porCod = {}, porNombre = {};
+  let nMsgs = 0;
+  GmailApp.search('from:automated@airbnb.com subject:"Reserva confirmada:" newer_than:400d')
+    .forEach(t => t.getMessages().forEach(m => {
+      const body = m.getPlainBody() || '';
+      nMsgs++;
+      const tm = body.match(/Total\s*\(USD\)[^$]*\$\s*([\d,.]+)/i);
+      const monto = tm ? _montoAirbnbANumero(tm[1]) : 0;
+      if (monto <= 0) return;
+      const info = { monto: monto, asunto: m.getSubject().slice(0, 46) };
+      const cm = body.match(/\b(HM[A-Z0-9]{8})\b/);
+      if (cm) porCod[cm[1].toUpperCase()] = info;
+      // Fallback por nombre: hay filas sin código HM (el id quedó de timestamp).
+      const nm = m.getSubject().match(/Reserva confirmada:\s*(.+?)\s+llega/i);
+      if (nm) {
+        const k = norm(nm[1]);
+        if (k) (porNombre[k] = porNombre[k] || []).push(info);
+      }
+    }));
 
   const casos = [];
   for (let i = 1; i < data.length; i++) {
@@ -1191,49 +1220,45 @@ function _airbnbMontosDesdeEmail_(dryRun) {
     if (String(r[_R.ORIGEN] || '').trim() !== 'Airbnb') continue;
     if ((r[_R.ESTADO] || '').toString().toUpperCase() === 'CANCELADA') continue;
     if (_cleanMoney_(r[_R.MONTO]) > 0 || _cleanMoney_(r[_R.NETO]) > 0) continue;
-    casos.push({ fila: i + 1, nombre: r[1], entrada: iso(r[_R.ENTRADA]),
-                 cod: (r[_R.COD] || '').toString().trim(),
+    casos.push({ fila: i + 1, nombre: (r[1] || '').toString().replace(/\s+/g, ' ').trim(),
+                 entrada: iso(r[_R.ENTRADA]),
+                 cod: (r[_R.COD] || '').toString().trim().toUpperCase(),
                  pagado: _cleanMoney_(r[_R.MONTOPAGADO]) });
   }
 
   Logger.log('');
   Logger.log('═══ ' + (dryRun ? 'DRY-RUN · ' : '') + 'AIRBNB SIN MONTO EN LA HOJA ═══');
+  Logger.log('📧 ' + nMsgs + ' emails "Reserva confirmada:" revisados · '
+    + Object.keys(porCod).length + ' con código y monto');
   if (!casos.length) { Logger.log('✓ Todas las reservas de Airbnb activas tienen monto.'); return 0; }
   Logger.log(casos.length + ' fila(s) con Monto y Neto en cero.');
   Logger.log('');
 
   let n = 0, sinEmail = 0;
   casos.forEach(c => {
-    let recuperado = null, via = '';
-    if (c.cod) {
-      try {
-        const hilos = GmailApp.search('from:airbnb.com "' + c.cod + '" newer_than:730d', 0, 5);
-        for (const h of hilos) {
-          for (const m of h.getMessages()) {
-            const mm = (m.getPlainBody() || '').match(/Total\s*\(USD\)[^$]*\$\s*([\d,.]+)/i);
-            const v  = mm ? _montoAirbnbANumero(mm[1]) : 0;
-            if (v > 0) { recuperado = v; via = m.getSubject().slice(0, 40); break; }
-          }
-          if (recuperado) break;
-        }
-      } catch (e) { Logger.log('   (error buscando ' + c.cod + ': ' + e.message + ')'); }
+    let hit = /^HM[A-Z0-9]{8}$/.test(c.cod) ? porCod[c.cod] : null;
+    let via = hit ? 'código' : '';
+    if (!hit) {
+      // Sin código utilizable, se cae al nombre — solo si es inequívoco.
+      const cand = porNombre[norm(c.nombre)] || [];
+      if (cand.length === 1) { hit = cand[0]; via = 'nombre (único)'; }
+      else if (cand.length > 1) via = 'nombre ambiguo (' + cand.length + ' emails)';
     }
     const base = 'fila ' + c.fila + ' · ' + c.entrada + ' · ' + c.nombre
                + ' · ' + (c.cod || '(SIN CÓDIGO HM)');
-    if (recuperado == null) {
+    if (!hit) {
       sinEmail++;
-      Logger.log('   ✗ ' + base + ' → no se encontró el Total en ningún email'
-        + (c.cod ? '' : ' (sin código no hay por dónde buscar)'));
+      Logger.log('   ✗ ' + base + ' → sin email' + (via ? ' · ' + via : ''));
       return;
     }
-    Logger.log((dryRun ? '   [dry] ' : '   ✓ ') + base + ' → $' + recuperado.toFixed(2)
-      + '   [' + via + ']');
+    Logger.log((dryRun ? '   [dry] ' : '   ✓ ') + base + ' → $' + hit.monto.toFixed(2)
+      + '   [por ' + via + ' · ' + hit.asunto + ']');
     if (!dryRun) {
-      sheet.getRange(c.fila, _R.MONTO + 1).setValue(recuperado);
-      // El Neto real de Airbnb sale del payout. Mientras no haya cobro, se pone
+      sheet.getRange(c.fila, _R.MONTO + 1).setValue(hit.monto);
+      // El Neto real de Airbnb sale del payout. Mientras no haya cobro se pone
       // el bruto para que la reserva no valga cero en los reportes;
       // `actualizarEstadoPagoAirbnb` lo pisa con el neto cuando el payout llega.
-      if (c.pagado <= 0) sheet.getRange(c.fila, _R.NETO + 1).setValue(recuperado);
+      if (c.pagado <= 0) sheet.getRange(c.fila, _R.NETO + 1).setValue(hit.monto);
     }
     n++;
   });
