@@ -110,9 +110,13 @@
      Los tamaños base están calibrados para 390px de ancho; en desktop el
      titular llega a 50px y con 26/10.5px la marca se leía como pie de página. */
   @media (min-width: 820px) {
-    .hb-name { font-size: 34px; }
-    .hero-brand { margin-bottom: 22px; }
-    .hero-brand .hero-location { font-size: 12px; letter-spacing: 0.16em; margin-top: 8px; }
+    /* Acompañan al titular en vez de quedarse fijas, pero por debajo: la
+       cabaña es la que manda y la marca no debe competirle. */
+    .hb-name { font-size: clamp(28px, 2.3vw, 40px); }
+    .hero-brand { margin-bottom: clamp(20px, 1.8vw, 30px); }
+    .hero-brand .hero-location {
+      font-size: clamp(12px, 0.8vw, 15px); letter-spacing: 0.16em; margin-top: 9px;
+    }
   }
 
   /* Instrucción del calendario, ya fuera del hero. */
@@ -127,9 +131,11 @@
 
   .hero-title {
     font-family: 'Cormorant Garamond', serif;
-    /* Más chico que antes: ya no dice "Las Nubes" sino "Puente entre Las
-       Nubes", que con el tamaño anterior se partía en tres líneas. */
-    font-size: clamp(32px, 6.4vw, 50px);
+    /* Escala con el ancho hasta 66px. Topado en 50px, en una pantalla de
+       1900px el bloque entero se veía pequeño por más que creciera el lienzo.
+       El mínimo es chico a propósito: ya no dice "Las Nubes" sino "Puente
+       entre Las Nubes", que con el tamaño viejo se partía en tres líneas. */
+    font-size: clamp(32px, 4.2vw, 66px);
     font-weight: 300;
     line-height: 1.1;
     color: #fff;
