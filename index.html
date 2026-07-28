@@ -252,6 +252,20 @@
     letter-spacing: 0.02em;
   }
   .promo-banner-note strong { color: #2c5e22; font-weight: 600; }
+
+  /* Ventanas cortas dentro del banner. Separadas por una línea porque son otra
+     oferta, no una aclaración de la promo de arriba. */
+  .pb-ventanas { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(44,94,34,.18); }
+  .pb-ven-tit { font-size: 11.5px; color: #2c5e22; font-weight: 600; margin-bottom: 6px; }
+  .pb-ven-lista { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pb-ven {
+    background: rgba(255,255,255,.7); border: 1px solid #a8d6a5; border-radius: 999px;
+    padding: 4px 11px; font-size: 11.5px; color: #2c5e22; cursor: pointer;
+    font-family: inherit; touch-action: manipulation; white-space: nowrap;
+    transition: background .15s;
+  }
+  .pb-ven:hover { background: #fff; }
+  .pb-ven strong { font-weight: 600; }
   @media (max-width: 520px) {
     .promo-banner { margin: 16px 12px 0; padding: 14px 16px; }
     .promo-banner-title { font-size: 17px; }
@@ -1507,6 +1521,9 @@
       <span class="promo-banner-strike">antes $<span id="promoBannerOrig"></span></span>
     </div>
     <div class="promo-banner-note">Aplica solo para reservas <strong>directas</strong> vía WhatsApp</div>
+    <!-- Ventanas cortas disponibles pronto. Van en la misma caja porque son lo
+         mismo desde el lado del cliente: lo barato de esta semana. -->
+    <div id="promoVentanas" class="pb-ventanas" style="display:none;"></div>
   </div>
 </div>
 
@@ -3032,6 +3049,53 @@ function loadMore() {
 // El banner se arma desde los tipos de día que realmente tienen promo activa,
 // no desde un texto fijo: desde que viernes, sábado y feriados pueden tener la
 // suya, decir siempre "Domingo a jueves" sería mentir en cuanto se ponga una.
+// Ventanas cortas disponibles en los próximos N días, en todas las cabañas.
+// Recorre día por día en vez de reusar el cálculo de render() porque el banner
+// se pinta ANTES de la reja y para un rango corto que no depende del mes que
+// se esté mostrando.
+function _ventanasProximas(dias) {
+  if (!VENTANAS_PUBLICAS) return [];
+  const hoy = new Date().toISOString().slice(0, 10);
+  const out = [];
+  CABINS.forEach(c => {
+    const iv = buildIntervalos(c.key), occ = buildOccupied(c.key);
+    for (let i = 0; i < dias; i++) {
+      const d = _addDaysISO(hoy, i);
+      ventanasDelDia(iv, occ, d).forEach(v => {
+        out.push({ fecha: d, cabin: c.key, corto: c.short || c.name, tipo: v.tipo,
+                   label: v.label, precio: _precioPasadia(v.tipo, 2) });
+      });
+    }
+  });
+  return out.sort((a, b) => a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0);
+}
+
+const PB_VENTANAS_DIAS = 15;
+const PB_VENTANAS_MAX  = 6;
+
+function _updatePromoVentanas() {
+  const el = document.getElementById('promoVentanas');
+  if (!el) return [];
+  const vs = _ventanasProximas(PB_VENTANAS_DIAS);
+  if (!vs.length) { el.style.display = 'none'; el.innerHTML = ''; return vs; }
+  const M = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const D = ['dom','lun','mar','mié','jue','vie','sáb'];
+  const chip = v => {
+    const d = new Date(v.fecha + 'T12:00:00');
+    return '<button class="pb-ven" onclick="showDetail(\'' + v.fecha + '\')">'
+         + D[d.getDay()] + ' ' + d.getDate() + ' ' + M[d.getMonth()] + ' · ' + v.corto
+         + ' · ' + v.label + ' <strong>$' + v.precio + '</strong></button>';
+  };
+  const vis = vs.slice(0, PB_VENTANAS_MAX);
+  const resto = vs.length - vis.length;
+  el.innerHTML = '<div class="pb-ven-tit">🌇 Ventanas cortas disponibles estos días</div>'
+    + '<div class="pb-ven-lista">' + vis.map(chip).join('')
+    + (resto > 0 ? '<span class="pb-ven" style="cursor:default;opacity:.75;">y ' + resto + ' más abajo</span>' : '')
+    + '</div>';
+  el.style.display = 'block';
+  return vs;
+}
+
 function _updatePromoBanner() {
   const banner = document.getElementById('promoBanner');
   if (!banner) return;
@@ -3043,7 +3107,19 @@ function _updatePromoBanner() {
     { lbl: 'feriados',         promo: PROMO_FERIADO, base: RATE_FERIADO }
   ].filter(t => t.promo > 0 && t.promo < t.base);
 
-  if (!PROMO_ACTIVE || !TIPOS.length) { banner.style.display = 'none'; return; }
+  // Las ventanas cortas no dependen de la promoción: son huecos que existen
+  // igual. Si solo hubiera ventanas, el banner se muestra con esa parte sola,
+  // en vez de esconder una oferta real porque la promo está apagada.
+  const hayVentanas = _updatePromoVentanas().length > 0;
+  const filas = ['promo-banner-title','promo-banner-text','promo-banner-note']
+    .map(c => banner.querySelector('.' + c));
+  const hayPromo = PROMO_ACTIVE && TIPOS.length > 0;
+  filas.forEach(f => { if (f) f.style.display = hayPromo ? '' : 'none'; });
+  const pbv = document.getElementById('promoVentanas');
+  if (pbv && !hayPromo) { pbv.style.marginTop = '0'; pbv.style.paddingTop = '0'; pbv.style.borderTop = 'none'; }
+  else if (pbv) { pbv.style.marginTop = ''; pbv.style.paddingTop = ''; pbv.style.borderTop = ''; }
+
+  if (!hayPromo) { banner.style.display = hayVentanas ? 'flex' : 'none'; return; }
   // Hasta cuándo dura: una promo sin fecha visible no genera ninguna urgencia.
   const nota = document.querySelector('.promo-banner-note');
   const hasta = _promoUltimoMes();
