@@ -2992,7 +2992,10 @@ function _botConfirmacionText(reservation, publicUrl, referralCode, referralAmou
     text += '\nSi durante tu estadía disfrutas la experiencia y deseas compartirla, este es tu código personal: *' + referralCode + '*';
     text += '\n\n• Si un amigo reserva con tu código recibe *$' + amt + ' off*.';
     text += '\n• Y tú *$' + amt + '* para tu próxima visita.';
-    text += '\n(Aplica Dom–Jue, reservas directas)';
+    // La elegibilidad se define por TIPO de día y no por día de semana: un
+    // martes feriado o de vacaciones escolares seguía siendo "Dom–Jue", y ahí
+    // el descuento caía justo en las noches de mayor demanda.
+    text += '\n(Domingo a jueves, sin feriados ni vacaciones escolares · reservas directas)';
   }
   text += '\n\n📸 No olvides etiquetarnos en nuestras redes:';
   text += '\nInstagram: https://www.instagram.com/las_nubes_de_chica/';

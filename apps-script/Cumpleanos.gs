@@ -11,7 +11,13 @@
 //   - Tiene FechaNacimiento (col 28) registrada
 //   - Aun no se le mando este año (hoja CumpleanosEnviados)
 //
-//  Descuentos: 30% Dom-Jue / 20% Vie-Sab sobre la noche del cumpleaños.
+//  Descuento: monto FIJO en dolares sobre la noche del cumpleanos.
+//  Antes era un porcentaje por dia de semana (20% Dom-Jue / 10% Vie-Sab). Con
+//  el tarifario por tipo de dia eso regalaba mas en las noches mas caras: un
+//  martes que ademas es vispera de feriado ($135) recibia $27, contra $18 de un
+//  martes normal. Un monto fijo no tiene ese sesgo y ademas es comparable con
+//  los otros dos beneficios del programa, que ya estaban en dolares.
+//  No aplica en feriados, visperas ni vacaciones escolares.
 //  Ajustable via Script Properties:
 //     CUMPLE_DESCUENTO_DOM_JUE (default 30)
 //     CUMPLE_DESCUENTO_VIE_SAB (default 20)
@@ -24,8 +30,9 @@
 function _cumpleanosConfig() {
   const props = PropertiesService.getScriptProperties();
   return {
-    descDomJue: parseInt(props.getProperty('CUMPLE_DESCUENTO_DOM_JUE'), 10) || 20,
-    descVieSab: parseInt(props.getProperty('CUMPLE_DESCUENTO_VIE_SAB'), 10) || 10,
+    // Monto fijo en dolares. Se sigue leyendo de Script Properties para poder
+    // ajustarlo sin deploy; CUMPLE_DESCUENTO_DOM_JUE queda como nombre legado.
+    descMonto:  parseInt(props.getProperty('CUMPLE_DESCUENTO_MONTO'), 10) || 25,
     diasAntes:  parseInt(props.getProperty('CUMPLE_DIAS_ANTES'), 10)        || 30
   };
 }
@@ -153,8 +160,7 @@ function _sendCumpleEmail(huesped, cfg) {
     firstName,
     nombre: huesped.nombre,
     fechaCumple,
-    descDomJue: cfg.descDomJue,
-    descVieSab: cfg.descVieSab,
+    descMonto:  cfg.descMonto,
     diasAntes:  cfg.diasAntes,
     waLink
   });
@@ -177,15 +183,16 @@ function buildCumpleEmailHTML(opts) {
 '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f8ed;border:1px solid #b7d8b1;border-radius:14px;margin:24px 0;">' +
 '<tr><td style="padding:24px 28px;">' +
 '<p style="margin:0 0 10px;font-size:13px;color:#2c5e22;letter-spacing:0.05em;text-transform:uppercase;font-weight:600;">Tu regalo</p>' +
-'<p style="margin:0 0 14px;font-size:22px;font-weight:300;color:#2c5e22;font-family:Georgia,serif;">' + opts.descDomJue + '% off Dom–Jue · ' + opts.descVieSab + '% off Vie–Sáb</p>' +
-'<p style="margin:0;font-size:13px;color:#4a6b40;line-height:1.6;">Aplica sobre la noche de tu cumpleaños (' + opts.fechaCumple + ') si reservás directo con nosotros vía WhatsApp.</p>' +
+'<p style="margin:0 0 14px;font-size:26px;font-weight:300;color:#2c5e22;font-family:Georgia,serif;">$' + opts.descMonto + ' off tu noche</p>' +
+'<p style="margin:0;font-size:13px;color:#4a6b40;line-height:1.6;">Sobre la noche de tu cumpleaños (' + opts.fechaCumple + '), reservando directo por WhatsApp. Se descuenta de la tarifa vigente ese día.</p>' +
 '</td></tr></table>' +
 '<p style="margin:0 0 20px;font-size:14px;color:#6b6560;line-height:1.7;">Cómo funciona:</p>' +
 '<ul style="margin:0 0 20px;padding-left:20px;color:#6b6560;font-size:14px;line-height:1.7;">' +
-'<li>Escribinos por WhatsApp para coordinar.</li>' +
-'<li>Aplica solo el día de tu cumpleaños — el resto de noches a tarifa normal.</li>' +
-'<li>Sujeto a disponibilidad. Reservá con tiempo.</li>' +
-'<li>Solo para reservas directas (no aplica si reservás vía Airbnb).</li>' +
+'<li>Escríbenos por WhatsApp para coordinar.</li>' +
+'<li>Aplica solo la noche de tu cumpleaños — el resto a tarifa normal.</li>' +
+'<li>Cualquier día de la semana. No aplica en feriados, vísperas de feriado ni vacaciones escolares.</li>' +
+'<li>Sujeto a disponibilidad. Reserva con tiempo.</li>' +
+'<li>Solo para reservas directas (no aplica si reservas vía Airbnb).</li>' +
 '</ul>' +
 '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;"><tr><td align="center">' +
 '<a href="' + opts.waLink + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:15px;font-weight:600;padding:14px 28px;border-radius:10px;text-decoration:none;">&#128172; Reservar mi cumpleaños</a>' +
