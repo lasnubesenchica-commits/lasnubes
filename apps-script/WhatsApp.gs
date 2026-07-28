@@ -311,11 +311,14 @@ function sendWAReservaConfirmada(reservation) {
  *     Sin boton, Meta rechaza el envio por componentes que no coinciden.
  *   · el body no arranca ni termina en variable, que Meta a veces rechaza.
  *
- * Mientras Meta no la apruebe, cae de vuelta a 'confirmacion_reserva' con los
- * parametros adaptados al regalo (sin montos). Como ahí el body es fijo y no
- * lleva la invitación, esta se agrega al param de texto libre — ver
- * REGALO_WA_COORDINAR_CORTO abajo.
- * NUNCA incluye tarifa, abono ni saldo.
+ * APROBADA en Meta (jul 2026): esta es la plantilla que se manda. El fallback a
+ * 'confirmacion_reserva' queda como RED DE SEGURIDAD, no como estado esperado —
+ * si Meta la pausa o el envio falla, el beneficiario igual recibe su aviso (con
+ * el marco de regalo metido en los campos de texto libre, ver
+ * REGALO_WA_COORDINAR_CORTO abajo) en vez de quedarse sin nada. Ahora que está
+ * aprobada, ver "⚠ certificado_regalo falló" en el log significa que algo se
+ * rompió: revisar el motivo con verEstadoPlantillasWA(), no ignorarlo.
+ * NUNCA incluye tarifa, abono ni saldo, por ninguna de las dos vías.
  */
 // Versión compacta de la invitación para meterla en un param de plantilla.
 // Meta rechaza parámetros con saltos de línea o tabs, así que va en una línea.
@@ -366,9 +369,11 @@ function sendWARegaloCertificado(reservation) {
       link:    link
     }, null, 'consulta_' + reservation.id);
   } catch(err) {
-    // Fallback: la plantilla de regalo todavía no está aprobada en Meta.
-    // Reusamos 'confirmacion_reserva' metiendo el marco de regalo en los
-    // campos de texto libre. Sigue sin montos.
+    // Red de seguridad: 'certificado_regalo' ya está aprobada, así que llegar
+    // acá es una anomalía (plantilla pausada, rate limit, red caída), no el
+    // camino normal. Reusamos 'confirmacion_reserva' metiendo el marco de
+    // regalo en los campos de texto libre para no dejar al beneficiario sin
+    // aviso. Sigue sin montos.
     Logger.log('⚠ certificado_regalo falló (' + err.message + ') → fallback confirmacion_reserva');
     const persons     = parseInt(reservation.persons, 10) || 1;
     const personasStr = persons + (persons === 1 ? ' persona' : ' personas');
