@@ -10811,10 +10811,20 @@ function _renderChipsPeriodo(containerId, opts) {
   const _rangeKey  = _rangoSel ? _rangoSel.presetKey : null;
   const _yr        = _now.getFullYear();
   const _curMo     = _now.getMonth();
-  // Solo meses del año en curso: los chips son una fila corta, no un calendario.
-  let _ultMo = _curMo;
-  if (opts.hastaMes && opts.hastaMes.slice(0, 4) === String(_yr)) {
-    _ultMo = Math.max(_curMo, Math.min(11, parseInt(opts.hastaMes.slice(5, 7), 10) - 1));
+  // Un mes POR DELANTE de "Este mes": lo que viene ya está reservado y hay que
+  // poder mirarlo sin pasar por Custom. Solo meses del año en curso — los chips
+  // son una fila corta, no un calendario — así que en diciembre no hay chip de
+  // enero siguiente y ahí sí toca Custom.
+  let _ultMo = Math.min(11, _curMo + 1);
+  if (opts.hastaMes) {
+    const _hy = parseInt(opts.hastaMes.slice(0, 4), 10);
+    const _hm = parseInt(opts.hastaMes.slice(5, 7), 10);
+    // Un tope del año QUE VIENE se recorta a diciembre en vez de descartarse.
+    // Antes se ignoraba entero: con una reserva de enero-2027 los chips se
+    // quedaban en agosto y noviembre-2026 quedaba inalcanzable pese a tener
+    // check-ins. Para 2027 en adelante está Custom.
+    if (_hy > _yr)        _ultMo = 11;
+    else if (_hy === _yr) _ultMo = Math.max(_ultMo, Math.min(11, _hm - 1));
   }
 
   const _chip = (label, active, onclick, opts) => {
