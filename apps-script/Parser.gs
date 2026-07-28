@@ -814,6 +814,9 @@ function getOrCreateConfig() {
 // que el precio publicado no cambie el día que se despliega esto. `weekend`
 // queda en la hoja como legado: ya nadie lo lee, pero borrarlo sería tirar el
 // valor del que salieron los nuevos.
+// [clave, heredaDe, descripción, valorPorDefecto]
+// `heredaDe` toma el valor de otra clave ya existente; si es null se usa el
+// cuarto elemento, o 0.
 const _TARIFAS_NUEVAS = [
   ['viernes',       'weekend', 'Tarifa viernes'],
   ['sabado',        'weekend', 'Tarifa sábado'],
@@ -828,7 +831,22 @@ const _TARIFAS_NUEVAS = [
   // Cuántos meses dura la promo contando desde el ACTUAL. 0 = sin límite.
   // Es una cantidad y no una fecha de fin a propósito: así la ventana se corre
   // sola al pasar el mes, en vez de vencer y obligar a reconfigurar.
-  ['promoMeses',    null,      'Meses de promo desde el actual (0 = sin límite)']
+  ['promoMeses',    null,      'Meses de promo desde el actual (0 = sin límite)'],
+
+  // Estadías cortas y recargos. Estaban en el código del frontend y getTarifas
+  // ya las leía, pero la hoja nunca creaba la fila: sin fila, saveTarifas no
+  // tenía dónde escribir y el valor por defecto ganaba siempre. Se siembran con
+  // exactamente lo que estaba hardcodeado, así el precio no cambia.
+  ['pasatarde',               null, 'Tarifa pasatarde 12:30pm–7pm',        60],
+  ['pasanoche',               null, 'Tarifa pasanoche 8pm–12:30pm',        75],
+  ['pasadia',                 null, 'Tarifa pasadía 9am–5pm',              75],
+  ['recargoPasatardePersona', null, 'Recargo pasatarde por persona (3ra+)', 20],
+  ['recargoPasanochePersona', null, 'Recargo pasanoche por persona (3ra+)', 25],
+  ['recargoPasadiaPersona',   null, 'Recargo pasadía por persona (3ra+)',   25],
+  ['recargoPersonaGrande',    null, 'Recargo por persona Paseo/Puente',     20],
+  ['recargoPersonaPortal',    null, 'Recargo por persona Portal',           10],
+  ['recargoCombo5',           null, 'Recargo combo 5 personas',             80],
+  ['recargoCombo6',           null, 'Recargo combo 6 personas',            100]
 ];
 
 function _migrarTarifasPorTipoDia_(cfg) {
@@ -841,9 +859,9 @@ function _migrarTarifasPorTipoDia_(cfg) {
   const hoy = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd');
   let añadidas = 0;
   _TARIFAS_NUEVAS.forEach(function(t) {
-    const clave = t[0], hereda = t[1], desc = t[2];
+    const clave = t[0], hereda = t[1], desc = t[2], porDefecto = t[3];
     if (map.hasOwnProperty(clave)) return;
-    const valor = hereda ? (parseFloat(map[hereda]) || 110) : 0;
+    const valor = hereda ? (parseFloat(map[hereda]) || 110) : (porDefecto || 0);
     cfg.appendRow([clave, valor, desc, hoy, 'sistema']);
     añadidas++;
   });
@@ -1653,7 +1671,10 @@ function doGet(e) {
       const updates = { promoActive: (p.promoActive === 'true' || p.promoActive === '1') ? 'true' : 'false' };
       ['weekday','weekend','promo','viernes','sabado','vispera','feriado','escolar',
        'promoViernes','promoSabado','promoVispera','promoFeriado','promoEscolar',
-       'promoMeses'].forEach(function(k) {
+       'promoMeses',
+       'pasatarde','pasanoche','pasadia',
+       'recargoPasatardePersona','recargoPasanochePersona','recargoPasadiaPersona',
+       'recargoPersonaGrande','recargoPersonaPortal','recargoCombo5','recargoCombo6'].forEach(function(k) {
         if (p[k] !== undefined && p[k] !== '' && !isNaN(parseFloat(p[k]))) updates[k] = parseFloat(p[k]);
       });
       for (let i = 1; i < rows.length; i++) {

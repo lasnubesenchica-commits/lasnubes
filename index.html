@@ -2618,6 +2618,7 @@
          sin la lista que define de qué es víspera. -->
     <div class="rt-tabs">
       <button class="rt-tab on" id="rtTabPrecios"  onclick="setRatesTab('precios')">Precios</button>
+      <button class="rt-tab"    id="rtTabCortas"   onclick="setRatesTab('cortas')">Cortas</button>
       <button class="rt-tab"    id="rtTabFeriados" onclick="setRatesTab('feriados')">Feriados</button>
     </div>
 
@@ -2689,6 +2690,45 @@
     </p>
 
     </div><!-- /rtPanePrecios -->
+
+    <!-- Estadías cortas. En pestaña aparte y no junto a las noches: son otro
+         producto (tarifa plana, no por tipo de día) y mezclarlas obligaba a
+         leer once filas para encontrar la que se quiere tocar. -->
+    <div id="rtPaneCortas" style="display:none;">
+      <div style="display:grid;grid-template-columns:1fr 84px 84px;gap:8px 10px;align-items:center;margin-bottom:14px;">
+        <div></div>
+        <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;text-align:center;">Base</div>
+        <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;text-align:center;">+ persona</div>
+
+        <label style="font-size:12.5px;color:var(--text);">Pasadía<br><span style="font-size:10.5px;color:var(--muted);">9am – 5pm</span></label>
+        <input id="ratePasadia"   type="number" min="0" step="1" class="rate-in">
+        <input id="recPasadia"    type="number" min="0" step="1" class="rate-in">
+
+        <label style="font-size:12.5px;color:var(--text);">Pasatarde<br><span style="font-size:10.5px;color:var(--muted);">12:30 – 7pm</span></label>
+        <input id="ratePasatarde" type="number" min="0" step="1" class="rate-in">
+        <input id="recPasatarde"  type="number" min="0" step="1" class="rate-in">
+
+        <label style="font-size:12.5px;color:var(--text);">Pasanoche<br><span style="font-size:10.5px;color:var(--muted);">8pm – 12:30pm</span></label>
+        <input id="ratePasanoche" type="number" min="0" step="1" class="rate-in">
+        <input id="recPasanoche"  type="number" min="0" step="1" class="rate-in">
+      </div>
+
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:16px 0 8px;">Recargo por persona en hospedaje</div>
+      <div style="display:grid;grid-template-columns:1fr 84px;gap:8px 10px;align-items:center;">
+        <label style="font-size:12.5px;color:var(--text);">Paseo y Puente <span style="color:var(--muted);font-size:11px;">· por noche</span></label>
+        <input id="recGrande" type="number" min="0" step="1" class="rate-in">
+        <label style="font-size:12.5px;color:var(--text);">Portal <span style="color:var(--muted);font-size:11px;">· por noche</span></label>
+        <input id="recPortal" type="number" min="0" step="1" class="rate-in">
+        <label style="font-size:12.5px;color:var(--text);">Combo 5 personas</label>
+        <input id="recCombo5" type="number" min="0" step="1" class="rate-in">
+        <label style="font-size:12.5px;color:var(--text);">Combo 6 personas</label>
+        <input id="recCombo6" type="number" min="0" step="1" class="rate-in">
+      </div>
+      <p style="font-size:11.5px;color:var(--muted);line-height:1.55;margin:12px 0 0;">
+        Las tarifas de estadía corta son planas: no varían por día de la semana ni por
+        cabaña. El recargo aplica desde la <strong>3ra persona</strong>.
+      </p>
+    </div>
 
     <div id="rtPaneFeriados" style="display:none;">
       <p style="font-size:11.5px;color:var(--muted);line-height:1.55;margin:0 0 12px;">
@@ -3828,6 +3868,9 @@ function closeTooltip() {
 // Campo del modal → variable global. Una sola lista para poblar, leer y
 // guardar: con tres copias de los mismos diez nombres, agregar un tipo de día
 // significaba acordarse de tocar los tres sitios.
+// [idDelCampo, variableGlobal, claveConfig, permiteCero]
+// permiteCero: un promocional en 0 significa "sin promo" y un recargo en 0 es
+// "sin recargo"; un precio base en 0 sería regalar la noche, así que se rechaza.
 const RATE_FIELDS = [
   ['rateWeekday',  'RATE_WEEKDAY',  'weekday'],
   ['ratePromo',    'RATE_PROMO',    'promo'],
@@ -3840,11 +3883,25 @@ const RATE_FIELDS = [
   ['rateFeriado',  'RATE_FERIADO',  'feriado'],
   ['promoFeriado', 'PROMO_FERIADO', 'promoFeriado'],
   ['rateEscolar',  'RATE_ESCOLAR',  'escolar'],
-  ['promoEscolar', 'PROMO_ESCOLAR', 'promoEscolar']
+  ['promoEscolar', 'PROMO_ESCOLAR', 'promoEscolar'],
+  // Pestaña Cortas.
+  ['ratePasadia',   'PASADIA_RATE',              'pasadia'],
+  ['recPasadia',    'RECARGO_PASADIA_PERSONA',   'recargoPasadiaPersona',   true],
+  ['ratePasatarde', 'PASATARDE_RATE',            'pasatarde'],
+  ['recPasatarde',  'RECARGO_PASATARDE_PERSONA', 'recargoPasatardePersona', true],
+  ['ratePasanoche', 'PASANOCHE_RATE',            'pasanoche'],
+  ['recPasanoche',  'RECARGO_PASANOCHE_PERSONA', 'recargoPasanochePersona', true],
+  ['recGrande',     'RECARGO_PERSONA_GRANDE',    'recargoPersonaGrande',    true],
+  ['recPortal',     'RECARGO_PERSONA_PORTAL',    'recargoPersonaPortal',    true],
+  ['recCombo5',     'RECARGO_COMBO_5',           'recargoCombo5',           true],
+  ['recCombo6',     'RECARGO_COMBO_6',           'recargoCombo6',           true]
 ];
 const _rateGet = v => ({ RATE_WEEKDAY, RATE_PROMO, RATE_VIERNES, PROMO_VIERNES,
   RATE_SABADO, PROMO_SABADO, RATE_VISPERA, PROMO_VISPERA, RATE_FERIADO, PROMO_FERIADO,
-  RATE_ESCOLAR, PROMO_ESCOLAR })[v];
+  RATE_ESCOLAR, PROMO_ESCOLAR,
+  PASADIA_RATE, PASATARDE_RATE, PASANOCHE_RATE,
+  RECARGO_PASADIA_PERSONA, RECARGO_PASATARDE_PERSONA, RECARGO_PASANOCHE_PERSONA,
+  RECARGO_PERSONA_GRANDE, RECARGO_PERSONA_PORTAL, RECARGO_COMBO_5, RECARGO_COMBO_6 })[v];
 function _rateSet(v, n) {
   switch (v) {
     case 'RATE_WEEKDAY':  RATE_WEEKDAY  = n; break;
@@ -3859,6 +3916,16 @@ function _rateSet(v, n) {
     case 'PROMO_FERIADO': PROMO_FERIADO = n; break;
     case 'RATE_ESCOLAR':  RATE_ESCOLAR  = n; break;
     case 'PROMO_ESCOLAR': PROMO_ESCOLAR = n; break;
+    case 'PASADIA_RATE':   PASADIA_RATE   = n; break;
+    case 'PASATARDE_RATE': PASATARDE_RATE = n; break;
+    case 'PASANOCHE_RATE': PASANOCHE_RATE = n; break;
+    case 'RECARGO_PASADIA_PERSONA':   RECARGO_PASADIA_PERSONA   = n; break;
+    case 'RECARGO_PASATARDE_PERSONA': RECARGO_PASATARDE_PERSONA = n; break;
+    case 'RECARGO_PASANOCHE_PERSONA': RECARGO_PASANOCHE_PERSONA = n; break;
+    case 'RECARGO_PERSONA_GRANDE': RECARGO_PERSONA_GRANDE = n; break;
+    case 'RECARGO_PERSONA_PORTAL': RECARGO_PERSONA_PORTAL = n; break;
+    case 'RECARGO_COMBO_5':        RECARGO_COMBO_5        = n; break;
+    case 'RECARGO_COMBO_6':        RECARGO_COMBO_6        = n; break;
   }
 }
 
@@ -3888,12 +3955,13 @@ function _promoMesesUI() {
 }
 
 function setRatesTab(t) {
-  const esP = t === 'precios';
-  document.getElementById('rtPanePrecios').style.display  = esP ? '' : 'none';
-  document.getElementById('rtPaneFeriados').style.display = esP ? 'none' : '';
-  document.getElementById('rtTabPrecios').classList.toggle('on', esP);
-  document.getElementById('rtTabFeriados').classList.toggle('on', !esP);
-  if (!esP) renderFeriados();
+  const PANES = { precios: 'rtPanePrecios', cortas: 'rtPaneCortas', feriados: 'rtPaneFeriados' };
+  const TABS  = { precios: 'rtTabPrecios',  cortas: 'rtTabCortas',  feriados: 'rtTabFeriados' };
+  Object.keys(PANES).forEach(k => {
+    document.getElementById(PANES[k]).style.display = (k === t) ? '' : 'none';
+    document.getElementById(TABS[k]).classList.toggle('on', k === t);
+  });
+  if (t === 'feriados') renderFeriados();
 }
 
 function _ferFmt(iso) {
@@ -4040,12 +4108,12 @@ function setPromoToggleUI(active) {
 
 async function applyRates() {
   const vals = {};
-  for (const [id, v, key] of RATE_FIELDS) {
+  for (const [id, v, key, permiteCero] of RATE_FIELDS) {
     const n = parseFloat(document.getElementById(id).value);
-    // Los promocionales admiten 0 (= ese tipo de día no entra en la promo); los
-    // precios normales no, un 0 ahí sería regalar la noche.
-    const esPromo = key.indexOf('promo') === 0 || key === 'promo';
-    if (isNaN(n) || n < 0 || (!esPromo && n <= 0)) return;
+    // Un promocional en 0 = ese tipo de día no entra en la promo; un recargo en
+    // 0 = sin recargo. Un precio base en 0 sería regalar la estadía.
+    const ceroOk = permiteCero || key.indexOf('promo') === 0 || key === 'promo';
+    if (isNaN(n) || n < 0 || (!ceroOk && n <= 0)) return;
     vals[key] = n; _rateSet(v, n);
   }
   PROMO_ACTIVE = document.getElementById('promoToggle').checked;
