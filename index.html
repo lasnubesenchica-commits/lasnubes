@@ -2837,12 +2837,21 @@ function _promoVigente(dateStr) {
   return mes >= hoyMes && mes <= hasta;
 }
 
+// Con esto en true, _precioCat ignora los promocionales. Sirve para preguntar
+// "¿cuánto costaría sin promo?" y así saber si un precio lleva descuento de
+// verdad, sin duplicar toda la cadena de funciones de precio.
+let _calcSinPromo = false;
+function conPreciosSinPromo(fn) {
+  _calcSinPromo = true;
+  try { return fn(); } finally { _calcSinPromo = false; }
+}
+
 function _precioCat(cat, dateStr) {
   const base  = { semana: RATE_WEEKDAY, viernes: RATE_VIERNES, sabado: RATE_SABADO,
                   vispera: RATE_VISPERA, feriado: RATE_FERIADO, escolar: RATE_ESCOLAR }[cat] || RATE_WEEKDAY;
   const promo = { semana: RATE_PROMO,   viernes: PROMO_VIERNES, sabado: PROMO_SABADO,
                   vispera: PROMO_VISPERA, feriado: PROMO_FERIADO, escolar: PROMO_ESCOLAR }[cat] || 0;
-  return (promo > 0 && _promoVigente(dateStr)) ? promo : base;
+  return (!_calcSinPromo && promo > 0 && _promoVigente(dateStr)) ? promo : base;
 }
 
 function getPrecio(dateStr) {
@@ -4367,7 +4376,7 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
                     : tipo === 'pasanoche' ? '8:00 pm'
                     :                        '9:00 am';
     const horaOut  = tipo === 'pasatarde' ? '7:00 pm'
-                    : tipo === 'pasanoche' ? '12:30 pm día siguiente'
+                    : tipo === 'pasanoche' ? '12:30 pm'   // el día va en la etiqueta
                     :                        '5:00 pm';
     const label    = tipo === 'pasatarde' ? 'pasatarde'
                     : tipo === 'pasanoche' ? 'pasanoche'
@@ -4376,7 +4385,10 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
     texto = 'Tengo disponible el ' + fechaLong + ' en concepto de ' + label + ' en $' + monto + '.00 para ' + persLbl + '.\n\n'
       + '*Cabaña:* ' + cabinNombre + '\n'
       + 'Entrada ' + checkinLabel + ': ' + horaIn + '\n'
-      + 'Salida '  + checkinLabel + ': ' + horaOut + '\n'
+      // La pasanoche cruza la medianoche: la salida es el día SIGUIENTE. Con el
+      // mismo día en las dos líneas se leía "Salida sáb 15: 12:30 pm día
+      // siguiente", que se presta a presentarse un día antes.
+      + 'Salida '  + (tipo === 'pasanoche' ? formatDayShort(dCheckout) : checkinLabel) + ': ' + horaOut + '\n'
       + '\n'
       + seccionesComunes;
   } else {
@@ -4387,16 +4399,22 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
       total = _precioCabinTotal(cabinKey, dateStr, nights, personas);
     }
     const personasLabel = personas + ' personas';
-    let introLine;
-    if (nights === 1) {
-      introLine = PROMO_ACTIVE
-        ? 'Tengo la noche del ' + fechaLong + ' disponible para reserva en tarifa promocional de $' + total + '.00 para ' + personasLabel + '.'
-        : 'Tengo la noche del ' + fechaLong + ' disponible para reserva a $' + total + '.00 para ' + personasLabel + '.';
-    } else {
-      introLine = PROMO_ACTIVE
-        ? 'Tengo las noches del ' + fechaLong + ' al ' + fechaCheckoutLong + ' disponibles para reserva en tarifa promocional de $' + total + '.00 para ' + personasLabel + '.'
-        : 'Tengo las noches del ' + fechaLong + ' al ' + fechaCheckoutLong + ' disponibles para reserva a $' + total + '.00 para ' + personasLabel + '.';
-    }
+    // "Tarifa promocional" solo si el precio REALMENTE está por debajo del
+    // normal. Antes bastaba con que el toggle estuviera prendido, y eso ya no
+    // alcanza: la promo puede estar activa pero fuera de su ventana de meses, o
+    // ese tipo de día puede no entrar en la promoción (promo en 0). El texto
+    // afirmaba un descuento que el precio no tenía.
+    const totalSin = conPreciosSinPromo(() => isCombo
+      ? _precioComboTotal(dateStr, nights, personas)
+      : _precioCabinTotal(cabinKey, dateStr, nights, personas));
+    const hayDescuento = totalSin > total;
+    const antes  = hayDescuento ? ' (antes $' + totalSin + '.00)' : '';
+    const cuando = nights === 1
+      ? 'Tengo la noche del ' + fechaLong + ' disponible'
+      : 'Tengo las noches del ' + fechaLong + ' al ' + fechaCheckoutLong + ' disponibles';
+    const introLine = cuando + ' para reserva '
+      + (hayDescuento ? 'en tarifa promocional de $' : 'a $')
+      + total + '.00' + antes + ' para ' + personasLabel + '.';
 
     let cabinaBlock;
     if (isCombo) {
