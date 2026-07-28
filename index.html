@@ -2559,12 +2559,18 @@ const PASATARDE_HORARIO = '12:30 pm – 7:00 pm';
 const PASANOCHE_HORARIO = '8:00 pm – 12:30 pm día siguiente';
 const PASADIA_HORARIO   = '9:00 am – 5:00 pm';
 
+// Metadatos de las estadías cortas. Fuente única del nombre y el horario para
+// todas las superficies del modal: `horario` es el texto largo (encabezado,
+// mensaje de WhatsApp) y `corto` el que cabe en una línea de la fila.
+const TIPO_META = {
+  pasatarde: { label: 'Pasatarde', horario: PASATARDE_HORARIO, corto: '12:30–7pm' },
+  pasanoche: { label: 'Pasanoche', horario: PASANOCHE_HORARIO, corto: '8pm–12:30pm' },
+  pasadia:   { label: 'Pasadía',   horario: PASADIA_HORARIO,   corto: '9am–5pm' }
+};
 // Ventanas que se ofrecen al público cuando la noche ya no es vendible.
 const VENTANAS_CORTAS = [
-  // `horario` es el texto largo (mensaje de WhatsApp); `corto` cabe en una
-  // línea de la fila del modal, al lado del chip de acción.
-  { tipo: 'pasatarde', ini: 12.5, fin: 19,   mismoDia: true,  label: 'Pasatarde', horario: PASATARDE_HORARIO, corto: '12:30–7pm' },
-  { tipo: 'pasanoche', ini: 20,   fin: 12.5, mismoDia: false, label: 'Pasanoche', horario: PASANOCHE_HORARIO, corto: '8pm–12:30pm' }
+  { tipo: 'pasatarde', ini: 12.5, fin: 19,   mismoDia: true,  ...TIPO_META.pasatarde },
+  { tipo: 'pasanoche', ini: 20,   fin: 12.5, mismoDia: false, ...TIPO_META.pasanoche }
 ];
 // Margen mínimo de limpieza entre dos estadías. 90 min y no 3h porque el
 // propio negocio ya define ese piso: el check-out estándar es 11am y la
@@ -3020,6 +3026,28 @@ function updateModalPriceAndCabins() {
     return !_cabe(ivMap[cabinKey], _t(dateStr, f[0]), _t(finDia, f[1]));
   };
 
+  // Fila de una estadía corta. Renderer único para que la MISMA oferta se vea
+  // igual venga de donde venga: del tipo que el modal está cotizando (porque
+  // ese día ninguna cabaña tiene noche) o de una cabaña suelta al lado de
+  // otras que sí la tienen libre. Antes cada camino la pintaba distinto.
+  const filaVentana = (c, tipoVen, call, copyBtn) => {
+    const meta   = TIPO_META[tipoVen] || { label: tipoVen, corto: '' };
+    const precio = _precioPasadia(tipoVen, personas);
+    return '<div class="tooltip-cabin avail ventana-row">'
+      + '<div class="tc-left" onclick="' + call + '" style="cursor:pointer;flex:1;min-width:0;">'
+      + '<div class="tc-dot" style="background:var(--' + c.key + ');"></div>'
+      + '<span style="line-height:1.45;">' + c.name
+      +   '<br><span style="color:#a65f04;font-size:12px;font-weight:600;">🌇 ' + meta.label + ' $' + precio + '</span>'
+      +   '<span style="color:var(--muted);font-size:11.5px;white-space:nowrap;"> · ' + meta.corto + '</span>'
+      + '</span>'
+      + '</div>'
+      + '<div style="display:flex;align-items:center;">'
+      + (copyBtn || '')
+      + '<span class="tc-badge ventana" onclick="' + call + '" style="cursor:pointer;">Solicitar</span>'
+      + '</div>'
+      + '</div>';
+  };
+
   let cabinsHtml;
   if (isCombo) {
     const blockedPuente = datesToCheck.filter(ds => occMap['lila'].has(ds));
@@ -3075,10 +3103,15 @@ function updateModalPriceAndCabins() {
             ? '<button onclick="event.stopPropagation();copyPromo(\'' + dateStr + '\',\'' + c.key + '\',' + nights + ',\'' + tipo + '\',' + personas + ')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:3px 8px;font-size:12px;cursor:pointer;color:var(--muted);margin-right:6px;touch-action:manipulation;" title="Copiar texto promocional">📋</button>'
             : '<button disabled style="background:none;border:1px solid var(--border);border-radius:8px;padding:3px 8px;font-size:12px;margin-right:6px;cursor:default;opacity:0.3;">📋</button>';
         }
-        // Hospedaje single-cabin → picker WA/Airbnb. Pasadias → WA directo (Airbnb no aplica).
+        // Hospedaje single-cabin → picker WA/Airbnb. Ventanas cortas → WA directo.
         const reservarCall = isHosp
           ? 'openReservaPicker(\'' + dateStr + '\',\'' + c.key + '\',' + nights + ',' + personas + ')'
           : 'openWA(\'' + dateStr + '\',\'' + c.key + '\')';
+        // Una estadía corta se pinta SIEMPRE con su franja a la vista, no como
+        // un "Reservar" verde igual al de una noche. Sin esto, un día que solo
+        // vende pasanoche mostraba "Portal · Reservar" y nada en la fila decía
+        // que eran 8pm–12:30pm: se leía como una noche a $75.
+        if (!isHosp) return filaVentana(c, tipo, reservarCall, copyBtn);
         return '<div class="tooltip-cabin avail">'
           + '<div class="tc-left" onclick="' + reservarCall + '" style="cursor:pointer;flex:1;">'
           + '<div class="tc-dot" style="background:var(--' + c.key + ');"></div>'
@@ -3090,26 +3123,16 @@ function updateModalPriceAndCabins() {
           + '</div>'
           + '</div>';
       } else {
-        // La noche está tomada, pero puede quedar una ventana corta vendible.
-        // Se ofrece aunque el modal esté cotizando hospedaje: cada cabaña es
-        // inventario aparte, así que una pasatarde en Portal no le quita nada
-        // a una noche libre en Paseo. Solo aplica en modo hospedaje; con una
-        // ventana ya seleccionada, blocksTipo ya decidió arriba.
-        const vs = isHosp ? ventanasDelDia(ivMap[c.key], occMap[c.key], dateStr) : [];
+        // Lo que el modal cotiza no cabe en esta cabaña, pero puede quedar OTRA
+        // ventana corta vendible. Se ofrece siempre —no solo en modo
+        // hospedaje— porque cada cabaña es inventario aparte: una pasatarde en
+        // Portal no le quita nada a una noche libre en Paseo, y un día en que
+        // una cabaña vende pasatarde y otra pasanoche debe mostrar las dos.
+        const vs = ventanasDelDia(ivMap[c.key], occMap[c.key], dateStr).filter(v => v.tipo !== tipo);
         if (vs.length) {
           const v = vs[0];
-          const precio = _precioPasadia(v.tipo, personas);
           const call = 'openVentana(\'' + dateStr + '\',\'' + c.key + '\',\'' + v.tipo + '\')';
-          return '<div class="tooltip-cabin avail ventana-row">'
-            + '<div class="tc-left" onclick="' + call + '" style="cursor:pointer;flex:1;min-width:0;">'
-            + '<div class="tc-dot" style="background:var(--' + c.key + ');"></div>'
-            + '<span style="line-height:1.45;">' + c.name
-            +   '<br><span style="color:#a65f04;font-size:12px;font-weight:600;">🌇 ' + v.label + ' $' + precio + '</span>'
-            +   '<span style="color:var(--muted);font-size:11.5px;"> · ' + v.corto + '</span>'
-            + '</span>'
-            + '</div>'
-            + '<span class="tc-badge ventana" onclick="' + call + '" style="cursor:pointer;">Solicitar</span>'
-            + '</div>';
+          return filaVentana(c, v.tipo, call, '');
         }
         return '<div class="tooltip-cabin occ">'
           + '<div class="tc-left"><div class="tc-dot" style="background:var(--border);"></div><span>' + c.name + '</span></div>'
