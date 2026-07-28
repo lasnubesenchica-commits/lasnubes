@@ -885,13 +885,19 @@
   .fer-x:hover { color: #c0392b; }
   .fer-year { font-size: 10.5px; color: var(--muted); text-transform: uppercase;
               letter-spacing: 0.08em; padding: 8px 8px 4px; }
-  .fer-add { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; margin-top: 10px; }
+  .fer-add { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 8px; margin-top: 12px; }
+  .fer-lbl { display: block; font-size: 10.5px; color: var(--muted); text-transform: uppercase;
+             letter-spacing: .05em; min-width: 0; }
+  .fer-lbl .rate-in { margin-top: 3px; text-align: left; }
+  /* El botón ocupa el ancho completo debajo: con los cuatro campos en dos
+     columnas, meterlo en una tercera lo dejaba sin espacio. */
+  .fer-add-btn { grid-column: 1 / -1; }
   .fer-tag { font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em;
              padding: 1px 6px; border-radius: 999px; white-space: nowrap; }
   .fer-tag.feriado { background: #fbecd0; color: #a65f04; }
   .fer-tag.escolar { background: #e4eff8; color: #3d6a94; }
   .fer-add-btn { background: var(--verde); color: #fff; border: none; border-radius: 8px;
-                 padding: 7px 12px; font-size: 12.5px; font-family: inherit; cursor: pointer;
+                 padding: 8px 12px; font-size: 12.5px; font-family: inherit; cursor: pointer;
                  touch-action: manipulation; white-space: nowrap; }
 
   .rate-in {
@@ -2633,7 +2639,8 @@
       <input id="promoEscolar" type="number" min="0" step="1" class="rate-in promo-in">
     </div>
 
-    <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin-bottom:14px;">
+     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
       <label style="font-size:12px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Aplicar tarifas promocionales</label>
       <div style="position:relative;display:inline-block;flex-shrink:0;">
         <input type="checkbox" id="promoToggle" onchange="togglePromo()" style="opacity:0;position:absolute;width:0;height:0;">
@@ -2641,6 +2648,20 @@
           <span id="promoToggleThumb" style="width:18px;height:18px;background:#fff;border-radius:50%;transition:transform 0.2s;display:block;box-shadow:0 1px 3px rgba(0,0,0,0.2);"></span>
         </label>
       </div>
+     </div>
+     <div id="promoMesesRow" style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+       <label style="font-size:12px;color:var(--muted);flex:1;">Durante</label>
+       <select id="promoMeses" class="rate-in promo-in" style="width:auto;text-align:left;" onchange="_promoMesesUI()">
+         <option value="0">Sin límite</option>
+         <option value="1">este mes</option>
+         <option value="2">2 meses</option>
+         <option value="3">3 meses</option>
+         <option value="4">4 meses</option>
+         <option value="6">6 meses</option>
+         <option value="12">12 meses</option>
+       </select>
+     </div>
+     <p id="promoVentana" style="font-size:11px;color:var(--muted);margin:7px 0 0;"></p>
     </div>
 
     <p style="font-size:11.5px;color:var(--muted);line-height:1.55;margin:0 0 14px;">
@@ -2660,15 +2681,26 @@
         Quita las fechas que no te llenen la cabaña y agrega las tuyas.
       </p>
       <div id="ferList" class="fer-list"></div>
+      <!-- Dos columnas parejas y tres filas. Antes las dos fechas y el selector
+           compartían una fila con la tercera columna en `auto`: el select
+           quedaba sin ancho y se cortaba el texto. -->
       <div class="fer-add">
-        <input type="date" id="ferFecha" class="rate-in" style="text-align:left;" title="Desde">
-        <input type="date" id="ferHasta" class="rate-in" style="text-align:left;" title="Hasta (opcional)">
-        <select id="ferTipo" class="rate-in" style="text-align:left;">
-          <option value="feriado">Feriado</option>
-          <option value="escolar">Vac. escolares</option>
-        </select>
-        <input type="text" id="ferNombre" class="rate-in" placeholder="Nombre" style="text-align:left;grid-column:1/3;">
-        <button onclick="ferAgregar()" class="fer-add-btn" style="grid-column:3/4;">Agregar</button>
+        <label class="fer-lbl">Desde
+          <input type="date" id="ferFecha" class="rate-in">
+        </label>
+        <label class="fer-lbl">Hasta <span style="opacity:.6;">(opcional)</span>
+          <input type="date" id="ferHasta" class="rate-in">
+        </label>
+        <label class="fer-lbl">Tipo
+          <select id="ferTipo" class="rate-in">
+            <option value="feriado">Feriado</option>
+            <option value="escolar">Vac. escolares</option>
+          </select>
+        </label>
+        <label class="fer-lbl">Nombre
+          <input type="text" id="ferNombre" class="rate-in" placeholder="Ej. Receso 2do trimestre">
+        </label>
+        <button onclick="ferAgregar()" class="fer-add-btn">Agregar</button>
       </div>
       <p style="font-size:11px;color:var(--muted);margin:6px 0 0;">
         Dejando <em>hasta</em> vacío se agrega un solo día. Con rango se cargan todos los días — una semana en un toque.
@@ -2726,16 +2758,35 @@ function _catsDelDia(dateStr) {
   return cats;
 }
 
-function _precioCat(cat) {
+// Último mes 'YYYY-MM' con promo, o '' si no hay límite. Se calcula desde hoy
+// en cada llamada, así la ventana avanza sola al cambiar de mes.
+function _promoUltimoMes() {
+  if (!PROMO_MESES || PROMO_MESES <= 0) return '';
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + PROMO_MESES - 1);   // N=1 → solo el mes actual
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+function _promoVigente(dateStr) {
+  if (!PROMO_ACTIVE) return false;
+  const hasta = _promoUltimoMes();
+  if (!hasta) return true;
+  const mes = dateStr.slice(0, 7);
+  const hoyMes = new Date().toISOString().slice(0, 7);
+  return mes >= hoyMes && mes <= hasta;
+}
+
+function _precioCat(cat, dateStr) {
   const base  = { semana: RATE_WEEKDAY, viernes: RATE_VIERNES, sabado: RATE_SABADO,
                   vispera: RATE_VISPERA, feriado: RATE_FERIADO, escolar: RATE_ESCOLAR }[cat] || RATE_WEEKDAY;
   const promo = { semana: RATE_PROMO,   viernes: PROMO_VIERNES, sabado: PROMO_SABADO,
                   vispera: PROMO_VISPERA, feriado: PROMO_FERIADO, escolar: PROMO_ESCOLAR }[cat] || 0;
-  return (PROMO_ACTIVE && promo > 0) ? promo : base;
+  return (promo > 0 && _promoVigente(dateStr)) ? promo : base;
 }
 
 function getPrecio(dateStr) {
-  return _catsDelDia(dateStr).reduce((max, c) => Math.max(max, _precioCat(c)), 0);
+  return _catsDelDia(dateStr).reduce((max, c) => Math.max(max, _precioCat(c, dateStr)), 0);
 }
 
 // Motivo del precio, para el tooltip de la celda: sin esto un día suelto a $130
@@ -2744,7 +2795,7 @@ function precioMotivo(dateStr) {
   const LBL = { semana:'entre semana', viernes:'viernes', sabado:'sábado',
                 vispera:'víspera de feriado', feriado:'feriado', escolar:'vacaciones escolares' };
   const cats = _catsDelDia(dateStr);
-  const gana = cats.reduce((a, c) => _precioCat(c) > _precioCat(a) ? c : a, cats[0]);
+  const gana = cats.reduce((a, c) => _precioCat(c, dateStr) > _precioCat(a, dateStr) ? c : a, cats[0]);
   const fer  = ESCOLARES[dateStr] || FERIADOS[dateStr] || FERIADOS[_addDaysISO(dateStr, 1)] || '';
   return '$' + getPrecio(dateStr) + ' · ' + LBL[gana] + (fer ? ' (' + fer + ')' : '');
 }
@@ -2790,6 +2841,7 @@ async function loadData() {
       if (t.promoFeriado !== undefined)           PROMO_FERIADO = t.promoFeriado;
       if (t.escolar      !== undefined)           RATE_ESCOLAR  = t.escolar;
       if (t.promoEscolar !== undefined)           PROMO_ESCOLAR = t.promoEscolar;
+      if (t.promoMeses   !== undefined)           PROMO_MESES   = t.promoMeses;
       if (t.feriados     !== undefined)           FERIADOS      = t.feriados  || {};
       if (t.escolares    !== undefined)           ESCOLARES     = t.escolares || {};
       if (t.recargoPersonaGrande   !== undefined) RECARGO_PERSONA_GRANDE    = t.recargoPersonaGrande;
@@ -2992,6 +3044,17 @@ function _updatePromoBanner() {
   ].filter(t => t.promo > 0 && t.promo < t.base);
 
   if (!PROMO_ACTIVE || !TIPOS.length) { banner.style.display = 'none'; return; }
+  // Hasta cuándo dura: una promo sin fecha visible no genera ninguna urgencia.
+  const nota = document.querySelector('.promo-banner-note');
+  const hasta = _promoUltimoMes();
+  if (nota) {
+    const M = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto',
+               'septiembre','octubre','noviembre','diciembre'];
+    const base = 'Aplica solo para reservas <strong>directas</strong> vía WhatsApp';
+    nota.innerHTML = hasta
+      ? base + ' · válida hasta fin de ' + M[parseInt(hasta.slice(5), 10) - 1]
+      : base;
+  }
 
   const barato = TIPOS.reduce((a, t) => t.promo < a.promo ? t : a, TIPOS[0]);
   const de = document.getElementById('promoBannerDias');
@@ -3164,6 +3227,10 @@ let VENTANAS_PUBLICAS = true;
 // este tipo": permite tener promo entre semana sin regalar viernes ni feriados.
 let RATE_VIERNES = 110, RATE_SABADO = 110, RATE_VISPERA = 110, RATE_FERIADO = 110, RATE_ESCOLAR = 110;
 let PROMO_VIERNES = 0, PROMO_SABADO = 0, PROMO_VISPERA = 0, PROMO_FERIADO = 0, PROMO_ESCOLAR = 0;
+// Meses de vigencia de la promo contando desde el ACTUAL. 0 = sin límite.
+// Se guarda la cantidad y no una fecha de fin: así la ventana se corre sola al
+// pasar el mes, en vez de vencer y obligar a reconfigurarla.
+let PROMO_MESES = 0;
 // { 'YYYY-MM-DD': 'Nombre' } · dos listas: un feriado nacional y una semana de
 // vacaciones escolares no valen lo mismo, y la víspera aplica solo al primero.
 let FERIADOS = {}, ESCOLARES = {};
@@ -3726,6 +3793,24 @@ function _rateSet(v, n) {
 let _ferAdd = {};      // { fecha: {nombre, tipo} }  altas pendientes
 let _ferDel = {};      // { fecha: true }            bajas pendientes
 
+// Rótulo de la ventana. Se muestra el rango calculado y no solo "3 meses"
+// porque lo que importa es hasta cuándo llega, y eso cambia solo con el mes.
+function _promoMesesUI() {
+  const sel = document.getElementById('promoMeses');
+  const out = document.getElementById('promoVentana');
+  if (!sel || !out) return;
+  const n = parseInt(sel.value, 10) || 0;
+  if (!n) { out.textContent = 'La promoción aplica a todo el calendario.'; return; }
+  const M = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto',
+             'septiembre','octubre','noviembre','diciembre'];
+  const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + n - 1);
+  const hoy = new Date();
+  out.textContent = n === 1
+    ? 'Aplica solo en ' + M[hoy.getMonth()] + '. La ventana se corre sola al cambiar de mes.'
+    : 'Aplica de ' + M[hoy.getMonth()] + ' a ' + M[d.getMonth()] + ' ' + d.getFullYear()
+      + '. La ventana se corre sola al cambiar de mes.';
+}
+
 function setRatesTab(t) {
   const esP = t === 'precios';
   document.getElementById('rtPanePrecios').style.display  = esP ? '' : 'none';
@@ -3845,6 +3930,8 @@ async function _guardarFeriados() {
 function openRates() {
   RATE_FIELDS.forEach(([id, v]) => { document.getElementById(id).value = _rateGet(v); });
   setPromoToggleUI(PROMO_ACTIVE);
+  document.getElementById('promoMeses').value = String(PROMO_MESES || 0);
+  _promoMesesUI();
   _ferAdd = {}; _ferDel = {};
   setRatesTab('precios');
   // Los próximos feriados, para no tener que abrir la hoja solo para ver si la
@@ -3886,6 +3973,8 @@ async function applyRates() {
     vals[key] = n; _rateSet(v, n);
   }
   PROMO_ACTIVE = document.getElementById('promoToggle').checked;
+  PROMO_MESES  = parseInt(document.getElementById('promoMeses').value, 10) || 0;
+  vals.promoMeses = PROMO_MESES;
 
   render();
   if (_adminBaseDate) updateModalPriceAndCabins();
