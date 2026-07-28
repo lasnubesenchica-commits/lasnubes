@@ -886,6 +886,10 @@
   .fer-year { font-size: 10.5px; color: var(--muted); text-transform: uppercase;
               letter-spacing: 0.08em; padding: 8px 8px 4px; }
   .fer-add { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; margin-top: 10px; }
+  .fer-tag { font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em;
+             padding: 1px 6px; border-radius: 999px; white-space: nowrap; }
+  .fer-tag.feriado { background: #fbecd0; color: #a65f04; }
+  .fer-tag.escolar { background: #e4eff8; color: #3d6a94; }
   .fer-add-btn { background: var(--verde); color: #fff; border: none; border-radius: 8px;
                  padding: 7px 12px; font-size: 12.5px; font-family: inherit; cursor: pointer;
                  touch-action: manipulation; white-space: nowrap; }
@@ -2623,6 +2627,10 @@
       <label style="font-size:12.5px;color:var(--text);">Feriado</label>
       <input id="rateFeriado"  type="number" min="0" step="1" class="rate-in">
       <input id="promoFeriado" type="number" min="0" step="1" class="rate-in promo-in">
+
+      <label style="font-size:12.5px;color:var(--text);">Vacaciones escolares</label>
+      <input id="rateEscolar"  type="number" min="0" step="1" class="rate-in">
+      <input id="promoEscolar" type="number" min="0" step="1" class="rate-in promo-in">
     </div>
 
     <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
@@ -2646,16 +2654,25 @@
 
     <div id="rtPaneFeriados" style="display:none;">
       <p style="font-size:11.5px;color:var(--muted);line-height:1.55;margin:0 0 12px;">
-        Las fechas de esta lista cobran tarifa de <strong>feriado</strong>, y el día anterior
-        tarifa de <strong>víspera</strong>. Quita los que no te llenen la cabaña y agrega los
-        tuyos — una feria local, un puente.
+        <strong>Feriado</strong>: cobra tarifa de feriado, y el día anterior la de víspera.<br>
+        <strong>Vac. escolares</strong>: cobra su propia tarifa, sin víspera — dentro de una
+        semana cada día sería víspera del siguiente.<br>
+        Quita las fechas que no te llenen la cabaña y agrega las tuyas.
       </p>
       <div id="ferList" class="fer-list"></div>
       <div class="fer-add">
-        <input type="date" id="ferFecha" class="rate-in" style="text-align:left;">
-        <input type="text" id="ferNombre" class="rate-in" placeholder="Nombre" style="text-align:left;">
-        <button onclick="ferAgregar()" class="fer-add-btn">Agregar</button>
+        <input type="date" id="ferFecha" class="rate-in" style="text-align:left;" title="Desde">
+        <input type="date" id="ferHasta" class="rate-in" style="text-align:left;" title="Hasta (opcional)">
+        <select id="ferTipo" class="rate-in" style="text-align:left;">
+          <option value="feriado">Feriado</option>
+          <option value="escolar">Vac. escolares</option>
+        </select>
+        <input type="text" id="ferNombre" class="rate-in" placeholder="Nombre" style="text-align:left;grid-column:1/3;">
+        <button onclick="ferAgregar()" class="fer-add-btn" style="grid-column:3/4;">Agregar</button>
       </div>
+      <p style="font-size:11px;color:var(--muted);margin:6px 0 0;">
+        Dejando <em>hasta</em> vacío se agrega un solo día. Con rango se cargan todos los días — una semana en un toque.
+      </p>
       <p id="ferPend" style="font-size:11.5px;color:#c2700a;margin:10px 0 0;display:none;"></p>
     </div>
 
@@ -2702,15 +2719,18 @@ function _catsDelDia(dateStr) {
   const dow  = new Date(dateStr + 'T12:00:00').getDay();
   const cats = [dow === 5 ? 'viernes' : dow === 6 ? 'sabado' : 'semana'];
   if (FERIADOS[dateStr]) cats.push('feriado');
+  // La víspera se ata SOLO a feriados: dentro de una semana de vacaciones cada
+  // día sería víspera del siguiente y la categoría perdería sentido.
   if (FERIADOS[_addDaysISO(dateStr, 1)]) cats.push('vispera');
+  if (ESCOLARES[dateStr]) cats.push('escolar');
   return cats;
 }
 
 function _precioCat(cat) {
   const base  = { semana: RATE_WEEKDAY, viernes: RATE_VIERNES, sabado: RATE_SABADO,
-                  vispera: RATE_VISPERA, feriado: RATE_FERIADO }[cat] || RATE_WEEKDAY;
+                  vispera: RATE_VISPERA, feriado: RATE_FERIADO, escolar: RATE_ESCOLAR }[cat] || RATE_WEEKDAY;
   const promo = { semana: RATE_PROMO,   viernes: PROMO_VIERNES, sabado: PROMO_SABADO,
-                  vispera: PROMO_VISPERA, feriado: PROMO_FERIADO }[cat] || 0;
+                  vispera: PROMO_VISPERA, feriado: PROMO_FERIADO, escolar: PROMO_ESCOLAR }[cat] || 0;
   return (PROMO_ACTIVE && promo > 0) ? promo : base;
 }
 
@@ -2722,10 +2742,10 @@ function getPrecio(dateStr) {
 // en medio de la semana parece un error.
 function precioMotivo(dateStr) {
   const LBL = { semana:'entre semana', viernes:'viernes', sabado:'sábado',
-                vispera:'víspera de feriado', feriado:'feriado' };
+                vispera:'víspera de feriado', feriado:'feriado', escolar:'vacaciones escolares' };
   const cats = _catsDelDia(dateStr);
   const gana = cats.reduce((a, c) => _precioCat(c) > _precioCat(a) ? c : a, cats[0]);
-  const fer  = FERIADOS[dateStr] || FERIADOS[_addDaysISO(dateStr, 1)] || '';
+  const fer  = ESCOLARES[dateStr] || FERIADOS[dateStr] || FERIADOS[_addDaysISO(dateStr, 1)] || '';
   return '$' + getPrecio(dateStr) + ' · ' + LBL[gana] + (fer ? ' (' + fer + ')' : '');
 }
 
@@ -2768,7 +2788,10 @@ async function loadData() {
       if (t.promoSabado  !== undefined)           PROMO_SABADO  = t.promoSabado;
       if (t.promoVispera !== undefined)           PROMO_VISPERA = t.promoVispera;
       if (t.promoFeriado !== undefined)           PROMO_FERIADO = t.promoFeriado;
-      if (t.feriados     !== undefined)           FERIADOS      = t.feriados || {};
+      if (t.escolar      !== undefined)           RATE_ESCOLAR  = t.escolar;
+      if (t.promoEscolar !== undefined)           PROMO_ESCOLAR = t.promoEscolar;
+      if (t.feriados     !== undefined)           FERIADOS      = t.feriados  || {};
+      if (t.escolares    !== undefined)           ESCOLARES     = t.escolares || {};
       if (t.recargoPersonaGrande   !== undefined) RECARGO_PERSONA_GRANDE    = t.recargoPersonaGrande;
       if (t.recargoPersonaPortal   !== undefined) RECARGO_PERSONA_PORTAL    = t.recargoPersonaPortal;
       if (t.recargoCombo5          !== undefined) RECARGO_COMBO_5           = t.recargoCombo5;
@@ -3080,8 +3103,9 @@ function render() {
       // $130 en medio de la semana parece un error si no se dice por qué.
       const esFer  = !!FERIADOS[dateStr];
       const esVisp = !!FERIADOS[_addDaysISO(dateStr, 1)];
-      const ferMark = (esFer || esVisp) && !isPast
-        ? `<span class="fer-mark" title="${esFer ? FERIADOS[dateStr] : 'Víspera de ' + FERIADOS[_addDaysISO(dateStr,1)]}">${esFer ? '★' : '☆'}</span>`
+      const esEsc  = !!ESCOLARES[dateStr];
+      const ferMark = (esFer || esVisp || esEsc) && !isPast
+        ? `<span class="fer-mark" title="${esEsc ? ESCOLARES[dateStr] : esFer ? FERIADOS[dateStr] : 'Víspera de ' + FERIADOS[_addDaysISO(dateStr,1)]}">${esEsc ? '🎒' : esFer ? '★' : '☆'}</span>`
         : '';
       const tip = isPast ? '' : ` title="${precioMotivo(dateStr)}"`;
 
@@ -3138,10 +3162,11 @@ let VENTANAS_PUBLICAS = true;
 
 // Tarifas por tipo de día. Los promocionales en 0 significan "sin promo para
 // este tipo": permite tener promo entre semana sin regalar viernes ni feriados.
-let RATE_VIERNES = 110, RATE_SABADO = 110, RATE_VISPERA = 110, RATE_FERIADO = 110;
-let PROMO_VIERNES = 0, PROMO_SABADO = 0, PROMO_VISPERA = 0, PROMO_FERIADO = 0;
-// { 'YYYY-MM-DD': 'Nombre del feriado' }
-let FERIADOS = {};
+let RATE_VIERNES = 110, RATE_SABADO = 110, RATE_VISPERA = 110, RATE_FERIADO = 110, RATE_ESCOLAR = 110;
+let PROMO_VIERNES = 0, PROMO_SABADO = 0, PROMO_VISPERA = 0, PROMO_FERIADO = 0, PROMO_ESCOLAR = 0;
+// { 'YYYY-MM-DD': 'Nombre' } · dos listas: un feriado nacional y una semana de
+// vacaciones escolares no valen lo mismo, y la víspera aplica solo al primero.
+let FERIADOS = {}, ESCOLARES = {};
 
 // Recargos por persona extra en hospedaje (3-4 personas), por noche.
 // Portal solo tiene 1 cama matrimonial → traer colchon inflable.
@@ -3670,10 +3695,13 @@ const RATE_FIELDS = [
   ['rateVispera',  'RATE_VISPERA',  'vispera'],
   ['promoVispera', 'PROMO_VISPERA', 'promoVispera'],
   ['rateFeriado',  'RATE_FERIADO',  'feriado'],
-  ['promoFeriado', 'PROMO_FERIADO', 'promoFeriado']
+  ['promoFeriado', 'PROMO_FERIADO', 'promoFeriado'],
+  ['rateEscolar',  'RATE_ESCOLAR',  'escolar'],
+  ['promoEscolar', 'PROMO_ESCOLAR', 'promoEscolar']
 ];
 const _rateGet = v => ({ RATE_WEEKDAY, RATE_PROMO, RATE_VIERNES, PROMO_VIERNES,
-  RATE_SABADO, PROMO_SABADO, RATE_VISPERA, PROMO_VISPERA, RATE_FERIADO, PROMO_FERIADO })[v];
+  RATE_SABADO, PROMO_SABADO, RATE_VISPERA, PROMO_VISPERA, RATE_FERIADO, PROMO_FERIADO,
+  RATE_ESCOLAR, PROMO_ESCOLAR })[v];
 function _rateSet(v, n) {
   switch (v) {
     case 'RATE_WEEKDAY':  RATE_WEEKDAY  = n; break;
@@ -3686,6 +3714,8 @@ function _rateSet(v, n) {
     case 'PROMO_VISPERA': PROMO_VISPERA = n; break;
     case 'RATE_FERIADO':  RATE_FERIADO  = n; break;
     case 'PROMO_FERIADO': PROMO_FERIADO = n; break;
+    case 'RATE_ESCOLAR':  RATE_ESCOLAR  = n; break;
+    case 'PROMO_ESCOLAR': PROMO_ESCOLAR = n; break;
   }
 }
 
@@ -3693,8 +3723,8 @@ function _rateSet(v, n) {
 // Los cambios se acumulan y se guardan con el mismo botón "Aplicar" que las
 // tarifas: son una sola decisión de precio, y guardar por separado dejaría
 // medias configuraciones si algo falla en el camino.
-let _ferAdd = {};      // { fecha: nombre }  altas pendientes
-let _ferDel = {};      // { fecha: true }    bajas pendientes
+let _ferAdd = {};      // { fecha: {nombre, tipo} }  altas pendientes
+let _ferDel = {};      // { fecha: true }            bajas pendientes
 
 function setRatesTab(t) {
   const esP = t === 'precios';
@@ -3722,8 +3752,9 @@ function renderFeriados() {
   // lista con años viejos.
   const hoy = new Date().toISOString().slice(0, 10);
   const todas = {};
-  Object.keys(FERIADOS).forEach(f => { todas[f] = FERIADOS[f]; });
-  Object.keys(_ferAdd).forEach(f => { todas[f] = _ferAdd[f]; });
+  Object.keys(FERIADOS).forEach(f  => { todas[f] = { nombre: FERIADOS[f],  tipo: 'feriado' }; });
+  Object.keys(ESCOLARES).forEach(f => { todas[f] = { nombre: ESCOLARES[f], tipo: 'escolar' }; });
+  Object.keys(_ferAdd).forEach(f   => { todas[f] = _ferAdd[f]; });
   const fechas = Object.keys(todas).filter(f => f >= hoy).sort();
 
   if (!fechas.length) {
@@ -3737,9 +3768,11 @@ function renderFeriados() {
     const accion = _ferDel[f]
       ? '<button class="fer-x" onclick="ferRestaurar(\'' + f + '\')" title="Restaurar">↺</button>'
       : '<button class="fer-x" onclick="ferQuitar(\'' + f + '\')" title="Quitar">✕</button>';
+    const it = todas[f];
     html += '<div class="fer-row' + cls + '">'
           + '<span class="fer-fecha">' + _ferFmt(f) + '</span>'
-          + '<span class="fer-nombre">' + _escFer(todas[f]) + '</span>'
+          + '<span class="fer-tag ' + it.tipo + '">' + (it.tipo === 'escolar' ? 'escolar' : 'feriado') + '</span>'
+          + '<span class="fer-nombre">' + _escFer(it.nombre) + '</span>'
           + accion + '</div>';
   });
   cont.innerHTML = html;
@@ -3766,18 +3799,32 @@ function ferQuitar(f) {
 function ferRestaurar(f) { delete _ferDel[f]; renderFeriados(); }
 
 function ferAgregar() {
-  const fEl = document.getElementById('ferFecha'), nEl = document.getElementById('ferNombre');
-  const f = (fEl.value || '').trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(f)) { fEl.focus(); return; }
-  // Volver a agregar una fecha marcada de baja es simplemente cancelar la baja.
-  if (_ferDel[f]) delete _ferDel[f];
-  else if (!FERIADOS[f]) _ferAdd[f] = (nEl.value || '').trim() || 'Feriado';
-  fEl.value = ''; nEl.value = '';
+  const fEl = document.getElementById('ferFecha'), hEl = document.getElementById('ferHasta');
+  const nEl = document.getElementById('ferNombre'), tEl = document.getElementById('ferTipo');
+  const desde = (fEl.value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(desde)) { fEl.focus(); return; }
+  const tipo   = tEl.value === 'escolar' ? 'escolar' : 'feriado';
+  const nombre = (nEl.value || '').trim() || (tipo === 'escolar' ? 'Vacaciones escolares' : 'Feriado');
+
+  // Rango opcional: una semana de vacaciones son cinco días y cargarlos de a
+  // uno era el motivo por el que esto se hacía en la hoja.
+  let hasta = (hEl.value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(hasta) || hasta < desde) hasta = desde;
+  // Tope de seguridad: un `hasta` mal tecleado (2036 en vez de 2026) cargaría
+  // miles de filas antes de que nadie lo note.
+  const MAX = 120;
+  let n = 0;
+  for (let d = desde; d <= hasta && n < MAX; d = _addDaysISO(d, 1), n++) {
+    // Volver a agregar una fecha marcada de baja es cancelar la baja.
+    if (_ferDel[d]) delete _ferDel[d];
+    else if (!FERIADOS[d] && !ESCOLARES[d]) _ferAdd[d] = { nombre: nombre, tipo: tipo };
+  }
+  fEl.value = ''; hEl.value = ''; nEl.value = '';
   renderFeriados();
 }
 
 async function _guardarFeriados() {
-  const add = Object.keys(_ferAdd).map(f => f + '|' + _ferAdd[f]).join(';');
+  const add = Object.keys(_ferAdd).map(f => f + '|' + _ferAdd[f].nombre + '|' + _ferAdd[f].tipo).join(';');
   const del = Object.keys(_ferDel).join(',');
   if (!add && !del) return true;
   const url = SHEETS_API_URL + '?action=saveFeriados'
@@ -3788,7 +3835,8 @@ async function _guardarFeriados() {
   // La hoja es la fuente de verdad: se relee de la respuesta en vez de
   // reconstruirla acá, así una baja que el backend no aplicó no queda
   // "aplicada" en pantalla.
-  FERIADOS = data.feriados || FERIADOS;
+  FERIADOS  = data.feriados  || FERIADOS;
+  ESCOLARES = data.escolares || ESCOLARES;
   _ferAdd = {}; _ferDel = {};
   renderFeriados();
   return true;
@@ -3803,9 +3851,10 @@ function openRates() {
   // fecha que se está por cotizar cuenta como uno.
   const nota = document.getElementById('ratesFeriadosNota');
   if (nota) {
-    const n = Object.keys(FERIADOS).length;
-    nota.innerHTML = '<br>Hay <strong>' + n + '</strong> ' + (n === 1 ? 'fecha marcada' : 'fechas marcadas')
-                   + ' como feriado — se editan en la pestaña <strong>Feriados</strong>.';
+    const nf = Object.keys(FERIADOS).length, ne = Object.keys(ESCOLARES).length;
+    nota.innerHTML = '<br>Hay <strong>' + nf + '</strong> ' + (nf === 1 ? 'feriado' : 'feriados')
+                   + ' y <strong>' + ne + '</strong> ' + (ne === 1 ? 'día' : 'días')
+                   + ' de vacaciones escolares — se editan en la pestaña <strong>Feriados</strong>.';
   }
   document.getElementById('ratesSaveStatus').style.display = 'none';
   document.getElementById('ratesOverlay').classList.add('open');
