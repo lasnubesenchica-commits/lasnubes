@@ -733,7 +733,10 @@
   /* ── Panel "¿Cuál es cuál?" ──────────────────────────────────────
      Va pegado a la leyenda porque ahí nace la pregunta: tres nombres de
      colores sin explicación, justo encima del calendario. */
-  .cabins-intro { max-width: 1100px; margin: 0 auto 18px; padding: 0 16px; }
+  /* Ahora es lo primero bajo el hero (la barra de filtros bajó al calendario),
+     así que el aire de arriba lo pone este margen y no el elemento anterior.
+     Abajo no hace falta: promo y filtros ya traen su propio margen superior. */
+  .cabins-intro { max-width: 1100px; margin: 20px auto 0; padding: 0 16px; }
   .ci-head {
     display: flex; align-items: center; justify-content: center; gap: 10px;
     font-size: 13px; color: var(--muted);
@@ -1354,30 +1357,6 @@
 <!-- SECTION: DISPONIBILIDAD -->
 <div class="page-section active" id="section-disponibilidad">
 
-<!-- FILTER BAR -->
-<div class="legend">
-  <button class="legend-filter active" data-filter="all" onclick="setFilter('all',this)">
-    <div class="legend-dot" style="background:var(--text);"></div> Todas
-  </button>
-  <button class="legend-filter verde" data-filter="verde" onclick="setFilter('verde',this)">
-    <div class="legend-dot" style="background:var(--verde);"></div> Paseo
-  </button>
-  <button class="legend-filter azul" data-filter="azul" onclick="setFilter('azul',this)">
-    <div class="legend-dot" style="background:var(--azul);"></div> Portal
-  </button>
-  <button class="legend-filter lila" data-filter="lila" onclick="setFilter('lila',this)">
-    <div class="legend-dot" style="background:var(--lila);"></div> Puente
-  </button>
-  <div class="legend-item" style="margin-left:8px;">
-    <div class="legend-dot" style="background:var(--border);"></div> Ocupado
-  </div>
-  <!-- Se muestra solo si hay ventanas publicadas en el rango visible: si no
-       hay ninguna, explicar un color que no aparece confunde más que ayuda. -->
-  <div class="legend-item" id="legendVentanas" style="display:none;">
-    <div class="legend-dot" style="background:#f59e0b;"></div> Ventana corta
-  </div>
-</div>
-
 <!-- ¿Cuál es cuál? Resumen de las 3 cabañas, para quien llega sin conocerlas.
      Abierto en la primera visita y cerrado después (ver _ciInit): el que no
      sabe qué es "Paseo" es justo el que no abriría un acordeón cerrado, y el
@@ -1400,6 +1379,33 @@
       <span class="promo-banner-strike">antes $<span id="promoBannerOrig"></span></span>
     </div>
     <div class="promo-banner-note">Aplica solo para reservas <strong>directas</strong> vía WhatsApp</div>
+  </div>
+</div>
+
+<!-- FILTER BAR — pegada al calendario, que es lo que filtra. Arriba, entre el
+     resumen de cabañas y el banner de promo, quedaba lejos de su efecto: se
+     tocaba un chip y el cambio ocurría fuera de pantalla. -->
+<!-- FILTER BAR -->
+<div class="legend">
+  <button class="legend-filter active" data-filter="all" onclick="setFilter('all',this)">
+    <div class="legend-dot" style="background:var(--text);"></div> Todas
+  </button>
+  <button class="legend-filter verde" data-filter="verde" onclick="setFilter('verde',this)">
+    <div class="legend-dot" style="background:var(--verde);"></div> Paseo
+  </button>
+  <button class="legend-filter azul" data-filter="azul" onclick="setFilter('azul',this)">
+    <div class="legend-dot" style="background:var(--azul);"></div> Portal
+  </button>
+  <button class="legend-filter lila" data-filter="lila" onclick="setFilter('lila',this)">
+    <div class="legend-dot" style="background:var(--lila);"></div> Puente
+  </button>
+  <div class="legend-item" style="margin-left:8px;">
+    <div class="legend-dot" style="background:var(--border);"></div> Ocupado
+  </div>
+  <!-- Se muestra solo si hay ventanas publicadas en el rango visible: si no
+       hay ninguna, explicar un color que no aparece confunde más que ayuda. -->
+  <div class="legend-item" id="legendVentanas" style="display:none;">
+    <div class="legend-dot" style="background:#f59e0b;"></div> Ventana corta
   </div>
 </div>
 
@@ -3947,7 +3953,7 @@ function renderCabinsIntro() {
       +   '<div class="ci-name"><span class="ci-dot" style="background:var(--' + c.key + ');"></span>' + c.nombre + '</div>'
       +   '<div class="ci-meta">👥 ' + c.personas + '<br>🛏 ' + c.cama + '<br>✨ ' + c.nota + '</div>'
       +   '<div class="ci-links">'
-      +     '<span>Ver solo esta ↑</span>'
+      +     '<span>Ver solo esta ↓</span>'
       +     '<span onclick="event.stopPropagation();ciFotos(\'' + c.key + '\')">Fotos y detalles →</span>'
       +   '</div>'
       + '</div></div>';
