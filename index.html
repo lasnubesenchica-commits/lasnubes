@@ -4473,9 +4473,11 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
     + '(no hay nevera, traer hielo) · energía 100% solar con inversor · buena señal '
     + 'de todas las operadoras · toallas, jabón y papel · uso exclusivo de las instalaciones.\n'
     + '\n'
-    + 'Pago por Yappy o ACH. Quedo atento para compartirte las formas de pago.\n'
+    + 'Fotos y disponibilidad: lasnubes.cloud\n'
     + '\n'
-    + 'Fotos y disponibilidad: lasnubes.cloud';
+    // El cierre va último, igual que en el formato de WhatsApp: la cotización
+    // termina invitando a proceder, no con un link.
+    + 'Pago disponible vía Yappy o ACH. Quedo atento si deseas proceder para compartirte las formas de pago.';
 
   let texto;
   if (tipo === 'pasatarde' || tipo === 'pasanoche' || tipo === 'pasadia') {
