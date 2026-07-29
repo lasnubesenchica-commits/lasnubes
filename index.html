@@ -4506,7 +4506,11 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
     const totalSin = conPreciosSinPromo(() =>
       _precioEstadia(tipo, isCombo ? 'combo' : cabinKey, dateStr, nights, personas));
     const hayDescuento = totalSin > total;
-    const antes  = hayDescuento ? ' (antes $' + totalSin + '.00)' : '';
+    // El "antes" va en su propia línea junto al Total, que es donde el cliente
+    // busca el número. En la misma línea que el Total no cabe: "💰 Total: $90.00
+    // (antes $110.00)" son 31 caracteres y se parte en dos renglones — y con una
+    // estadía larga ("$2425.00 (antes $2925.00)") se parte todavía peor.
+    const antesLine = hayDescuento ? '🏷 Antes: $' + totalSin + '.00\n' : '';
     const extra = tipo === 'early' ? ' con entrada anticipada (9:00 am)'
                 : tipo === 'late'  ? ' con salida extendida (4:00 pm)' : '';
     const cuando = (nights === 1
@@ -4514,7 +4518,7 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
       : 'Tengo las noches del ' + fechaLong + ' al ' + fechaCheckoutLong + ' disponibles') + extra;
     const introLine = cuando + ' para reserva '
       + (hayDescuento ? 'en tarifa promocional de $' : 'a $')
-      + total + '.00' + antes + ' para ' + personasLabel + '.';
+      + total + '.00 para ' + personasLabel + '.';
 
     let cabinaBlock;
     if (isCombo) {
@@ -4538,6 +4542,7 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
     texto = introLine + '\n\n'
       + cabinaBlock
       + '💰 *Total:* $' + total + '.00\n'
+      + antesLine
       + '🕑 Check in ' + formatDayMin(d) + ' ' + horaIn + '\n'
       + '🕚 Check out ' + formatDayMin(dCheckout) + ' ' + horaOut + '\n'
       + (nights > 1 ? '📅 ' + dias + ' días, ' + nights + ' noches\n' : '')
