@@ -3351,9 +3351,10 @@ let _adminBaseDate = null;
 let _adminNights   = 1;
 let _adminTipo     = 'hospedaje'; // 'hospedaje' | 'pasatarde' | 'pasanoche' | 'pasadia'
 let _adminPersonas = 2;           // 2..6 (solo aplica a hospedaje)
-// Instagram DM corta el pegado a 1.000 caracteres y renderiza los *asteriscos*
-// de WhatsApp como texto literal. El formato corto arma la misma cotización sin
-// markup y con las amenidades en una sola línea (~560 chars).
+// La cotización es la MISMA para los dos canales; lo único que cambia son los
+// asteriscos, que WhatsApp convierte en negrita e Instagram muestra literales.
+// (El DM además corta a 1.000 caracteres, por eso la redacción está calibrada
+// para entrar ahí: ver `secciones` en copyPromo.)
 let _promoCorto    = false;
 const _sinAsteriscos = t => t.replace(/\*/g, '');
 
@@ -4446,28 +4447,15 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
   // Formato con iconos, igual al de Malaya Lodge. Cada icono cuesta un carácter
   // más que la viñeta "• ", pero se ahorran los cinco encabezados de sección:
   // el icono ya dice de qué habla la línea.
-  const seccionesComunes =
-      '*Incluye:*\n'
-    + '🍳 Cocina completamente equipada para preparar sus alimentos\n'
-    + '🔥 Área de BBQ disponible\n'
-    + '☕ Café, azúcar y especias básicas\n'
-    + '🧊 Cooler grande (no contamos con nevera — traer hielo y alimentos)\n'
-    + '☀ Iluminación 100% solar mediante paneles fotovoltaicos\n'
-    + '🔋 Inversor para cargar celulares y dispositivos\n'
-    + '📶 Excelente señal de todas las operadoras\n'
-    + '🚿 Jabón de baño, papel higiénico y toallas limpias incluidos\n'
-    + '🦟 Fumigación semanal — se recomienda traer repelente si eres sensible a mosquitos\n'
-    + '🔒 Todas las instalaciones son de uso exclusivo para quienes reservan\n'
-    + '\n'
-    + '*Para Reservar*\n'
-    + '💳 Pago disponible vía Yappy o ACH\n'
-    + 'Quedo atento si deseas proceder para compartirte las formas de pago.';
-
-  // Versión Instagram: las mismas líneas con la redacción ajustada para que la
-  // cotización más larga (combo de 6 personas) entre en los 1.000 caracteres
-  // del DM. Los asteriscos se quitan al final porque Instagram no los
-  // interpreta: los muestra literales.
-  const seccionesCortas =
+  //
+  // Una SOLA redacción para los dos canales. Antes había una versión larga para
+  // WhatsApp y una recortada para Instagram, y dos textos que dicen lo mismo
+  // terminan separándose: cada arreglo hay que acordarse de hacerlo dos veces.
+  // La redacción es la que entra en los 1.000 caracteres del DM de Instagram,
+  // así que sirve igual en WhatsApp, que no tiene ese límite. Lo único que
+  // cambia entre canales son los asteriscos, que WhatsApp convierte en negrita
+  // e Instagram muestra literales: se quitan al final con `_sinAsteriscos`.
+  const secciones =
       '*Incluye:*\n'
     + '🍳 Cocina completamente equipada\n'
     + '🔥 Área de BBQ\n'
@@ -4482,8 +4470,6 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
     + '*Para Reservar*\n'
     + '💳 Pago disponible vía Yappy o ACH\n'
     + 'Quedo atento si deseas proceder para compartirte las formas de pago.';
-
-  const secciones = _promoCorto ? seccionesCortas : seccionesComunes;
 
   let texto;
   if (tipo === 'pasatarde' || tipo === 'pasanoche' || tipo === 'pasadia') {
