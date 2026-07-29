@@ -2567,9 +2567,6 @@
       <button data-tipo="early"     onclick="setAdminTipo('early')"     class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Early</button>
       <button data-tipo="late"      onclick="setAdminTipo('late')"      class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Late</button>
     </div>
-    <div id="ttFormatoRow" style="display:none;justify-content:center;margin:2px 0 6px;">
-      <button id="ttFormatoBtn" onclick="togglePromoCorto()" style="padding:5px 12px;border-radius:999px;border:1px dashed var(--border);background:none;font-size:11px;cursor:pointer;color:var(--muted);touch-action:manipulation;"></button>
-    </div>
     <div id="ttNightsRow" style="display:none;align-items:center;justify-content:center;gap:14px;margin:8px 0 4px;">
       <button onclick="changeNights(-1)" style="width:34px;height:34px;border-radius:50%;border:1px solid var(--border);background:none;font-size:20px;cursor:pointer;color:var(--text);display:flex;align-items:center;justify-content:center;touch-action:manipulation;">−</button>
       <span id="ttNightsLabel" style="font-size:13px;color:var(--muted);min-width:80px;text-align:center;"></span>
@@ -3351,12 +3348,6 @@ let _adminBaseDate = null;
 let _adminNights   = 1;
 let _adminTipo     = 'hospedaje'; // 'hospedaje' | 'pasatarde' | 'pasanoche' | 'pasadia'
 let _adminPersonas = 2;           // 2..6 (solo aplica a hospedaje)
-// La cotización es la MISMA para los dos canales; lo único que cambia son los
-// asteriscos, que WhatsApp convierte en negrita e Instagram muestra literales.
-// (El DM además corta a 1.000 caracteres, por eso la redacción está calibrada
-// para entrar ahí: ver `secciones` en copyPromo.)
-let _promoCorto    = false;
-const _sinAsteriscos = t => t.replace(/\*/g, '');
 
 // Tarifas planas para tipos-de-ventana (2 personas, no varían por día ni cabaña).
 // Se sobreescriben desde el backend en loadData (action=getTarifas).
@@ -3508,9 +3499,7 @@ function showDetail(dateStr) {
   document.getElementById('ttDate').textContent = label;
   if (IS_ADMIN) {
     document.getElementById('ttTipoTabs').style.display = 'flex';
-    document.getElementById('ttFormatoRow').style.display = 'flex';
     _refreshTipoTabsUI();
-    _refreshFormatoBtn();
   }
   updateModalPriceAndCabins();
   document.getElementById('tooltipOverlay').classList.add('open');
@@ -3521,21 +3510,6 @@ function setAdminTipo(tipo) {
   if (tipo !== 'hospedaje') _adminNights = 1;
   _refreshTipoTabsUI();
   updateModalPriceAndCabins();
-}
-
-function togglePromoCorto() {
-  _promoCorto = !_promoCorto;
-  _refreshFormatoBtn();
-}
-
-function _refreshFormatoBtn() {
-  const b = document.getElementById('ttFormatoBtn');
-  if (!b) return;
-  b.textContent = _promoCorto
-    ? '📱 Instagram · toca para WhatsApp'
-    : '💬 WhatsApp · toca para Instagram';
-  b.style.borderStyle = _promoCorto ? 'solid' : 'dashed';
-  b.style.color       = _promoCorto ? 'var(--text)' : 'var(--muted)';
 }
 
 function _refreshTipoTabsUI() {
@@ -4465,13 +4439,13 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
   // más que la viñeta "• ", pero se ahorran los cinco encabezados de sección:
   // el icono ya dice de qué habla la línea.
   //
-  // Una SOLA redacción para los dos canales. Antes había una versión larga para
-  // WhatsApp y una recortada para Instagram, y dos textos que dicen lo mismo
-  // terminan separándose: cada arreglo hay que acordarse de hacerlo dos veces.
-  // La redacción es la que entra en los 1.000 caracteres del DM de Instagram,
-  // así que sirve igual en WhatsApp, que no tiene ese límite. Lo único que
-  // cambia entre canales son los asteriscos, que WhatsApp convierte en negrita
-  // e Instagram muestra literales: se quitan al final con `_sinAsteriscos`.
+  // Un SOLO texto para WhatsApp y para Instagram. La redacción es la que entra
+  // en los 1.000 caracteres del DM de Instagram, así que sirve igual en
+  // WhatsApp, que no tiene ese límite; y los *asteriscos* los interpretan los
+  // dos como negrita (Instagram sumó formato de texto a los DMs, verificado
+  // contra el mensaje enviado). No hay versión aparte por canal: dos textos que
+  // dicen lo mismo terminan separándose, porque cada arreglo hay que acordarse
+  // de hacerlo dos veces.
   //
   // Cada viñeta cabe en UN renglón del celular. Cuando una línea se pasa, el
   // texto sigue en el renglón de abajo pegado al margen izquierdo, fuera de la
@@ -4570,9 +4544,6 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
       + '\n'
       + secciones;
   }
-
-  // Instagram muestra los asteriscos de WhatsApp como texto literal.
-  if (_promoCorto) texto = _sinAsteriscos(texto);
 
   // El conteo avisa si el texto todavía no entra en un DM de Instagram (1.000).
   const aviso = IS_ADMIN ? texto.length + ' caracteres' + (texto.length > 1000 ? ' ⚠ no entra en IG' : '') : '';
