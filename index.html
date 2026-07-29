@@ -4443,54 +4443,45 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
   };
   const cabinNombre = isCombo ? null : (CABIN_NOMBRES[cabinKey] || cabin.name);
 
+  // Formato con iconos, igual al de Malaya Lodge. Cada icono cuesta un carácter
+  // más que la viñeta "• ", pero se ahorran los cinco encabezados de sección:
+  // el icono ya dice de qué habla la línea.
   const seccionesComunes =
-      '*Cocina & Alimentación*\n'
-    + '• Cocina completamente equipada para preparar sus alimentos\n'
-    + '• Área de BBQ disponible\n'
-    + '• Incluye café, azúcar y especias básicas\n'
-    + '• Cooler grande disponible (no contamos con nevera — traer hielo y alimentos)\n'
-    + '\n'
-    + '*Energía & Conectividad*\n'
-    + '• Iluminación 100% solar mediante paneles fotovoltaicos\n'
-    + '• Inversor disponible para cargar celulares y dispositivos\n'
-    + '• Excelente señal de todas las operadoras\n'
-    + '\n'
-    + '*Baño & Comodidades*\n'
-    + '• Jabón de baño, papel higiénico y toallas limpias incluidos\n'
-    + '• Fumigación semanal — se recomienda traer repelente si eres sensible a mosquitos\n'
-    + '\n'
-    + '*Privacidad*\n'
-    + '• Todas las instalaciones son de uso exclusivo para quienes reservan\n'
+      '*Incluye:*\n'
+    + '🍳 Cocina completamente equipada para preparar sus alimentos\n'
+    + '🔥 Área de BBQ disponible\n'
+    + '☕ Café, azúcar y especias básicas\n'
+    + '🧊 Cooler grande (no contamos con nevera — traer hielo y alimentos)\n'
+    + '☀ Iluminación 100% solar mediante paneles fotovoltaicos\n'
+    + '🔋 Inversor para cargar celulares y dispositivos\n'
+    + '📶 Excelente señal de todas las operadoras\n'
+    + '🚿 Jabón de baño, papel higiénico y toallas limpias incluidos\n'
+    + '🦟 Fumigación semanal — se recomienda traer repelente si eres sensible a mosquitos\n'
+    + '🔒 Todas las instalaciones son de uso exclusivo para quienes reservan\n'
     + '\n'
     + '*Para Reservar*\n'
-    + '• Pago disponible vía Yappy o ACH\n'
-    + '• Quedo atento si desea proceder para compartirle las formas de pago';
+    + '💳 Pago disponible vía Yappy o ACH\n'
+    + 'Quedo atento si deseas proceder para compartirte las formas de pago.';
 
-  // Versión Instagram: la MISMA estructura de secciones y viñetas, con la
-  // redacción ajustada para que la cotización más larga (combo de 6 personas)
-  // entre en los 1.000 caracteres del DM. Los asteriscos se quitan al final
-  // porque Instagram no los interpreta: los muestra literales.
+  // Versión Instagram: las mismas líneas con la redacción ajustada para que la
+  // cotización más larga (combo de 6 personas) entre en los 1.000 caracteres
+  // del DM. Los asteriscos se quitan al final porque Instagram no los
+  // interpreta: los muestra literales.
   const seccionesCortas =
-      '*Cocina & Alimentación*\n'
-    + '• Cocina completamente equipada\n'
-    + '• Área de BBQ\n'
-    + '• Café, azúcar y especias básicas\n'
-    + '• Cooler grande (no hay nevera — traer hielo)\n'
-    + '\n'
-    + '*Energía & Conectividad*\n'
-    + '• Iluminación 100% solar con inversor para cargar dispositivos\n'
-    + '• Excelente señal de todas las operadoras\n'
-    + '\n'
-    + '*Baño & Comodidades*\n'
-    + '• Jabón, papel higiénico y toallas limpias\n'
-    + '• Fumigación semanal — se recomienda repelente\n'
-    + '\n'
-    + '*Privacidad*\n'
-    + '• Uso exclusivo de las instalaciones\n'
+      '*Incluye:*\n'
+    + '🍳 Cocina completamente equipada\n'
+    + '🔥 Área de BBQ\n'
+    + '☕ Café, azúcar y especias básicas\n'
+    + '🧊 Cooler grande (no hay nevera — traer hielo)\n'
+    + '☀ Iluminación 100% solar con inversor para cargar dispositivos\n'
+    + '📶 Excelente señal de todas las operadoras\n'
+    + '🚿 Jabón de baño, papel higiénico y toallas limpias\n'
+    + '🦟 Fumigación semanal — se recomienda repelente\n'
+    + '🔒 Todas las instalaciones son de uso exclusivo para quienes reservan\n'
     + '\n'
     + '*Para Reservar*\n'
-    + '• Pago disponible vía Yappy o ACH\n'
-    + '• Quedo atento si deseas proceder para compartirte las formas de pago';
+    + '💳 Pago disponible vía Yappy o ACH\n'
+    + 'Quedo atento si deseas proceder para compartirte las formas de pago.';
 
   const secciones = _promoCorto ? seccionesCortas : seccionesComunes;
 
@@ -4509,12 +4500,13 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
     const persLbl  = personas + ' personas';
     const salidaLbl = tipo === 'pasanoche' ? formatDayShort(dCheckout) : checkinLabel;
     texto = 'Tengo disponible el ' + fechaLong + ' en concepto de ' + label + ' en $' + monto + '.00 para ' + persLbl + '.\n\n'
-      + '*Cabaña:* ' + cabinNombre + '\n'
-      + 'Entrada ' + checkinLabel + ': ' + horaIn + '\n'
+      + '🏡 *' + cabinNombre + '*\n'
+      + '💰 *Total:* $' + monto + '.00\n'
+      + '🕑 Entrada ' + checkinLabel + ': ' + horaIn + '\n'
       // La pasanoche cruza la medianoche: la salida es el día SIGUIENTE. Con el
       // mismo día en las dos líneas se leía "Salida sáb 15: 12:30 pm día
       // siguiente", que se presta a presentarse un día antes.
-      + 'Salida '  + salidaLbl + ': ' + horaOut + '\n'
+      + '🕚 Salida '  + salidaLbl + ': ' + horaOut + '\n'
       + '\n'
       + secciones;
   } else {
@@ -4541,16 +4533,15 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
     let cabinaBlock;
     if (isCombo) {
       cabinaBlock =
-          '*Cabañas:*\n'
-        + 'Puente entre Las Nubes: 2 camas matrimoniales (queen y full)\n'
-        + 'Portal hacia Las Nubes: 1 cama matrimonial full\n'
-        + 'Las cabañas son contiguas y se comunican. Perfectas para grupos.\n';
+          '🏡 *Puente entre Las Nubes* — 2 camas matrimoniales (queen y full)\n'
+        + '🏡 *Portal hacia Las Nubes* — 1 cama matrimonial full\n'
+        + '🔗 Son contiguas y se comunican. Perfectas para grupos.\n';
     } else if (personas >= 3) {
       cabinaBlock =
-          '*Cabaña:* ' + cabinNombre + '\n'
-        + CABIN_CAMAS[cabinKey] + '\n';
+          '🏡 *' + cabinNombre + '*\n'
+        + '🛏 ' + CABIN_CAMAS[cabinKey] + '\n';
     } else {
-      cabinaBlock = '*Cabaña:* ' + cabinNombre + '\n';
+      cabinaBlock = '🏡 *' + cabinNombre + '*\n';
     }
 
     const horaIn  = tipo === 'early' ? '9:00 am' : '2:00 pm';
@@ -4558,9 +4549,10 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
 
     texto = introLine + '\n\n'
       + cabinaBlock
-      + 'Check in ' + checkinLabel + ': ' + horaIn + '\n'
-      + 'Check out ' + checkoutLabel + ': ' + horaOut + '\n'
-      + (nights > 1 ? dias + ' dias, ' + nights + ' noches\n' : '')
+      + '💰 *Total:* $' + total + '.00\n'
+      + '🕑 Check in ' + checkinLabel + ': ' + horaIn + '\n'
+      + '🕚 Check out ' + checkoutLabel + ': ' + horaOut + '\n'
+      + (nights > 1 ? '📅 ' + dias + ' días, ' + nights + ' noches\n' : '')
       + '\n'
       + secciones;
   }
