@@ -3408,6 +3408,15 @@ const CABIN_CAMAS = {
   lila:  'La cabaña cuenta con una cama matrimonial queen y una cama auxiliar full.'
 };
 
+// Los textos de arriba son oraciones completas: pegados en un DM ocupan dos
+// renglones y el segundo arranca contra el margen, desalineado de la columna de
+// iconos. Para la cotización se usa esta versión de una línea.
+const CABIN_CAMAS_CORTO = {
+  verde: '🛏 King + auxiliar twin',
+  azul:  '🛏 Full, sin cama auxiliar\n🛌 Traer colchón inflable',
+  lila:  '🛏 Queen + auxiliar full'
+};
+
 function _precioCabinTotal(cabinKey, dateStr, nights, personas) {
   const base = getTotalPrecio(dateStr, nights);
   if (personas <= 2) return base;
@@ -4293,6 +4302,14 @@ function formatDayShort(d) {
   return `${dias[d.getDay()]} ${d.getDate()} ${meses[d.getMonth()]}`;
 }
 
+// Sin el día de la semana, para las líneas de horario de la cotización: ahí el
+// renglón tiene que caber entero o se parte y rompe la columna de iconos. El
+// día de la semana no se pierde — la primera línea del texto ya lo dice.
+function formatDayMin(d) {
+  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return `${d.getDate()} ${meses[d.getMonth()]}`;
+}
+
 function formatDayLong(d) {
   const dias  = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
   const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -4455,20 +4472,29 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
   // así que sirve igual en WhatsApp, que no tiene ese límite. Lo único que
   // cambia entre canales son los asteriscos, que WhatsApp convierte en negrita
   // e Instagram muestra literales: se quitan al final con `_sinAsteriscos`.
+  //
+  // Cada viñeta cabe en UN renglón del celular. Cuando una línea se pasa, el
+  // texto sigue en el renglón de abajo pegado al margen izquierdo, fuera de la
+  // columna de iconos, y la lista entera se ve desordenada. El corte medido en
+  // un DM de Instagram está cerca de los 27 caracteres, así que ninguna pasa de
+  // ahí. Una idea que no entra en un renglón va en dos viñetas, no en una larga.
   const secciones =
       '*Incluye:*\n'
-    + '🍳 Cocina completamente equipada\n'
+    + '🍳 Cocina equipada\n'
     + '🔥 Área de BBQ\n'
-    + '☕ Café, azúcar y especias básicas\n'
-    + '🧊 Cooler grande (no hay nevera — traer hielo)\n'
-    + '☀ Iluminación 100% solar con inversor para cargar dispositivos\n'
-    + '📶 Excelente señal de todas las operadoras\n'
-    + '🚿 Jabón de baño, papel higiénico y toallas limpias\n'
-    + '🦟 Fumigación semanal — se recomienda repelente\n'
-    + '🔒 Todas las instalaciones son de uso exclusivo para quienes reservan\n'
+    + '☕ Café, azúcar y especias\n'
+    + '🧊 Cooler grande incluido\n'
+    + '❄ Sin nevera: traer hielo\n'
+    + '☀ Energía 100% solar\n'
+    + '🔋 Carga para celulares\n'
+    + '📶 Excelente señal celular\n'
+    + '🚿 Toallas, jabón y papel\n'
+    + '🦟 Fumigación semanal\n'
+    + '🧴 Sugerimos repelente\n'
+    + '🔒 Uso exclusivo del lugar\n'
     + '\n'
     + '*Para Reservar*\n'
-    + '💳 Pago disponible vía Yappy o ACH\n'
+    + '💳 Pago por Yappy o ACH\n'
     + 'Quedo atento si deseas proceder para compartirte las formas de pago.';
 
   let texto;
@@ -4488,11 +4514,11 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
     texto = 'Tengo disponible el ' + fechaLong + ' en concepto de ' + label + ' en $' + monto + '.00 para ' + persLbl + '.\n\n'
       + '🏡 *' + cabinNombre + '*\n'
       + '💰 *Total:* $' + monto + '.00\n'
-      + '🕑 Entrada ' + checkinLabel + ': ' + horaIn + '\n'
+      + '🕑 Entrada ' + formatDayMin(d) + ' ' + horaIn + '\n'
       // La pasanoche cruza la medianoche: la salida es el día SIGUIENTE. Con el
       // mismo día en las dos líneas se leía "Salida sáb 15: 12:30 pm día
       // siguiente", que se presta a presentarse un día antes.
-      + '🕚 Salida '  + salidaLbl + ': ' + horaOut + '\n'
+      + '🕚 Salida '  + formatDayMin(tipo === 'pasanoche' ? dCheckout : d) + ' ' + horaOut + '\n'
       + '\n'
       + secciones;
   } else {
@@ -4519,13 +4545,15 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
     let cabinaBlock;
     if (isCombo) {
       cabinaBlock =
-          '🏡 *Puente entre Las Nubes* — 2 camas matrimoniales (queen y full)\n'
-        + '🏡 *Portal hacia Las Nubes* — 1 cama matrimonial full\n'
-        + '🔗 Son contiguas y se comunican. Perfectas para grupos.\n';
+          '🏡 *Puente entre Las Nubes*\n'
+        + CABIN_CAMAS_CORTO.lila + '\n'
+        + '🏡 *Portal hacia Las Nubes*\n'
+        + '🛏 Cama matrimonial full\n'
+        + '🔗 Contiguas y comunicadas\n';
     } else if (personas >= 3) {
       cabinaBlock =
           '🏡 *' + cabinNombre + '*\n'
-        + '🛏 ' + CABIN_CAMAS[cabinKey] + '\n';
+        + CABIN_CAMAS_CORTO[cabinKey] + '\n';
     } else {
       cabinaBlock = '🏡 *' + cabinNombre + '*\n';
     }
@@ -4536,8 +4564,8 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
     texto = introLine + '\n\n'
       + cabinaBlock
       + '💰 *Total:* $' + total + '.00\n'
-      + '🕑 Check in ' + checkinLabel + ': ' + horaIn + '\n'
-      + '🕚 Check out ' + checkoutLabel + ': ' + horaOut + '\n'
+      + '🕑 Check in ' + formatDayMin(d) + ' ' + horaIn + '\n'
+      + '🕚 Check out ' + formatDayMin(dCheckout) + ' ' + horaOut + '\n'
       + (nights > 1 ? '📅 ' + dias + ' días, ' + nights + ' noches\n' : '')
       + '\n'
       + secciones;
