@@ -2567,6 +2567,9 @@
       <button data-tipo="early"     onclick="setAdminTipo('early')"     class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Early</button>
       <button data-tipo="late"      onclick="setAdminTipo('late')"      class="tt-tab" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;font-size:12px;cursor:pointer;color:var(--text);touch-action:manipulation;">Late</button>
     </div>
+    <div id="ttFormatoRow" style="display:none;justify-content:center;margin:2px 0 6px;">
+      <button id="ttFormatoBtn" onclick="togglePromoCorto()" style="padding:5px 12px;border-radius:999px;border:1px dashed var(--border);background:none;font-size:11px;cursor:pointer;color:var(--muted);touch-action:manipulation;"></button>
+    </div>
     <div id="ttNightsRow" style="display:none;align-items:center;justify-content:center;gap:14px;margin:8px 0 4px;">
       <button onclick="changeNights(-1)" style="width:34px;height:34px;border-radius:50%;border:1px solid var(--border);background:none;font-size:20px;cursor:pointer;color:var(--text);display:flex;align-items:center;justify-content:center;touch-action:manipulation;">−</button>
       <span id="ttNightsLabel" style="font-size:13px;color:var(--muted);min-width:80px;text-align:center;"></span>
@@ -3348,6 +3351,11 @@ let _adminBaseDate = null;
 let _adminNights   = 1;
 let _adminTipo     = 'hospedaje'; // 'hospedaje' | 'pasatarde' | 'pasanoche' | 'pasadia'
 let _adminPersonas = 2;           // 2..6 (solo aplica a hospedaje)
+// Instagram DM corta el pegado a 1.000 caracteres y renderiza los *asteriscos*
+// de WhatsApp como texto literal. El formato corto arma la misma cotización sin
+// markup y con las amenidades en una sola línea (~560 chars).
+let _promoCorto    = false;
+const _sinAsteriscos = t => t.replace(/\*/g, '');
 
 // Tarifas planas para tipos-de-ventana (2 personas, no varían por día ni cabaña).
 // Se sobreescriben desde el backend en loadData (action=getTarifas).
@@ -3490,7 +3498,9 @@ function showDetail(dateStr) {
   document.getElementById('ttDate').textContent = label;
   if (IS_ADMIN) {
     document.getElementById('ttTipoTabs').style.display = 'flex';
+    document.getElementById('ttFormatoRow').style.display = 'flex';
     _refreshTipoTabsUI();
+    _refreshFormatoBtn();
   }
   updateModalPriceAndCabins();
   document.getElementById('tooltipOverlay').classList.add('open');
@@ -3501,6 +3511,21 @@ function setAdminTipo(tipo) {
   if (tipo !== 'hospedaje') _adminNights = 1;
   _refreshTipoTabsUI();
   updateModalPriceAndCabins();
+}
+
+function togglePromoCorto() {
+  _promoCorto = !_promoCorto;
+  _refreshFormatoBtn();
+}
+
+function _refreshFormatoBtn() {
+  const b = document.getElementById('ttFormatoBtn');
+  if (!b) return;
+  b.textContent = _promoCorto
+    ? '📱 Instagram · toca para WhatsApp'
+    : '💬 WhatsApp · toca para Instagram';
+  b.style.borderStyle = _promoCorto ? 'solid' : 'dashed';
+  b.style.color       = _promoCorto ? 'var(--text)' : 'var(--muted)';
 }
 
 function _refreshTipoTabsUI() {
@@ -4441,6 +4466,17 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
     + '• Pago disponible vía Yappy o ACH\n'
     + '• Quedo atento si desea proceder para compartirle las formas de pago';
 
+  // Versión Instagram: mismas amenidades, sin viñetas ni encabezados, para que
+  // toda la cotización entre en los 1.000 caracteres del DM.
+  const seccionesCortas =
+      'Incluye: cocina equipada con café, azúcar y especias · área de BBQ · cooler '
+    + '(no hay nevera, traer hielo) · energía 100% solar con inversor · buena señal '
+    + 'de todas las operadoras · toallas, jabón y papel · uso exclusivo de las instalaciones.\n'
+    + '\n'
+    + 'Pago por Yappy o ACH. Quedo atento para compartirte las formas de pago.\n'
+    + '\n'
+    + 'Fotos y disponibilidad: lasnubes.cloud';
+
   let texto;
   if (tipo === 'pasatarde' || tipo === 'pasanoche' || tipo === 'pasadia') {
     const monto    = _precioPasadia(tipo, personas);
@@ -4454,15 +4490,26 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
                     : tipo === 'pasanoche' ? 'pasanoche'
                     :                        'pasadía';
     const persLbl  = personas + ' personas';
+    const salidaLbl = tipo === 'pasanoche' ? formatDayShort(dCheckout) : checkinLabel;
+    const introCorta = 'Tengo disponible el ' + fechaLong + ' en concepto de ' + label
+      + ' en $' + monto + '.00 para ' + persLbl + '.';
+    if (_promoCorto) {
+      texto = introCorta + '\n\n'
+        + 'Cabaña: ' + cabinNombre + '\n'
+        + 'Entrada ' + checkinLabel + ' ' + horaIn + ' · Salida ' + salidaLbl + ' ' + horaOut + '\n'
+        + '\n'
+        + seccionesCortas;
+    } else {
     texto = 'Tengo disponible el ' + fechaLong + ' en concepto de ' + label + ' en $' + monto + '.00 para ' + persLbl + '.\n\n'
       + '*Cabaña:* ' + cabinNombre + '\n'
       + 'Entrada ' + checkinLabel + ': ' + horaIn + '\n'
       // La pasanoche cruza la medianoche: la salida es el día SIGUIENTE. Con el
       // mismo día en las dos líneas se leía "Salida sáb 15: 12:30 pm día
       // siguiente", que se presta a presentarse un día antes.
-      + 'Salida '  + (tipo === 'pasanoche' ? formatDayShort(dCheckout) : checkinLabel) + ': ' + horaOut + '\n'
+      + 'Salida '  + salidaLbl + ': ' + horaOut + '\n'
       + '\n'
       + seccionesComunes;
+    }
   } else {
     const total = _precioEstadia(tipo, isCombo ? 'combo' : cabinKey, dateStr, nights, personas);
     const personasLabel = personas + ' personas';
@@ -4499,17 +4546,41 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
       cabinaBlock = '*Cabaña:* ' + cabinNombre + '\n';
     }
 
+    const horaIn  = tipo === 'early' ? '9:00 am' : '2:00 pm';
+    const horaOut = tipo === 'late'  ? '4:00 pm' : '11:00 am';
+
+    if (_promoCorto) {
+      let cabinaCorta;
+      if (isCombo) {
+        cabinaCorta = 'Cabañas: Puente entre Las Nubes (queen + full) y Portal hacia Las Nubes (full). '
+          + 'Son contiguas y se comunican, ideales para grupos.';
+      } else if (personas >= 3) {
+        cabinaCorta = 'Cabaña: ' + cabinNombre + ' — ' + _sinAsteriscos(CABIN_CAMAS[cabinKey]);
+      } else {
+        cabinaCorta = 'Cabaña: ' + cabinNombre;
+      }
+      texto = _sinAsteriscos(introLine) + '\n\n'
+        + cabinaCorta + '\n'
+        + 'Check-in ' + checkinLabel + ' ' + horaIn + ' · Check-out ' + checkoutLabel + ' ' + horaOut
+        + (nights > 1 ? ' · ' + dias + ' días, ' + nights + ' noches' : '') + '\n'
+        + '\n'
+        + seccionesCortas;
+    } else {
     texto = introLine + '\n\n'
       + cabinaBlock
-      + 'Check in ' + checkinLabel + ': ' + (tipo === 'early' ? '9:00 am' : '2:00 pm') + '\n'
-      + 'Check out ' + checkoutLabel + ': ' + (tipo === 'late' ? '4:00 pm' : '11:00 am') + '\n'
+      + 'Check in ' + checkinLabel + ': ' + horaIn + '\n'
+      + 'Check out ' + checkoutLabel + ': ' + horaOut + '\n'
       + (nights > 1 ? dias + ' dias, ' + nights + ' noches\n' : '')
       + '\n'
       + seccionesComunes;
+    }
   }
 
+  // El conteo avisa si el texto todavía no entra en un DM de Instagram (1.000).
+  const aviso = IS_ADMIN ? texto.length + ' caracteres' + (texto.length > 1000 ? ' ⚠ no entra en IG' : '') : '';
+
   navigator.clipboard.writeText(texto).then(() => {
-    showCopyToast();
+    showCopyToast(aviso);
   }).catch(() => {
     const ta = document.createElement('textarea');
     ta.value = texto;
@@ -4518,11 +4589,11 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
     ta.select();
     document.execCommand('copy');
     document.body.removeChild(ta);
-    showCopyToast();
+    showCopyToast(aviso);
   });
 }
 
-function showCopyToast() {
+function showCopyToast(aviso) {
   let toast = document.getElementById('copyToast');
   if (!toast) {
     toast = document.createElement('div');
@@ -4530,7 +4601,7 @@ function showCopyToast() {
     toast.style.cssText = 'position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:#2d3748;color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity 0.2s;pointer-events:none;';
     document.body.appendChild(toast);
   }
-  toast.textContent = '✓ Texto copiado al portapapeles';
+  toast.textContent = '✓ Texto copiado al portapapeles' + (aviso ? ' · ' + aviso : '');
   toast.style.opacity = '1';
   setTimeout(() => { toast.style.opacity = '0'; }, 2500);
 }
