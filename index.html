@@ -4466,18 +4466,33 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
     + '• Pago disponible vía Yappy o ACH\n'
     + '• Quedo atento si desea proceder para compartirle las formas de pago';
 
-  // Versión Instagram: mismas amenidades, sin viñetas ni encabezados, para que
-  // toda la cotización entre en los 1.000 caracteres del DM.
+  // Versión Instagram: la MISMA estructura de secciones y viñetas, con la
+  // redacción ajustada para que la cotización más larga (combo de 6 personas)
+  // entre en los 1.000 caracteres del DM. Los asteriscos se quitan al final
+  // porque Instagram no los interpreta: los muestra literales.
   const seccionesCortas =
-      'Incluye: cocina equipada con café, azúcar y especias · área de BBQ · cooler '
-    + '(no hay nevera, traer hielo) · energía 100% solar con inversor · buena señal '
-    + 'de todas las operadoras · toallas, jabón y papel · uso exclusivo de las instalaciones.\n'
+      '*Cocina & Alimentación*\n'
+    + '• Cocina completamente equipada\n'
+    + '• Área de BBQ\n'
+    + '• Café, azúcar y especias básicas\n'
+    + '• Cooler grande (no hay nevera — traer hielo)\n'
     + '\n'
-    + 'Fotos y disponibilidad: lasnubes.cloud\n'
+    + '*Energía & Conectividad*\n'
+    + '• Iluminación 100% solar con inversor para cargar dispositivos\n'
+    + '• Excelente señal de todas las operadoras\n'
     + '\n'
-    // El cierre va último, igual que en el formato de WhatsApp: la cotización
-    // termina invitando a proceder, no con un link.
-    + 'Pago disponible vía Yappy o ACH. Quedo atento si deseas proceder para compartirte las formas de pago.';
+    + '*Baño & Comodidades*\n'
+    + '• Jabón, papel higiénico y toallas limpias\n'
+    + '• Fumigación semanal — se recomienda repelente\n'
+    + '\n'
+    + '*Privacidad*\n'
+    + '• Uso exclusivo de las instalaciones\n'
+    + '\n'
+    + '*Para Reservar*\n'
+    + '• Pago disponible vía Yappy o ACH\n'
+    + '• Quedo atento si deseas proceder para compartirte las formas de pago';
+
+  const secciones = _promoCorto ? seccionesCortas : seccionesComunes;
 
   let texto;
   if (tipo === 'pasatarde' || tipo === 'pasanoche' || tipo === 'pasadia') {
@@ -4493,15 +4508,6 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
                     :                        'pasadía';
     const persLbl  = personas + ' personas';
     const salidaLbl = tipo === 'pasanoche' ? formatDayShort(dCheckout) : checkinLabel;
-    const introCorta = 'Tengo disponible el ' + fechaLong + ' en concepto de ' + label
-      + ' en $' + monto + '.00 para ' + persLbl + '.';
-    if (_promoCorto) {
-      texto = introCorta + '\n\n'
-        + 'Cabaña: ' + cabinNombre + '\n'
-        + 'Entrada ' + checkinLabel + ' ' + horaIn + ' · Salida ' + salidaLbl + ' ' + horaOut + '\n'
-        + '\n'
-        + seccionesCortas;
-    } else {
     texto = 'Tengo disponible el ' + fechaLong + ' en concepto de ' + label + ' en $' + monto + '.00 para ' + persLbl + '.\n\n'
       + '*Cabaña:* ' + cabinNombre + '\n'
       + 'Entrada ' + checkinLabel + ': ' + horaIn + '\n'
@@ -4510,8 +4516,7 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
       // siguiente", que se presta a presentarse un día antes.
       + 'Salida '  + salidaLbl + ': ' + horaOut + '\n'
       + '\n'
-      + seccionesComunes;
-    }
+      + secciones;
   } else {
     const total = _precioEstadia(tipo, isCombo ? 'combo' : cabinKey, dateStr, nights, personas);
     const personasLabel = personas + ' personas';
@@ -4551,32 +4556,17 @@ function copyPromo(dateStr, cabinKey, nights, tipo, personas) {
     const horaIn  = tipo === 'early' ? '9:00 am' : '2:00 pm';
     const horaOut = tipo === 'late'  ? '4:00 pm' : '11:00 am';
 
-    if (_promoCorto) {
-      let cabinaCorta;
-      if (isCombo) {
-        cabinaCorta = 'Cabañas: Puente entre Las Nubes (queen + full) y Portal hacia Las Nubes (full). '
-          + 'Son contiguas y se comunican, ideales para grupos.';
-      } else if (personas >= 3) {
-        cabinaCorta = 'Cabaña: ' + cabinNombre + ' — ' + _sinAsteriscos(CABIN_CAMAS[cabinKey]);
-      } else {
-        cabinaCorta = 'Cabaña: ' + cabinNombre;
-      }
-      texto = _sinAsteriscos(introLine) + '\n\n'
-        + cabinaCorta + '\n'
-        + 'Check-in ' + checkinLabel + ' ' + horaIn + ' · Check-out ' + checkoutLabel + ' ' + horaOut
-        + (nights > 1 ? ' · ' + dias + ' días, ' + nights + ' noches' : '') + '\n'
-        + '\n'
-        + seccionesCortas;
-    } else {
     texto = introLine + '\n\n'
       + cabinaBlock
       + 'Check in ' + checkinLabel + ': ' + horaIn + '\n'
       + 'Check out ' + checkoutLabel + ': ' + horaOut + '\n'
       + (nights > 1 ? dias + ' dias, ' + nights + ' noches\n' : '')
       + '\n'
-      + seccionesComunes;
-    }
+      + secciones;
   }
+
+  // Instagram muestra los asteriscos de WhatsApp como texto literal.
+  if (_promoCorto) texto = _sinAsteriscos(texto);
 
   // El conteo avisa si el texto todavía no entra en un DM de Instagram (1.000).
   const aviso = IS_ADMIN ? texto.length + ' caracteres' + (texto.length > 1000 ? ' ⚠ no entra en IG' : '') : '';
