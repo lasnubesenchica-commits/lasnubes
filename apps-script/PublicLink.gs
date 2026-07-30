@@ -244,7 +244,7 @@ function getCabinGuideSteps(cabin, tipo, checkoutExtendido, horaSalidaCustom) {
 
   const steps = {
     verde: [
-      ['&#128273;', 'Acceso', 'Key Box código <strong>0507</strong>. Dentro está la llave de la cabaña y, en el mismo llavero, un control negro con botones verdes que abre el portón verde de la entrada.<br><strong>El control no se lleva:</strong> cuando salgan del proyecto déjenlo en el key box. Al volver, escríbannos por WhatsApp y el equipo les abre el portón.'],
+      ['&#128273;', 'Acceso', 'Key Box código <strong>0507</strong>. Dentro está la llave de la cabaña y, en el mismo llavero, un control negro con botones verdes que abre el portón verde de la entrada. Úsenlo si necesitan salir <strong>durante su estadía</strong>.<br><strong>El día del check-out el control se queda</strong>: déjenlo en el key box junto con la llave.'],
       ['&#9728;&#65039;', 'Iluminación', 'Energía solar — luces encienden solas al anochecer.<br><strong>Guirnaldas del baño</strong>: se encienden solas en la noche y se apagan con el botón de encendido/apagado detrás del panel solar encima de la mesa de madera en el baño.<br><strong>Control blanco</strong>: lámparas de cocina y recámara.'],
       ['&#128267;', 'Carga de dispositivos', 'Inversor en la recámara para celulares y dispositivos.'],
       ['&#127859;', 'Cocina', 'Guarda todos los alimentos — no dejar nada expuesto para evitar animalitos.'],
@@ -252,7 +252,7 @@ function getCabinGuideSteps(cabin, tipo, checkoutExtendido, horaSalidaCustom) {
       ['&#9989;', checkoutTitle, checkoutBody]
     ],
     azul: [
-      ['&#128273;', 'Acceso', 'Key Box código <strong>0507</strong>. Dentro está la llave de la cabaña y, en el mismo llavero, un control negro con botones verdes que abre el portón verde de la entrada.<br><strong>El control no se lleva:</strong> cuando salgan del proyecto déjenlo en el key box. Al volver, escríbannos por WhatsApp y el equipo les abre el portón. Con la llave abres el candado y luego deslizas la puerta corrediza de metal.'],
+      ['&#128273;', 'Acceso', 'Key Box código <strong>0507</strong>. Dentro está la llave de la cabaña y, en el mismo llavero, un control negro con botones verdes que abre el portón verde de la entrada. Úsenlo si necesitan salir <strong>durante su estadía</strong>.<br><strong>El día del check-out el control se queda</strong>: déjenlo en el key box junto con la llave. Con la llave abres el candado y luego deslizas la puerta corrediza de metal.'],
       ['&#9728;&#65039;', 'Iluminación', 'Luces del comedor y jardines encienden automáticamente al anochecer.<br><strong>Control blanco</strong> encima de la mesa verde: luces de recámara y baño.'],
       ['&#128267;', 'Carga de dispositivos', 'Powerbank en la recámara para celulares.'],
       ['&#127859;', 'Cocina', 'Guarda todos los alimentos — no dejar nada expuesto para evitar animalitos.'],
@@ -260,7 +260,7 @@ function getCabinGuideSteps(cabin, tipo, checkoutExtendido, horaSalidaCustom) {
       ['&#9989;', checkoutTitle, checkoutBody]
     ],
     lila: [
-      ['&#128273;', 'Acceso', 'Key Box código <strong>0507</strong>. Dentro está la llave de la cabaña y, en el mismo llavero, un control negro con botones verdes que abre el portón verde de la entrada.<br><strong>El control no se lleva:</strong> cuando salgan del proyecto déjenlo en el key box. Al volver, escríbannos por WhatsApp y el equipo les abre el portón.'],
+      ['&#128273;', 'Acceso', 'Key Box código <strong>0507</strong>. Dentro está la llave de la cabaña y, en el mismo llavero, un control negro con botones verdes que abre el portón verde de la entrada. Úsenlo si necesitan salir <strong>durante su estadía</strong>.<br><strong>El día del check-out el control se queda</strong>: déjenlo en el key box junto con la llave.'],
       ['&#9728;&#65039;', 'Iluminación', 'Energía solar — guirnaldas del columpio encienden entre 6:30–7:00 pm automáticamente.<br><strong>Control blanco</strong> en la cómoda frente al espejo: luces de recámara, terraza y cocina.'],
       ['&#128267;', 'Carga de dispositivos', 'Inversor en la recámara para celulares y dispositivos.'],
       ['&#127859;', 'Cocina', 'Guarda todos los alimentos — no dejar nada expuesto para evitar animalitos.'],

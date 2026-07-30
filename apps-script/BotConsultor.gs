@@ -2903,9 +2903,10 @@ function _botEnviarCodigoAcceso(from, reserva) {
   sendWhatsAppText(from,
     '🔑 *Código del key box: ' + codigo + '*\n\n' +
     'Dentro está la llave de la cabaña y, en el mismo llavero, un control negro con ' +
-    'botones verdes que abre el portón verde de la entrada.\n\n' +
-    '⚠️ *El control no se lleva.* Cuando salgan del proyecto, déjenlo en el key box ' +
-    'junto con la llave. Al volver, escríbannos por aquí y el equipo les abre el portón.\n\n' +
+    'botones verdes que abre el portón verde de la entrada. Úsenlo si necesitan salir ' +
+    '*durante su estadía*.\n\n' +
+    '⚠️ *El día del check-out el control se queda.* Déjenlo en el key box junto con la ' +
+    'llave — no se lo lleven.\n\n' +
     'Te dejo abajo el manual de la cabaña. ¡Disfruten! 🌿'
   );
   _botEnviarManualCabana(from, reserva);
@@ -3055,19 +3056,21 @@ function _botHandleCheckoutDone(from, contactName, reservaId) {
 
   // Confirmacion al huésped. Antes cerraba en "en un momento te abren" y ahí
   // terminaba: si nadie abría, el huésped quedaba en el portón sin a quién
-  // recurrir. El número del portero ya existía en la Script Property, pero solo
-  // salía en el email que le llega al admin.
-  const gateFono = PropertiesService.getScriptProperties().getProperty('WA_GATE_PHONE') || '+507 6777-5630';
+  // recurrir.
+  //
+  // El respaldo es JOSH, no el portón: el portón solo acepta llamadas del número
+  // del admin, así que darle al huésped el WA_GATE_PHONE lo mandaba a un número
+  // que le iba a colgar. Ese número sigue en el email al admin, que sí puede
+  // usarlo.
   const cierre =
     '¡Gracias por avisar! 🌿 Ya le avisé al equipo para que les abran el portón.\n\n' +
-    'Si en un par de minutos no se abre, llama al portero: *' + gateFono + '*\n\n' +
+    'Si en un par de minutos no se abre, llama a Josh: *+507 6981-2266*\n\n' +
     '¡Buen viaje y esperamos verlos pronto de nuevo en Las Nubes! 🙌';
   try {
-    sendWhatsAppCTAUrl(from, cierre, '📞 Llamar al portero',
-      'tel:+' + String(gateFono).replace(/\D/g, ''));
+    sendWhatsAppCTAUrl(from, cierre, '📞 Llamar a Josh', 'tel:+50769812266');
   } catch(err) {
     // WhatsApp autodetecta el número del cuerpo y lo vuelve tappable igual.
-    logDebugEntry('checkout-cta-portero-FAIL', { error: err.message });
+    logDebugEntry('checkout-cta-josh-FAIL', { error: err.message });
     sendWhatsAppText(from, cierre);
   }
 
