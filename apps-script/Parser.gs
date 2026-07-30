@@ -895,7 +895,16 @@ const _TARIFAS_NUEVAS = [
   // solas el precio del tipo de día, la promo y el recargo por persona.
   // Por estadía, no por noche — la cortesía es solo el primer o último día.
   ['recargoEarly',            null, 'Recargo early check-in (por estadía)',  25],
-  ['recargoLate',             null, 'Recargo late check-out (por estadía)',  25]
+  ['recargoLate',             null, 'Recargo late check-out (por estadía)',  25],
+
+  // Malaya Lodge. Estaban escritas DOS veces en el HTML del dashboard: en el
+  // bloque visible de tarifas y, por separado, dentro de calcTarifa. Subir el
+  // precio obligaba a acordarse de los dos lugares, y olvidarse de uno hacía
+  // que el bloque mostrara un número y el modal cotizara otro. Se siembran con
+  // exactamente lo que estaba hardcodeado, así el precio no cambia.
+  ['malayaSemana',        null, 'Malaya · tarifa Dom-Jue',            75],
+  ['malayaFinde',         null, 'Malaya · tarifa Vie-Sáb',           100],
+  ['malayaPersonaExtra',  null, 'Malaya · recargo por persona (3ra+)', 30]
 ];
 
 function _migrarTarifasPorTipoDia_(cfg) {
@@ -1979,6 +1988,10 @@ function doGet(e) {
         recargoPasatardePersona: parseFloat(map['recargoPasatardePersona']) || 20,
         recargoPasanochePersona: parseFloat(map['recargoPasanochePersona']) || 25,
         recargoPasadiaPersona:   parseFloat(map['recargoPasadiaPersona'])   || 25,
+        // Malaya: el dashboard las usa para el bloque de tarifas y para cotizar.
+        malayaSemana:       parseFloat(map['malayaSemana'])       || 75,
+        malayaFinde:        parseFloat(map['malayaFinde'])        || 100,
+        malayaPersonaExtra: parseFloat(map['malayaPersonaExtra']) || 30,
         // Tarifas por tipo de día. `weekend` queda de fallback para instalaciones
         // que todavía no corrieron la migración.
         viernes:      parseFloat(map['viernes'])      || parseFloat(map['weekend']) || 110,

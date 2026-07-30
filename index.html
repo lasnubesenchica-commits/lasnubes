@@ -3380,10 +3380,12 @@ function render() {
 }
 
 // ── ADMIN MODE (?admin=1) ─────────────────────────────────────────
-// La clave sola alcanza para el modo admin: así el atajo del iPhone lleva un
-// único parámetro (?k=...) en vez de dos. ?admin=1 se mantiene para los links
-// que ya andaban dando vueltas.
-const IS_ADMIN = new URLSearchParams(window.location.search).get('admin') === '1' || !!ADMIN_KEY;
+// Solo la clave habilita el modo admin. Antes bastaba con ?admin=1, que dejaba
+// a cualquiera abrir el editor de tarifas: no podía guardar nada —el backend
+// rechaza saveTarifas sin clave— pero era una puerta sin motivo. Y no molesta:
+// la clave se guarda por navegador y este es el mismo origen que el dashboard,
+// así que después de entrar una vez, esta página ya la tiene.
+const IS_ADMIN = !!ADMIN_KEY;
 
 // ── DETAIL POPUP ──────────────────────────────────────────────────
 let _adminBaseDate = null;
