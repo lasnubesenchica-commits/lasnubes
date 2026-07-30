@@ -2964,6 +2964,12 @@ function _testLlegadaAMiNumero(cabinKey, reservaIdOpcional) {
   }
 }
 
+// El desplegable "Ejecutar" del editor solo corre funciones SIN parámetros, así
+// que cada cabaña tiene su wrapper para poder probarlas de a una.
+function _testLlegadaPaseo()  { _testLlegadaAMiNumero('verde'); }
+function _testLlegadaPortal() { _testLlegadaAMiNumero('azul');  }
+function _testLlegadaPuente() { _testLlegadaAMiNumero('lila');  }
+
 // Manda las tres, una detrás de otra, para comparar de un vistazo.
 function _testLlegadaLasTres() {
   ['azul', 'lila', 'verde'].forEach(function(c) {
