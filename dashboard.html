@@ -3930,7 +3930,21 @@ const USE_SHEETS = SHEETS_API_URL !== 'TU_WEBAPP_URL_AQUI';
 // La clave viaja en la URL del atajo (?k=...). Se envuelve fetch UNA vez en vez
 // de tocar cada llamada: así ninguna se puede olvidar de mandarla, ni ahora ni
 // en las que se agreguen después.
-const ADMIN_KEY = new URLSearchParams(location.search).get('k') || '';
+// La clave se recuerda por navegador: entrás UNA vez con ?k=... y de ahí en
+// adelante alcanza con la URL limpia. Además evita mostrarla en pantalla cuando
+// compartís el escritorio, y no queda repetida en el historial.
+// Para olvidarla en este dispositivo: cerrarSesionAdmin() desde la consola.
+const ADMIN_KEY = (function() {
+  const enUrl = new URLSearchParams(location.search).get('k') || '';
+  try {
+    if (enUrl) { localStorage.setItem('lnAdminKey', enUrl); return enUrl; }
+    return localStorage.getItem('lnAdminKey') || '';
+  } catch(_) { return enUrl; }   // navegación privada: vale solo para esta pestaña
+})();
+function cerrarSesionAdmin() {
+  try { localStorage.removeItem('lnAdminKey'); } catch(_) {}
+  location.href = location.pathname;
+}
 (function() {
   const _fetch = window.fetch.bind(window);
   window.fetch = function(input, init) {
