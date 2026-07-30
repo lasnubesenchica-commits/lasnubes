@@ -1531,7 +1531,7 @@ function diagnosticarPagoAirbnb(query) {
     Logger.log('💸 PAGOS: ✗ ningún payout menciona ese código.');
     Logger.log('   → El email de cobro no se sincronizó. Corré syncAirbnbPayouts() y después');
     Logger.log('     actualizarEstadoPagoAirbnb(). Si sigue sin aparecer, el email puede estar');
-    Logger.log('     fuera de la ventana newer_than:365d o no ser de automated@airbnb.com.');
+    Logger.log('     fuera de la ventana SYNC_VENTANA o no ser de automated@airbnb.com.');
   } else {
     hits.forEach(h => {
       Logger.log('💸 PAGOS fila ' + h.fila + ' · cobro ' + h.fechaCobro + ' · neto ' + h.montoNeto);

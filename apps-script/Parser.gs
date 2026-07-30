@@ -13,13 +13,31 @@ const CABINS = {
   'Puente entre Las Nubes': 'lila'
 };
 
+// Ventana de Gmail de los syncs que corren por TRIGGER (cada 15 min los de
+// reservas y alteraciones, cada hora los de pagos y cancelaciones).
+//
+// Estuvo en 365d y eso hacía que cada corrida recorriera un año de hilos: aunque
+// `processed` evita re-parsear, el `thread.getMessages()` y el `msg.getId()` son
+// un viaje a Gmail POR HILO, así que el costo crece con el histórico y no con lo
+// nuevo. Con tres triggers cada 15 minutos, las ejecuciones interactivas
+// quedaban esperando en cola y el calendario tardaba hasta un minuto en cargar.
+//
+// 30 días es holgado: los triggers corren cada 15 minutos, así que un email
+// tendría que pasar un mes entero sin procesarse para caerse de la ventana.
+//
+// La red de seguridad NO cambia: `reconciliarReservasAirbnb()` en Cleanup.gs
+// barre 400 días comparando TODOS los emails contra la hoja y carga los que
+// falten. Si los triggers estuvieran caídos más de un mes, esa es la que
+// recupera lo perdido — conviene correrla de vez en cuando.
+const SYNC_VENTANA = 'newer_than:30d';
+
 // ─── FUNCIÓN PRINCIPAL ──────────────────────────────────────
 function syncAirbnbReservations() {
   const sheet = getOrCreateSheet();
   const processed = getProcessedIds(sheet);
 
   const threads = GmailApp.search(
-    'from:automated@airbnb.com subject:"Reserva confirmada:" newer_than:365d'
+    'from:automated@airbnb.com subject:"Reserva confirmada:" ' + SYNC_VENTANA
   );
 
   let added = 0;
@@ -132,7 +150,7 @@ function syncAirbnbUpdates() {
 
   // ── Paso 1: solicitudes ────────────────────────────────────
   let nuevasSolic = 0;
-  GmailApp.search('from:automated@airbnb.com subject:"quiere hacer un cambio" newer_than:365d')
+  GmailApp.search('from:automated@airbnb.com subject:"quiere hacer un cambio" ' + SYNC_VENTANA)
     .forEach(th => th.getMessages().forEach(msg => {
       const msgId = msg.getId();
       if (yaSolic.has(msgId)) return;
@@ -160,7 +178,7 @@ function syncAirbnbUpdates() {
   const resData = sheet.getDataRange().getValues();
   let aplicados = 0, sinPareja = 0, sinFila = 0;
 
-  GmailApp.search('from:automated@airbnb.com subject:"Reserva actualizada" newer_than:365d')
+  GmailApp.search('from:automated@airbnb.com subject:"Reserva actualizada" ' + SYNC_VENTANA)
     .forEach(th => th.getMessages().forEach(msg => {
       const msgId = msg.getId();
       if (yaAcept.has(msgId)) return;
@@ -1488,7 +1506,7 @@ function syncAirbnbPayouts() {
   const processedIds = new Set(pagosData.map(r => r[1].toString()));
 
   const threads = GmailApp.search(
-    'from:automated@airbnb.com subject:"Te hemos enviado un cobro" newer_than:365d'
+    'from:automated@airbnb.com subject:"Te hemos enviado un cobro" ' + SYNC_VENTANA
   );
 
   let added = 0;
@@ -4986,7 +5004,7 @@ function syncCancelacionesAirbnb() {
   // impredecible, así que la query podía no matchear nada. Se busca por palabras
   // sueltas, que además cubre las variantes en inglés.
   const threads = GmailApp.search(
-    'from:automated@airbnb.com (subject:Cancelada OR subject:cancelled OR subject:canceled) newer_than:365d'
+    'from:automated@airbnb.com (subject:Cancelada OR subject:cancelled OR subject:canceled) ' + SYNC_VENTANA
   );
 
   const resData = reservasSheet.getDataRange().getValues();
