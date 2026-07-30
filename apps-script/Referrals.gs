@@ -31,6 +31,27 @@ const REFERRAL_REWARD_AMOUNT = 20;
 // una promesa hecha; acortar si.
 const REFERRAL_CREDIT_EXPIRY_DAYS = 365;
 
+// El email sale el dia DESPUES del check-out: la estadia esta fresca, ya
+// vivieron la experiencia y "Gracias por venir" es cierto. Antes salia con
+// checkin <= hoy, o sea el dia de la llegada a las 10am — cuatro horas ANTES de
+// que el huesped apareciera, agradeciendole por una visita que todavia no
+// ocurria. La plantilla de WhatsApp equivalente se llama `referido_postestadia`:
+// el nombre delata cual era la intencion original.
+//
+// La ventana llega hasta 3 dias para aguantar que el trigger falle un dia sin
+// que esos huespedes se queden sin codigo. El guard de emailSentAt evita que
+// alguien lo reciba dos veces.
+const REFERRAL_DIAS_POST_CHECKOUT_MAX = 3;
+
+// Piso duro: no se le escribe a nadie que se haya ido antes de esta fecha.
+//
+// Sin esto, la funcion recorria TODA la hoja: en su primera corrida le hubiera
+// mandado el email a cada huesped de la historia de Las Nubes con email
+// registrado — cientos de golpe, a gente que estuvo hace meses, y con riesgo de
+// quemar la cuota diaria de Gmail. La ventana de 3 dias ya lo evita; esta
+// constante es la red por si alguien la vuelve a ensanchar sin pensar en esto.
+const REFERRAL_NO_ANTES_DE = '2026-07-30';
+
 function _getOrCreateReferralsSheet() {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   let s = ss.getSheetByName('Referrals');
@@ -179,11 +200,11 @@ function enviarCodigosReferido() {
   const sheet = getOrCreateSheet();
   const data  = sheet.getDataRange().getValues();
 
-  // Candidatos: huesped Directa con estadia que YA EMPEZO (checkin <= hoy),
-  // no cancelada, tipo dormido, con email. Aprovechamos el momento de
-  // llegada para que comparta el codigo cuando esta mas activo.
-  const today = new Date();
-  const todayMs = new Date(Utilities.formatDate(today, 'America/Panama', 'yyyy-MM-dd') + 'T00:00:00-05:00').getTime();
+  // Candidatos: huesped Directa/Referido que se fue AYER (o hasta hace 3 dias),
+  // no cancelada, tipo dormido, con email.
+  const DIA = 24 * 60 * 60 * 1000;
+  const todayMs = new Date(Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd') + 'T00:00:00-05:00').getTime();
+  const pisoMs  = new Date(REFERRAL_NO_ANTES_DE + 'T00:00:00-05:00').getTime();
   const candidatos = new Map(); // email -> { nombre, telefono }
   for (let i = 1; i < data.length; i++) {
     const r = data[i];
@@ -194,12 +215,18 @@ function enviarCodigosReferido() {
     if (tipo === 'pasatarde' || tipo === 'pasadia') continue;
     const email = (r[21] || '').toString().toLowerCase().trim();
     if (!email) continue;
-    if (!r[4]) continue;  // sin checkin no podemos decidir
-    const ciStr = r[4] instanceof Date
-      ? Utilities.formatDate(r[4], 'America/Panama', 'yyyy-MM-dd')
-      : r[4].toString().slice(0, 10);
-    const ciMs = new Date(ciStr + 'T00:00:00-05:00').getTime();
-    if (isNaN(ciMs) || ciMs > todayMs) continue;  // todavia no llega
+    if (!r[5]) continue;  // sin checkout no podemos decidir
+    const coStr = r[5] instanceof Date
+      ? Utilities.formatDate(r[5], 'America/Panama', 'yyyy-MM-dd')
+      : r[5].toString().slice(0, 10);
+    let coMs = new Date(coStr + 'T00:00:00-05:00').getTime();
+    if (isNaN(coMs)) continue;
+    // `late` bloquea el dia siguiente como cortesia: el huesped se va el dia
+    // ANTES del checkout guardado. Sin esto se le escribe un dia tarde.
+    if (tipo === 'late') coMs -= DIA;
+    if (coMs < pisoMs) continue;                      // se fue antes del piso
+    const dias = Math.round((todayMs - coMs) / DIA);
+    if (dias < 1 || dias > REFERRAL_DIAS_POST_CHECKOUT_MAX) continue;
     if (!candidatos.has(email)) {
       candidatos.set(email, { nombre: r[1], telefono: r[23] || '' });
     }
@@ -248,7 +275,7 @@ function buildReferralCodeEmailHTML(opts) {
 '<tr><td style="background:#5a85b0;border-radius:16px 16px 0 0;padding:36px 40px;text-align:center;">' +
 '<p style="margin:0 0 6px;font-size:12px;color:rgba(255,255,255,0.8);letter-spacing:2px;text-transform:uppercase;">&#129309; Programa Amigos</p>' +
 '<h1 style="margin:0;font-size:32px;font-weight:300;color:#ffffff;font-family:Georgia,serif;">Las <em>Nubes</em></h1>' +
-'<p style="margin:10px 0 0;font-size:15px;color:rgba(255,255,255,0.9);">Buenos Aires, Chame · Panamá Oeste</p>' +
+'<p style="margin:10px 0 0;font-size:15px;color:rgba(255,255,255,0.9);">Buenos Aires, Chame</p>' +
 '</td></tr>' +
 '<tr><td style="background:#ffffff;padding:36px 40px;">' +
 '<p style="margin:0 0 16px;font-size:16px;color:#3a3530;line-height:1.6;">Hola <strong>' + (opts.firstName || 'amigo') + '</strong>,</p>' +
@@ -257,15 +284,15 @@ function buildReferralCodeEmailHTML(opts) {
 '<tr><td style="padding:24px 28px;text-align:center;">' +
 '<p style="margin:0 0 8px;font-size:13px;color:#385d7a;letter-spacing:0.05em;text-transform:uppercase;font-weight:600;">Tu código personal</p>' +
 '<p style="margin:0 0 10px;font-size:32px;font-weight:500;color:#385d7a;font-family:Georgia,serif;letter-spacing:0.05em;">' + opts.code + '</p>' +
-'<p style="margin:0;font-size:13px;color:#385d7a;line-height:1.6;">Compartilo. Cuando tu amigo reserve directo con nosotros mencionando este código, <strong>ambos reciben $' + opts.amount + ' off</strong> en su próxima estadía.</p>' +
+'<p style="margin:0;font-size:13px;color:#385d7a;line-height:1.6;">Compártelo. Cuando tu amigo reserve directo con nosotros mencionando este código, <strong>ambos reciben $' + opts.amount + ' off</strong> en su próxima estadía.</p>' +
 '</td></tr></table>' +
 '<p style="margin:0 0 14px;font-size:14px;color:#6b6560;line-height:1.7;">Cómo funciona:</p>' +
 '<ul style="margin:0 0 20px;padding-left:20px;color:#6b6560;font-size:14px;line-height:1.7;">' +
-'<li>Compartí el código con tu amigo.</li>' +
-'<li>Tu amigo reserva directo via WhatsApp mencionando <strong>' + opts.code + '</strong>.</li>' +
+'<li>Comparte el código con tu amigo.</li>' +
+'<li>Tu amigo reserva directo por WhatsApp mencionando <strong>' + opts.code + '</strong>.</li>' +
 '<li>Tu amigo recibe $' + opts.amount + ' off en su primera estadía.</li>' +
-'<li>Vos recibís $' + opts.amount + ' de crédito al confirmarse su estadía. Lo aplicás cuando vuelvas.</li>' +
-'<li>Sin tope de referidos. Acumulás crédito por cada amigo.</li>' +
+'<li>Tú recibes $' + opts.amount + ' de crédito al confirmarse su estadía. Lo aplicas cuando vuelvas.</li>' +
+'<li>Sin tope de referidos. Acumulas crédito por cada amigo.</li>' +
 '</ul>' +
 '<p style="margin:0 0 8px;font-size:13px;color:#8a8078;line-height:1.6;font-weight:600;">Restricciones:</p>' +
 '<ul style="margin:0 0 20px;padding-left:20px;color:#8a8078;font-size:13px;line-height:1.7;">' +
@@ -284,7 +311,7 @@ function buildReferralCodeEmailHTML(opts) {
 '</td></tr>' +
 '<tr><td style="background:#3a3530;border-radius:0 0 16px 16px;padding:24px 40px;text-align:center;">' +
 '<p style="margin:0 0 8px;font-size:18px;font-weight:300;color:#ffffff;font-family:Georgia,serif;">Las <em>Nubes</em></p>' +
-'<p style="margin:0 0 12px;font-size:11px;color:rgba(255,255,255,0.6);letter-spacing:1px;text-transform:uppercase;">Cabañas en Chicá · Panamá Oeste</p>' +
+'<p style="margin:0 0 12px;font-size:11px;color:rgba(255,255,255,0.6);letter-spacing:1px;text-transform:uppercase;">Cabañas en Chicá</p>' +
 '<a href="https://wa.me/50769812266" style="color:rgba(255,255,255,0.8);font-size:13px;text-decoration:none;">&#128172; WhatsApp: +507 6981-2266</a>' +
 '</td></tr></table></td></tr></table></body></html>';
 }
