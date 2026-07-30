@@ -772,6 +772,41 @@ function crearPlantillaRegaloEnMeta(dryRun) {
 
 function crearPlantillaRegaloEnMetaAHORA() { return crearPlantillaRegaloEnMeta(false); }
 
+// Reglas de Meta que se descubren solo cuando rechaza la plantilla. Se chequean
+// en el dry-run para no gastar un viaje a la API por un emoji.
+// Devuelve [] si está todo bien, o la lista de problemas.
+function _validarPlantillaPayload(payload) {
+  const problemas = [];
+  const comps = (payload && payload.components) || [];
+  const body  = comps.filter(function(c) { return c.type === 'BODY'; })[0];
+  if (body && body.text) {
+    if (body.text.length > 1024) {
+      problemas.push('El body tiene ' + body.text.length + ' caracteres; Meta topa en 1024.');
+    }
+    const vars = (body.text.match(/\{\{\d+\}\}/g) || []).length;
+    const ej = body.example && body.example.body_text && body.example.body_text[0];
+    if (vars && (!ej || ej.length !== vars)) {
+      problemas.push('El body usa ' + vars + ' variables pero trae ' +
+                     ((ej && ej.length) || 0) + ' ejemplos; tienen que ser la misma cantidad.');
+    }
+  }
+  const btns = comps.filter(function(c) { return c.type === 'BUTTONS'; })[0];
+  ((btns && btns.buttons) || []).forEach(function(b) {
+    const t = String(b.text || '');
+    // "Los botones no pueden contener variables, nuevas líneas, emojis ni
+    // caracteres con formato" (error_subcode 2388060).
+    if (/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u.test(t)) {
+      problemas.push('El botón "' + t + '" lleva emoji; Meta no los permite en botones de plantilla.');
+    }
+    if (/[\n\r\t]/.test(t))     problemas.push('El botón "' + t + '" tiene saltos de línea o tabs.');
+    if (/\{\{\d+\}\}/.test(t))  problemas.push('El botón "' + t + '" tiene variables.');
+    if ([].concat(Array.from(t)).length > 25) {
+      problemas.push('El botón "' + t + '" pasa de 25 caracteres.');
+    }
+  });
+  return problemas;
+}
+
 // ─── listos_para_recibirte (aviso de llegada, 11am) ─────────────────
 // Params POSICIONALES para que coincida con enviarAvisoLlegadaHoy, que manda
 // un array: [nombre, cabaña, hora de check-in].
@@ -804,8 +839,14 @@ function _plantillaLlegadaPayload() {
         example: { body_text: [['Ana', 'Portal hacia Las Nubes', '2:00 pm']] }
       },
       {
+        // SIN emoji: Meta rechaza la plantilla con
+        // "Los botones no pueden contener variables, nuevas líneas, emojis ni
+        // caracteres con formato" (error_subcode 2388060). La restricción es
+        // solo para botones de PLANTILLA — los botones interactivos que manda
+        // el bot dentro de la ventana de 24h sí aceptan emoji, y por eso los
+        // de las instrucciones de llegada ("🔑 Código de acceso") funcionan.
         type: 'BUTTONS',
-        buttons: [{ type: 'QUICK_REPLY', text: '🚪 He llegado' }]
+        buttons: [{ type: 'QUICK_REPLY', text: 'He llegado' }]
       }
     ]
   };
@@ -829,13 +870,23 @@ function crearPlantillaLlegadaEnMeta(dryRun) {
     .replace('{{1}}', 'Ana').replace('{{2}}', 'Portal hacia Las Nubes').replace('{{3}}', '2:00 pm')
     .split('\n').forEach(l => Logger.log('   ' + (l || ' ')));
   Logger.log('');
-  Logger.log('   [ 🚪 He llegado ]   ← botón quick-reply');
+  Logger.log('   [ He llegado ]   ← botón quick-reply');
   Logger.log('');
   Logger.log('Definición que se manda a Meta (WABA ' + cfg.businessId + '):');
   Logger.log(JSON.stringify(payload, null, 2));
 
+  const problemas = _validarPlantillaPayload(payload);
+  if (problemas.length) {
+    Logger.log('');
+    Logger.log('✗ Meta va a rechazar esto:');
+    problemas.forEach(function(x) { Logger.log('   · ' + x); });
+    Logger.log('   Corregilo antes de enviar.');
+    return;
+  }
+
   if (dryRun) {
     Logger.log('');
+    Logger.log('✓ Pasa las validaciones de Meta.');
     Logger.log('Nada se envió. Para crearla: crearPlantillaLlegadaEnMetaAHORA()');
     return;
   }
@@ -863,7 +914,8 @@ function crearPlantillaLlegadaEnMeta(dryRun) {
     Logger.log('✗ Meta la rechazó. Los motivos habituales:');
     Logger.log('   · ya existe una plantilla con ese nombre en es_ES → borrarla o renombrarla;');
     Logger.log('   · el token no tiene permiso whatsapp_business_management;');
-    Logger.log('   · Meta reclasificó la categoría (si la pasa a MARKETING igual sirve).');
+    Logger.log('   · Meta reclasificó la categoría (si la pasa a MARKETING igual sirve);');
+    Logger.log('   · el texto del botón lleva emoji, salto de línea o variable → no se permite.');
   }
 }
 
