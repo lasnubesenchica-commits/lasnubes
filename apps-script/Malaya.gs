@@ -183,8 +183,33 @@ function _malayaParseIcal(icsText) {
 
 // ─── Sync trigger ───────────────────────────────────────────────
 
-function syncMalayaAirbnb() {
+// Cada cuánto se permite correr de verdad. El trigger se instala cada 30 min,
+// pero el DebugLog mostró 1.448 corridas en un día — una por MINUTO, 30 veces
+// más de lo previsto. Sea por un trigger reconfigurado a mano o por varios
+// instalados, el efecto es el mismo: una ejecución por minuto compitiendo con
+// las peticiones del calendario y del dashboard, y comiéndose la cuota diaria
+// de triggers.
+//
+// El guard es de cadencia, no de configuración: aunque el trigger dispare cada
+// minuto, el trabajo real ocurre cada 25. Se deja un margen bajo los 30 para no
+// saltarse una corrida legítima por unos segundos de deriva.
+const MALAYA_SYNC_MIN_MINUTOS = 25;
+
+// `force` lo usa el botón "Sincronizar ahora" del panel admin, que necesita
+// resultado inmediato.
+function syncMalayaAirbnb(force) {
   const props = PropertiesService.getScriptProperties();
+
+  if (!force) {
+    const ultima = parseInt(props.getProperty('MALAYA_SYNC_LAST_MS'), 10) || 0;
+    const minutos = (Date.now() - ultima) / 60000;
+    if (ultima && minutos < MALAYA_SYNC_MIN_MINUTOS) {
+      logDebugEntry('malaya-sync-SKIP', { haceMinutos: Math.round(minutos) });
+      return;
+    }
+  }
+  props.setProperty('MALAYA_SYNC_LAST_MS', String(Date.now()));
+
   const url   = props.getProperty('MALAYA_AIRBNB_ICAL');
   if (!url) { logDebugEntry('malaya-sync-no-url', {}); return; }
   const graceMin = parseInt(props.getProperty('MALAYA_GRACE_MINUTES'), 10) || 60;

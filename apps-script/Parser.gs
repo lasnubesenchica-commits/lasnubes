@@ -2865,7 +2865,7 @@ function doPost(e) {
     // que abrir el editor.
     if (action === 'syncMalayaNow') {
       try {
-        syncMalayaAirbnb();
+        syncMalayaAirbnb(true);   // el admin pidió el sync: saltea el guard de cadencia
         const sheet = _malayaIcalSheet();
         const data  = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues() : [];
         const events = data.map(r => ({
