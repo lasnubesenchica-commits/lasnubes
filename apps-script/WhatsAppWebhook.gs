@@ -77,6 +77,37 @@ function handleWhatsAppWebhook(payload) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+// Meta reintenta la entrega de un webhook si no ve el 200 dentro de su timeout,
+// y este handler responde DESPUÉS de procesar. El debounce de texto ya duerme 2
+// segundos antes de empezar, y encima corren los envíos, las plantillas al admin
+// y —en el flujo del código de acceso— el OCR de Claude. Cuando el total se pasa,
+// Meta reenvía el MISMO mensaje, el bot lo vuelve a procesar y el huésped ve las
+// respuestas duplicadas.
+//
+// El wamid es único por mensaje, así que alcanza con recordar cuáles ya se
+// procesaron. El lock hace atómico el "¿ya lo vi? entonces márcalo": sin él
+// quedan dos entregas concurrentes leyendo "no visto" a la vez, que es
+// exactamente el caso que hay que evitar.
+//
+// Los botones y las imágenes NO pasan por el debounce, así que hasta ahora no
+// tenían ninguna protección: un reintento sobre un tap de botón se contestaba
+// dos veces sin más.
+function _yaProcesado(msgId) {
+  if (!msgId) return false;   // sin id no hay con qué deduplicar
+  const cache = CacheService.getScriptCache();
+  const key   = 'wa-msg-' + msgId;
+  const lock  = LockService.getScriptLock();
+  let tengoLock = false;
+  try { tengoLock = lock.tryLock(5000); } catch(_) {}
+  try {
+    if (cache.get(key)) return true;
+    cache.put(key, '1', 900);   // 15 min cubre de sobra la ventana de reintentos
+    return false;
+  } finally {
+    if (tengoLock) { try { lock.releaseLock(); } catch(_) {} }
+  }
+}
+
 /**
  * Despacha un mensaje inbound al bot consultor (BotConsultor.gs).
  * El bot maneja state machine, NLU de fechas, availability y handoff.
@@ -104,6 +135,12 @@ function processInboundMessage(msg, contactName) {
     // Boton quick-reply de una plantilla (ej. "Ya me retiré" en checkout).
     text = msg.button.payload || msg.button.text || '';
     kind = 'button_reply';
+  }
+  // Antes de cualquier otra cosa: si Meta ya nos entregó este mensaje, no se
+  // vuelve a procesar ni a registrar en el historial.
+  if (_yaProcesado(msg.id)) {
+    logDebugEntry('WA-inbound-DUPLICADO', { from: from, msgId: msg.id, kind: kind, text: text.slice(0, 80) });
+    return;
   }
   logDebugEntry('WA-inbound', { from: from, type: type, kind: kind, text: text.slice(0, 200), name: contactName, msgId: msg.id });
   try { logMensaje(from, 'in', kind || type, text || '', msg.id || ''); } catch(_) {}
