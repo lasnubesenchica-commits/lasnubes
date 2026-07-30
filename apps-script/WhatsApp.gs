@@ -772,6 +772,104 @@ function crearPlantillaRegaloEnMeta(dryRun) {
 
 function crearPlantillaRegaloEnMetaAHORA() { return crearPlantillaRegaloEnMeta(false); }
 
+// ─── listos_para_recibirte (aviso de llegada, 11am) ─────────────────
+// Params POSICIONALES para que coincida con enviarAvisoLlegadaHoy, que manda
+// un array: [nombre, cabaña, hora de check-in].
+function _plantillaLlegadaPayload() {
+  const body =
+    '¡Hola {{1}}! 🌿\n' +
+    '\n' +
+    'Hoy te recibimos en {{2}}. El check-in es a partir de las {{3}} — llega a la ' +
+    'hora que te quede cómoda, estamos listos para recibirte.\n' +
+    '\n' +
+    'Antes de subir:\n' +
+    '• Trae hielo y tus alimentos (hay cooler grande, no nevera)\n' +
+    '• Carga tus equipos en el camino: la energía de la cabaña es solar\n' +
+    '• Si eres sensible a los mosquitos, trae repelente\n' +
+    '\n' +
+    'Cómo llegar: pon "Aires de Chicá" en Waze y te lleva directo al portón.\n' +
+    '🗺 https://maps.google.com/?q=8.639400,-79.945900\n' +
+    '🚦 https://waze.com/ul?ll=8.639400,-79.945900&navigate=yes\n' +
+    '\n' +
+    'Cuando estés frente al portón verde, toca el botón de abajo y le avisamos al ' +
+    'equipo para que te abran.';
+  return {
+    name: 'listos_para_recibirte',
+    language: 'es_ES',
+    category: 'UTILITY',
+    components: [
+      {
+        type: 'BODY',
+        text: body,
+        example: { body_text: [['Ana', 'Portal hacia Las Nubes', '2:00 pm']] }
+      },
+      {
+        type: 'BUTTONS',
+        buttons: [{ type: 'QUICK_REPLY', text: '🚪 He llegado' }]
+      }
+    ]
+  };
+}
+
+// Dry-run por defecto: imprime el mensaje tal como lo verá el huésped y el JSON
+// que se le manda a Meta, sin crear nada. Para crearla de verdad:
+// crearPlantillaLlegadaEnMetaAHORA()
+function crearPlantillaLlegadaEnMeta(dryRun) {
+  if (dryRun !== false) dryRun = true;
+  const cfg = _waProps();
+  if (!cfg.token)      { Logger.log('⚠ Falta WA_ACCESS_TOKEN en Script Properties.'); return; }
+  if (!cfg.businessId) { Logger.log('⚠ Falta WA_BUSINESS_ACCOUNT_ID en Script Properties.'); return; }
+
+  const payload = _plantillaLlegadaPayload();
+  Logger.log('═══ ' + (dryRun ? 'DRY-RUN · ' : '') + "PLANTILLA 'listos_para_recibirte' ═══");
+  Logger.log('');
+  Logger.log('Así le llega al huésped el día de su check-in, a las 11am:');
+  Logger.log('');
+  payload.components[0].text
+    .replace('{{1}}', 'Ana').replace('{{2}}', 'Portal hacia Las Nubes').replace('{{3}}', '2:00 pm')
+    .split('\n').forEach(l => Logger.log('   ' + (l || ' ')));
+  Logger.log('');
+  Logger.log('   [ 🚪 He llegado ]   ← botón quick-reply');
+  Logger.log('');
+  Logger.log('Definición que se manda a Meta (WABA ' + cfg.businessId + '):');
+  Logger.log(JSON.stringify(payload, null, 2));
+
+  if (dryRun) {
+    Logger.log('');
+    Logger.log('Nada se envió. Para crearla: crearPlantillaLlegadaEnMetaAHORA()');
+    return;
+  }
+
+  const res = UrlFetchApp.fetch(
+    'https://graph.facebook.com/v21.0/' + cfg.businessId + '/message_templates',
+    { method: 'post', contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      headers: { Authorization: 'Bearer ' + cfg.token },
+      muteHttpExceptions: true });
+  const code = res.getResponseCode();
+  const txt  = res.getContentText();
+  Logger.log('');
+  Logger.log('HTTP ' + code);
+  Logger.log(txt);
+  if (code >= 200 && code < 300) {
+    Logger.log('');
+    Logger.log('✓ Plantilla enviada a revisión. Meta suele aprobar las UTILITY en minutos.');
+    Logger.log('  Seguí el estado con verEstadoPlantillasWA().');
+    Logger.log('  Cuando quede APPROVED:');
+    Logger.log('   1) probala con _testAvisoLlegadaAMiNumero()');
+    Logger.log('   2) activá el envío diario con instalarTriggerAvisoLlegada()');
+  } else {
+    Logger.log('');
+    Logger.log('✗ Meta la rechazó. Los motivos habituales:');
+    Logger.log('   · ya existe una plantilla con ese nombre en es_ES → borrarla o renombrarla;');
+    Logger.log('   · el token no tiene permiso whatsapp_business_management;');
+    Logger.log('   · Meta reclasificó la categoría (si la pasa a MARKETING igual sirve).');
+  }
+}
+
+function crearPlantillaLlegadaEnMetaAHORA() { return crearPlantillaLlegadaEnMeta(false); }
+
+
 // Estado de las plantillas en Meta, sin entrar a WhatsApp Manager.
 // Útil sobre todo después de crear una: queda en PENDING y hay que saber
 // cuándo pasó a APPROVED para dejar de depender del fallback.
