@@ -10,8 +10,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --verde:        #6b8e5a;
-    --verde-dark:   #4a6b3e;
+    --marca:        #c08552;   /* terracota — Malaya no es cabaña de Las Nubes */
+    --marca-dark:   #8a5a30;
     --bg:           #faf8f4;
     --surface:      #ffffff;
     --text:         #2c2a26;
@@ -19,7 +19,7 @@
     --border:       #e8e4de;
     --occupied-bg:  #f0ede8;
     --occupied-fg:  #b0a8a0;
-    --selected-bg:  #d6e3cd;
+    --selected-bg:  #f2e2d0;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); line-height: 1.55; }
@@ -28,7 +28,7 @@
   h2 { font-size: 30px; margin: 0 0 16px; }
   h3 { font-size: 22px; margin: 0 0 10px; }
   p  { margin: 0 0 12px; color: var(--text); }
-  a  { color: var(--verde-dark); }
+  a  { color: var(--marca-dark); }
 
   .container { max-width: 920px; margin: 0 auto; padding: 0 18px; }
 
@@ -39,7 +39,7 @@
   }
   .hero .tag {
     display: inline-block; font-size: 11px; letter-spacing: 0.14em;
-    text-transform: uppercase; color: var(--verde-dark); margin-bottom: 14px;
+    text-transform: uppercase; color: var(--marca-dark); margin-bottom: 14px;
     font-weight: 600;
   }
   .hero p.lead { font-size: 17px; color: var(--text-muted); max-width: 600px; margin: 0 auto; }
@@ -57,7 +57,7 @@
     width: 100%; aspect-ratio: 4/3; border-radius: 12px;
     background: linear-gradient(135deg, #e9ecdf 0%, #d6dec5 100%);
     display: flex; align-items: center; justify-content: center;
-    color: var(--verde-dark); font-size: 13px; font-style: italic; text-align: center; padding: 12px;
+    color: var(--marca-dark); font-size: 13px; font-style: italic; text-align: center; padding: 12px;
   }
 
   /* Sections */
@@ -81,7 +81,7 @@
     padding: 16px; text-align: center; background: var(--bg);
   }
   .pricing .card .lbl { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
-  .pricing .card .val { font-size: 26px; font-family: 'Cormorant Garamond', serif; color: var(--verde-dark); margin-top: 4px; font-weight: 600; }
+  .pricing .card .val { font-size: 26px; font-family: 'Cormorant Garamond', serif; color: var(--marca-dark); margin-top: 4px; font-weight: 600; }
   .pricing .card .desc { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 
   /* Calendario */
@@ -95,47 +95,57 @@
     font-family: inherit; font-size: 13px; color: var(--text);
   }
   .cal-controls button:hover { background: var(--bg); }
+  /* Mismo layout que Disponibilidad en el dashboard: cada mes es una tarjeta y
+     en escritorio entran dos por fila. El breakpoint es el mismo (960px) para
+     que la sensación al cambiar de tab sea la misma. */
+  #cal { display: grid; grid-template-columns: 1fr; gap: 24px; }
+  @media (min-width: 960px) { #cal { grid-template-columns: 1fr 1fr; } }
   .cal-month {
-    margin-bottom: 24px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
   }
   .cal-month-title {
-    font-family: 'Cormorant Garamond', serif; font-size: 22px;
-    text-align: center; margin: 0 0 10px; color: var(--text);
+    font-family: 'Cormorant Garamond', serif; font-size: 20px; font-weight: 400;
+    margin: 0 0 16px; color: var(--text); text-transform: capitalize;
   }
   .cal-grid {
     display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
   }
   .cal-dow {
-    font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
-    text-align: center; color: var(--text-muted); padding: 4px 0; font-weight: 600;
+    text-align: center; font-size: 11px; font-weight: 500; color: var(--text-muted);
+    padding: 4px 0 8px; text-transform: uppercase; letter-spacing: 0.05em;
   }
   .cal-day {
-    aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
-    font-size: 13px; border-radius: 8px; cursor: pointer; user-select: none;
-    background: var(--surface); border: 1px solid var(--border);
-    transition: background 0.15s, color 0.15s;
+    aspect-ratio: 1; min-height: 52px; display: flex; align-items: center;
+    justify-content: center; font-size: 13px; border-radius: 10px;
+    cursor: pointer; user-select: none;
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    transition: all 0.15s;
   }
-  .cal-day:hover { background: var(--bg); }
-  .cal-day.empty { visibility: hidden; }
+  .cal-day:hover { border-color: var(--marca-dark); background: var(--selected-bg); transform: scale(1.04); }
+  .cal-day.empty { visibility: hidden; background: transparent; border: none; }
   .cal-day.past  { color: var(--occupied-fg); cursor: default; background: transparent; border-color: transparent; }
   .cal-day.past:hover { background: transparent; }
+  /* Oscuro = bloqueo de Airbnb. Mismo código de color que el dashboard, donde
+     el tono fuerte es Airbnb y el suave es una reserva directa. */
   .cal-day.occupied {
-    background: var(--occupied-bg); color: var(--occupied-fg);
-    cursor: not-allowed; text-decoration: line-through;
+    background: var(--marca-dark); color: #fff; font-weight: 500;
+    border-color: var(--marca-dark);
+    cursor: not-allowed; text-decoration: none;
   }
+  .cal-day.occupied:hover { transform: none; background: var(--marca-dark); }
   /* Admin: días ocupados por una directa mía son editables — cursor pointer,
      sin tachado, y un tinte suave para que se distingan de los bloqueos de
      Airbnb (que siguen no-clickables). */
+  /* Claro = reserva directa mía, clickeable para editar. */
   .cal-day.occupied.editable {
-    cursor: pointer;
-    text-decoration: none;
-    background: #ede4d3;
-    color: #7a5f1a;
-    border-color: #d8c9a4;
+    cursor: pointer; background: #e6bd93; color: #6b4423; border-color: #d9a878;
   }
-  .cal-day.occupied.editable:hover { background: #e2d5b7; }
+  .cal-day.occupied.editable:hover { background: #dcae80; transform: scale(1.04); }
   .cal-day.selected {
-    background: var(--verde) !important; color: #fff !important; font-weight: 600;
+    background: var(--marca-dark) !important; color: #fff !important;
+    font-weight: 600; border-color: var(--marca-dark) !important;
   }
   .cal-day.in-range {
     background: var(--selected-bg);
@@ -147,11 +157,11 @@
   }
   .btn {
     display: inline-block; padding: 12px 28px; border-radius: 10px;
-    background: var(--verde); color: #fff; border: none;
+    background: var(--marca); color: #fff; border: none;
     font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
     text-decoration: none;
   }
-  .btn:hover { background: var(--verde-dark); }
+  .btn:hover { background: var(--marca-dark); }
   .btn:disabled { background: var(--occupied-fg); cursor: not-allowed; }
   .btn-secondary {
     background: var(--surface); color: var(--text); border: 1px solid var(--border);
@@ -179,7 +189,7 @@
   }
   .modal-close:hover { background: var(--border); color: var(--text); }
   .modal-close:active { transform: scale(0.94); }
-  .modal-card h3 { margin: 0 0 12px; color: var(--verde-dark); }
+  .modal-card h3 { margin: 0 0 12px; color: var(--marca-dark); }
   .modal-card .quote-text {
     background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
     padding: 14px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px;
@@ -195,7 +205,7 @@
   .modal-row .val { font-weight: 600; font-size: 16px; }
   .modal-row.total { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 14px; border-bottom: 0; }
   .modal-row.total .lbl { color: var(--text); font-size: 16px; font-weight: 600; }
-  .modal-row.total .val { font-size: 22px; color: var(--verde-dark); }
+  .modal-row.total .val { font-size: 22px; color: var(--marca-dark); }
   .stepper {
     display: inline-flex; align-items: stretch; border: 1px solid var(--border);
     border-radius: 10px; overflow: hidden; background: var(--surface);
@@ -203,7 +213,7 @@
   .stepper button {
     background: transparent; border: 0; width: 38px; height: 38px;
     font-size: 18px; font-weight: 600; font-family: inherit; cursor: pointer;
-    color: var(--verde-dark);
+    color: var(--marca-dark);
   }
   .stepper button:hover { background: var(--bg); }
   .stepper button:disabled { color: var(--occupied-fg); cursor: not-allowed; }
@@ -221,7 +231,7 @@
     color: var(--text-muted); cursor: pointer; transition: all 0.15s;
   }
   .tab-btn:hover { color: var(--text); }
-  .tab-btn.active { background: var(--verde); color: white; }
+  .tab-btn.active { background: var(--marca); color: white; }
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
 
@@ -289,12 +299,12 @@
   /* Lista features */
   .features { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
   .features .feat { padding: 14px; background: var(--bg); border-radius: 12px; }
-  .features .feat .h { font-weight: 600; margin-bottom: 4px; color: var(--verde-dark); }
+  .features .feat .h { font-weight: 600; margin-bottom: 4px; color: var(--marca-dark); }
   .features .feat .d { font-size: 13px; color: var(--text-muted); }
 
   /* Footer */
   footer { padding: 36px 18px; text-align: center; color: var(--text-muted); font-size: 13px; border-top: 1px solid var(--border); margin-top: 36px; }
-  footer a { color: var(--verde-dark); }
+  footer a { color: var(--marca-dark); }
 
   @media (max-width: 600px) {
     h1 { font-size: 32px; }
@@ -315,9 +325,9 @@
 <div class="container">
 
   <!-- Tabs -->
-  <div class="tabs" role="tablist">
+  <div class="tabs" id="malayaTabs" role="tablist">
     <button class="tab-btn active" data-tab="reservar" onclick="switchTab('reservar')">📅 Reservar</button>
-    <button class="tab-btn" data-tab="cabana" onclick="switchTab('cabana')">🏡 La cabaña</button>
+    <button class="tab-btn" data-tab="cabana" id="tabBtnCabana" onclick="switchTab('cabana')">🏡 La cabaña</button>
   </div>
 
   <!-- ─────────────── TAB: La cabaña ─────────────── -->
@@ -377,6 +387,16 @@
 
   <!-- ─────────────── TAB: Reservar ─────────────── -->
   <div class="tab-panel active" id="tab-reservar">
+    <!-- Misma leyenda que Disponibilidad en el dashboard, para que el código de
+         color se lea igual: tono fuerte = Airbnb, tono suave = reserva directa. -->
+    <div style="display:flex;gap:16px;margin-bottom:12px;font-size:11px;color:var(--text-muted);align-items:center;flex-wrap:wrap;">
+      <span style="display:flex;align-items:center;gap:5px;">
+        <span style="width:14px;height:14px;border-radius:3px;background:var(--marca-dark);display:inline-block;"></span>Airbnb
+      </span>
+      <span style="display:flex;align-items:center;gap:5px;">
+        <span style="width:14px;height:14px;border-radius:3px;background:#e6bd93;display:inline-block;"></span>Directa
+      </span>
+    </div>
 
   <!-- Tarifas (colapsable; abierto por default, cerrado en admin) -->
   <section>
@@ -459,7 +479,7 @@
     <button class="modal-close" onclick="closeQuoteModal()" aria-label="Cerrar">×</button>
     <h3 style="margin-bottom:14px; padding-right:32px;">🌿 Reservar Malaya Lodge</h3>
     <!-- Indicador de modo edición (solo aparece cuando editingReservaId está seteado) -->
-    <div id="modalEditHeader" style="display:none;font-size:12px;color:var(--verde-dark);background:#eef4ea;border:1px solid #d0e2c5;border-radius:8px;padding:8px 10px;margin-bottom:12px;line-height:1.4;"></div>
+    <div id="modalEditHeader" style="display:none;font-size:12px;color:var(--marca-dark);background:#eef4ea;border:1px solid #d0e2c5;border-radius:8px;padding:8px 10px;margin-bottom:12px;line-height:1.4;"></div>
     <div class="modal-row">
       <span class="lbl">Check-in</span>
       <span class="val" id="modalCheckin">—</span>
@@ -488,15 +508,15 @@
       <span class="lbl">Total</span>
       <span id="modalTotalWrap" style="display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;">
         <span class="val" id="modalTotal">$0</span>
-        <input type="number" id="modalTotalInput" step="1" min="0" inputmode="numeric" style="display:none;width:100px;font:inherit;color:var(--verde-dark);font-weight:600;font-size:20px;border:1px solid var(--verde-dark);border-radius:8px;padding:4px 8px;text-align:right;">
-        <button type="button" id="modalTotalEdit" onclick="startEditTotal()" title="Editar tarifa (descuento u oferta especial)" style="display:none;background:none;border:none;cursor:pointer;font-size:15px;color:var(--verde-dark);padding:2px 6px;line-height:1;" aria-label="Editar tarifa">✎</button>
-        <button type="button" id="modalTotalReset" onclick="resetTotalOverride()" title="Volver a la tarifa calculada" style="display:none;background:none;border:none;cursor:pointer;font-size:11px;color:var(--verde-dark);padding:2px 4px;font-family:inherit;text-decoration:underline;">↺ auto</button>
+        <input type="number" id="modalTotalInput" step="1" min="0" inputmode="numeric" style="display:none;width:100px;font:inherit;color:var(--marca-dark);font-weight:600;font-size:20px;border:1px solid var(--marca-dark);border-radius:8px;padding:4px 8px;text-align:right;">
+        <button type="button" id="modalTotalEdit" onclick="startEditTotal()" title="Editar tarifa (descuento u oferta especial)" style="display:none;background:none;border:none;cursor:pointer;font-size:15px;color:var(--marca-dark);padding:2px 6px;line-height:1;" aria-label="Editar tarifa">✎</button>
+        <button type="button" id="modalTotalReset" onclick="resetTotalOverride()" title="Volver a la tarifa calculada" style="display:none;background:none;border:none;cursor:pointer;font-size:11px;color:var(--marca-dark);padding:2px 4px;font-family:inherit;text-decoration:underline;">↺ auto</button>
       </span>
     </div>
 
     <!-- Bloque admin: form de reserva integrado (solo con ?admin=1) -->
-    <div id="modalAdminBlock" style="display:none; margin-top:16px; padding-top:14px; border-top:2px solid var(--verde-dark);">
-      <div style="font-size:13px; font-weight:600; color:var(--verde-dark); margin-bottom:10px;">🔧 Bloquear reserva directa</div>
+    <div id="modalAdminBlock" style="display:none; margin-top:16px; padding-top:14px; border-top:2px solid var(--marca-dark);">
+      <div style="font-size:13px; font-weight:600; color:var(--marca-dark); margin-bottom:10px;">🔧 Bloquear reserva directa</div>
 
       <div class="admin-row" style="margin-bottom:10px;">
         <div class="field">
@@ -628,6 +648,12 @@ if (EMBED) {
   document.addEventListener('DOMContentLoaded', function() {
     const h = document.getElementById('malayaHero');   if (h) h.style.display = 'none';
     const f = document.getElementById('malayaFooter'); if (f) f.style.display = 'none';
+    // "La cabaña" es material de venta para el visitante público. Adentro del
+    // dashboard el admin ya conoce la cabaña: solo estorba. Y sin ella queda un
+    // solo tab ocupando todo el ancho, que no es un tab: es una barra. Se
+    // esconde la barra entera.
+    const barra = document.getElementById('malayaTabs');
+    if (barra) barra.style.display = 'none';
     const avisarAlto = function() {
       try { parent.postMessage({ lnMalayaAlto: document.documentElement.scrollHeight }, location.origin); } catch(_) {}
     };
