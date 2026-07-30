@@ -547,7 +547,7 @@ const _TRIGGERS_ESPERADOS = [
   ['borrarIdsHuespedesViejos',        'diario 3am',    'instalarTriggerBorradoIds()'],
   ['syncMalayaAirbnb',                'cada 30 min',   'instalarTriggersMalaya()'],
   ['verificarMalayaPendientes',       'diario 11am',   'instalarTriggersMalaya()'],
-  ['verificarSaludAirbnb',            'diario 8am',    'instalarTriggerSaludAirbnb()']
+  ['verificarSaludAirbnb',            'lunes 8am',     'instalarTriggerSaludAirbnb()']
 ];
 
 function verTriggers() {
