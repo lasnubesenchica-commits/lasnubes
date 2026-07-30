@@ -1879,13 +1879,21 @@ function doGet(e) {
       const hoy  = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd');
       // Solo se escriben las claves que vinieron en la request: mandar un
       // default por cada una ausente pisaría tarifas que el admin no tocó.
-      const updates = { promoActive: (p.promoActive === 'true' || p.promoActive === '1') ? 'true' : 'false' };
+      // promoActive solo si vino en la request. Antes se escribía SIEMPRE, así que
+      // un guardado parcial —por ejemplo el de las tarifas de Malaya, que no
+      // manda ese campo— apagaba la promoción de Las Nubes sin que nadie lo
+      // pidiera.
+      const updates = {};
+      if (p.promoActive !== undefined) {
+        updates.promoActive = (p.promoActive === 'true' || p.promoActive === '1') ? 'true' : 'false';
+      }
       ['weekday','weekend','promo','viernes','sabado','vispera','feriado','escolar',
        'promoViernes','promoSabado','promoVispera','promoFeriado','promoEscolar',
        'promoMeses',
        'pasatarde','pasanoche','pasadia',
        'recargoPasatardePersona','recargoPasanochePersona','recargoPasadiaPersona',
        'recargoPersonaGrande','recargoPersonaPortal','comboDescuento',
+       'malayaSemana','malayaFinde','malayaPersonaExtra',
        'recargoEarly','recargoLate'].forEach(function(k) {
         if (p[k] !== undefined && p[k] !== '' && !isNaN(parseFloat(p[k]))) updates[k] = parseFloat(p[k]);
       });
