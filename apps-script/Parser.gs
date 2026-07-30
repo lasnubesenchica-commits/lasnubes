@@ -1798,6 +1798,58 @@ function _getSuministrosItemsSheet(ss) {
 // ═══════════════════════════════════════════════════════════
 //  doGet — endpoint principal
 // ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+//  Control de acceso del Web App
+// ═══════════════════════════════════════════════════════════
+// El despliegue es ANYONE_ANONYMOUS y corre como el dueño, así que cualquiera
+// con la URL podía leer todas las reservas —con emails, teléfonos y montos—, la
+// contabilidad y los chats del bot, y además crear o borrar reservas. Y la URL
+// está escrita en index.html, que es público: basta con ver el código fuente
+// del calendario.
+//
+// Ahora todo exige la clave ADMIN_KEY (Script Properties) salvo lo que abajo
+// está en la lista blanca, que son las acciones de las páginas públicas y las
+// que pollea Airbnb.
+const ACCIONES_PUBLICAS = {
+  getTarifas:        true,   // calendario público: precios
+  getReservaPublic:  true,   // página del huésped — valida su propio short code
+  uploadHuespedId:   true,   // el huésped sube su cédula desde esa página
+  getMalayaCalendar: true,   // calendario público de Malaya
+  getIcal:           true,   // lo pollea Airbnb
+  malayaIcal:        true    // lo pollea Airbnb
+};
+
+function _accesoPermitido(action, params, payload) {
+  const esperada = PropertiesService.getScriptProperties().getProperty('ADMIN_KEY');
+
+  // Sin ADMIN_KEY configurada no se bloquea nada. Desplegar esto no puede dejar
+  // al admin afuera de su propio dashboard: la protección se enciende sola en el
+  // momento en que se crea la propiedad.
+  if (!esperada) {
+    if (action && !ACCIONES_PUBLICAS[action]) {
+      logDebugEntry('acceso-SIN-CLAVE', { action: action, nota: 'ADMIN_KEY no configurada — todo abierto' });
+    }
+    return true;
+  }
+
+  if (ACCIONES_PUBLICAS[action]) return true;
+
+  // El calendario público pide las reservas con scope=public, que solo devuelve
+  // fechas, cabaña y tipo. Sin ese scope la MISMA acción devuelve emails,
+  // teléfonos y montos, así que ahí sí hace falta la clave.
+  if ((!action || action === 'getReservations') && params && params.scope === 'public') return true;
+
+  const dada = (params && params.k) || (payload && payload.k) || '';
+  return String(dada) === String(esperada);
+}
+
+function _denegado(action) {
+  logDebugEntry('acceso-DENEGADO', { action: action || '(default)' });
+  return ContentService
+    .createTextOutput(JSON.stringify({ ok: false, error: 'UNAUTHORIZED' }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
 function doGet(e) {
   const action = e && e.parameter && e.parameter.action;
 
@@ -1806,6 +1858,8 @@ function doGet(e) {
   if (e && e.parameter && e.parameter['hub.mode']) {
     return handleWebhookVerify(e);
   }
+
+  if (!_accesoPermitido(action, e && e.parameter, null)) return _denegado(action);
 
   try {
     // ── SAVE TARIFAS (via GET params para evitar redirect 302) ──
@@ -2250,6 +2304,8 @@ function doPost(e) {
     _id     = payload.reservation ? payload.reservation.id : (payload.id || '');
     logDebugEntry('doPost-IN', { action: _action, id: _id, contentLen, contentType });
     const action  = payload.action;
+
+    if (!_accesoPermitido(action, e && e.parameter, payload)) return _denegado(action);
 
     // ── SAVE TARIFAS ─────────────────────────────────────────
     if (action === 'saveTarifas') {

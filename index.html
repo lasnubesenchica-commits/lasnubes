@@ -2785,6 +2785,31 @@
 
 <script>
 const SHEETS_API_URL  = 'https://script.google.com/macros/s/AKfycbwDHyfGSyHZvmgiOenw_mm84pMKIs1aMixkyLxAXrjw8uNBcjvPYdIX0HFv_LkDesr0/exec';
+
+// La clave viaja en la URL del atajo (?k=...). Se envuelve fetch UNA vez en vez
+// de tocar cada llamada: así ninguna se puede olvidar de mandarla, ni ahora ni
+// en las que se agreguen después.
+const ADMIN_KEY = new URLSearchParams(location.search).get('k') || '';
+(function() {
+  const _fetch = window.fetch.bind(window);
+  window.fetch = function(input, init) {
+    try {
+      const url = (typeof input === 'string') ? input : (input && input.url) || '';
+      if (ADMIN_KEY && url.indexOf(SHEETS_API_URL) === 0) {
+        const esPost = init && init.method && String(init.method).toUpperCase() === 'POST';
+        if (esPost && init && typeof init.body === 'string') {
+          const b = JSON.parse(init.body);
+          b.k = ADMIN_KEY;
+          init = Object.assign({}, init, { body: JSON.stringify(b) });
+        } else if (!esPost) {
+          input = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'k=' + encodeURIComponent(ADMIN_KEY);
+        }
+      }
+    } catch(_) { /* si el body no es JSON se manda tal cual */ }
+    return _fetch(input, init);
+  };
+})();
+
 const WHATSAPP_NUMBER = '50769812266';
 
 const CABINS = [
@@ -3341,7 +3366,10 @@ function render() {
 }
 
 // ── ADMIN MODE (?admin=1) ─────────────────────────────────────────
-const IS_ADMIN = new URLSearchParams(window.location.search).get('admin') === '1';
+// La clave sola alcanza para el modo admin: así el atajo del iPhone lleva un
+// único parámetro (?k=...) en vez de dos. ?admin=1 se mantiene para los links
+// que ya andaban dando vueltas.
+const IS_ADMIN = new URLSearchParams(window.location.search).get('admin') === '1' || !!ADMIN_KEY;
 
 // ── DETAIL POPUP ──────────────────────────────────────────────────
 let _adminBaseDate = null;
