@@ -240,31 +240,43 @@ function getCabinGuideSteps(cabin, tipo, checkoutExtendido, horaSalidaCustom) {
   } else {
     checkoutTitle = checkoutTitleMap[tipo] || checkoutTitleMap.noche;
   }
-  const checkoutBody  = 'Dejar la cocina limpia · Llevarse la basura · Cerrar la puerta y dejar la llave dentro del key box.';
+  // La basura NO se la llevan: la recoge el personal. Decía lo contrario en las
+  // tres cabañas, en el menú del día de salida y en la guía del sitio público.
+  const checkoutBody  = 'Dejar la cocina limpia · La basura se queda, el personal la recoge · Llave y control dentro del key box.';
+
+
+  // Lo que cambia por cabaña son la luz y la carga; el resto es igual en las
+  // tres y antes estaba copiado tres veces.
+  const AGUA = ['&#128167;', 'Agua', 'Para beber, el <strong>garrafón de agua filtrada</strong> que dejamos en la cabaña. El agua del grifo es apta para todo lo demás.'];
+  const COCINA = ['&#127859;', 'Cocina', 'No hay nevera: usen el cooler y el hielo que trajeron.<br>Guarden los alimentos — nada expuesto, para evitar animalitos.'];
+  const SENAL = ['&#128246;', 'Señal', 'No hay wifi, y es a propósito: la idea es desconectarse. La señal de todas las telefónicas es excelente si necesitan estar comunicados.'];
+  const TIENDITA = ['&#128293;', 'Fogata y tiendita', '¿Quieren fogata? Tenemos <strong>kit de fogata por $10</strong> — leña, cerillo especial, palillos y malvaviscos. Se pide por WhatsApp y se lo llevamos a la cabaña.<br>También tenemos hielo, carbón, repelente y otros básicos.<br><a href="https://lasnubes.cloud/#insumos">Ver la lista completa</a>'];
+  const CONVIVENCIA = ['&#127925;', 'Convivencia', 'Las cabañas están cerca unas de otras, así que música y conversaciones a volumen moderado. 🌿'];
 
   const steps = {
     verde: [
       ['&#128273;', 'Acceso', 'Key Box código <strong>0507</strong>. Dentro está la llave de la cabaña y, en el mismo llavero, un control negro con botones verdes que abre el portón verde de la entrada. Úsenlo si necesitan salir <strong>durante su estadía</strong>.<br><strong>El día del check-out el control se queda</strong>: déjenlo en el key box junto con la llave.'],
-      ['&#9728;&#65039;', 'Iluminación', 'Energía solar — luces encienden solas al anochecer.<br><strong>Guirnaldas del baño</strong>: se encienden solas en la noche y se apagan con el botón de encendido/apagado detrás del panel solar encima de la mesa de madera en el baño.<br><strong>Control blanco</strong>: lámparas de cocina y recámara.'],
+      ['&#9728;&#65039;', 'Luz', 'Energía solar — las luces se encienden solas al anochecer.<br><strong>Guirnaldas del baño</strong>: se encienden solas de noche y se apagan con el botón detrás del panel solar, encima de la mesa de madera del baño.<br><strong>Control blanco</strong>: lámparas de cocina y recámara.'],
       ['&#128267;', 'Carga de dispositivos', 'Inversor en la recámara para celulares y dispositivos.'],
-      ['&#127859;', 'Cocina', 'Guarda todos los alimentos — no dejar nada expuesto para evitar animalitos.'],
-      ['&#127925;', 'Convivencia', 'Música y conversaciones a volumen moderado.'],
+      AGUA, COCINA, SENAL, TIENDITA, CONVIVENCIA,
       ['&#9989;', checkoutTitle, checkoutBody]
     ],
     azul: [
-      ['&#128273;', 'Acceso', 'Key Box código <strong>0507</strong>. Dentro está la llave de la cabaña y, en el mismo llavero, un control negro con botones verdes que abre el portón verde de la entrada. Úsenlo si necesitan salir <strong>durante su estadía</strong>.<br><strong>El día del check-out el control se queda</strong>: déjenlo en el key box junto con la llave. Con la llave abres el candado y luego deslizas la puerta corrediza de metal.'],
-      ['&#9728;&#65039;', 'Iluminación', 'Luces del comedor y jardines encienden automáticamente al anochecer.<br><strong>Control blanco</strong> encima de la mesa verde: luces de recámara y baño.'],
+      ['&#128273;', 'Acceso', 'Key Box código <strong>0507</strong>. Dentro está la llave de la cabaña y, en el mismo llavero, un control negro con botones verdes que abre el portón verde de la entrada. Úsenlo si necesitan salir <strong>durante su estadía</strong>.<br><strong>El día del check-out el control se queda</strong>: déjenlo en el key box junto con la llave.'],
+      // Va en su propio paso: es lo primero que necesitan, parados frente a la
+      // puerta con la llave en la mano. Estaba al final del párrafo de Acceso,
+      // DESPUÉS de la instrucción de check-out.
+      ['&#128682;', 'Para abrir la puerta', 'Con la llave abres el candado y luego deslizas la puerta corrediza de metal.'],
+      ['&#9728;&#65039;', 'Luz', 'Las luces del comedor y los jardines se encienden solas al anochecer.<br><strong>Control blanco</strong> encima de la mesa verde: luces de recámara y baño.'],
       ['&#128267;', 'Carga de dispositivos', 'Powerbank en la recámara para celulares.'],
-      ['&#127859;', 'Cocina', 'Guarda todos los alimentos — no dejar nada expuesto para evitar animalitos.'],
-      ['&#127925;', 'Convivencia', 'Música y conversaciones a volumen moderado.'],
+      AGUA, COCINA, SENAL, TIENDITA, CONVIVENCIA,
       ['&#9989;', checkoutTitle, checkoutBody]
     ],
     lila: [
       ['&#128273;', 'Acceso', 'Key Box código <strong>0507</strong>. Dentro está la llave de la cabaña y, en el mismo llavero, un control negro con botones verdes que abre el portón verde de la entrada. Úsenlo si necesitan salir <strong>durante su estadía</strong>.<br><strong>El día del check-out el control se queda</strong>: déjenlo en el key box junto con la llave.'],
-      ['&#9728;&#65039;', 'Iluminación', 'Energía solar — guirnaldas del columpio encienden entre 6:30–7:00 pm automáticamente.<br><strong>Control blanco</strong> en la cómoda frente al espejo: luces de recámara, terraza y cocina.'],
+      ['&#9728;&#65039;', 'Luz', 'Energía solar — las guirnaldas del columpio se encienden solas entre 6:30 y 7:00 pm.<br><strong>Control blanco</strong> en la cómoda frente al espejo: luces de recámara, terraza y cocina.'],
       ['&#128267;', 'Carga de dispositivos', 'Inversor en la recámara para celulares y dispositivos.'],
-      ['&#127859;', 'Cocina', 'Guarda todos los alimentos — no dejar nada expuesto para evitar animalitos.'],
-      ['&#127925;', 'Convivencia', 'Música y conversaciones a volumen moderado.'],
+      AGUA, COCINA, SENAL, TIENDITA, CONVIVENCIA,
       ['&#9989;', checkoutTitle, checkoutBody]
     ]
   };
