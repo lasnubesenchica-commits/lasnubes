@@ -306,7 +306,7 @@
 </head>
 <body>
 
-<header class="hero container">
+<header class="hero container" id="malayaHero">
   <div class="tag">Aires de Chicá · Panamá</div>
   <h1>Malaya Lodge</h1>
   <p class="lead">Refugio romántico en las montañas de Chicá. Diseñado para desconectar y reconectar con la naturaleza, contigo y con quien amas.</p>
@@ -446,7 +446,7 @@
 
 </div>
 
-<footer>
+<footer id="malayaFooter">
   <p>Malaya Lodge · Aires de Chicá, Panamá · <a href="https://malayalodge.com" target="_blank" rel="noopener">malayalodge.com</a></p>
   <p style="font-size:12px;">Reservas directas: WhatsApp <a href="https://wa.me/50769812266">+507 6981-2266</a></p>
 </footer>
@@ -615,6 +615,26 @@ function _resolveImageUrl(url) {
   if (m && url.includes('drive.google.com')) return 'https://lh3.googleusercontent.com/d/' + m[1] + '=w1200';
   // Patrón 3: ya es una URL lh3 / directa
   return url;
+}
+
+// Embebido dentro del dashboard (?embed=1): se ocultan el hero y el pie, que
+// ahí serían chrome duplicado, y se le avisa al contenedor el alto real para
+// que el iframe crezca en vez de tener su propio scroll.
+//
+// La clave de admin NO viaja en la URL del iframe: es el mismo origen, así que
+// malaya.html lee de localStorage la que ya guardó el dashboard.
+const EMBED = new URLSearchParams(location.search).get('embed') === '1';
+if (EMBED) {
+  document.addEventListener('DOMContentLoaded', function() {
+    const h = document.getElementById('malayaHero');   if (h) h.style.display = 'none';
+    const f = document.getElementById('malayaFooter'); if (f) f.style.display = 'none';
+    const avisarAlto = function() {
+      try { parent.postMessage({ lnMalayaAlto: document.documentElement.scrollHeight }, location.origin); } catch(_) {}
+    };
+    avisarAlto();
+    try { new ResizeObserver(avisarAlto).observe(document.body); } catch(_) {}
+    window.addEventListener('load', avisarAlto);
+  });
 }
 
 // La clave sola alcanza, igual que en el dashboard y el calendario.
