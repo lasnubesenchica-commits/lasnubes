@@ -290,7 +290,7 @@ function enviarCodigosReferido() {
   }
 
   const refs = _getOrCreateReferralsSheet();
-  let sent = 0, skipped = 0, errors = 0;
+  let sent = 0, skipped = 0, errors = 0, wa = 0;
   candidatos.forEach((info, email) => {
     try {
       // Asegura código (si ya existe lo reusa, sino crea fila)
@@ -301,13 +301,34 @@ function enviarCodigosReferido() {
       _sendReferralCodeEmail({ email, nombre: info.nombre, code });
       refs.getRange(row.rowIndex, 6).setValue(Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd HH:mm:ss'));
       sent++;
+
+      // WhatsApp como canal adicional. Va DESPUÉS de marcar el envío y en su
+      // propio try: el email es el canal principal y no puede quedar sin marcar
+      // porque WhatsApp haya fallado, o el huésped recibiría el mismo email
+      // todos los días hasta que la plantilla se apruebe.
+      //
+      // Mientras `referido_postestadia` esté en revisión, este envío falla y
+      // queda en el log; el día que Meta la apruebe empieza a salir solo, sin
+      // tocar nada. Por eso está acá y no esperando a la aprobación.
+      if (info.telefono) {
+        try {
+          sendWhatsAppTemplate(info.telefono, 'referido_postestadia', 'es_ES',
+            [(info.nombre || '').toString().trim().split(/\s+/)[0] || 'amigo',
+             code, String(REFERRAL_REWARD_AMOUNT)],
+            null, 'referido_' + code);
+          wa++;
+        } catch(eWa) {
+          Logger.log('· WA referido ' + email + ' no salió (¿plantilla sin aprobar?): ' + eWa.message);
+        }
+      }
     } catch(e) {
       errors++;
       Logger.log('⚠ Error referido ' + email + ': ' + e.message);
     }
   });
-  Logger.log('🤝 Referidos: ' + sent + ' enviados · ' + skipped + ' ya enviados · ' + errors + ' errores');
-  return { sent, skipped, errors };
+  Logger.log('🤝 Referidos: ' + sent + ' emails · ' + wa + ' WhatsApp · ' +
+             skipped + ' ya enviados · ' + errors + ' errores');
+  return { sent, wa, skipped, errors };
 }
 
 function _sendReferralCodeEmail(opts) {
