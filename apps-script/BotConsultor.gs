@@ -2579,7 +2579,12 @@ function _botLlegadaTramoCabana(cabin) {
          'Al lado de la *puerta corrediza blanca* está el *key box*.';
 }
 
-function _botSendArrivalInstructions(from, contactName, conv, reserva) {
+// `opts.preview` corta los efectos hacia afuera: no dispara la alerta de portón
+// al admin ni toca el estado de la conversación. Sin esto, revisar los textos
+// de las tres cabañas le manda al admin tres "ABRE EL PORTÓN" falsos — y el día
+// que llegue uno real, ya aprendió a ignorarlos.
+function _botSendArrivalInstructions(from, contactName, conv, reserva, opts) {
+  const preview = !!(opts && opts.preview);
   const cabin     = reserva.cabin;
   const cabinName = BOT_CABIN_NAMES[cabin] || 'Las Nubes';
   const firstName = ((reserva.name || contactName || '').toString().trim().split(/\s+/)[0]) || '';
@@ -2622,6 +2627,11 @@ function _botSendArrivalInstructions(from, contactName, conv, reserva) {
     try { publicUrl = getPublicReservaUrl(reserva.id); } catch(_) {}
     sendWhatsAppText(from, cuerpoBotones +
       (publicUrl ? '\n\n🔗 *Código de acceso y manual:*\n' + publicUrl : ''));
+  }
+
+  if (preview) {
+    logDebugEntry('llegada-preview', { cabin: cabin, to: from });
+    return;
   }
 
   // Notificar al admin via plantilla HSM (alerta_porton) — pasa siempre,
@@ -2939,6 +2949,9 @@ function _botHandleCedulaImage(from, imageId, contactName, conv) {
 //   _testLlegadaAMiNumero('azul')    → Portal
 //   _testLlegadaAMiNumero('lila')    → Puente
 //
+// Es SOLO preview: no dispara la alerta de portón al admin ni toca el estado de
+// tu conversación con el bot.
+//
 // OJO: sirve para revisar los MENSAJES. Los tres botones necesitan una reserva
 // activa con tu teléfono para responder algo útil — al tocarlos, el handler cae
 // a _botFindReservaByPhone y sin reserva contesta "no encuentro tu reserva".
@@ -2953,11 +2966,9 @@ function _testLlegadaAMiNumero(cabinKey, reservaIdOpcional) {
         cabinName: BOT_CABIN_NAMES[cabin], tipo: 'noche',
         checkoutExtendido: false, horaSalida: '', idHuespedURL: '' };
   if (!reserva) { Logger.log('✗ No encontré la reserva ' + reservaIdOpcional); return; }
-  // Ojo: esto deja TU conversación con el bot en estado ARRIVED (es el mismo
-  // código que corre con un huésped real). Se limpia sola escribiéndole "hola".
   const conv = { context: {} };
   try {
-    _botSendArrivalInstructions(phone, 'Ana', conv, reserva);
+    _botSendArrivalInstructions(phone, 'Ana', conv, reserva, { preview: true });
     Logger.log('✓ Instrucciones de ' + (reserva.cabinName || cabin) + ' enviadas a ' + phone);
   } catch(e) {
     Logger.log('✗ Falló: ' + e.message);
