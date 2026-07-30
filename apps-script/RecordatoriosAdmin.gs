@@ -740,8 +740,11 @@ function _testSaldoAMiNumero() {
 }
 
 function _testReferidoAMiNumero() {
-  const r = sendWhatsAppTemplate('50769812266', 'referido_postestadia', 'es',
-    ['María (PRUEBA)', 'LN-AB12CD']);
+  // es_ES y tres params, igual que la definición de _plantillaReferidoPayload:
+  // antes decía 'es' y mandaba dos, así que ni con la plantilla aprobada habría
+  // funcionado.
+  const r = sendWhatsAppTemplate('50769812266', 'referido_postestadia', 'es_ES',
+    ['María (PRUEBA)', 'K7M2QX', String(REFERRAL_REWARD_AMOUNT)]);
   Logger.log('referido: ' + JSON.stringify(r));
   return r;
 }

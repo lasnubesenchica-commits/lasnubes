@@ -52,6 +52,44 @@ const REFERRAL_DIAS_POST_CHECKOUT_MAX = 3;
 // constante es la red por si alguien la vuelve a ensanchar sin pensar en esto.
 const REFERRAL_NO_ANTES_DE = '2026-07-30';
 
+// Las reglas del programa, en un solo lugar. Antes vivían solo dentro del HTML
+// del email; ahora las usan también el bot de WhatsApp y la plantilla, y dos
+// listas que dicen lo mismo terminan separándose en la primera corrección.
+// `%M%` se reemplaza por el monto para no repetirlo en cada línea.
+const REFERRAL_COMO_FUNCIONA = [
+  'Comparte el código con tu amigo.',
+  'Tu amigo reserva directo por WhatsApp mencionando tu código.',
+  'Tu amigo recibe $%M% off en su primera estadía.',
+  'Tú recibes $%M% de crédito al confirmarse su estadía. Lo aplicas cuando vuelvas.',
+  'Sin tope de referidos. Acumulas crédito por cada amigo.'
+];
+
+const REFERRAL_RESTRICCIONES = [
+  // Se define por TIPO de día y no por día de semana: un martes feriado o de
+  // vacaciones escolares sigue siendo "Dom–Jue", y ahí el descuento caía justo
+  // en las noches de mayor demanda.
+  'Aplica a noches de domingo a jueves, sin feriados, vísperas de feriado ni vacaciones escolares.',
+  'Solo para reservas directas (no Airbnb).',
+  'No combinable con tarifa promocional ni otras promociones.',
+  'El crédito vence a los 12 meses de la estadía del referido.',
+  'Sujeto a disponibilidad.'
+];
+
+function _refReglas(lista, monto) {
+  return lista.map(function(t) { return t.split('%M%').join(String(monto)); });
+}
+
+// Las mismas reglas en texto plano, para WhatsApp.
+function referralReglasTexto(codigo, monto) {
+  monto = monto || REFERRAL_REWARD_AMOUNT;
+  return '🤝 *Programa Amigos*\n\n' +
+    'Tu código: *' + codigo + '*\n\n' +
+    '*Cómo funciona:*\n' +
+    _refReglas(REFERRAL_COMO_FUNCIONA, monto).map(function(t) { return '• ' + t; }).join('\n') +
+    '\n\n*Restricciones:*\n' +
+    _refReglas(REFERRAL_RESTRICCIONES, monto).map(function(t) { return '• ' + t; }).join('\n');
+}
+
 function _getOrCreateReferralsSheet() {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   let s = ss.getSheetByName('Referrals');
@@ -126,6 +164,25 @@ function _findReferralRow(email) {
         emailSentAt: data[i][5] instanceof Date ? Utilities.formatDate(data[i][5], 'America/Panama', 'yyyy-MM-dd') : data[i][5]
       };
     }
+  }
+  return null;
+}
+
+// Busca el código por TELÉFONO. `getOrCreateReferralCode` exige email y
+// devuelve null sin él, y el bot solo conoce el número de quien escribe. Se
+// compara por los últimos 8 dígitos para que dé igual si la fila quedó guardada
+// como "6981-2266", "+507 6981-2266" o "50769812266".
+function findReferralCodeByPhone(telefono) {
+  const norm = function(t) {
+    const d = String(t || '').replace(/\D/g, '');
+    return d.length > 8 ? d.slice(-8) : d;
+  };
+  const target = norm(telefono);
+  if (!target || target.length < 7) return null;
+  const data = _getOrCreateReferralsSheet().getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (!data[i][3]) continue;                     // sin código, nada que devolver
+    if (norm(data[i][1]) === target) return data[i][3].toString();
   }
   return null;
 }
@@ -288,22 +345,17 @@ function buildReferralCodeEmailHTML(opts) {
 '</td></tr></table>' +
 '<p style="margin:0 0 14px;font-size:14px;color:#6b6560;line-height:1.7;">Cómo funciona:</p>' +
 '<ul style="margin:0 0 20px;padding-left:20px;color:#6b6560;font-size:14px;line-height:1.7;">' +
-'<li>Comparte el código con tu amigo.</li>' +
-'<li>Tu amigo reserva directo por WhatsApp mencionando <strong>' + opts.code + '</strong>.</li>' +
-'<li>Tu amigo recibe $' + opts.amount + ' off en su primera estadía.</li>' +
-'<li>Tú recibes $' + opts.amount + ' de crédito al confirmarse su estadía. Lo aplicas cuando vuelvas.</li>' +
-'<li>Sin tope de referidos. Acumulas crédito por cada amigo.</li>' +
+_refReglas(REFERRAL_COMO_FUNCIONA, opts.amount).map(function(t) {
+  // El código en negrita dentro de la línea que lo menciona.
+  return '<li>' + t.replace('tu código', '<strong>' + opts.code + '</strong>') + '</li>';
+}).join('') +
 '</ul>' +
 '<p style="margin:0 0 8px;font-size:13px;color:#8a8078;line-height:1.6;font-weight:600;">Restricciones:</p>' +
 '<ul style="margin:0 0 20px;padding-left:20px;color:#8a8078;font-size:13px;line-height:1.7;">' +
-// Se define por TIPO de día y no por día de semana: un martes feriado o de
-// vacaciones escolares sigue siendo "Dom–Jue", y ahí el descuento caía justo
-// en las noches de mayor demanda.
-'<li>Aplica a noches de <strong>domingo a jueves</strong>, sin feriados, vísperas de feriado ni vacaciones escolares.</li>' +
-'<li>Solo para reservas directas (no Airbnb).</li>' +
-'<li>No combinable con tarifa promocional ni otras promociones.</li>' +
-'<li>El crédito vence a los <strong>12 meses</strong> de la estadía del referido.</li>' +
-'<li>Sujeto a disponibilidad.</li>' +
+_refReglas(REFERRAL_RESTRICCIONES, opts.amount).map(function(t) {
+  return '<li>' + t.replace('domingo a jueves', '<strong>domingo a jueves</strong>')
+                  .replace('12 meses', '<strong>12 meses</strong>') + '</li>';
+}).join('') +
 '</ul>' +
 '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;"><tr><td align="center">' +
 '<a href="https://wa.me/' + opts.waNumber + '?text=' + encodeURIComponent('Hola! Quiero compartir mi código de referido ' + opts.code) + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:15px;font-weight:600;padding:14px 28px;border-radius:10px;text-decoration:none;">&#128172; Compartir mi código</a>' +
