@@ -520,6 +520,73 @@ function _testAvisoLlegadaAMiNumero() {
   Logger.log('✓ listos_para_recibirte enviada: ' + JSON.stringify(r));
 }
 
+// ─── Diagnóstico: qué triggers están instalados ───────────────────
+// Corre desde el editor y muestra cuáles de los triggers esperados están vivos
+// y cuáles faltan, con la función que hay que correr para instalar el que falte.
+//
+// OJO: la API de Apps Script NO expone el horario de un trigger ya creado —
+// solo la función que dispara. El horario de la columna "cuándo" sale de los
+// instaladores del código, no de lo que hay configurado. Para ver el horario
+// real: editor → Activadores (el reloj en la barra lateral).
+const _TRIGGERS_ESPERADOS = [
+  ['syncAirbnbReservations',          'cada 15 min',   'installTrigger()'],
+  ['syncAirbnbUpdates',               'cada 15 min',   'installTrigger()'],
+  ['syncDriveScreenshots',            'cada 15 min',   'installTrigger()'],
+  ['syncCompleto',                    'cada hora',     'installTrigger()'],
+  ['enviarRecordatoriosCheckin',      'diario 10am',   'instalarTriggerRecordatorios()'],
+  ['enviarAvisoLlegadaHoy',           'diario 11am',   'instalarTriggerAvisoLlegada()'],
+  ['enviarRecordatoriosCheckout',     'diario 9am',    'instalarTriggerCheckout()'],
+  ['enviarRecordatorioAdminReservasHoy','diario 11am', 'instalarTriggersAdminReminders()'],
+  ['enviarRecordatorioServiciosEspeciales','diario 9am','instalarTriggersAdminReminders()'],
+  ['enviarRecordatorioLimpieza',      'diario 8am',    'instalarTriggerLimpieza()'],
+  ['enviarSeguimientoDiario',         'diario 8am',    'instalarTriggerSeguimiento()'],
+  ['verificarVentanaAdmin',           'cada hora',     'instalarTriggerVentanaAdmin()'],
+  ['enviarRecordatoriosCumpleanos',   'diario 10am',   'instalarTriggerCumpleanos()'],
+  ['enviarLoyaltyUnlockEmails',       'diario 10am',   'instalarTriggerLoyalty()'],
+  ['enviarCodigosReferido',           'diario 10am',   'instalarTriggerReferidos()'],
+  ['borrarIdsHuespedesViejos',        'diario 3am',    'instalarTriggerBorradoIds()'],
+  ['syncMalayaAirbnb',                'cada 30 min',   'instalarTriggersMalaya()'],
+  ['verificarMalayaPendientes',       'diario 11am',   'instalarTriggersMalaya()'],
+  ['verificarSaludAirbnb',            'diario 8am',    'instalarTriggerSaludAirbnb()']
+];
+
+function verTriggers() {
+  const vivos = {};
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    const h = t.getHandlerFunction();
+    vivos[h] = (vivos[h] || 0) + 1;
+  });
+
+  const faltan = [];
+  Logger.log('═══ TRIGGERS INSTALADOS ═══');
+  Logger.log('');
+  _TRIGGERS_ESPERADOS.forEach(function(e) {
+    const n = vivos[e[0]] || 0;
+    if (!n) { faltan.push(e); Logger.log('❌ ' + e[0] + '  (' + e[1] + ')'); }
+    else    { Logger.log('✅ ' + e[0] + '  (' + e[1] + ')' + (n > 1 ? '  ⚠ ' + n + ' DUPLICADOS' : '')); }
+    delete vivos[e[0]];
+  });
+
+  const sobran = Object.keys(vivos);
+  if (sobran.length) {
+    Logger.log('');
+    Logger.log('Instalados pero no esperados (¿de una versión vieja?):');
+    sobran.forEach(function(h) { Logger.log('   · ' + h + ' ×' + vivos[h]); });
+  }
+
+  Logger.log('');
+  if (faltan.length) {
+    Logger.log('Para instalar los que faltan, corré:');
+    const ya = {};
+    faltan.forEach(function(e) { if (!ya[e[2]]) { ya[e[2]] = true; Logger.log('   ' + e[2]); } });
+  } else {
+    Logger.log('✓ Están todos.');
+  }
+  Logger.log('');
+  Logger.log('El horario de arriba sale del código, no de lo configurado: la API no');
+  Logger.log('lo expone. Para ver el horario real → editor, ícono del reloj (Activadores).');
+}
+
 // ─── Setup ────────────────────────────────────────────────────────
 // Correr UNA VEZ desde el editor para instalar los triggers diarios.
 function instalarTriggersAdminReminders() {
