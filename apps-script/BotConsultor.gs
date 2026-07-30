@@ -2240,8 +2240,12 @@ function _botBuildBodySaliendo(reserva, firstName, isFirstTime) {
   }
   return greeting + '\n\n' +
     'Hoy es tu check-out de *' + reserva.cabinName + '* a las *' + checkoutHr + '*.\n\n' +
-    'Antes de salir de la cabaña: deja la cocina ordenada, llévate la basura y deja la llave en el key box. 🔑\n\n' +
-    'Cuando estén en el portón de salida, toca *🚪 Abrir el portón* abajo y te abrimos al instante.';
+    'Antes de salir de la cabaña: deja la cocina ordenada, llévate la basura y deja la ' +
+    'llave *y el control del portón* en el key box. 🔑\n\n' +
+    // "te abrimos al instante" prometía algo que el bot no hace: manda la alerta
+    // y el portón lo abre el admin a mano. Mismo arreglo que en la llegada.
+    'Cuando estén en el portón de salida, toca *🚪 Abrir el portón* abajo y le avisamos ' +
+    'al equipo para que les abra.';
 }
 
 function _botBuildBodyEstadia(reserva, firstName, isFirstTime) {
@@ -2898,8 +2902,10 @@ function _botEnviarCodigoAcceso(from, reserva) {
   const codigo = (typeof PUBLIC_KEY_BOX_CODE !== 'undefined') ? PUBLIC_KEY_BOX_CODE : '0507';
   sendWhatsAppText(from,
     '🔑 *Código del key box: ' + codigo + '*\n\n' +
-    'Dentro está la llave de la cabaña y un control negro con botones verdes para ' +
-    'abrir el portón del proyecto cuando quieran salir.\n\n' +
+    'Dentro está la llave de la cabaña y, en el mismo llavero, un control negro con ' +
+    'botones verdes que abre el portón verde de la entrada.\n\n' +
+    '⚠️ *El control no se lleva.* Cuando salgan del proyecto, déjenlo en el key box ' +
+    'junto con la llave. Al volver, escríbannos por aquí y el equipo les abre el portón.\n\n' +
     'Te dejo abajo el manual de la cabaña. ¡Disfruten! 🌿'
   );
   _botEnviarManualCabana(from, reserva);
@@ -3047,11 +3053,23 @@ function _botHandleCheckoutDone(from, contactName, reservaId) {
   const cabinName = (reserva && reserva.cabinName) || (reserva && BOT_CABIN_NAMES[reserva.cabin]) || 'una cabaña';
   const guestName = (reserva && reserva.name) || contactName || from;
 
-  // Confirmacion al huésped
-  sendWhatsAppText(from,
-    '¡Gracias por avisar! 🌿 Ya le avisé al equipo, en un momento te abren el portón. ' +
-    '¡Buen viaje y esperamos verte pronto de nuevo en Las Nubes! 🙌'
-  );
+  // Confirmacion al huésped. Antes cerraba en "en un momento te abren" y ahí
+  // terminaba: si nadie abría, el huésped quedaba en el portón sin a quién
+  // recurrir. El número del portero ya existía en la Script Property, pero solo
+  // salía en el email que le llega al admin.
+  const gateFono = PropertiesService.getScriptProperties().getProperty('WA_GATE_PHONE') || '+507 6777-5630';
+  const cierre =
+    '¡Gracias por avisar! 🌿 Ya le avisé al equipo para que les abran el portón.\n\n' +
+    'Si en un par de minutos no se abre, llama al portero: *' + gateFono + '*\n\n' +
+    '¡Buen viaje y esperamos verlos pronto de nuevo en Las Nubes! 🙌';
+  try {
+    sendWhatsAppCTAUrl(from, cierre, '📞 Llamar al portero',
+      'tel:+' + String(gateFono).replace(/\D/g, ''));
+  } catch(err) {
+    // WhatsApp autodetecta el número del cuerpo y lo vuelve tappable igual.
+    logDebugEntry('checkout-cta-portero-FAIL', { error: err.message });
+    sendWhatsAppText(from, cierre);
+  }
 
   // Aviso al admin via plantilla HSM (alerta_porton) — pasa siempre,
   // sin depender de la ventana de 24h.
