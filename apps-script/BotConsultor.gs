@@ -1423,6 +1423,17 @@ function botHandleMessage(from, text, contactName, kind) {
     return _botMenuHeLlegado(from, contactName, conv);
   }
 
+  // Botones de las instrucciones de llegada.
+  if (kind === 'button_reply' && text.indexOf('acceso_') === 0) {
+    return _botHandleCodigoAcceso(from, contactName, conv, text.replace('acceso_', ''));
+  }
+  if (kind === 'button_reply' && text.indexOf('manual_') === 0) {
+    return _botHandleManualCabana(from, contactName, text.replace('manual_', ''));
+  }
+  if (kind === 'button_reply' && text.indexOf('llamar_') === 0) {
+    return _botHandleLlamarJosh(from);
+  }
+
   // Boton "Envíame ubicación" de la plantilla de check-in (recordator_entrada)
   // → mandar ubicación + cómo llegar. Match por payload o por el texto del
   //   botón (fallback si la plantilla se envió sin payload dinámico).
@@ -1544,6 +1555,11 @@ function botHandleMessage(from, text, contactName, kind) {
 
   // Mensaje de imagen → voucher (solo si esta en OFFERING_PAYMENT)
   if (kind === 'image') {
+    // La cédula va primero: si no, una foto enviada durante el flujo de acceso
+    // caería en el parser de vouchers y le pediría "monto y referencia".
+    if (conv.step === 'AWAITING_CEDULA') {
+      return _botHandleCedulaImage(from, text, contactName, conv);
+    }
     return _botHandleVoucherImage(from, text, contactName, conv);
   }
 
@@ -2508,8 +2524,58 @@ function _botFindReservaByName(name) {
   return best;
 }
 
+// Fotos de cada cabaña para confirmar la llegada. Se sirven desde el propio
+// repo via GitHub Pages: URL estable, versionada con el código y sin depender
+// de que el permiso de un archivo de Drive siga siendo público. Están
+// redimensionadas a 1600px de lado mayor (~450 KB) porque en el portón la
+// señal es mala y una foto de 9 MB no baja — WhatsApp además topa en 5 MB.
+const BOT_CABIN_LLEGADA_FOTO = {
+  verde: 'https://lasnubes.cloud/paseo.jpg',
+  azul:  'https://lasnubes.cloud/portal.jpg',
+  lila:  'https://lasnubes.cloud/puente.jpg'
+};
+
+// Desde que doblan a la izquierda hasta la puerta. El tramo anterior es común
+// a las tres y vive en _botSendArrivalInstructions.
+//
+// Paseo y Puente comparten el estacionamiento (el poste de luz) y se separan
+// recién al pie de las escaleras rústicas, así que ese trozo está una sola vez.
+const _LLEGADA_PARQUEO_POSTE =
+  'Deténganse ahí mismo. Unos *10 metros más adelante* pueden estacionar en el ' +
+  'lado izquierdo de la calle, *antes del poste de luz*. Es una calle de muy poco ' +
+  'tráfico, así que el auto queda bien.\n\n';
+
+function _botLlegadaTramoCabana(cabin) {
+  if (cabin === 'azul') {
+    return 'Unos *25 metros más adelante* verán un *tanque de reserva de agua azul*. ' +
+           'Se van a estacionar *antes del tanque*, en los laterales de la calle.\n\n' +
+           'Allí mismo, al lado del tanque, está la *escalera para bajar a la cabaña*. ' +
+           'Tiene un *techo blanco* y la reconocerán por los portales con las puertas ' +
+           'antiguas y la silla colgante.\n\n' +
+           'Al lado de la puerta está el *key box*.';
+  }
+  if (cabin === 'lila') {
+    return _LLEGADA_PARQUEO_POSTE +
+           'Al lado izquierdo del poste de luz verán unas *escaleras rústicas*. ' +
+           'Apenas las bajen, la cabaña es la que está *al frente*.\n\n' +
+           'La reconocerán por la *terraza con las dos hamacas*, luego la pérgola con ' +
+           'la cocina exterior y, al final, la recámara con la *puerta corrediza blanca* ' +
+           'donde está el *key box*.';
+  }
+  // verde (Paseo)
+  return _LLEGADA_PARQUEO_POSTE +
+         'Al lado izquierdo del poste de luz verán unas *escaleras rústicas*. ' +
+         'Apenas las bajen, *doblen INMEDIATAMENTE a mano izquierda*.\n\n' +
+         'Después se encontrarán con unas escaleras largas que llevan a la única cabaña ' +
+         'que está abajo, incrustada en la montaña. La reconocerán por los *dos columpios* ' +
+         'y la *malla suspendida* al frente.\n\n' +
+         'Cuando lleguen se van a olvidar de las escaleras: la privacidad es única y la ' +
+         'vista, fenomenal. 🌄\n\n' +
+         'Al lado de la *puerta corrediza blanca* está el *key box*.';
+}
+
 function _botSendArrivalInstructions(from, contactName, conv, reserva) {
-  const cabin    = reserva.cabin;
+  const cabin     = reserva.cabin;
   const cabinName = BOT_CABIN_NAMES[cabin] || 'Las Nubes';
   const firstName = ((reserva.name || contactName || '').toString().trim().split(/\s+/)[0]) || '';
 
@@ -2521,35 +2587,36 @@ function _botSendArrivalInstructions(from, contactName, conv, reserva) {
   // abriendo. El flujo de salida siempre lo dijo bien ("ya le avisé al equipo");
   // este ahora dice lo mismo.
   body += '!\n\nYa le avisé al equipo para que te abran el portón. 🚪\n\n' +
-          'Apenas se abra, conducen recto y más adelante se encontrarán con una *huella calle de concreto*. Van a subirla y, cuando termine, van a tomar la siguiente *calle a mano izquierda*.\n\n';
+          'Apenas se abra, conducen recto y más adelante se encontrarán con una ' +
+          '*huella calle de concreto*. Van a subirla y, cuando termine, van a tomar ' +
+          'la siguiente *calle a mano izquierda*.\n\n' +
+          _botLlegadaTramoCabana(cabin) +
+          '\n\nCualquier dificultad, llama a Josh.';
 
-  if (cabin === 'azul') {
-    body += 'Unos *25 metros más adelante* verán un *tanque de reserva de agua azul*. Se van a estacionar *antes del tanque*, en los laterales de la calle.\n\n' +
-            'Allí mismo, al lado del tanque, está la *escalera para bajar a la cabaña*. Tiene un *techo blanco* y la reconocerán por los portales con las puertas antiguas y la silla colgante.\n\n' +
-            'Cualquier dificultad llama a Josh.';
-  } else {
-    body += 'Apenas doblan, detienen el auto y llaman a Josh al +507 6981-2266 para indicarles cuál es su cabaña.';
-  }
+  sendWhatsAppText(from, body);
 
-  // Recordatorio del link público con instrucciones completas y código de
-  // acceso (key box, etc.). El cliente lo recibió en confirmacion_reserva
-  // pero es fácil de perder al llegar.
-  let publicUrl = '';
-  try { publicUrl = getPublicReservaUrl(reserva.id); } catch(_) {}
-  if (publicUrl) {
-    body += '\n\n🔗 *Instrucciones completas y código de acceso:*\n' + publicUrl;
-  }
-
-  body += '\n\nQuedamos atentos. 🌿';
-
-  // Botón "Llamar a Josh" con tel: para abrir el dialer del teléfono al
-  // tocar. Si Meta rechaza tel: en CTA URL, el catch hace fallback a texto
-  // plano (el número del cuerpo queda auto-detectado por WhatsApp).
+  // Segundo mensaje: foto de la cabaña como encabezado + las tres acciones.
+  // La foto va acá y no en el mensaje de arriba a propósito: si la imagen no
+  // baja (señal mala en el portón), las indicaciones ya llegaron igual.
+  const foto = BOT_CABIN_LLEGADA_FOTO[cabin];
+  const botones = [
+    { id: 'acceso_' + reserva.id, title: '🔑 Código de acceso' },
+    { id: 'manual_' + reserva.id, title: '📖 Manual de cabaña' },
+    { id: 'llamar_' + reserva.id, title: '📞 Llamar a Josh'   }
+  ];
+  const cuerpoBotones =
+    'Esta es *' + cabinName + '*.\n\n' +
+    '*Asegúrense de que la cabaña sea la de la foto* antes de entrar. ¿Qué necesitas?';
   try {
-    sendWhatsAppCTAUrl(from, body, '📞 Llamar a Josh', 'tel:+50769812266');
+    sendWhatsAppButtons(from, cuerpoBotones, botones, foto ? { imageUrl: foto } : null);
   } catch(err) {
-    logDebugEntry('arrival-cta-call-FAIL', { error: err.message });
-    sendWhatsAppText(from, body);
+    // Sin foto o sin botones (WhatsApp viejo): el link público sigue dando
+    // acceso al código y al manual, así que no queda a ciegas.
+    logDebugEntry('arrival-buttons-FAIL', { error: err.message, cabin: cabin });
+    let publicUrl = '';
+    try { publicUrl = getPublicReservaUrl(reserva.id); } catch(_) {}
+    sendWhatsAppText(from, cuerpoBotones +
+      (publicUrl ? '\n\n🔗 *Código de acceso y manual:*\n' + publicUrl : ''));
   }
 
   // Notificar al admin via plantilla HSM (alerta_porton) — pasa siempre,
@@ -2703,11 +2770,161 @@ function _botFindReservaById(reservaId) {
         id: r[0], name: r[1] || '?', cabin: r[3],
         cabinName: r[2] || BOT_CABIN_NAMES[r[3]] || r[3],
         checkin: ci, checkout: co, tipo: r[24] || 'noche',
-        telefono: r[23] || ''
+        telefono: r[23] || '',
+        // Col 27: si ya hay ID subido, el botón "Código de acceso" no vuelve a
+        // pedir la cédula. Cols 29/31: el manual muestra la hora de check-out
+        // real (cortesía o custom), no el default del tipo.
+        idHuespedURL: r[26] || '',
+        checkoutExtendido: r[28] === true || r[28] === 'TRUE' || r[28] === 'true' || r[28] === 1,
+        horaSalida: (typeof _normalizeHora === 'function') ? _normalizeHora(r[30]) : (r[30] || '')
       };
     }
   }
   return null;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Botones de las instrucciones de llegada
+//  🔑 Código de acceso · 📖 Manual de cabaña · 📞 Llamar a Josh
+// ═══════════════════════════════════════════════════════════
+
+// El id viaja en el payload del botón, pero una reserva vieja o un tap desde
+// otro chat pueden dejarlo vacío: se cae al match por teléfono, igual que el
+// resto de los handlers de llegada.
+function _botResolverReservaLlegada(from, reservaId) {
+  let reserva = _botFindReservaById(reservaId);
+  if (!reserva) { try { reserva = _botFindReservaByPhone(from); } catch(_) {} }
+  return reserva;
+}
+
+// El manual sale de getCabinGuideSteps() —la MISMA fuente que la página pública
+// y el email— convertido a texto de WhatsApp. Sin fuente única, el manual del
+// bot y el de la página se separan en la primera corrección que se haga a uno.
+function _botManualCabanaTexto(reserva) {
+  const pasos = getCabinGuideSteps(
+    reserva.cabin, reserva.tipo, !!reserva.checkoutExtendido, reserva.horaSalida || ''
+  );
+  // getCabinGuideSteps devuelve [{icon, title, body}] con el cuerpo en HTML
+  // (lo consume el email). Acá se pasa a texto de WhatsApp.
+  const limpiar = (html) => String(html || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/?strong>/gi, '*')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .trim();
+  let txt = '📖 *Manual de ' + (reserva.cabinName || 'la cabaña') + '*\n';
+  pasos.forEach(function(p) {
+    txt += '\n*' + limpiar(p.title) + '*\n' + limpiar(p.body) + '\n';
+  });
+  return txt.trim();
+}
+
+function _botEnviarManualCabana(from, reserva) {
+  try {
+    sendWhatsAppText(from, _botManualCabanaTexto(reserva));
+  } catch(err) {
+    logDebugEntry('manual-cabana-FAIL', { error: err.message, cabin: reserva && reserva.cabin });
+    sendWhatsAppText(from, '⚠️ No pude armar el manual. Llama a Josh al +507 6981-2266 y te ayuda.');
+  }
+}
+
+function _botHandleManualCabana(from, contactName, reservaId) {
+  const reserva = _botResolverReservaLlegada(from, reservaId);
+  if (!reserva) {
+    sendWhatsAppText(from, '🤔 No encuentro tu reserva para armar el manual. Escríbeme "agente" y te ayuda una persona.');
+    return;
+  }
+  _botEnviarManualCabana(from, reserva);
+}
+
+function _botHandleLlamarJosh(from) {
+  const tel = '+507 6981-2266';
+  try {
+    sendWhatsAppCTAUrl(from, '📞 Toca el botón para llamar a Josh.', 'Llamar ahora', 'tel:+50769812266');
+  } catch(err) {
+    // Meta rechaza tel: en algunos casos. WhatsApp autodetecta el número del
+    // cuerpo y lo vuelve tappable, así que el fallback sirve igual.
+    logDebugEntry('llamar-josh-cta-FAIL', { error: err.message });
+    sendWhatsAppText(from, '📞 Llama a Josh: ' + tel);
+  }
+}
+
+// ─── Código de acceso (key box) ────────────────────────────────────
+// Antes de dar el código pedimos el documento de identidad, igual que la página
+// pública. Si la reserva ya lo tiene subido (por la página o por una estadía
+// anterior), se salta el trámite y va directo al código.
+function _botHandleCodigoAcceso(from, contactName, conv, reservaId) {
+  const reserva = _botResolverReservaLlegada(from, reservaId);
+  if (!reserva) {
+    sendWhatsAppText(from, '🤔 No encuentro tu reserva. Escríbeme "agente" y te ayuda una persona.');
+    return;
+  }
+  if (reserva.idHuespedURL) {
+    return _botEnviarCodigoAcceso(from, reserva);
+  }
+  sendWhatsAppText(from,
+    '🔑 *Código de acceso*\n\n' +
+    'Para desbloquearlo necesito una foto de tu *cédula o pasaporte*.\n\n' +
+    '¿Por qué lo pedimos?\n' +
+    '• Validamos la identidad del huésped principal (uso interno).\n' +
+    '• *Borramos la foto 60 días después de tu salida.* Solo guardamos tu fecha de nacimiento.\n' +
+    '• 🎂 Si tu cumpleaños cae en esta o en futuras estadías, activamos el descuento automáticamente.\n' +
+    '• Solo se pide la primera vez. Si vuelves, no te la pedimos de nuevo.\n\n' +
+    '📷 Envíamela por aquí como foto. Que se lea bien la *fecha de nacimiento*.'
+  );
+  _saveConv(from, 'AWAITING_CEDULA',
+    Object.assign({}, conv.context || {}, { reservaId: reserva.id }), contactName);
+}
+
+function _botEnviarCodigoAcceso(from, reserva) {
+  // PUBLIC_KEY_BOX_CODE vive en PublicLink.gs — misma constante que usa la
+  // página pública, para que un cambio de código no deje al bot dando el viejo.
+  const codigo = (typeof PUBLIC_KEY_BOX_CODE !== 'undefined') ? PUBLIC_KEY_BOX_CODE : '0507';
+  sendWhatsAppText(from,
+    '🔑 *Código del key box: ' + codigo + '*\n\n' +
+    'Dentro está la llave de la cabaña y un control negro con botones verdes para ' +
+    'abrir el portón del proyecto cuando quieran salir.\n\n' +
+    'Te dejo abajo el manual de la cabaña. ¡Disfruten! 🌿'
+  );
+  _botEnviarManualCabana(from, reserva);
+}
+
+function _botHandleCedulaImage(from, imageId, contactName, conv) {
+  const reserva = _botResolverReservaLlegada(from, (conv.context || {}).reservaId);
+  if (!reserva) {
+    sendWhatsAppText(from, '🤔 Perdí el hilo de tu reserva. Escríbeme "agente" y te ayuda una persona.');
+    _saveConv(from, 'INITIAL', {}, contactName);
+    return;
+  }
+  sendWhatsAppText(from, '⏳ Revisando tu documento...');
+  const img = fetchWhatsAppImage(imageId);
+  if (!img) {
+    sendWhatsAppText(from, '⚠️ No pude descargar la imagen. ¿La reenvías?');
+    return;   // sigue en AWAITING_CEDULA
+  }
+  const res = guardarIdHuesped(reserva.id, reserva.name, img.base64, img.mimeType);
+  if (!res.ok) {
+    // DOB_NOT_FOUND cubre los dos casos que importan: foto ilegible y foto que
+    // no es un documento (el OCR devuelve la fecha vacía en ambos). El mensaje
+    // no acusa a nadie de mandar cualquier cosa: pide una foto mejor.
+    sendWhatsAppText(from,
+      '🤔 No pude leer un documento de identidad en esa foto.\n\n' +
+      'Asegúrate de que sea la *cédula o el pasaporte*, con buena luz, sin reflejos ' +
+      'y que se lea la *fecha de nacimiento*.\n\n' +
+      'Reenvíala, o escríbeme "agente" si prefieres que te ayude una persona.'
+    );
+    logDebugEntry('cedula-bot-RECHAZADA', { from: from, reservaId: reserva.id, error: res.error });
+    return;   // sigue en AWAITING_CEDULA
+  }
+  logDebugEntry('cedula-bot-OK', { from: from, reservaId: reserva.id, tipo: res.tipo });
+  if (res.warning) {
+    try { _botAdminAlert('cedula', '⚠️ ' + res.warning + '\n👤 ' + reserva.name + '\n📱 +' + from); } catch(_) {}
+  }
+  _saveConv(from, 'ARRIVED',
+    Object.assign({}, conv.context || {}, { reservaId: reserva.id }), contactName);
+  sendWhatsAppText(from, '✅ ¡Listo, documento recibido!');
+  _botEnviarCodigoAcceso(from, reserva);
 }
 
 // El cliente tocó "Consultas y cambios" en la plantilla de confirmación.

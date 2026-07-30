@@ -626,7 +626,16 @@ function sendWhatsAppButtons(toPhone, bodyText, buttons, headerText, footerText)
       }))
     }
   };
-  if (headerText) interactive.header = { type: 'text', text: headerText.slice(0, 60) };
+  // `headerText` acepta un string (encabezado de texto, máx 60) o un objeto
+  // { imageUrl } para poner una IMAGEN arriba de los botones. Lo segundo evita
+  // mandar dos mensajes cuando la foto y las acciones van juntas — el caso de
+  // las instrucciones de llegada, donde la foto sirve para confirmar que se
+  // llegó a la cabaña correcta.
+  if (headerText && typeof headerText === 'object' && headerText.imageUrl) {
+    interactive.header = { type: 'image', image: { link: headerText.imageUrl } };
+  } else if (headerText) {
+    interactive.header = { type: 'text', text: String(headerText).slice(0, 60) };
+  }
   if (footerText) interactive.footer = { text: footerText.slice(0, 60) };
 
   const url = 'https://graph.facebook.com/v21.0/' + cfg.phoneId + '/messages';

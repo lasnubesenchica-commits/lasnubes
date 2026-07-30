@@ -161,12 +161,38 @@ function handleUploadHuespedId(payload) {
       return _jsonOut({ ok: false, error: 'MISSING_IMAGE' });
     }
 
-    // OCR primero — si no se puede leer la DOB, rechazar y pedir foto mas clara.
-    const ocr = parseIdHuespedConClaude(payload.imageBase64, payload.mimeType);
-    if (!ocr.ok) {
-      return _jsonOut({ ok: false, error: ocr.error || 'OCR_FAILED' });
-    }
+    const res = guardarIdHuesped(reservaId, r.name, payload.imageBase64, payload.mimeType);
+    if (!res.ok) return _jsonOut({ ok: false, error: res.error });
+    return _jsonOut({
+      ok: true,
+      dob: res.dob,
+      nombreOcr: res.nombreOcr,
+      tipo: res.tipo,
+      url: res.url,
+      warning: res.warning
+    });
+  } catch(err) {
+    Logger.log('handleUploadHuespedId error: ' + err.message);
+    return _jsonOut({ ok: false, error: err.message });
+  }
+}
+
+// Núcleo compartido: OCR + Drive + escritura en la hoja. Lo usan la página
+// pública (handleUploadHuespedId) y el Agente de WhatsApp (botón "Código de
+// acceso"). Vive en una sola función a propósito: son el mismo trámite por dos
+// canales, y duplicarlo garantiza que un día se separen.
+//
+// Devuelve { ok, dob, nombreOcr, tipo, url, warning } o { ok:false, error }.
+// error === 'DOB_NOT_FOUND' es el caso "la foto no es un documento legible":
+// parseIdHuespedConClaude devuelve la fecha vacía tanto si la imagen está
+// borrosa como si es la foto del perro, así que ese error cubre los dos.
+function guardarIdHuesped(reservaId, nombreReserva, imageBase64, mimeType) {
+  try {
+    const ocr = parseIdHuespedConClaude(imageBase64, mimeType);
+    if (!ocr.ok) return { ok: false, error: ocr.error || 'OCR_FAILED' };
     const dob = ocr.parsed.fechaNacimiento;
+    const r = { name: nombreReserva };
+    const payload = { mimeType: mimeType, imageBase64: imageBase64 };
 
     // Subir a Drive
     const folder    = _huespedIdFolder();
@@ -208,16 +234,17 @@ function handleUploadHuespedId(payload) {
       Logger.log('⚠ ' + warning);
     }
 
-    return _jsonOut({
+    return {
       ok: true,
       dob: dob,
       nombreOcr: ocr.parsed.nombreCompleto || '',
       tipo: ocr.parsed.tipoDocumento || '',
+      url: url,
       warning: warning
-    });
+    };
   } catch(err) {
-    Logger.log('handleUploadHuespedId error: ' + err.message);
-    return _jsonOut({ ok: false, error: err.message });
+    Logger.log('guardarIdHuesped error: ' + err.message);
+    return { ok: false, error: err.message };
   }
 }
 
