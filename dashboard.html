@@ -25,6 +25,10 @@
     --text-muted: #8a8078;
     --border: #e8e4de;
     --shadow: 0 2px 20px rgba(0,0,0,0.06);
+  /* Malaya — cabaña referida, no es inventario propio. Terracota para que se
+     lea distinta de las tres de Las Nubes de un vistazo. */
+  --mly-marca: #c08552; --mly-marca-dark: #8a5a30;
+  --mly-occ-bg: #f0ede8; --mly-occ-fg: #b0a8a0; --mly-sel-bg: #f2e2d0;
     --radius: 16px;
   }
 
@@ -2363,6 +2367,333 @@
     color: var(--text);
     box-shadow: 0 1px 4px rgba(0,0,0,0.08);
   }
+
+/* ═══ MALAYA ═══ Mudado desde malaya.html. Todas sus clases van con prefijo
+   mly- para que no toquen nada del dashboard. */
+  
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); line-height: 1.55; }
+  h1, h2, h3 { font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 500; letter-spacing: -0.01em; line-height: 1.1; }
+  h1 { font-size: 42px; margin: 0 0 12px; }
+  h2 { font-size: 30px; margin: 0 0 16px; }
+  h3 { font-size: 22px; margin: 0 0 10px; }
+  p  { margin: 0 0 12px; color: var(--text); }
+  a  { color: var(--mly-marca-dark); }
+
+  .mly-container { max-width: 920px; margin: 0 auto; padding: 0 18px; }
+
+  /* Hero */
+  .mly-hero {
+    padding: 56px 18px 24px;
+    text-align: center;
+  }
+  .mly-hero .mly-tag {
+    display: inline-block; font-size: 11px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--mly-marca-dark); margin-bottom: 14px;
+    font-weight: 600;
+  }
+  .mly-hero p.lead { font-size: 17px; color: var(--text-muted); max-width: 600px; margin: 0 auto; }
+
+  /* Galería */
+  .mly-gallery {
+    display: grid; gap: 10px; padding: 18px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+  .mly-gallery img {
+    width: 100%; aspect-ratio: 4/3; object-fit: cover;
+    border-radius: 12px; background: var(--mly-occ-bg);
+  }
+  .mly-gallery .mly-ph {
+    width: 100%; aspect-ratio: 4/3; border-radius: 12px;
+    background: linear-gradient(135deg, #e9ecdf 0%, #d6dec5 100%);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--mly-marca-dark); font-size: 13px; font-style: italic; text-align: center; padding: 12px;
+  }
+
+  /* Sections */
+  section { padding: 8px 0; }
+  .mly-section-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    margin: 0 auto 18px;
+  }
+
+  /* Tarifas */
+  .mly-pricing {
+    display: grid; gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    margin-top: 14px;
+  }
+  .mly-pricing .mly-card {
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px; text-align: center; background: var(--bg);
+  }
+  .mly-pricing .mly-card .mly-lbl { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
+  .mly-pricing .mly-card .mly-val { font-size: 26px; font-family: 'Cormorant Garamond', serif; color: var(--mly-marca-dark); margin-top: 4px; font-weight: 600; }
+  .mly-pricing .mly-card .mly-desc { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+  /* Calendario */
+  .mly-cal-controls {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 14px; gap: 12px;
+  }
+  .mly-cal-controls button {
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 6px 14px; border-radius: 8px; cursor: pointer;
+    font-family: inherit; font-size: 13px; color: var(--text);
+  }
+  .mly-cal-controls button:hover { background: var(--bg); }
+  /* Mismo layout que Disponibilidad en el dashboard: cada mes es una tarjeta y
+     en escritorio entran dos por fila. El breakpoint es el mismo (960px) para
+     que la sensación al cambiar de tab sea la misma. */
+  #mlyCal { display: grid; grid-template-columns: 1fr; gap: 24px; }
+  @media (min-width: 960px) { #mlyCal { grid-template-columns: 1fr 1fr; } }
+  .mly-cal-month {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .mly-cal-month-title {
+    font-family: 'Cormorant Garamond', serif; font-size: 20px; font-weight: 400;
+    margin: 0 0 16px; color: var(--text); text-transform: capitalize;
+  }
+  .mly-cal-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+  }
+  .mly-cal-dow {
+    text-align: center; font-size: 11px; font-weight: 500; color: var(--text-muted);
+    padding: 4px 0 8px; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .mly-cal-day {
+    aspect-ratio: 1; min-height: 52px; display: flex; align-items: center;
+    justify-content: center; font-size: 13px; border-radius: 10px;
+    cursor: pointer; user-select: none;
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    transition: all 0.15s;
+  }
+  .mly-cal-day:hover { border-color: var(--mly-marca-dark); background: var(--mly-sel-bg); transform: scale(1.04); }
+  .mly-cal-day.mly-empty { visibility: hidden; background: transparent; border: none; }
+  .mly-cal-day.mly-past  { color: var(--mly-occ-fg); cursor: default; background: transparent; border-color: transparent; }
+  .mly-cal-day.mly-past:hover { background: transparent; }
+  /* Oscuro = bloqueo de Airbnb. Mismo código de color que el dashboard, donde
+     el tono fuerte es Airbnb y el suave es una reserva directa. */
+  .mly-cal-day.mly-occupied {
+    background: var(--mly-marca-dark); color: #fff; font-weight: 500;
+    border-color: var(--mly-marca-dark);
+    cursor: not-allowed; text-decoration: none;
+  }
+  .mly-cal-day.mly-occupied:hover { transform: none; background: var(--mly-marca-dark); }
+  /* Admin: días ocupados por una directa mía son editables — cursor pointer,
+     sin tachado, y un tinte suave para que se distingan de los bloqueos de
+     Airbnb (que siguen no-clickables). */
+  /* Claro = reserva directa mía, clickeable para editar. */
+  .mly-cal-day.mly-occupied.mly-editable {
+    cursor: pointer; background: #e6bd93; color: #6b4423; border-color: #d9a878;
+  }
+  .mly-cal-day.mly-occupied.mly-editable:hover { background: #dcae80; transform: scale(1.04); }
+  /* Móvil: mismos valores que usa el dashboard a 600px. Sin esto, siete celdas
+     de 52px más los gaps y el padding de la tarjeta no entran en la pantalla y
+     el mes se corta por la derecha — se veía solo hasta el jueves. */
+  @media (max-width: 600px) {
+    /* El ancho disponible en un iPhone es ~340px dentro del iframe. Con la
+       celda a 40px, el mínimo del mes es 330 y no entra: se cortaba en jueves.
+       38px de celda y 3 de gap dejan el mes en ~306, con aire de sobra.
+       (La celda no puede achicarse sola: aspect-ratio 1 convierte el
+       min-height en min-width.) */
+    .mly-cal-month { padding: 14px 10px; }
+    .mly-cal-grid  { gap: 3px; }
+    .mly-cal-day   { min-height: 38px; font-size: 12px; }
+    .mly-cal-dow   { font-size: 10px; padding: 4px 0 6px; }
+    .mly-cal-month-title { font-size: 18px; margin-bottom: 12px; }
+    /* Embebida el dashboard ya pone su propio margen lateral. */
+    body.embed .mly-section-card { padding-left: 10px; padding-right: 10px; }
+  }
+  /* Embebido el padding lateral lo pone el dashboard: duplicarlo le robaba
+     ~36px al ancho, que en un iPhone es justo lo que falta. */
+  body.embed .mly-container { padding: 0; }
+  /* El dashboard ya titula la sección "Disponibilidad": repetirlo adentro del
+     iframe es decir dos veces lo mismo y comerse una pantalla en el celular. */
+  body.embed .mly-solo-publico { display: none; }
+  /* Los tres controles no entran en una fila de 340px y los botones partían el
+     texto en dos líneas. En móvil van apilados: la etiqueta arriba y los dos
+     botones abajo, cada uno a la mitad. */
+  @media (max-width: 600px) {
+    .mly-cal-controls { flex-wrap: wrap; justify-content: center; gap: 8px; }
+    .mly-cal-controls #calRangeInfo { order: -1; width: 100%; text-align: center; }
+    .mly-cal-controls button { flex: 1; white-space: nowrap; }
+  }
+
+  .mly-cal-day.mly-selected {
+    background: var(--mly-marca-dark) !important; color: #fff !important;
+    font-weight: 600; border-color: var(--mly-marca-dark) !important;
+  }
+  .mly-cal-day.mly-in-range {
+    background: var(--mly-sel-bg);
+  }
+
+  /* Reservar (público) */
+  .mly-reserve-cta {
+    text-align: center; padding: 28px 0;
+  }
+  .mly-btn {
+    display: inline-block; padding: 12px 28px; border-radius: 10px;
+    background: var(--mly-marca); color: #fff; border: none;
+    font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+    text-decoration: none;
+  }
+  .mly-btn:hover { background: var(--mly-marca-dark); }
+  .mly-btn:disabled { background: var(--mly-occ-fg); cursor: not-allowed; }
+  .mly-btn-secondary {
+    background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  }
+  .mly-btn-secondary:hover { background: var(--bg); }
+
+  /* Quote modal */
+  .mly-modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+    z-index: 1000; align-items: center; justify-content: center; padding: 16px;
+  }
+  .mly-modal-overlay.mly-open { display: flex; }
+  .mly-modal-card {
+    background: var(--surface); border-radius: 16px; max-width: 460px; width: 100%;
+    padding: 22px; box-shadow: 0 12px 40px rgba(0,0,0,0.25); max-height: 90vh; overflow-y: auto;
+    position: relative;
+  }
+  .mly-modal-close {
+    position: absolute; top: 12px; right: 12px;
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 0; background: var(--bg); color: var(--text-muted);
+    font-size: 20px; line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-family: inherit;
+  }
+  .mly-modal-close:hover { background: var(--border); color: var(--text); }
+  .mly-modal-close:active { transform: scale(0.94); }
+  .mly-modal-card h3 { margin: 0 0 12px; color: var(--mly-marca-dark); }
+  .mly-modal-card .mly-quote-text {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px;
+    white-space: pre-wrap; word-break: break-word; margin: 10px 0 14px;
+  }
+  .mly-modal-card .mly-modal-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+  .mly-modal-row {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    padding: 10px 0; border-bottom: 1px dashed var(--border);
+  }
+  .mly-modal-row:last-of-type { border-bottom: 0; }
+  .mly-modal-row .mly-lbl { color: var(--text-muted); font-size: 14px; }
+  .mly-modal-row .mly-val { font-weight: 600; font-size: 16px; }
+  .mly-modal-row.mly-total { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 14px; border-bottom: 0; }
+  .mly-modal-row.mly-total .mly-lbl { color: var(--text); font-size: 16px; font-weight: 600; }
+  .mly-modal-row.mly-total .mly-val { font-size: 22px; color: var(--mly-marca-dark); }
+  .mly-stepper {
+    display: inline-flex; align-items: stretch; border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; background: var(--surface);
+  }
+  .mly-stepper button {
+    background: transparent; border: 0; width: 38px; height: 38px;
+    font-size: 18px; font-weight: 600; font-family: inherit; cursor: pointer;
+    color: var(--mly-marca-dark);
+  }
+  .mly-stepper button:hover { background: var(--bg); }
+  .mly-stepper button:disabled { color: var(--mly-occ-fg); cursor: not-allowed; }
+  .mly-stepper .mly-val { min-width: 44px; text-align: center; line-height: 38px; font-weight: 600; }
+
+  /* Tabs */
+  .mly-tabs {
+    display: flex; gap: 6px; background: var(--surface); padding: 6px;
+    border-radius: 14px; margin: 0 auto 18px; border: 1px solid var(--border);
+    position: sticky; top: 8px; z-index: 50;
+  }
+  .mly-tab-btn {
+    flex: 1; padding: 12px 14px; background: transparent; border: 0;
+    border-radius: 10px; font-family: inherit; font-size: 15px; font-weight: 600;
+    color: var(--text-muted); cursor: pointer; transition: all 0.15s;
+  }
+  .mly-tab-btn:hover { color: var(--text); }
+  .mly-tab-btn.mly-active { background: var(--mly-marca); color: white; }
+  .mly-tab-panel { display: none; }
+  .mly-tab-panel.mly-active { display: block; }
+
+  /* Collapsible section (Tarifas) */
+  details.collapsible > summary {
+    cursor: pointer; list-style: none; display: flex; align-items: center;
+    justify-content: space-between; padding: 0; margin: 0;
+  }
+  details.collapsible > summary::-webkit-details-marker { display: none; }
+  details.collapsible > summary::after {
+    content: '▾'; color: var(--text-muted); font-size: 18px; transition: transform 0.2s;
+  }
+  details.collapsible[open] > summary::after { transform: rotate(180deg); }
+  details.collapsible > summary h2 { margin: 0; }
+
+  /* Admin panel */
+  .mly-admin-panel {
+    display: none;
+    background: #fef9f0;
+    border: 1px solid #e8d4a0;
+    border-radius: 16px;
+    padding: 20px;
+    margin: 0 auto 18px;
+  }
+  body.admin .mly-admin-panel { display: block; }
+  .mly-admin-panel { padding: 12px 16px; }
+  .mly-admin-panel h3 { margin-top: 0; color: #8a6f1c; }
+  .mly-admin-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
+  .mly-admin-row .mly-field { flex: 1; min-width: 180px; }
+  .mly-admin-row label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 4px; }
+  .mly-admin-row input, .mly-admin-row textarea {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: 8px; font-family: inherit; font-size: 16px; background: var(--surface);
+  }
+  .mly-admin-row input[type=file] { padding: 6px; font-size: 14px; }
+  /* iOS Safari zoom-out fix: cualquier input de texto/textarea a >=16px con
+     !important para vencer cualquier regla más específica. Aplica sólo a
+     inputs cuya interacción abre teclado (los file no cuentan). */
+  input[type="text"],
+  input[type="email"],
+  input[type="tel"],
+  input[type="number"],
+  input[type="password"],
+  input[type="search"],
+  input[type="url"],
+  input:not([type]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+  .mly-voucher-info {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px; font-size: 13px; margin: 10px 0;
+    white-space: pre-wrap;
+  }
+  .mly-toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--text); color: var(--bg); padding: 12px 20px;
+    border-radius: 10px; font-size: 14px; z-index: 9999;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    opacity: 0; transition: opacity 0.3s;
+  }
+  .mly-toast.mly-show { opacity: 1; }
+
+  /* Lista features */
+  .mly-features { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .mly-features .mly-feat { padding: 14px; background: var(--bg); border-radius: 12px; }
+  .mly-features .mly-feat .mly-h { font-weight: 600; margin-bottom: 4px; color: var(--mly-marca-dark); }
+  .mly-features .mly-feat .mly-d { font-size: 13px; color: var(--text-muted); }
+
+  /* Footer */
+  footer { padding: 36px 18px; text-align: center; color: var(--text-muted); font-size: 13px; border-top: 1px solid var(--border); margin-top: 36px; }
+  footer a { color: var(--mly-marca-dark); }
+
+  @media (max-width: 600px) {
+    h1 { font-size: 32px; }
+    h2 { font-size: 24px; }
+    .mly-section-card { padding: 20px; }
+    .mly-hero { padding: 36px 18px 12px; }
+  }
 </style>
 </head>
 <body>
@@ -3024,8 +3355,83 @@
          datos se mezclen — son documentos distintos. Mismo origen, así que el
          iframe ve la misma clave de admin guardada y entra en modo admin solo. -->
     <div id="dispMalaya" style="display:none;">
-      <iframe id="dispMalayaFrame" title="Calendario de Malaya Lodge"
-              style="width:100%;border:1px solid var(--border);border-radius:12px;height:760px;background:var(--bg);"></iframe>
+  <div class="mly-tab-panel mly-active" id="tab-reservar">
+    <!-- Misma leyenda que Disponibilidad en el dashboard, para que el código de
+         color se lea igual: tono fuerte = Airbnb, tono suave = reserva directa. -->
+    <div style="display:flex;gap:16px;margin-bottom:12px;font-size:11px;color:var(--text-muted);align-items:center;flex-wrap:wrap;">
+      <span style="display:flex;align-items:center;gap:5px;">
+        <span style="width:14px;height:14px;border-radius:3px;background:var(--mly-marca-dark);display:inline-block;"></span>Airbnb
+      </span>
+      <span style="display:flex;align-items:center;gap:5px;">
+        <span style="width:14px;height:14px;border-radius:3px;background:#e6bd93;display:inline-block;"></span>Directa
+      </span>
+    </div>
+
+  <!-- Tarifas (colapsable; abierto por default, cerrado en admin) -->
+  <section>
+    <div class="mly-section-card">
+      <details class="mly-collapsible" id="tarifasDetails" open>
+        <summary><h2>Tarifas</h2></summary>
+        <div class="mly-pricing" style="margin-top:14px;">
+          <div class="mly-card">
+            <div class="mly-lbl">Dom – Jue</div>
+            <div class="mly-val">$75</div>
+            <div class="mly-desc">por noche</div>
+          </div>
+          <div class="mly-card">
+            <div class="mly-lbl">Vie – Sáb</div>
+            <div class="mly-val">$100</div>
+            <div class="mly-desc">por noche</div>
+          </div>
+          <div class="mly-card">
+            <div class="mly-lbl">Persona extra</div>
+            <div class="mly-val">+$30</div>
+            <div class="mly-desc">por noche (3 o 4)</div>
+          </div>
+        </div>
+        <p style="font-size:13px; color:var(--text-muted); margin-top:14px;">
+          Check-in 2:00 pm · Check-out 11:00 am. Reservas con 50% de abono o pago completo.
+        </p>
+      </details>
+    </div>
+  </section>
+
+  <!-- Calendario -->
+  <section>
+    <div class="mly-section-card">
+      <h2 class="mly-solo-publico">Disponibilidad</h2>
+      <p class="mly-solo-publico" style="color:var(--text-muted);">Selecciona tus fechas. Las celdas en gris ya están reservadas.</p>
+
+      <div class="mly-cal-controls">
+        <button onclick="mly_shiftMonths(-1)">← Anterior</button>
+        <div id="calRangeInfo" style="font-size:13px; color:var(--text-muted);">Cargando…</div>
+        <button onclick="mly_shiftMonths(1)">Siguiente →</button>
+      </div>
+
+      <div id="mlyCal"></div>
+
+      <div class="mly-reserve-cta">
+        <a href="#" id="reserveBtn" class="mly-btn">Reservar por WhatsApp</a>
+        <div style="margin-top:8px; font-size:12px; color:var(--text-muted);">
+          Te respondo personalmente para coordinar.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Admin toolbar compacto (solo con ?admin=1). El form de reserva vive
+       dentro del modal. Sync Airbnb es útil para forzar refresh del iCal
+       sin esperar el trigger de 30 min y confirmar la config. -->
+  <section class="mly-admin-panel" id="adminPanel">
+    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+      <span style="font-size:12px; color:#8a6f1c; font-weight:600;">🔧 Admin</span>
+      <span style="font-size:11px; color:var(--text-muted); flex:1;">Tocá una fecha libre para abrir el form de reserva.</span>
+      <button onclick="mly_adminForceSync()" style="background:none; border:none; padding:4px 6px; font-family:inherit; font-size:12px; color:#8a6f1c; cursor:pointer; text-decoration:underline;" title="Forzar sync con el iCal de Airbnb (normalmente corre cada 30 min)">🔄 Sync Airbnb</button>
+    </div>
+    <div id="syncResult" style="display:none; margin-top:10px; padding:10px; background:var(--surface); border:1px solid var(--border); border-radius:8px; font-size:12px; white-space:pre-wrap;"></div>
+  </section>
+
+  </div><!-- /tab-reservar -->
     </div>
   </section>
 
@@ -4952,6 +5358,8 @@ function updateDispLegend() {
   if (d) d.style.background = CABIN_DIRECT_COLOR[dispCabin] || '#a8c9a0';
 }
 
+let _malayaCargado = false;
+
 // Elementos que solo tienen sentido para las cabañas de Las Nubes: la leyenda
 // Airbnb/Directa y el toggle Calendario/Timeline. Malaya no los usa.
 function _dispSoloLasNubes(mostrar) {
@@ -4969,11 +5377,10 @@ function setDispCabin(cabin, btn) {
   if (btn) btn.classList.add('active');
 
   if (cabin === 'malaya') {
-    const wrap  = document.getElementById('dispMalaya');
-    const frame = document.getElementById('dispMalayaFrame');
+    const wrap = document.getElementById('dispMalaya');
     // Carga diferida: sin esto, cada visita al dashboard pediría el calendario
     // de Malaya aunque nadie lo mire.
-    if (frame && !frame.getAttribute('src')) frame.setAttribute('src', 'malaya.html?embed=1');
+    if (!_malayaCargado && window._mlyCargar) { _malayaCargado = true; window._mlyCargar(); }
     document.getElementById('dispCalendars').style.display = 'none';
     document.getElementById('dispTimeline').style.display  = 'none';
     if (wrap) wrap.style.display = '';
@@ -4997,15 +5404,6 @@ function setDispCabin(cabin, btn) {
     setTimeout(() => scrollDispTimelineToToday(true), 60);
   }
 }
-
-// Malaya avisa su alto y el iframe se ajusta: sin esto queda una caja con
-// scroll propio adentro de la página, que en móvil es molesto.
-window.addEventListener('message', function(e) {
-  const alto = e && e.data && e.data.lnMalayaAlto;
-  if (!alto) return;
-  const frame = document.getElementById('dispMalayaFrame');
-  if (frame) frame.style.height = (parseInt(alto, 10) + 24) + 'px';
-});
 
 function setDispViewMode(mode) {
   if (mode !== 'calendar' && mode !== 'timeline') return;
@@ -16223,6 +16621,885 @@ if (IS_ADMIN) {
     }
   }
 })();
+
+// ═══════════════════════════════════════════════════════════
+//  MALAYA — mudado desde malaya.html
+// ═══════════════════════════════════════════════════════════
+// Va dentro de un IIFE: sus ~47 variables globales (TODAY, viewYear, selStart,
+// renderCalendar…) chocarían con las del dashboard o se las comerían en
+// silencio. Solo salen a window los handlers que los onclick necesitan,
+// con prefijo mly_.
+(function() {
+
+
+(function() {
+  const _fetch = window.fetch.bind(window);
+  window.fetch = function(input, init) {
+    try {
+      const url = (typeof input === 'string') ? input : (input && input.url) || '';
+      if (ADMIN_KEY && url.indexOf(SHEETS_API_URL) === 0) {
+        const esPost = init && init.method && String(init.method).toUpperCase() === 'POST';
+        if (esPost && init && typeof init.body === 'string') {
+          const b = JSON.parse(init.body);
+          b.k = ADMIN_KEY;
+          init = Object.assign({}, init, { body: JSON.stringify(b) });
+        } else if (!esPost) {
+          input = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'k=' + encodeURIComponent(ADMIN_KEY);
+        }
+      }
+    } catch(_) { /* si el body no es JSON se manda tal cual */ }
+    return _fetch(input, init);
+  };
+})();
+
+const WHATSAPP_NUMBER = '50769812266';
+
+// Galería: pegá acá los links públicos de Drive (formato share normal) o
+// URLs directas. El JS detecta automáticamente Drive y convierte al
+// formato visualizable. Ejemplos válidos:
+//   'https://drive.google.com/file/d/FILE_ID/view?usp=sharing'
+//   'https://lh3.googleusercontent.com/d/FILE_ID'
+//   'https://malayalodge.com/foto.jpg'
+const MALAYA_GALLERY = [
+  'https://drive.google.com/file/d/1Fjc1fFmHQW29keoMgWMsJrK6_thWzUM0/view',
+  'https://drive.google.com/file/d/1TnVH5FhJraCrDBw67quAR2a_4AIbQwFX/view',
+  'https://drive.google.com/file/d/1iyaUDmNvKgz-7FO4X99wLc_XxRWdxEIv/view',
+  'https://drive.google.com/file/d/1WNqz3pXbviiFifwsQHGVLHm9atASLmnw/view',
+  'https://drive.google.com/file/d/18EM0iezpuCssN8Fc81srmFFWnzvbfsrV/view',
+  'https://drive.google.com/file/d/1f11eKjOfdUxFVN4mWBjLBFfcfMI7BNHz/view',
+  'https://drive.google.com/file/d/1C0mJ8B-f7yAL4_LGmHzuFpdBECYRh2IL/view'
+];
+
+// Helper: convierte un link de Drive (share o id) a una URL visualizable.
+function _resolveImageUrl(url) {
+  if (!url) return '';
+  // Patrón 1: drive.google.com/file/d/FILE_ID/view
+  let m = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (m) return 'https://lh3.googleusercontent.com/d/' + m[1] + '=w1200';
+  // Patrón 2: drive.google.com/open?id=FILE_ID
+  m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m && url.includes('drive.google.com')) return 'https://lh3.googleusercontent.com/d/' + m[1] + '=w1200';
+  // Patrón 3: ya es una URL lh3 / directa
+  return url;
+}
+
+// Embebido dentro del dashboard (?embed=1): se ocultan el hero y el pie, que
+// ahí serían chrome duplicado, y se le avisa al contenedor el alto real para
+// que el iframe crezca en vez de tener su propio scroll.
+//
+// La clave de admin NO viaja en la URL del iframe: es el mismo origen, así que
+// malaya.html lee de localStorage la que ya guardó el dashboard.
+
+// La clave sola alcanza, igual que en el dashboard y el calendario.
+// Dentro del dashboard, quien llegó hasta acá ya es admin.
+  const ADMIN_MODE = true;
+if (ADMIN_MODE) {
+  document.body.classList.add('admin');
+  // Tarifas colapsado por default en admin: priorizar calendario.
+  document.addEventListener('DOMContentLoaded', () => {
+    const td = document.getElementById('tarifasDetails');
+    if (td) td.open = false;
+    // Confirmar edición del total con Enter o blur; Escape cancela.
+    const totalInput = document.getElementById('modalTotalInput');
+    if (totalInput) {
+      totalInput.addEventListener('blur', commitEditTotal);
+      totalInput.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter')  { ev.preventDefault(); totalInput.blur(); }
+        if (ev.key === 'Escape') { ev.preventDefault(); refreshModal(); }
+      });
+    }
+  });
+}
+
+const TODAY = new Date(); TODAY.setHours(0,0,0,0);
+let viewMonth = TODAY.getMonth();
+let viewYear  = TODAY.getFullYear();
+let blocked = [];   // [{ checkin, checkout, source }]  (admin: incluye id + datos)
+let selStart = null, selEnd = null;   // ISO yyyy-MM-dd
+// Modo edición: si está seteado, el modal actualiza esa reserva en vez
+// de crear una nueva. Se limpia al cerrar el modal o guardar.
+let editingReservaId = null;
+let _editingReservaOriginal = null;
+  // La galería de fotos es material público: vive en malaya.html, no acá.
+
+
+// ─── Calendario ───
+function mly_shiftMonths(delta) {
+  viewMonth += delta;
+  while (viewMonth < 0)  { viewMonth += 12; viewYear--; }
+  while (viewMonth > 11) { viewMonth -= 12; viewYear++; }
+  renderCalendar();
+}
+
+function isoFromYMD(y, m, d) {
+  return y + '-' + String(m+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+}
+
+function isDateBlocked(iso) {
+  // Para el calendario público: un día está "ocupado" si CUALQUIER rango
+  // bloqueado lo incluye como noche (checkin <= iso < checkout).
+  return blocked.some(b => b.checkin <= iso && iso < b.checkout);
+}
+
+// Devuelve la directa (con id + datos) que cubre este día, o null. Solo
+// hay datos completos si `admin=1` fue el que cargó el calendario. Se usa
+// para hacer clickable el día en admin y abrir el modal de edición.
+function _findDirectaAt(iso) {
+  return blocked.find(b => b.source === 'directa' && b.id && b.checkin <= iso && iso < b.checkout) || null;
+}
+
+function isInRange(iso) {
+  if (!selStart || !selEnd) return false;
+  return iso > selStart && iso < selEnd;
+}
+
+function renderCalendar() {
+  const container = document.getElementById('mlyCal');
+  const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const DOW = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  let html = '';
+  // Mostramos 3 meses consecutivos
+  for (let off = 0; off < 3; off++) {
+    let y = viewYear, m = viewMonth + off;
+    while (m > 11) { m -= 12; y++; }
+    const first = new Date(y, m, 1);
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    html += '<div class="mly-cal-month">';
+    html += '<div class="mly-cal-month-title">' + MESES[m] + ' ' + y + '</div>';
+    html += '<div class="mly-cal-grid">';
+    DOW.forEach(d => { html += '<div class="mly-cal-dow">' + d + '</div>'; });
+    for (let i = 0; i < first.getDay(); i++) html += '<div class="mly-cal-day mly-empty"></div>';
+    for (let d = 1; d <= lastDay; d++) {
+      const iso = isoFromYMD(y, m, d);
+      const dayDate = new Date(y, m, d); dayDate.setHours(0,0,0,0);
+      const past = dayDate < TODAY;
+      const occ  = isDateBlocked(iso);
+      const sel  = (iso === selStart) || (iso === selEnd);
+      const inRng = isInRange(iso);
+      // En admin, un día ocupado por una directa mía es clickable para editar.
+      // Airbnb blocks y días públicos siguen no-clickables.
+      const directa = (ADMIN_MODE && occ && !past) ? _findDirectaAt(iso) : null;
+      let cls = 'mly-cal-day';
+      if (past) cls += ' mly-past';
+      else if (occ) { cls += ' mly-occupied'; if (directa) cls += ' mly-editable'; }
+      else if (sel) cls += ' mly-selected';
+      else if (inRng) cls += ' mly-in-range';
+      let click = '';
+      if (directa) {
+        click = 'onclick="mly_pickDirectaForEdit(\'' + directa.id + '\')"';
+      } else if (!past && !occ) {
+        click = 'onclick="mly_pickDay(\'' + iso + '\')"';
+      }
+      html += '<div class="' + cls + '" ' + click + '>' + d + '</div>';
+    }
+    html += '</div></div>';
+  }
+  container.innerHTML = html;
+
+  const fromIso = isoFromYMD(viewYear, viewMonth, 1);
+  document.getElementById('calRangeInfo').textContent = '3 meses desde ' + fromIso.slice(0,7);
+  updateReserveBtn();
+}
+
+function mly_pickDay(iso) {
+  // Single-click flow: el día clickeado es el checkin. El modal se abre y
+  // permite ajustar noches con steppers (+/-). El rango se mantiene
+  // sincronizado con el calendario al cambiar noches.
+  editingReservaId = null;
+  _editingReservaOriginal = null;
+  selStart = iso;
+  openQuoteModal();
+}
+
+// Admin: abrir modal en modo edición sobre una directa ya registrada.
+// Los datos vienen de `blocked` (populado con detalle cuando cargamos con
+// admin=1). Precarga fechas, huésped, personas, notas y monto.
+function mly_pickDirectaForEdit(reservaId) {
+  const r = blocked.find(b => b.source === 'directa' && b.id === reservaId);
+  if (!r) { showToast('⚠ No se encontró la reserva'); return; }
+  editingReservaId = reservaId;
+  _editingReservaOriginal = r;
+  selStart = r.checkin;
+  selEnd   = r.checkout;
+  // Noches derivadas del rango de storage.
+  const a = new Date(r.checkin + 'T12:00:00');
+  const b = new Date(r.checkout + 'T12:00:00');
+  modalNoches = Math.max(1, Math.round((b - a) / 86400000));
+  modalPersonas = r.personas || 2;
+  // El monto ya guardado es la fuente de verdad — usamos override para que
+  // el modal lo respete y no recalcule por tarifa base al abrir.
+  _modalTotalOverride = (typeof r.monto === 'number' && r.monto > 0) ? r.monto : null;
+  openQuoteModal();
+}
+
+// Cuántas noches consecutivas no bloqueadas hay a partir de iso (máx 30).
+// En modo edición excluye la propia reserva del cálculo (sino sus propias
+// noches contarían como "ocupadas" y el stepper quedaría bloqueado en 1).
+function _maxNochesFrom(iso) {
+  const excludeSelf = editingReservaId
+    ? blocked.find(b => b.source === 'directa' && b.id === editingReservaId)
+    : null;
+  const isBlockedIgnoringSelf = (curIso) => blocked.some(b => {
+    if (excludeSelf && b === excludeSelf) return false;
+    return b.checkin <= curIso && curIso < b.checkout;
+  });
+  let n = 0;
+  const cur = new Date(iso + 'T12:00:00');
+  for (let i = 0; i < 30; i++) {
+    const curIso = isoFromYMD(cur.getFullYear(), cur.getMonth(), cur.getDate());
+    if (isBlockedIgnoringSelf(curIso)) break;
+    n++;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return Math.max(1, n);
+}
+
+function clearSelection() {
+  selStart = null; selEnd = null;
+  renderCalendar();
+}
+
+function updateReserveBtn() {
+  const btn = document.getElementById('reserveBtn');
+  let msg = 'Hola, quiero reservar *Malaya Lodge*';
+  if (selStart && selEnd) {
+    msg += ' del ' + selStart + ' al ' + selEnd + '.';
+  } else {
+    msg += '. ¿Qué fechas tienen disponibles?';
+  }
+  btn.href = 'https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg);
+}
+
+// ─── Tarifas helpers ───
+function calcTarifa(ci, co, personas) {
+  if (!ci || !co || co <= ci) return null;
+  let total = 0, noches = 0;
+  const cur = new Date(ci + 'T12:00:00');
+  const end = new Date(co + 'T12:00:00');
+  const extra = Math.max(0, (parseInt(personas, 10) || 2) - 2);
+  while (cur < end) {
+    const dow = cur.getDay();
+    const tarifa = (dow === 5 || dow === 6) ? 100 : 75;
+    total += tarifa + extra * 30;
+    noches++;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return { total: total, noches: noches };
+}
+
+// ─── Admin: parse voucher ───
+async function mly_parseAdminVoucher() {
+  const file = document.getElementById('adminVoucher').files[0];
+  if (!file) return;
+  const info = document.getElementById('voucherInfo');
+  info.style.display = 'block';
+  info.textContent = '⏳ Procesando voucher con Claude…';
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const base64 = reader.result.split(',')[1];
+    try {
+      const res = await fetch(SHEETS_API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'parseVoucher', imageBase64: base64, mimeType: file.type })
+      });
+      const data = await res.json();
+      if (!data.ok) { info.textContent = '✗ Error: ' + (data.error || 'no se pudo leer el voucher'); return; }
+      let summary = '✅ Voucher procesado:\n';
+      if (data.sender)           summary += '👤 Remitente: ' + data.sender + '\n';
+      if (data.monto != null)    summary += '💰 Monto: $' + data.monto + '\n';
+      if (data.codTransferencia) summary += '🔢 Código: ' + data.codTransferencia + '\n';
+      if (data.fechaPago)        summary += '📅 Fecha pago: ' + data.fechaPago + '\n';
+      if (data.nombreCompleto)   summary += '📝 Nombre extraído: ' + data.nombreCompleto + '\n';
+      if (data.telefono)         summary += '📱 Teléfono extraído: ' + data.telefono + '\n';
+      if (data.email)            summary += '✉ Email extraído: ' + data.email;
+      info.textContent = summary;
+      // Pre-llenar campos del form del modal.
+      if (data.nombreCompleto || data.sender) {
+        const nameField = document.getElementById('adminGuestName');
+        if (!nameField.value) nameField.value = data.nombreCompleto || data.sender;
+      }
+      if (data.telefono) {
+        const phField = document.getElementById('adminGuestPhone');
+        if (!phField.value) phField.value = data.telefono;
+      }
+      if (data.email) {
+        const emField = document.getElementById('adminGuestEmail');
+        if (!emField.value) emField.value = data.email;
+      }
+      // Guardar datos del voucher para incluir en la reserva.
+      window._lastVoucher = data;
+
+      // Subir voucher a Drive en segundo plano para incluir el link en
+      // los avisos a Celestino. El parse ya tiene el OCR; esto solo persiste.
+      info.textContent = summary + '\n\n⏳ Guardando comprobante en Drive…';
+      try {
+        const up = await fetch(SHEETS_API_URL, {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'saveMalayaVoucher',
+            imageBase64: base64, mimeType: file.type,
+            guestName: document.getElementById('adminGuestName').value,
+            checkin: selStart, checkout: selEnd,
+            monto: data.monto
+          })
+        });
+        const upRes = await up.json();
+        if (upRes.ok && upRes.url) {
+          window._lastVoucherURL = upRes.url;
+          info.textContent = summary + '\n\n📎 Voucher en Drive: ' + upRes.url;
+        } else {
+          info.textContent = summary + '\n\n⚠ No se pudo guardar en Drive: ' + (upRes.error || 'desconocido');
+        }
+      } catch(e) {
+        info.textContent = summary + '\n\n⚠ Error guardando en Drive: ' + e.message;
+      }
+    } catch(e) {
+      info.textContent = '✗ Error de red: ' + e.message;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+// ─── Admin: submit reserva ───
+// Flag de submit en vuelo. `btn.disabled=true` no protege contra double-taps
+// muy rápidos (el segundo click ya está dispatched antes de que el handler
+// del primero corra), así que además llevamos este flag en JS.
+let _submittingReserva = false;
+async function mly_adminSubmitReserva() {
+  if (_submittingReserva) return;
+  if (!selStart || !selEnd) { showToast('⚠ Selecciona check-in y check-out en el calendario.'); return; }
+  const isEdit = !!editingReservaId;
+  const name   = document.getElementById('adminGuestName').value.trim();
+  const email  = document.getElementById('adminGuestEmail').value.trim();
+  const phone  = document.getElementById('adminGuestPhone').value.trim();
+  const notas  = document.getElementById('adminNotas').value.trim();
+  if (!isEdit && !phone) { showToast('⚠ Falta el WhatsApp del huésped.'); return; }
+  const v = window._lastVoucher || {};
+  _submittingReserva = true;
+  const effectiveTotal = _effectiveModalTotal() || null;
+
+  const btn = document.getElementById('modalReservar');
+  const btnOriginalText = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳ Guardando…';
+
+  let payload;
+  if (isEdit) {
+    // updateMalayaReserva actualiza fecha/personas/monto/notas. WhatsApp,
+    // email y voucher NO se editan por este flujo (mantener contexto de
+    // pago; si hace falta cambiar el huésped, es más simple cancelar y
+    // registrar de nuevo).
+    payload = {
+      action:   'updateMalayaReserva',
+      id:       editingReservaId,
+      checkin:  selStart,
+      checkout: selEnd,
+      personas: modalPersonas,
+      monto:    effectiveTotal,
+      notas:    notas
+    };
+  } else {
+    payload = {
+      action: 'saveMalayaReserva',
+      guestPhone: phone,
+      guestName:  name,
+      guestEmail: email,
+      checkin:    selStart,
+      checkout:   selEnd,
+      personas:   modalPersonas,
+      monto:      effectiveTotal,
+      voucherURL: window._lastVoucherURL || '',
+      notas: notas + (v.codTransferencia ? ' · cod ' + v.codTransferencia : '') + (v.sender ? ' · pagó ' + v.sender : '')
+    };
+  }
+
+  try {
+    const res  = await fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (!data.ok) { showToast('✗ ' + (data.error || 'error')); return; }
+    if (isEdit) {
+      const changedLbl = data.datesChanged ? ' · fechas actualizadas' : '';
+      showToast('✅ Reserva actualizada (' + data.noches + ' noches · $' + data.monto + ')' + changedLbl);
+    } else if (data.duplicate) {
+      showToast('ℹ️ Ya existía esta reserva (' + data.noches + ' noches · $' + data.montoTotal + ' total). No se duplicó.');
+    } else {
+      showToast('✅ Reserva bloqueada (' + data.noches + ' noches · $' + data.montoTotal + ' total · $' + data.comision + ' comisión).');
+    }
+    // Reset form (edit y create limpian igual — closeQuoteModal borra el
+    // estado de edición).
+    document.getElementById('adminGuestPhone').value = '';
+    document.getElementById('adminGuestName').value  = '';
+    document.getElementById('adminGuestEmail').value = '';
+    const voucherEl = document.getElementById('adminVoucher');
+    if (voucherEl) voucherEl.value = '';
+    document.getElementById('adminNotas').value      = '';
+    const vInfo = document.getElementById('voucherInfo');
+    if (vInfo) vInfo.style.display = 'none';
+    window._lastVoucher = null;
+    window._lastVoucherURL = null;
+    mly_closeQuoteModal();
+    clearSelection();
+    setTimeout(loadCalendar, 800);
+  } catch(e) {
+    showToast('✗ Red: ' + e.message);
+  } finally {
+    _submittingReserva = false;
+    btn.disabled = false;
+    btn.textContent = btnOriginalText;
+  }
+}
+
+// Admin: cancelar reserva en edición (marca estado=cancelada, mantiene la
+// fila en la hoja como registro histórico).
+async function mly_adminCancelReserva() {
+  if (!editingReservaId) return;
+  const nombre = (_editingReservaOriginal && _editingReservaOriginal.guestName) || 'esta reserva';
+  const confirmMsg = '¿Cancelar la reserva de ' + nombre + '?\n\n' +
+    'La fila queda en la hoja marcada como "cancelada" (no se borra).\n' +
+    'Las fechas dejan de aparecer en el iCal público → Airbnb las libera en el próximo poll.';
+  if (!confirm(confirmMsg)) return;
+  const btn = document.getElementById('modalCancelarReserva');
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳ Cancelando…';
+  try {
+    const res = await fetch(SHEETS_API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'cancelMalayaReserva', reservaId: editingReservaId })
+    });
+    const data = await res.json();
+    if (!data.ok) { showToast('✗ ' + (data.error || 'error al cancelar')); return; }
+    showToast('🗑 Reserva cancelada.');
+    mly_closeQuoteModal();
+    clearSelection();
+    setTimeout(loadCalendar, 800);
+  } catch(e) {
+    showToast('✗ Red: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = original;
+  }
+}
+
+// ─── Cotización modal (steppers) ───
+let modalNoches = 1;
+let modalPersonas = 2;
+// Override manual de la tarifa total. null = usar tarifa calculada por
+// calcTarifa(). Se resetea al cambiar noches/personas o al abrir el modal.
+let _modalTotalOverride = null;
+let _modalTotalCalculated = 0;
+
+function _effectiveModalTotal() {
+  return _modalTotalOverride != null ? _modalTotalOverride : _modalTotalCalculated;
+}
+
+function mly_startEditTotal() {
+  const totalEl = document.getElementById('modalTotal');
+  const input   = document.getElementById('modalTotalInput');
+  const editBtn = document.getElementById('modalTotalEdit');
+  const resetBtn = document.getElementById('modalTotalReset');
+  input.value = _effectiveModalTotal() || 0;
+  totalEl.style.display = 'none';
+  editBtn.style.display = 'none';
+  resetBtn.style.display = 'none';
+  input.style.display = 'inline-block';
+  input.focus();
+  input.select();
+}
+
+function commitEditTotal() {
+  const input = document.getElementById('modalTotalInput');
+  const raw = parseFloat(input.value);
+  if (!isNaN(raw) && raw >= 0) {
+    // Si iguala la tarifa calculada, no hay override efectivo.
+    if (Math.abs(raw - _modalTotalCalculated) < 0.005) {
+      _modalTotalOverride = null;
+    } else {
+      _modalTotalOverride = Math.round(raw * 100) / 100;
+    }
+  }
+  refreshModal();
+}
+
+function mly_resetTotalOverride() {
+  _modalTotalOverride = null;
+  refreshModal();
+}
+
+function _fmtDateLong(iso) {
+  const d = new Date(iso + 'T12:00:00');
+  const M   = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const DOW = ['dom','lun','mar','mié','jue','vie','sáb'];
+  return DOW[d.getDay()] + ' ' + d.getDate() + ' ' + M[d.getMonth()];
+}
+
+function _buildQuoteText(personas) {
+  const t = calcTarifa(selStart, selEnd, personas);
+  if (!t) return null;
+  // Si el admin sobrescribió el total, la cotización refleja ese precio final.
+  // Para 1 noche además reescribimos "tarifa promocional de $X" con el override.
+  const effectiveTotal = _modalTotalOverride != null ? _modalTotalOverride : t.total;
+  const fmt = iso => {
+    const d = new Date(iso + 'T12:00:00');
+    const M = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    return d.getDate() + ' ' + M[d.getMonth()];
+  };
+  const personasLbl = personas + (personas === 1 ? ' persona' : ' personas');
+  const fechaIn  = fmt(selStart);
+  const fechaOut = fmt(selEnd);
+
+  // Tarifa promocional del primer día (vie/sáb = $100, resto = $75) + persona extra.
+  const dow0     = new Date(selStart + 'T12:00:00').getDay();
+  const baseRate = (dow0 === 5 || dow0 === 6) ? 100 : 75;
+  const calcNightRate = baseRate + Math.max(0, personas - 2) * 30;
+  const nightRate = (_modalTotalOverride != null && t.noches === 1) ? effectiveTotal : calcNightRate;
+
+  const intro = (t.noches === 1)
+    ? 'Tengo la noche del *' + fechaIn + '* disponible para reserva en cabaña Malaya Lodge en tarifa promocional de $' + nightRate + ' para ' + personasLbl + '.'
+    : 'Tengo las noches del *' + fechaIn + ' al ' + fechaOut + '* disponibles para reserva en cabaña Malaya Lodge para ' + personasLbl + '.';
+
+  const text =
+    intro + '\n\n' +
+    '🏡 *Malaya Lodge*\n' +
+    '💰 *Total:* $' + effectiveTotal + '\n' +
+    '🕑 Check in ' + fechaIn + ': 2:00 pm\n' +
+    '🕚 Check out ' + fechaOut + ': 11:00 am\n\n' +
+    'Malaya Lodge es un refugio romántico en las montañas de Aires de Chicá en Panamá. Diseñado para desconectar de la rutina y reconectar con la naturaleza, contigo mismo y con quien amas.\n\n' +
+    '*Incluye:*\n' +
+    '🛏 Cama queen con ropa de cama\n' +
+    '🌿 Baño sensorial entre plantas\n' +
+    '🍳 Cocina al aire libre equipada\n' +
+    '🪵 Pérgola con columpio\n' +
+    '☀ Iluminación con paneles solares\n' +
+    '🔋 Powerbank para carga de celulares\n' +
+    '📶 Señal excelente de todas las telefónicas\n\n' +
+    '*Para Reservar*\n' +
+    'Quedo atento si deseas proceder y le comparto las formas de pago.';
+  return { text: text, noches: t.noches, total: effectiveTotal };
+}
+
+function refreshModal() {
+  if (!selStart) return;
+  const maxN = _maxNochesFrom(selStart);
+  if (modalNoches > maxN)  modalNoches = maxN;
+  if (modalNoches < 1)     modalNoches = 1;
+  if (modalPersonas < 1)   modalPersonas = 1;
+  if (modalPersonas > 6)   modalPersonas = 6;
+
+  // Calcular checkout = checkin + noches y actualizar selEnd para que el
+  // calendario debajo del modal refleje el rango.
+  const ci = new Date(selStart + 'T12:00:00');
+  const co = new Date(ci); co.setDate(co.getDate() + modalNoches);
+  selEnd = isoFromYMD(co.getFullYear(), co.getMonth(), co.getDate());
+  renderCalendar();
+
+  document.getElementById('modalCheckin').textContent  = _fmtDateLong(selStart);
+  document.getElementById('modalCheckout').textContent = _fmtDateLong(selEnd);
+  document.getElementById('modalNoches').textContent   = modalNoches;
+  document.getElementById('modalPersonas').textContent = modalPersonas;
+  document.getElementById('nochesMinus').disabled   = (modalNoches <= 1);
+  document.getElementById('nochesPlus').disabled    = (modalNoches >= maxN);
+  document.getElementById('personasMinus').disabled = (modalPersonas <= 1);
+  document.getElementById('personasPlus').disabled  = (modalPersonas >= 6);
+
+  // Tarifa base calculada, sin override (para poder mostrar comparación al editar).
+  const calcQuote = calcTarifa(selStart, selEnd, modalPersonas);
+  _modalTotalCalculated = calcQuote ? calcQuote.total : 0;
+
+  const q = _buildQuoteText(modalPersonas);
+  const totalEl = document.getElementById('modalTotal');
+  const input   = document.getElementById('modalTotalInput');
+  const editBtn = document.getElementById('modalTotalEdit');
+  const resetBtn = document.getElementById('modalTotalReset');
+  // Salir de modo edición si estaba activo (por ejemplo por adjust noches).
+  if (input) input.style.display = 'none';
+  totalEl.style.display = '';
+  if (q) {
+    const effective = _effectiveModalTotal();
+    totalEl.textContent = '$' + effective;
+    if (_modalTotalOverride != null) {
+      totalEl.title = 'Tarifa editada — calculada sería $' + _modalTotalCalculated;
+      totalEl.style.textDecoration = 'underline';
+      totalEl.style.textDecorationStyle = 'dotted';
+    } else {
+      totalEl.title = '';
+      totalEl.style.textDecoration = '';
+    }
+  } else {
+    totalEl.textContent = '—';
+    totalEl.title = '';
+    totalEl.style.textDecoration = '';
+  }
+  const showAdmin = ADMIN_MODE && !!q;
+  editBtn.style.display  = showAdmin ? 'inline-block' : 'none';
+  resetBtn.style.display = (showAdmin && _modalTotalOverride != null) ? 'inline-block' : 'none';
+
+  document.getElementById('modalWA').href = q
+    ? 'https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(q.text)
+    : '#';
+
+}
+
+// Al cambiar noches/personas el override deja de tener sentido porque la base
+// de cálculo cambia. Volvemos a la tarifa auto — el admin puede re-editar.
+function mly_adjustNoches(delta)   { _modalTotalOverride = null; modalNoches += delta;   refreshModal(); }
+function mly_adjustPersonas(delta) { _modalTotalOverride = null; modalPersonas += delta; refreshModal(); }
+
+function openQuoteModal() {
+  if (!selStart) return;
+  const isEdit = ADMIN_MODE && !!editingReservaId;
+  // Nueva reserva: reseteamos steppers y override; edit: los valores ya
+  // vienen seteados por pickDirectaForEdit.
+  if (!isEdit) {
+    modalNoches = 1;
+    modalPersonas = modalPersonas || 2;
+    _modalTotalOverride = null;
+  }
+  const titleEl    = document.querySelector('#quoteModal h3');
+  const adminBlock = document.getElementById('modalAdminBlock');
+  const reservarBtn = document.getElementById('modalReservar');
+  const cancelarBtn = document.getElementById('modalCancelarReserva');
+  const copyBtn    = document.getElementById('modalCopy');
+  const waBtn      = document.getElementById('modalWA');
+  const voucherRow = document.getElementById('adminVoucher');
+  const voucherRowWrap = voucherRow ? voucherRow.closest('.admin-row') : null;
+  const editHeader = document.getElementById('modalEditHeader');
+
+  if (ADMIN_MODE) {
+    adminBlock.style.display  = 'block';
+    reservarBtn.style.display = 'inline-block';
+    copyBtn.style.display     = 'inline-block';
+    waBtn.style.display       = 'none';
+    if (cancelarBtn) cancelarBtn.style.display = isEdit ? 'inline-block' : 'none';
+    // En edit ocultamos el uploader de voucher — el voucher original ya
+    // quedó vinculado a la reserva y por ahora no lo tocamos desde acá.
+    if (voucherRowWrap) voucherRowWrap.style.display = isEdit ? 'none' : '';
+    if (titleEl) titleEl.innerHTML = isEdit
+      ? '💾 Editar reserva Malaya Lodge'
+      : '🌿 Reservar Malaya Lodge';
+    reservarBtn.textContent = isEdit ? '💾 Actualizar reserva' : '🔒 Bloquear reserva';
+    if (editHeader) {
+      if (isEdit && _editingReservaOriginal) {
+        editHeader.style.display = 'block';
+        editHeader.innerHTML = '✏️ Editando reserva de <strong>' + (_editingReservaOriginal.guestName || '?') + '</strong> · <span style="color:var(--text-muted);font-size:11px;">' + editingReservaId + '</span>';
+      } else {
+        editHeader.style.display = 'none';
+      }
+    }
+    // Precargar / limpiar campos del form según modo.
+    if (isEdit && _editingReservaOriginal) {
+      document.getElementById('adminGuestName').value  = _editingReservaOriginal.guestName  || '';
+      document.getElementById('adminGuestPhone').value = _editingReservaOriginal.guestPhone || '';
+      document.getElementById('adminGuestEmail').value = _editingReservaOriginal.guestEmail || '';
+      document.getElementById('adminNotas').value      = _editingReservaOriginal.notas      || '';
+    } else {
+      document.getElementById('adminGuestName').value  = '';
+      document.getElementById('adminGuestPhone').value = '';
+      document.getElementById('adminGuestEmail').value = '';
+      document.getElementById('adminNotas').value      = '';
+      const vInfo = document.getElementById('voucherInfo');
+      if (vInfo) vInfo.style.display = 'none';
+      window._lastVoucher = null;
+      window._lastVoucherURL = null;
+    }
+  } else {
+    adminBlock.style.display  = 'none';
+    reservarBtn.style.display = 'none';
+    copyBtn.style.display     = 'none';
+    waBtn.style.display       = 'inline-block';
+    if (cancelarBtn) cancelarBtn.style.display = 'none';
+    if (editHeader) editHeader.style.display = 'none';
+    if (titleEl) titleEl.innerHTML = '🌿 Reservar Malaya Lodge';
+  }
+  refreshModal();
+  document.getElementById('quoteModal').classList.add('mly-open');
+}
+
+function mly_closeQuoteModal() {
+  document.getElementById('quoteModal').classList.remove('mly-open');
+  // Limpiar estado de edición al cerrar para que el próximo pickDay abra
+  // en modo creación.
+  editingReservaId = null;
+  _editingReservaOriginal = null;
+}
+
+function mly_copyQuoteFromModal() {
+  const q = _buildQuoteText(modalPersonas);
+  if (!q) return;
+  navigator.clipboard.writeText(q.text).then(() => {
+    showToast('📋 Cotización copiada');
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = q.text; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('📋 Cotización copiada');
+  });
+}
+
+function adminCopyCotizacion() {
+  if (!selStart) { showToast('⚠ Selecciona una fecha primero.'); return; }
+  openQuoteModal();
+}
+
+// ─── Admin: forzar sync con Airbnb ───
+async function mly_adminForceSync() {
+  const out = document.getElementById('syncResult');
+  out.style.display = 'block';
+  out.textContent = '⏳ Sincronizando con Airbnb…';
+  try {
+    const res = await fetch(SHEETS_API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'syncMalayaNow' })
+    });
+    const data = await res.json();
+    if (!data.ok) { out.textContent = '✗ Error: ' + (data.error || 'falló'); return; }
+    let summary = '✅ Sync completado.\n\n';
+    summary += '🔗 iCal configurado: ' + (data.icalUrlConfigured ? 'sí' : '✗ NO — falta MALAYA_AIRBNB_ICAL en Script Properties') + '\n';
+    summary += '📅 Eventos en iCal: ' + data.eventCount + '\n\n';
+    if (data.events && data.events.length) {
+      summary += 'Bloqueos actuales:\n';
+      data.events.forEach(e => {
+        summary += '  ' + e.checkin + ' → ' + e.checkout + ' · ' + e.summary + '\n';
+      });
+    } else {
+      summary += '_No hay eventos. Si esperabas ver fechas bloqueadas, revisa: (a) MALAYA_AIRBNB_ICAL apunta al iCal correcto del listing, (b) Airbnb está sirviendo el .ics actualizado._';
+    }
+    out.textContent = summary;
+    setTimeout(loadCalendar, 500);
+  } catch(e) {
+    out.textContent = '✗ Red: ' + e.message;
+  }
+}
+
+// ─── Tabs ───
+
+// ─── Cargar calendario ───
+async function loadCalendar() {
+  try {
+    // En admin mode pedimos data extendida (id + huésped + monto + notas
+    // de cada directa) para poder abrir el modal de edición.
+    const url = SHEETS_API_URL + '?action=getMalayaCalendar' + (ADMIN_MODE ? '&admin=1' : '');
+    const res = await fetch(url);
+    const data = await res.json();
+    blocked = (data && data.blocked) || [];
+  } catch(e) {
+    blocked = [];
+  }
+  renderCalendar();
+}
+
+
+// El arranque lo hace setDispCabin al abrir el tab, no acá: si no, cada
+
+
+// visita al dashboard pediría el calendario de Malaya sin que nadie lo mire.
+  window.mly_adjustNoches = mly_adjustNoches;
+  window.mly_adjustPersonas = mly_adjustPersonas;
+  window.mly_adminCancelReserva = mly_adminCancelReserva;
+  window.mly_adminForceSync = mly_adminForceSync;
+  window.mly_adminSubmitReserva = mly_adminSubmitReserva;
+  window.mly_closeQuoteModal = mly_closeQuoteModal;
+  window.mly_copyQuoteFromModal = mly_copyQuoteFromModal;
+  window.mly_pickDay = mly_pickDay;
+  window.mly_pickDirectaForEdit = mly_pickDirectaForEdit;
+  window.mly_resetTotalOverride = mly_resetTotalOverride;
+  window.mly_shiftMonths = mly_shiftMonths;
+  window.mly_startEditTotal = mly_startEditTotal;
+  window.mly_parseAdminVoucher = mly_parseAdminVoucher;
+  window._mlyCargar = loadCalendar;   // lo llama setDispCabin al abrir el tab
+})();
 </script>
+
+<!-- Modal de reserva de Malaya. Fuera de la sección: así el overlay cubre la
+     pantalla entera, que es justo lo que el iframe no podía hacer. -->
+<div class="mly-modal-overlay" id="quoteModal" onclick="if(event.target===this) mly_closeQuoteModal()">
+  <div class="mly-modal-card">
+    <button class="mly-modal-close" onclick="mly_closeQuoteModal()" aria-label="Cerrar">×</button>
+    <h3 style="margin-bottom:14px; padding-right:32px;">🌿 Reservar Malaya Lodge</h3>
+    <!-- Indicador de modo edición (solo aparece cuando editingReservaId está seteado) -->
+    <div id="modalEditHeader" style="display:none;font-size:12px;color:var(--mly-marca-dark);background:#eef4ea;border:1px solid #d0e2c5;border-radius:8px;padding:8px 10px;margin-bottom:12px;line-height:1.4;"></div>
+    <div class="mly-modal-row">
+      <span class="mly-lbl">Check-in</span>
+      <span class="mly-val" id="modalCheckin">—</span>
+    </div>
+    <div class="mly-modal-row">
+      <span class="mly-lbl">Noches</span>
+      <div class="mly-stepper">
+        <button id="nochesMinus" onclick="mly_adjustNoches(-1)">−</button>
+        <span class="mly-val" id="modalNoches">1</span>
+        <button id="nochesPlus" onclick="mly_adjustNoches(1)">+</button>
+      </div>
+    </div>
+    <div class="mly-modal-row">
+      <span class="mly-lbl">Check-out</span>
+      <span class="mly-val" id="modalCheckout">—</span>
+    </div>
+    <div class="mly-modal-row">
+      <span class="mly-lbl">Personas</span>
+      <div class="mly-stepper">
+        <button id="personasMinus" onclick="mly_adjustPersonas(-1)">−</button>
+        <span class="mly-val" id="modalPersonas">2</span>
+        <button id="personasPlus" onclick="mly_adjustPersonas(1)">+</button>
+      </div>
+    </div>
+    <div class="mly-modal-row mly-total">
+      <span class="mly-lbl">Total</span>
+      <span id="modalTotalWrap" style="display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;">
+        <span class="mly-val" id="modalTotal">$0</span>
+        <input type="number" id="modalTotalInput" step="1" min="0" inputmode="numeric" style="display:none;width:100px;font:inherit;color:var(--mly-marca-dark);font-weight:600;font-size:20px;border:1px solid var(--mly-marca-dark);border-radius:8px;padding:4px 8px;text-align:right;">
+        <button type="button" id="modalTotalEdit" onclick="mly_startEditTotal()" title="Editar tarifa (descuento u oferta especial)" style="display:none;background:none;border:none;cursor:pointer;font-size:15px;color:var(--mly-marca-dark);padding:2px 6px;line-height:1;" aria-label="Editar tarifa">✎</button>
+        <button type="button" id="modalTotalReset" onclick="mly_resetTotalOverride()" title="Volver a la tarifa calculada" style="display:none;background:none;border:none;cursor:pointer;font-size:11px;color:var(--mly-marca-dark);padding:2px 4px;font-family:inherit;text-decoration:underline;">↺ auto</button>
+      </span>
+    </div>
+
+    <!-- Bloque admin: form de reserva integrado (solo con ?admin=1) -->
+    <div id="modalAdminBlock" style="display:none; margin-top:16px; padding-top:14px; border-top:2px solid var(--mly-marca-dark);">
+      <div style="font-size:13px; font-weight:600; color:var(--mly-marca-dark); margin-bottom:10px;">🔧 Bloquear reserva directa</div>
+
+      <div class="mly-admin-row" style="margin-bottom:10px;">
+        <div class="mly-field">
+          <label>Voucher de pago (imagen)</label>
+          <input type="file" id="adminVoucher" accept="image/*" onchange="mly_parseAdminVoucher()">
+        </div>
+      </div>
+      <div id="voucherInfo" class="mly-voucher-info" style="display:none;"></div>
+
+      <div class="mly-admin-row" style="margin-bottom:10px;">
+        <div class="mly-field">
+          <label>Nombre del huésped</label>
+          <input type="text" id="adminGuestName" placeholder="Nombre">
+        </div>
+        <div class="mly-field">
+          <label>WhatsApp *</label>
+          <input type="text" id="adminGuestPhone" placeholder="+507 6XXX-XXXX">
+        </div>
+      </div>
+      <div class="mly-admin-row" style="margin-bottom:10px;">
+        <div class="mly-field">
+          <label>Email</label>
+          <input type="email" id="adminGuestEmail" placeholder="huesped@correo.com">
+        </div>
+      </div>
+      <div class="mly-admin-row" style="margin-bottom:10px;">
+        <div class="mly-field">
+          <label>Notas (opcional)</label>
+          <textarea id="adminNotas" rows="2"></textarea>
+        </div>
+      </div>
+      <div style="font-size:11px; color:var(--text-muted); margin-bottom:8px;">
+        Al guardar: email + WhatsApp automático con datos de la reserva y link al voucher.
+      </div>
+    </div>
+
+    <div class="mly-modal-actions" style="margin-top:14px;">
+      <!-- Público: único CTA = WhatsApp al host con texto pre-llenado.
+           Admin: Copiar (para pegar en chat con huésped) + Bloquear reserva.
+           Cerrar se resuelve tocando fuera del modal (backdrop). -->
+      <a class="mly-btn" id="modalWA" target="_blank" rel="noopener">💬 Reservar por WhatsApp</a>
+      <button class="mly-btn mly-btn-secondary" id="modalCopy" onclick="mly_copyQuoteFromModal()" style="display:none;">📋 Copiar cotización</button>
+      <button class="mly-btn mly-btn-secondary" id="modalCancelarReserva" onclick="mly_adminCancelReserva()" style="display:none;background:#faeae7;color:#b85c4a;border-color:#e6c1b8;">🗑 Cancelar reserva</button>
+      <button class="mly-btn" id="modalReservar" onclick="mly_adminSubmitReserva()" style="display:none;">🔒 Bloquear reserva</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
