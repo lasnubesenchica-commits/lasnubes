@@ -2247,8 +2247,8 @@ function _botBuildBodySaliendo(reserva, firstName, isFirstTime) {
   }
   return greeting + '\n\n' +
     'Hoy es tu check-out de *' + reserva.cabinName + '* a las *' + checkoutHr + '*.\n\n' +
-    'Antes de salir de la cabaña: deja la cocina ordenada, llévate la basura y deja la ' +
-    'llave *y el control del portón* en el key box. 🔑\n\n' +
+    'Antes de salir de la cabaña: deja la cocina ordenada y la llave *y el control ' +
+    'del portón* en el key box. 🔑 La basura la puedes dejar, el personal se encarga.\n\n' +
     // "te abrimos al instante" prometía algo que el bot no hace: manda la alerta
     // y el portón lo abre el admin a mano. Mismo arreglo que en la llegada.
     'Cuando estén en el portón de salida, toca *🚪 Abrir el portón* abajo y le avisamos ' +
@@ -2843,14 +2843,22 @@ function _botResolverReservaLlegada(from, reservaId) {
 // El manual sale de getCabinGuideSteps() —la MISMA fuente que la página pública
 // y el email— convertido a texto de WhatsApp. Sin fuente única, el manual del
 // bot y el de la página se separan en la primera corrección que se haga a uno.
-function _botManualCabanaTexto(reserva) {
-  const pasos = getCabinGuideSteps(
+// `omitirAcceso` saca el bloque del key box cuando el manual va pegado al
+// mensaje del código: ese mensaje ya dio el código y la regla del control, y
+// repetirlo un segundo después es ruido. Si el huésped toca "Manual de cabaña"
+// suelto, el bloque va — puede no haber visto el otro mensaje.
+function _botManualCabanaTexto(reserva, omitirAcceso) {
+  let pasos = getCabinGuideSteps(
     reserva.cabin, reserva.tipo, !!reserva.checkoutExtendido, reserva.horaSalida || ''
   );
+  if (omitirAcceso) pasos = pasos.filter(function(p) { return p.title !== 'Acceso'; });
   // getCabinGuideSteps devuelve [{icon, title, body}] con el cuerpo en HTML
   // (lo consume el email). Acá se pasa a texto de WhatsApp.
   const limpiar = (html) => String(html || '')
     .replace(/<br\s*\/?>/gi, '\n')
+    // El <a> se convierte en "texto: url". Sin esto el strip se comía la URL y
+    // "ver la lista" quedaba como texto muerto.
+    .replace(/<a[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi, '$2: $1')
     .replace(/<\/?strong>/gi, '*')
     .replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/g, ' ')
@@ -2863,9 +2871,9 @@ function _botManualCabanaTexto(reserva) {
   return txt.trim();
 }
 
-function _botEnviarManualCabana(from, reserva) {
+function _botEnviarManualCabana(from, reserva, omitirAcceso) {
   try {
-    sendWhatsAppText(from, _botManualCabanaTexto(reserva));
+    sendWhatsAppText(from, _botManualCabanaTexto(reserva, omitirAcceso));
   } catch(err) {
     logDebugEntry('manual-cabana-FAIL', { error: err.message, cabin: reserva && reserva.cabin });
     sendWhatsAppText(from, '⚠️ No pude armar el manual. Llama a Josh al +507 6981-2266 y te ayuda.');
@@ -2933,7 +2941,7 @@ function _botEnviarCodigoAcceso(from, reserva) {
     'llave — no se lo lleven.\n\n' +
     'Te dejo abajo el manual de la cabaña. ¡Disfruten! 🌿'
   );
-  _botEnviarManualCabana(from, reserva);
+  _botEnviarManualCabana(from, reserva, true);   // el acceso ya se explicó arriba
 }
 
 function _botHandleCedulaImage(from, imageId, contactName, conv) {
