@@ -23,6 +23,9 @@ function syncAirbnbReservations() {
   );
 
   let added = 0;
+  // Fuera del loop: estaba releyendo la hoja Blacklist completa por cada email
+  // nuevo que parseaba. Es la misma lista para toda la corrida.
+  const blacklisted = getBlacklistedCodes();
 
   threads.forEach(thread => {
     thread.getMessages().forEach(msg => {
@@ -34,7 +37,6 @@ function syncAirbnbReservations() {
       const reservation = parseAirbnbEmail(body, msgId, msgDate);
 
       if (reservation) {
-        const blacklisted = getBlacklistedCodes();
         const code = (reservation.confirmCode || '').toString().trim();
         if (blacklisted.has(code)) {
           Logger.log(`⛔ Blacklisted, ignorando: ${reservation.name} (${code})`);
@@ -787,6 +789,27 @@ function getOrCreateSheet() {
 }
 
 // ─── CONFIG (Tarifas) ────────────────────────────────────────
+// Cada `getDataRange().getValues()` es un viaje al backend de Sheets, y Config
+// se lee varias veces en una sola petición: la migración de tarifas, después
+// `tarifasPublicas()`, después el handler de getTarifas. Se memoiza por
+// EJECUCIÓN — las globales de Apps Script se reinician en cada invocación, así
+// que no hay riesgo de servir un valor viejo a la petición siguiente. Cualquier
+// escritura sobre Config tiene que llamar a `_invalidarConfigCache()`.
+let _configRowsCache = null;
+// Mismo memo por ejecución para la hoja Feriados: en una sola petición se pide
+// desde getTarifas y desde el motor de precios. Se invalida al sembrar y al
+// guardar fechas desde el modal de Tarifas. Declarado acá arriba porque
+// getOrCreateFeriados —que lo limpia— está antes que getFechasEspeciales.
+let _feriadosCache = null;
+// Las filas crudas de Feriados, para que getFechasEspeciales no repita la
+// lectura que ya hizo getOrCreateFeriados para decidir si sembrar.
+let _feriadosRowsCache = null;
+function _configRows(cfg) {
+  if (!_configRowsCache) _configRowsCache = cfg.getDataRange().getValues();
+  return _configRowsCache;
+}
+function _invalidarConfigCache() { _configRowsCache = null; _tarifasCache = null; }
+
 function getOrCreateConfig() {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   let cfg  = ss.getSheetByName('Config');
@@ -858,7 +881,7 @@ const _TARIFAS_NUEVAS = [
 ];
 
 function _migrarTarifasPorTipoDia_(cfg) {
-  const rows = cfg.getDataRange().getValues();
+  const rows = _configRows(cfg);
   const map  = {};
   for (let i = 1; i < rows.length; i++) {
     const k = rows[i][0] ? rows[i][0].toString().trim() : '';
@@ -873,7 +896,10 @@ function _migrarTarifasPorTipoDia_(cfg) {
     cfg.appendRow([clave, valor, desc, hoy, 'sistema']);
     añadidas++;
   });
-  if (añadidas) Logger.log('✓ Config: ' + añadidas + ' tarifas por tipo de día agregadas');
+  if (añadidas) {
+    _invalidarConfigCache();   // se agregaron filas: lo memoizado quedó corto
+    Logger.log('✓ Config: ' + añadidas + ' tarifas por tipo de día agregadas');
+  }
 }
 
 // ─── PRECIO PÚBLICO POR NOCHE ────────────────────────────────
@@ -892,7 +918,7 @@ function _migrarTarifasPorTipoDia_(cfg) {
 let _tarifasCache = null;   // memo por ejecución; el bot lee esto por mensaje
 function tarifasPublicas() {
   if (_tarifasCache) return _tarifasCache;
-  const rows = getOrCreateConfig().getDataRange().getValues();
+  const rows = _configRows(getOrCreateConfig());
   const m = {};
   for (let i = 1; i < rows.length; i++) {
     const k = rows[i][0] ? rows[i][0].toString().trim() : '';
@@ -979,10 +1005,18 @@ function getOrCreateFeriados() {
   // Columna Tipo para hojas que se crearon antes: `feriado` | `escolar`. Vacío
   // se lee como feriado, que es lo único que existía.
   if (sh.getLastColumn() < 3) sh.getRange(1, 3).setValue('Tipo');
+  // Las tres siembras solo necesitan saber si ya existe su fila centinela, así
+  // que comparten UNA lectura en vez de hacer una cada una. Antes esto costaba
+  // tres viajes a Sheets en cada petición, más el de getFechasEspeciales: cuatro
+  // para leer la misma hoja de ~60 filas.
+  const rows = sh.getDataRange().getValues();
+  _feriadosRowsCache = rows;
   const año = new Date().getFullYear();
-  _sembrarFeriados_(sh, año);
-  _sembrarFeriados_(sh, año + 1);
-  _sembrarEscolares_(sh);
+  let escribio = false;
+  escribio = _sembrarFeriados_(sh, año, rows)     || escribio;
+  escribio = _sembrarFeriados_(sh, año + 1, rows) || escribio;
+  escribio = _sembrarEscolares_(sh, rows)         || escribio;
+  if (escribio) { _feriadosCache = null; _feriadosRowsCache = null; }
   return sh;
 }
 
@@ -996,8 +1030,9 @@ const _RECESOS_ESCOLARES = {
   ]
 };
 
-function _sembrarEscolares_(sh) {
-  const rows = sh.getDataRange().getValues();
+// `rows` viene de quien llama para no releer la hoja. Devuelve true si escribió.
+function _sembrarEscolares_(sh, rows) {
+  let escribio = false;
   Object.keys(_RECESOS_ESCOLARES).forEach(function(año) {
     const marca = '__escolar__' + año;
     for (let i = 1; i < rows.length; i++) {
@@ -1012,8 +1047,10 @@ function _sembrarEscolares_(sh) {
     });
     filas.push([marca, 'no borrar — evita resembrar ' + año, '']);
     sh.getRange(sh.getLastRow() + 1, 1, filas.length, 3).setValues(filas);
+    escribio = true;
     Logger.log('✓ Recesos escolares ' + año + ' sembrados (' + (filas.length - 1) + ' días)');
   });
+  return escribio;
 }
 
 // Domingo de Pascua (algoritmo gregoriano anónimo, Meeus/Jones/Butcher).
@@ -1058,16 +1095,17 @@ function feriadosPanama(año) {
 // Agrega los que falten SIN tocar los existentes: si el admin borró un feriado
 // a propósito, volver a sembrarlo cada vez que corre esto anularía su decisión.
 // Por eso solo se siembra un año una vez — se marca con la fila `__sembrado__`.
-function _sembrarFeriados_(sh, año) {
-  const rows = sh.getDataRange().getValues();
+// `rows` viene de quien llama para no releer la hoja. Devuelve true si escribió.
+function _sembrarFeriados_(sh, año, rows) {
   const marca = '__sembrado__' + año;
   for (let i = 1; i < rows.length; i++) {
-    if ((rows[i][0] || '').toString().trim() === marca) return;
+    if ((rows[i][0] || '').toString().trim() === marca) return false;
   }
   const filas = feriadosPanama(año).map(function(f) { return [f[0], f[1]]; });
   filas.push([marca, 'no borrar — evita resembrar ' + año]);
   sh.getRange(sh.getLastRow() + 1, 1, filas.length, 2).setValues(filas);
   Logger.log('✓ Feriados ' + año + ' sembrados (' + (filas.length - 1) + ')');
+  return true;
 }
 
 // Dos mapas separados —{fecha: nombre}— en vez de uno con el tipo adentro: el
@@ -1075,8 +1113,9 @@ function _sembrarFeriados_(sh, año) {
 // para decidir la tarifa, y un solo mapa lo obligaría a mirar el tipo en cada
 // lectura. Ignora las filas centinela.
 function getFechasEspeciales() {
+  if (_feriadosCache) return _feriadosCache;
   const sh = getOrCreateFeriados();
-  const rows = sh.getDataRange().getValues();
+  const rows = _feriadosRowsCache || sh.getDataRange().getValues();
   const feriados = {}, escolares = {};
   for (let i = 1; i < rows.length; i++) {
     let f = rows[i][0];
@@ -1088,7 +1127,8 @@ function getFechasEspeciales() {
     const tipo = (rows[i][2] || 'feriado').toString().trim().toLowerCase();
     (tipo === 'escolar' ? escolares : feriados)[f] = (rows[i][1] || '').toString();
   }
-  return { feriados: feriados, escolares: escolares };
+  _feriadosCache = { feriados: feriados, escolares: escolares };
+  return _feriadosCache;
 }
 
 // Compat: quedaba usada por getTarifas antes de separar los tipos.
@@ -1776,6 +1816,7 @@ function doGet(e) {
           cfg.getRange(i + 1, 5).setValue('admin');
         }
       }
+      _invalidarConfigCache();
       Logger.log('✓ Tarifas guardadas via GET: ' + JSON.stringify(updates));
       return ContentService
         .createTextOutput(JSON.stringify({ ok: true }))
@@ -1819,6 +1860,7 @@ function doGet(e) {
       });
       if (nuevas.length) sh.getRange(sh.getLastRow() + 1, 1, nuevas.length, 3).setValues(nuevas);
 
+      _feriadosCache = null; _feriadosRowsCache = null;
       Logger.log('✓ Fechas especiales: +' + nuevas.length + ' / -' + quitados);
       const _fe2 = getFechasEspeciales();
       return ContentService
@@ -2226,6 +2268,7 @@ function doPost(e) {
           cfg.getRange(i + 1, 5).setValue('admin');
         }
       }
+      _invalidarConfigCache();
       Logger.log('✓ Tarifas guardadas: ' + JSON.stringify(updates));
       return ContentService
         .createTextOutput(JSON.stringify({ ok: true }))
