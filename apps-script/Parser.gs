@@ -3809,11 +3809,18 @@ buildGuiaHTML(r.cabin, meta.tipo, !!r.checkoutExtendido, meta.horaSalidaCustom) 
 '<hr style="border:none;border-top:1px solid #e8e4de;margin:0 0 24px;">' +
 '<h2 style="margin:0 0 6px;font-size:17px;font-weight:600;color:#3a3530;">&#127752; Insumos y alimentos</h2>' +
 '<p style="margin:0 0 16px;font-size:13px;color:#6b6560;line-height:1.6;">A 5 minutos tienes una tienda de conveniencia. En Bejuco el MiniSuper Buenos Precios, y a 20 min en Coronado: El Rey, Machetazo, Riba Smith y Super 99.</p>' +
-'<a href="http://lasnubes.cloud/#insumos" target="_blank" style="display:inline-block;background:#5a85b0;color:#ffffff;font-size:13px;font-weight:600;padding:10px 20px;border-radius:8px;text-decoration:none;margin-bottom:24px;">&#128722; Ver guía de insumos</a>' +
+'<a href="https://lasnubes.cloud/#insumos" target="_blank" style="display:inline-block;background:#5a85b0;color:#ffffff;font-size:13px;font-weight:600;padding:10px 20px;border-radius:8px;text-decoration:none;margin-bottom:24px;">&#128722; Ver guía de insumos</a>' +
 '<hr style="border:none;border-top:1px solid #e8e4de;margin:0 0 24px;">' +
 '<h2 style="margin:0 0 6px;font-size:17px;font-weight:600;color:#3a3530;">&#127956;&#65039; Actividades y alrededores</h2>' +
 '<p style="margin:0 0 16px;font-size:13px;color:#6b6560;line-height:1.6;">Cascada dentro del proyecto (20 min), Los Cajones de Chame (10 min), Cerro Campana (20 min), Playa Gorgona y Coronado (15–20 min) y cascadas de Sorá (20 min).</p>' +
-'<a href="http://lasnubes.cloud/#actividades" target="_blank" style="display:inline-block;background:#4a7c5f;color:#ffffff;font-size:13px;font-weight:600;padding:10px 20px;border-radius:8px;text-decoration:none;">&#127758; Ver guía de actividades</a>' +
+'<a href="https://lasnubes.cloud/#actividades" target="_blank" style="display:inline-block;background:#4a7c5f;color:#ffffff;font-size:13px;font-weight:600;padding:10px 20px;border-radius:8px;text-decoration:none;">&#127758; Ver guía de actividades</a>' +
+
+// Gastronomía existía solo en el menú del bot: quien nunca le escribiera no se
+// enteraba de que hay una guía de restaurantes.
+'<hr style="border:none;border-top:1px solid #e8e4de;margin:24px 0;">' +
+'<h2 style="margin:0 0 6px;font-size:17px;font-weight:600;color:#3a3530;">&#127869;&#65039; Dónde comer</h2>' +
+'<p style="margin:0 0 16px;font-size:13px;color:#6b6560;line-height:1.6;">Restaurantes y fondas cerca, con direcciones, horarios y fotos.</p>' +
+'<a href="https://lasnubes.cloud/#gastronomia" target="_blank" style="display:inline-block;background:#a0673f;color:#ffffff;font-size:13px;font-weight:600;padding:10px 20px;border-radius:8px;text-decoration:none;">&#127860; Ver guía de gastronomía</a>' +
 '</td></tr>' +
 '<tr><td style="background:#3a3530;border-radius:0 0 16px 16px;padding:24px 40px;text-align:center;">' +
 '<p style="margin:0 0 8px;font-size:18px;font-weight:300;color:#ffffff;font-family:Georgia,serif;">Las <em>Nubes</em></p>' +
@@ -4363,6 +4370,18 @@ accesoExtraHtml +
 '<p style="margin:0 0 24px;text-align:center;"><a href="' + llegadaUrl + '" target="_blank" style="display:inline-block;background:#25d366;color:#ffffff;font-size:14px;font-weight:600;padding:11px 24px;border-radius:10px;text-decoration:none;">&#128172; Escríbenos por WhatsApp</a></p>' +
 
 '<p style="margin:0;font-size:14px;color:#6b6560;line-height:1.6;text-align:center;font-style:italic;">¡Nos vemos mañana!</p>' +
+
+// Las tres guías van ACÁ y no en el email de confirmación: ese llega al
+// reservar, a veces semanas antes, cuando nadie está pensando en dónde cenar.
+// Este llega la víspera, mientras arman la maleta y deciden qué hacer — y hasta
+// hoy no enlazaba a nada.
+'<hr style="border:none;border-top:1px solid #e8e4de;margin:24px 0 20px;">' +
+'<p style="margin:0 0 14px;font-size:14px;font-weight:600;color:#3a3530;text-align:center;">Para ir preparando</p>' +
+'<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">' +
+'<a href="https://lasnubes.cloud/#insumos" target="_blank" style="display:inline-block;background:#5a85b0;color:#ffffff;font-size:13px;font-weight:600;padding:10px 18px;border-radius:8px;text-decoration:none;margin:0 4px 8px;">&#128722; Qué llevar</a>' +
+'<a href="https://lasnubes.cloud/#actividades" target="_blank" style="display:inline-block;background:#4a7c5f;color:#ffffff;font-size:13px;font-weight:600;padding:10px 18px;border-radius:8px;text-decoration:none;margin:0 4px 8px;">&#127966;&#65039; Actividades</a>' +
+'<a href="https://lasnubes.cloud/#gastronomia" target="_blank" style="display:inline-block;background:#a0673f;color:#ffffff;font-size:13px;font-weight:600;padding:10px 18px;border-radius:8px;text-decoration:none;margin:0 4px 8px;">&#127869;&#65039; Dónde comer</a>' +
+'</td></tr></table>' +
 '</td></tr>' +
 
 // FOOTER
