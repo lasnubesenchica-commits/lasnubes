@@ -3375,17 +3375,17 @@
         <div class="mly-pricing" style="margin-top:14px;">
           <div class="mly-card">
             <div class="mly-lbl">Dom – Jue</div>
-            <div class="mly-val">$75</div>
+            <div class="mly-val" id="mlyTarSemana">$75</div>
             <div class="mly-desc">por noche</div>
           </div>
           <div class="mly-card">
             <div class="mly-lbl">Vie – Sáb</div>
-            <div class="mly-val">$100</div>
+            <div class="mly-val" id="mlyTarFinde">$100</div>
             <div class="mly-desc">por noche</div>
           </div>
           <div class="mly-card">
             <div class="mly-lbl">Persona extra</div>
-            <div class="mly-val">+$30</div>
+            <div class="mly-val" id="mlyTarExtra">+$30</div>
             <div class="mly-desc">por noche (3 o 4)</div>
           </div>
         </div>
@@ -16587,10 +16587,12 @@ syncFromSheets();
 setInterval(syncFromSheets, 15 * 60 * 1000);
 
 // Modo admin via ?admin=1 → habilita acceso al tab Bot (CRM de conversaciones).
-// La clave sola alcanza para el modo admin: así el atajo del iPhone lleva un
-// único parámetro (?k=...) en vez de dos. ?admin=1 se mantiene para los links
-// que ya andaban dando vueltas.
-const IS_ADMIN = new URLSearchParams(window.location.search).get('admin') === '1' || !!ADMIN_KEY;
+// Solo la clave habilita el modo admin. Antes bastaba con ?admin=1, que dejaba
+// a cualquiera abrir el editor de tarifas: no podía guardar nada —el backend
+// rechaza saveTarifas sin clave— pero era una puerta sin motivo. Y no molesta:
+// la clave se guarda por navegador y este es el mismo origen que el dashboard,
+// así que después de entrar una vez, esta página ya la tiene.
+const IS_ADMIN = !!ADMIN_KEY;
 if (IS_ADMIN) {
   const b1 = document.getElementById('btnBotNav');       if (b1) b1.style.display = '';
   const b2 = document.getElementById('btnBotNavMobile'); if (b2) b2.style.display = '';
@@ -16715,6 +16717,21 @@ const TODAY = new Date(); TODAY.setHours(0,0,0,0);
 let viewMonth = TODAY.getMonth();
 let viewYear  = TODAY.getFullYear();
 let blocked = [];   // [{ checkin, checkout, source }]  (admin: incluye id + datos)
+// Tarifas de Malaya. Estaban escritas dos veces —en el bloque visible y dentro
+// de calcTarifa— así que subir un precio obligaba a acordarse de los dos
+// lugares, y olvidarse de uno hacía que el bloque mostrara un número y el modal
+// cotizara otro. Ahora salen de Config; los valores de acá son el fallback y
+// coinciden con lo que había hardcodeado, para que si la hoja no responde el
+// precio siga siendo el mismo.
+let TARIFAS = { semana: 75, finde: 100, personaExtra: 30 };
+
+function pintarTarifas() {
+  const set = (id, txt) => { const e = document.getElementById(id); if (e) e.textContent = txt; };
+  set('mlyTarSemana', '$' + TARIFAS.semana);
+  set('mlyTarFinde',  '$' + TARIFAS.finde);
+  set('mlyTarExtra',  '+$' + TARIFAS.personaExtra);
+}
+
 let selStart = null, selEnd = null;   // ISO yyyy-MM-dd
 // Modo edición: si está seteado, el modal actualiza esa reserva en vez
 // de crear una nueva. Se limpia al cerrar el modal o guardar.
@@ -16879,8 +16896,8 @@ function calcTarifa(ci, co, personas) {
   const extra = Math.max(0, (parseInt(personas, 10) || 2) - 2);
   while (cur < end) {
     const dow = cur.getDay();
-    const tarifa = (dow === 5 || dow === 6) ? 100 : 75;
-    total += tarifa + extra * 30;
+    const tarifa = (dow === 5 || dow === 6) ? TARIFAS.finde : TARIFAS.semana;
+    total += tarifa + extra * TARIFAS.personaExtra;
     noches++;
     cur.setDate(cur.getDate() + 1);
   }
@@ -17381,6 +17398,16 @@ async function loadCalendar() {
     const res = await fetch(url);
     const data = await res.json();
     blocked = (data && data.blocked) || [];
+    // En el mismo arranque: las tarifas casi nunca cambian, pero pedirlas aparte
+    // serían dos viajes para abrir un tab.
+    const rt = await (await fetch(SHEETS_API_URL + '?action=getTarifas')).json();
+    const t = rt && rt.tarifas;
+    if (t) {
+      if (t.malayaSemana)       TARIFAS.semana       = t.malayaSemana;
+      if (t.malayaFinde)        TARIFAS.finde        = t.malayaFinde;
+      if (t.malayaPersonaExtra) TARIFAS.personaExtra = t.malayaPersonaExtra;
+      pintarTarifas();
+    }
   } catch(e) {
     blocked = [];
   }
