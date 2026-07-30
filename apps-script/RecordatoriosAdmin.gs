@@ -455,7 +455,8 @@ function enviarRecordatoriosCheckout() {
 // REQUISITO de la plantilla en Meta:
 //   - Nombre: listos_para_recibirte · idioma "Spanish (SPA)" (es_ES)
 //   - Body con {{1}} nombre, {{2}} cabaña, {{3}} hora de check-in
-//   - 1 botón de Respuesta rápida: "🚪 He llegado"
+//   - 1 botón de Respuesta rápida: "He llegado" (SIN emoji: Meta los rechaza
+//     en botones de plantilla)
 //   - Texto sugerido del body:
 //
 //     ¡Hola {{1}}! 🌿
