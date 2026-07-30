@@ -1423,6 +1423,13 @@ function botHandleMessage(from, text, contactName, kind) {
     return _botMenuHeLlegado(from, contactName, conv);
   }
 
+  // Botón "Como funciona" de la plantilla del código de referido. El cuerpo de la
+  // plantilla solo trae el titular; el detalle se manda acá, desde la misma
+  // fuente que el email (REFERRAL_COMO_FUNCIONA / REFERRAL_RESTRICCIONES).
+  if (kind === 'button_reply' && (text.indexOf('referido_') === 0 || /^como\s+funciona$/i.test(text))) {
+    return _botHandleReferidoInfo(from, contactName);
+  }
+
   // Botones de las instrucciones de llegada.
   if (kind === 'button_reply' && text.indexOf('acceso_') === 0) {
     return _botHandleCodigoAcceso(from, contactName, conv, text.replace('acceso_', ''));
@@ -2800,6 +2807,23 @@ function _botFindReservaById(reservaId) {
     }
   }
   return null;
+}
+
+// El huésped tocó "Como funciona" en la plantilla del código de referido.
+function _botHandleReferidoInfo(from, contactName) {
+  // Por teléfono y no por reserva: getOrCreateReferralCode exige email (devuelve
+  // null sin él) y la búsqueda por reserva solo alcanza hasta un día después del
+  // check-out, pero el botón se puede tocar una semana más tarde.
+  let codigo = '';
+  try { codigo = findReferralCodeByPhone(from) || ''; } catch(_) {}
+  if (!codigo) {
+    // Sin match por teléfono no podemos resolver su código, pero las reglas son
+    // las mismas para todos: mejor responder eso que un "no te encuentro".
+    sendWhatsAppText(from,
+      referralReglasTexto('el que te enviamos por correo', REFERRAL_REWARD_AMOUNT));
+    return;
+  }
+  sendWhatsAppText(from, referralReglasTexto(codigo, REFERRAL_REWARD_AMOUNT));
 }
 
 // ═══════════════════════════════════════════════════════════

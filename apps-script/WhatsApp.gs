@@ -921,6 +921,108 @@ function crearPlantillaLlegadaEnMeta(dryRun) {
 
 function crearPlantillaLlegadaEnMetaAHORA() { return crearPlantillaLlegadaEnMeta(false); }
 
+// ─── referido_postestadia (código del Programa Amigos) ──────────────
+// Nunca se había mandado a Meta: la función de envío existía y el nombre estaba
+// escrito en el código, pero la plantilla no existía del otro lado.
+//
+// El monto va como variable en vez de escrito en el cuerpo para no tener que
+// pedir aprobación de nuevo cada vez que cambie: ya pasó de 25/20 a 20 en una
+// sola conversación.
+function _plantillaReferidoPayload() {
+  const body =
+    '¡Gracias por venir, {{1}}! 🌿\n' +
+    '\n' +
+    'Esperamos que se hayan llevado un buen descanso.\n' +
+    '\n' +
+    'Te dejamos tu código del Programa Amigos:\n' +
+    '\n' +
+    '*{{2}}*\n' +
+    '\n' +
+    'Compártelo con quien quieras. Cuando reserve directo con nosotros ' +
+    'mencionándolo, ustedes dos reciben ${{3}} de descuento.\n' +
+    '\n' +
+    'Aplica de domingo a jueves en reservas directas, sin feriados ni vacaciones ' +
+    'escolares. Toca el botón para ver el detalle.';
+  return {
+    name: 'referido_postestadia',
+    language: 'es_ES',
+    category: 'UTILITY',
+    components: [
+      {
+        type: 'BODY',
+        text: body,
+        example: { body_text: [['Ana', 'K7M2QX', '20']] }
+      },
+      {
+        // Sin emoji: Meta los rechaza en botones de plantilla.
+        type: 'BUTTONS',
+        buttons: [{ type: 'QUICK_REPLY', text: 'Como funciona' }]
+      }
+    ]
+  };
+}
+
+function crearPlantillaReferidoEnMeta(dryRun) {
+  if (dryRun !== false) dryRun = true;
+  const cfg = _waProps();
+  if (!cfg.token)      { Logger.log('⚠ Falta WA_ACCESS_TOKEN en Script Properties.'); return; }
+  if (!cfg.businessId) { Logger.log('⚠ Falta WA_BUSINESS_ACCOUNT_ID en Script Properties.'); return; }
+
+  const payload = _plantillaReferidoPayload();
+  Logger.log('═══ ' + (dryRun ? 'DRY-RUN · ' : '') + "PLANTILLA 'referido_postestadia' ═══");
+  Logger.log('');
+  Logger.log('Así le llega al huésped el día después de su check-out:');
+  Logger.log('');
+  payload.components[0].text
+    .replace('{{1}}', 'Ana').replace('{{2}}', 'K7M2QX').replace('{{3}}', '20')
+    .split('\n').forEach(function(l) { Logger.log('   ' + (l || ' ')); });
+  Logger.log('');
+  Logger.log('   [ Como funciona ]   ← botón quick-reply');
+  Logger.log('');
+  Logger.log('Definición que se manda a Meta (WABA ' + cfg.businessId + '):');
+  Logger.log(JSON.stringify(payload, null, 2));
+
+  const problemas = _validarPlantillaPayload(payload);
+  if (problemas.length) {
+    Logger.log('');
+    Logger.log('✗ Meta va a rechazar esto:');
+    problemas.forEach(function(x) { Logger.log('   · ' + x); });
+    Logger.log('   Corregilo antes de enviar.');
+    return;
+  }
+
+  if (dryRun) {
+    Logger.log('');
+    Logger.log('✓ Pasa las validaciones de Meta.');
+    Logger.log('Nada se envió. Para crearla: crearPlantillaReferidoEnMetaAHORA()');
+    return;
+  }
+
+  const res = UrlFetchApp.fetch(
+    'https://graph.facebook.com/v21.0/' + cfg.businessId + '/message_templates',
+    { method: 'post', contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      headers: { Authorization: 'Bearer ' + cfg.token },
+      muteHttpExceptions: true });
+  const code = res.getResponseCode();
+  Logger.log('');
+  Logger.log('HTTP ' + code);
+  Logger.log(res.getContentText());
+  if (code >= 200 && code < 300) {
+    Logger.log('');
+    Logger.log('✓ Plantilla enviada a revisión. Seguí el estado con verEstadoPlantillasWA().');
+    Logger.log('  Cuando quede APPROVED, probala con _testReferidoAMiNumero().');
+  } else {
+    Logger.log('');
+    Logger.log('✗ Meta la rechazó. Los motivos habituales:');
+    Logger.log('   · ya existe una plantilla con ese nombre en es_ES → borrarla o renombrarla;');
+    Logger.log('   · el token no tiene permiso whatsapp_business_management;');
+    Logger.log('   · Meta reclasificó la categoría (si la pasa a MARKETING igual sirve).');
+  }
+}
+
+function crearPlantillaReferidoEnMetaAHORA() { return crearPlantillaReferidoEnMeta(false); }
+
 
 // Estado de las plantillas en Meta, sin entrar a WhatsApp Manager.
 // Útil sobre todo después de crear una: queda en PENDING y hay que saber
