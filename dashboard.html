@@ -68,6 +68,8 @@
     font-family:'DM Sans',sans-serif; font-size:14px; font-weight:500;
     cursor:pointer; transition:all 0.2s; background:var(--surface);
   }
+  .disp-cabin-tab.malaya       { border-color:#c08552; color:#8a5a30; }
+  .disp-cabin-tab.malaya.active{ background:#8a5a30; color:#fff; border-color:#8a5a30; }
   .disp-cabin-tab.verde        { border-color:var(--verde);    color:var(--verde-dark); }
   .disp-cabin-tab.verde.active { background:var(--verde-dark); color:#fff; border-color:var(--verde-dark); }
   .disp-cabin-tab.azul         { border-color:var(--azul);     color:var(--azul-dark); }
@@ -3012,9 +3014,19 @@
       <button class="disp-cabin-tab verde active" onclick="setDispCabin('verde',this)">Paseo</button>
       <button class="disp-cabin-tab azul"         onclick="setDispCabin('azul',this)">Portal</button>
       <button class="disp-cabin-tab lila"         onclick="setDispCabin('lila',this)">Puente</button>
+      <button class="disp-cabin-tab malaya"       onclick="setDispCabin('malaya',this)">Malaya</button>
     </div>
     <div class="disp-calendars" id="dispCalendars"></div>
     <div class="mini-timeline" id="dispTimeline" style="display:none;padding:0;background:transparent;border:none;"></div>
+    <!-- Malaya vive en su propia página y sobre su propia hoja. Se embebe tal
+         cual en vez de reescribir su calendario acá: así no hay dos versiones
+         de la misma lógica que se separen con el tiempo, y es imposible que los
+         datos se mezclen — son documentos distintos. Mismo origen, así que el
+         iframe ve la misma clave de admin guardada y entra en modo admin solo. -->
+    <div id="dispMalaya" style="display:none;">
+      <iframe id="dispMalayaFrame" title="Calendario de Malaya Lodge"
+              style="width:100%;border:1px solid var(--border);border-radius:12px;height:760px;background:var(--bg);"></iframe>
+    </div>
   </section>
 
 
@@ -4940,13 +4952,44 @@ function updateDispLegend() {
   if (d) d.style.background = CABIN_DIRECT_COLOR[dispCabin] || '#a8c9a0';
 }
 
+// Elementos que solo tienen sentido para las cabañas de Las Nubes: la leyenda
+// Airbnb/Directa y el toggle Calendario/Timeline. Malaya no los usa.
+function _dispSoloLasNubes(mostrar) {
+  const d = mostrar ? '' : 'none';
+  const tog = document.querySelector('.disp-view-toggle');
+  if (tog) tog.style.display = mostrar ? 'flex' : 'none';
+  const leg = document.getElementById('legendDotAirbnb');
+  if (leg && leg.parentElement && leg.parentElement.parentElement) {
+    leg.parentElement.parentElement.style.display = d;
+  }
+}
+
 function setDispCabin(cabin, btn) {
+  document.querySelectorAll('.disp-cabin-tab').forEach(t => t.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+
+  if (cabin === 'malaya') {
+    const wrap  = document.getElementById('dispMalaya');
+    const frame = document.getElementById('dispMalayaFrame');
+    // Carga diferida: sin esto, cada visita al dashboard pediría el calendario
+    // de Malaya aunque nadie lo mire.
+    if (frame && !frame.getAttribute('src')) frame.setAttribute('src', 'malaya.html?embed=1');
+    document.getElementById('dispCalendars').style.display = 'none';
+    document.getElementById('dispTimeline').style.display  = 'none';
+    if (wrap) wrap.style.display = '';
+    _dispSoloLasNubes(false);
+    return;
+  }
+
+  const wrapM = document.getElementById('dispMalaya');
+  if (wrapM) wrapM.style.display = 'none';
+  document.getElementById('dispCalendars').style.display = '';
+  _dispSoloLasNubes(true);
+
   dispCabin = cabin;
   dispMonthsShown = _dispPasoMeses();
   dispMonthsBack  = 0;
   dispTimelineDaysLoaded = DISP_TL_START_DAYS;
-  document.querySelectorAll('.disp-cabin-tab').forEach(t => t.classList.remove('active'));
-  btn.classList.add('active');
   updateDispLegend();
   renderDisponibilidad();
   if (dispViewMode === 'timeline') {
@@ -4954,6 +4997,15 @@ function setDispCabin(cabin, btn) {
     setTimeout(() => scrollDispTimelineToToday(true), 60);
   }
 }
+
+// Malaya avisa su alto y el iframe se ajusta: sin esto queda una caja con
+// scroll propio adentro de la página, que en móvil es molesto.
+window.addEventListener('message', function(e) {
+  const alto = e && e.data && e.data.lnMalayaAlto;
+  if (!alto) return;
+  const frame = document.getElementById('dispMalayaFrame');
+  if (frame) frame.style.height = (parseInt(alto, 10) + 24) + 'px';
+});
 
 function setDispViewMode(mode) {
   if (mode !== 'calendar' && mode !== 'timeline') return;
