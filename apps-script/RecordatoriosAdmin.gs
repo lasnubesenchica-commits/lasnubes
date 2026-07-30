@@ -441,6 +441,84 @@ function enviarRecordatoriosCheckout() {
   logDebugEntry('recordatorios-checkout', { salidas: salidas.length, enviados: enviados });
 }
 
+// ─── Trigger 11am: aviso de llegada al huésped que entra hoy ──────
+// El recordatorio de `enviarRecordatoriosCheckin` sale el día ANTERIOR a las
+// 10am; el día de la llegada no salía nada y el huésped tenía que acordarse de
+// escribir para que apareciera el botón "He llegado". Este manda la plantilla
+// `listos_para_recibirte` a las 11am, antes de que salga de casa: hora de
+// check-in, recomendaciones, enlaces de Waze/Maps y el botón listo.
+//
+// Los huéspedes llegan a horas muy distintas, así que el mensaje NO fija una
+// hora de llegada: dice desde cuándo pueden entrar y deja el botón a mano para
+// cuando estén frente al portón.
+//
+// REQUISITO de la plantilla en Meta:
+//   - Nombre: listos_para_recibirte · idioma "Spanish (SPA)" (es_ES)
+//   - Body con {{1}} nombre, {{2}} cabaña, {{3}} hora de check-in
+//   - 1 botón de Respuesta rápida: "🚪 He llegado"
+//   - Texto sugerido del body:
+//
+//     ¡Hola {{1}}! 🌿
+//
+//     Hoy te recibimos en {{2}}. El check-in es a partir de las {{3}} — llega a
+//     la hora que te quede cómoda, estamos listos para recibirte.
+//
+//     Antes de subir:
+//     • Trae hielo y tus alimentos (hay cooler grande, no nevera)
+//     • Carga tus equipos en el camino: la energía de la cabaña es solar
+//     • Si eres sensible a los mosquitos, trae repelente
+//
+//     Cómo llegar: pon "Aires de Chicá" en Waze y te lleva directo al portón.
+//     🗺 https://maps.google.com/?q=8.639400,-79.945900
+//     🚦 https://waze.com/ul?ll=8.639400,-79.945900&navigate=yes
+//
+//     Cuando estés frente al portón verde, toca el botón de abajo y le avisamos
+//     al equipo para que te abran.
+function enviarAvisoLlegadaHoy() {
+  const today   = Utilities.formatDate(new Date(), BOT_TZ, 'yyyy-MM-dd');
+  // 'pasadia' también entra hoy: es una llegada, solo que entra y sale el mismo
+  // día. Dejarla afuera la privaría del botón del portón, que es justo lo que
+  // más necesita quien viene por unas horas.
+  const llegadas = _adminGetMovimientosDia(today)
+    .filter(i => i.kind === 'entrada' || i.kind === 'pasadia');
+
+  let enviados = 0;
+  llegadas.forEach(it => {
+    const r = it.reserva;
+    if (!r.telefono) return;                  // sin teléfono no podemos contactar
+    if (r.origin === 'Airbnb') return;         // Airbnb gestiona su propio canal
+    const firstName = (r.name || '').toString().trim().split(/\s+/)[0] || 'amigo';
+    const cabinName = r.cabinName || BOT_CABIN_NAMES[r.cabin] || r.cabin;
+    const checkinHr = _horaPlantilla(r.tipo, 'checkin', r.checkoutExtendido, r.horaEntrada);
+    try {
+      sendWhatsAppTemplate(
+        r.telefono,
+        'listos_para_recibirte',
+        'es_ES',
+        [firstName, cabinName, checkinHr],     // {{1}} nombre, {{2}} cabaña, {{3}} hora
+        null,
+        'llegada_' + r.id                      // payload del botón quick-reply
+      );
+      enviados++;
+    } catch(err) {
+      logDebugEntry('llegada-template-FAIL', { id: r.id, error: err.message });
+    }
+  });
+  logDebugEntry('aviso-llegada-hoy', { llegadas: llegadas.length, enviados: enviados });
+}
+
+// Preview desde el editor: manda el aviso de llegada a tu propio número con
+// datos de ejemplo, sin tocar reservas reales.
+function _testAvisoLlegadaAMiNumero() {
+  const r = sendWhatsAppTemplate(
+    PropertiesService.getScriptProperties().getProperty('PREVIEW_NOTIFY_PHONE') || '50769812266',
+    'listos_para_recibirte', 'es_ES',
+    ['Ana', 'Portal hacia Las Nubes', '2:00 pm'],
+    null, 'llegada_test'
+  );
+  Logger.log('✓ listos_para_recibirte enviada: ' + JSON.stringify(r));
+}
+
 // ─── Setup ────────────────────────────────────────────────────────
 // Correr UNA VEZ desde el editor para instalar los triggers diarios.
 function instalarTriggersAdminReminders() {
@@ -480,6 +558,18 @@ function instalarTriggerCheckout() {
   ScriptApp.newTrigger('enviarRecordatoriosCheckout')
     .timeBased().everyDays(1).atHour(9).inTimezone(BOT_TZ).create();
   Logger.log('✓ Trigger de check-out instalado: 9am diario → enviarRecordatoriosCheckout');
+}
+
+// Instala (o reinstala) el trigger diario 11am del aviso de llegada al huésped.
+// Correr UNA VEZ tras aprobar la plantilla listos_para_recibirte con botón.
+function instalarTriggerAvisoLlegada() {
+  const triggers = ScriptApp.getProjectTriggers();
+  for (const t of triggers) {
+    if (t.getHandlerFunction() === 'enviarAvisoLlegadaHoy') ScriptApp.deleteTrigger(t);
+  }
+  ScriptApp.newTrigger('enviarAvisoLlegadaHoy')
+    .timeBased().everyDays(1).atHour(11).inTimezone(BOT_TZ).create();
+  Logger.log('✓ Trigger de llegada instalado: 11am diario → enviarAvisoLlegadaHoy');
 }
 
 // Funciones para probar manualmente desde el editor.

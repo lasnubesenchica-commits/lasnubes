@@ -1416,6 +1416,13 @@ function botHandleMessage(from, text, contactName, kind) {
     return;
   }
 
+  // Boton "He llegado" de la plantilla del día de llegada (listos_para_recibirte,
+  // 11am). Mismo destino que el "He llegado" del menú: instrucciones de acceso
+  // + alerta al admin para que abra el portón.
+  if (kind === 'button_reply' && text.indexOf('llegada_') === 0) {
+    return _botMenuHeLlegado(from, contactName, conv);
+  }
+
   // Boton "Envíame ubicación" de la plantilla de check-in (recordator_entrada)
   // → mandar ubicación + cómo llegar. Match por payload o por el texto del
   //   botón (fallback si la plantilla se envió sin payload dinámico).
@@ -2203,7 +2210,10 @@ function _botBuildBodyManana(reserva, firstName, isFirstTime) {
   return greeting + '\n\n' +
     'Mañana te recibimos en *' + reserva.cabinName + '* para tu reserva del ' + fechas + '.\n\n' +
     '¿Necesitas info para tu llegada? Toca *Ver opciones* abajo 👇 (cómo llegar, qué llevar, actividades, etc.)\n\n' +
-    '_Mañana a las 10am te enviamos también un recordatorio con todo lo necesario._';
+    // El recordatorio que llega mañana es el de las 11am (enviarAvisoLlegadaHoy).
+    // Decía "10am" — esa es la hora del recordatorio de HOY, el del día anterior,
+    // así que prometía un mensaje que no llegaba.
+    '_Mañana a las 11am te escribimos de nuevo con la hora de check-in y el botón para avisarnos cuando llegues._';
 }
 
 function _botBuildBodySaliendo(reserva, firstName, isFirstTime) {
@@ -2505,8 +2515,13 @@ function _botSendArrivalInstructions(from, contactName, conv, reserva) {
 
   let body = '🎉 ¡Bienvenidos a *Las Nubes*';
   if (firstName) body += ', ' + firstName;
-  body += '!\n\nYa les abro el portón.\n\n' +
-          'Luego conducen recto y más adelante se encontrarán con una *huella calle de concreto*. Van a subirla y, cuando termine, van a tomar la siguiente *calle a mano izquierda*.\n\n';
+  // Antes decía "Ya les abro el portón", y el bot NO abre nada: manda la alerta
+  // `alerta_porton` al admin, que abre a mano. Si el admin está durmiendo o sin
+  // señal, el huésped quedaba parado en el portón creyendo que ya se estaba
+  // abriendo. El flujo de salida siempre lo dijo bien ("ya le avisé al equipo");
+  // este ahora dice lo mismo.
+  body += '!\n\nYa le avisé al equipo para que te abran el portón. 🚪\n\n' +
+          'Apenas se abra, conducen recto y más adelante se encontrarán con una *huella calle de concreto*. Van a subirla y, cuando termine, van a tomar la siguiente *calle a mano izquierda*.\n\n';
 
   if (cabin === 'azul') {
     body += 'Unos *25 metros más adelante* verán un *tanque de reserva de agua azul*. Se van a estacionar *antes del tanque*, en los laterales de la calle.\n\n' +
