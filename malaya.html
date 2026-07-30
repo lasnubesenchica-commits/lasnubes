@@ -143,6 +143,38 @@
     cursor: pointer; background: #e6bd93; color: #6b4423; border-color: #d9a878;
   }
   .cal-day.occupied.editable:hover { background: #dcae80; transform: scale(1.04); }
+  /* Móvil: mismos valores que usa el dashboard a 600px. Sin esto, siete celdas
+     de 52px más los gaps y el padding de la tarjeta no entran en la pantalla y
+     el mes se corta por la derecha — se veía solo hasta el jueves. */
+  @media (max-width: 600px) {
+    /* El ancho disponible en un iPhone es ~340px dentro del iframe. Con la
+       celda a 40px, el mínimo del mes es 330 y no entra: se cortaba en jueves.
+       38px de celda y 3 de gap dejan el mes en ~306, con aire de sobra.
+       (La celda no puede achicarse sola: aspect-ratio 1 convierte el
+       min-height en min-width.) */
+    .cal-month { padding: 14px 10px; }
+    .cal-grid  { gap: 3px; }
+    .cal-day   { min-height: 38px; font-size: 12px; }
+    .cal-dow   { font-size: 10px; padding: 4px 0 6px; }
+    .cal-month-title { font-size: 18px; margin-bottom: 12px; }
+    /* Embebida el dashboard ya pone su propio margen lateral. */
+    body.embed .section-card { padding-left: 10px; padding-right: 10px; }
+  }
+  /* Embebido el padding lateral lo pone el dashboard: duplicarlo le robaba
+     ~36px al ancho, que en un iPhone es justo lo que falta. */
+  body.embed .container { padding: 0; }
+  /* El dashboard ya titula la sección "Disponibilidad": repetirlo adentro del
+     iframe es decir dos veces lo mismo y comerse una pantalla en el celular. */
+  body.embed .solo-publico { display: none; }
+  /* Los tres controles no entran en una fila de 340px y los botones partían el
+     texto en dos líneas. En móvil van apilados: la etiqueta arriba y los dos
+     botones abajo, cada uno a la mitad. */
+  @media (max-width: 600px) {
+    .cal-controls { flex-wrap: wrap; justify-content: center; gap: 8px; }
+    .cal-controls #calRangeInfo { order: -1; width: 100%; text-align: center; }
+    .cal-controls button { flex: 1; white-space: nowrap; }
+  }
+
   .cal-day.selected {
     background: var(--marca-dark) !important; color: #fff !important;
     font-weight: 600; border-color: var(--marca-dark) !important;
@@ -430,8 +462,8 @@
   <!-- Calendario -->
   <section>
     <div class="section-card">
-      <h2>Disponibilidad</h2>
-      <p style="color:var(--text-muted);">Selecciona tus fechas. Las celdas en gris ya están reservadas.</p>
+      <h2 class="solo-publico">Disponibilidad</h2>
+      <p class="solo-publico" style="color:var(--text-muted);">Selecciona tus fechas. Las celdas en gris ya están reservadas.</p>
 
       <div class="cal-controls">
         <button onclick="shiftMonths(-1)">← Anterior</button>
@@ -646,6 +678,7 @@ function _resolveImageUrl(url) {
 const EMBED = new URLSearchParams(location.search).get('embed') === '1';
 if (EMBED) {
   document.addEventListener('DOMContentLoaded', function() {
+    document.body.classList.add('embed');
     const h = document.getElementById('malayaHero');   if (h) h.style.display = 'none';
     const f = document.getElementById('malayaFooter'); if (f) f.style.display = 'none';
     // "La cabaña" es material de venta para el visitante público. Adentro del
