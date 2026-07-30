@@ -2932,6 +2932,46 @@ function _botHandleCedulaImage(from, imageId, contactName, conv) {
   _botEnviarCodigoAcceso(from, reserva);
 }
 
+// Preview desde el editor: manda a tu propio número las instrucciones de llegada
+// de una cabaña —texto, foto y los tres botones— sin tocar reservas reales.
+//
+//   _testLlegadaAMiNumero('verde')   → Paseo
+//   _testLlegadaAMiNumero('azul')    → Portal
+//   _testLlegadaAMiNumero('lila')    → Puente
+//
+// OJO: sirve para revisar los MENSAJES. Los tres botones necesitan una reserva
+// activa con tu teléfono para responder algo útil — al tocarlos, el handler cae
+// a _botFindReservaByPhone y sin reserva contesta "no encuentro tu reserva".
+// Para probar los botones de punta a punta, pasar el id de una reserva real
+// como segundo argumento, o crear una reserva de prueba con tu número.
+function _testLlegadaAMiNumero(cabinKey, reservaIdOpcional) {
+  const phone = PropertiesService.getScriptProperties().getProperty('PREVIEW_NOTIFY_PHONE') || '50769812266';
+  const cabin = cabinKey || 'verde';
+  const reserva = reservaIdOpcional
+    ? _botFindReservaById(reservaIdOpcional)
+    : { id: 'preview', name: 'Ana Gómez', cabin: cabin,
+        cabinName: BOT_CABIN_NAMES[cabin], tipo: 'noche',
+        checkoutExtendido: false, horaSalida: '', idHuespedURL: '' };
+  if (!reserva) { Logger.log('✗ No encontré la reserva ' + reservaIdOpcional); return; }
+  // Ojo: esto deja TU conversación con el bot en estado ARRIVED (es el mismo
+  // código que corre con un huésped real). Se limpia sola escribiéndole "hola".
+  const conv = { context: {} };
+  try {
+    _botSendArrivalInstructions(phone, 'Ana', conv, reserva);
+    Logger.log('✓ Instrucciones de ' + (reserva.cabinName || cabin) + ' enviadas a ' + phone);
+  } catch(e) {
+    Logger.log('✗ Falló: ' + e.message);
+  }
+}
+
+// Manda las tres, una detrás de otra, para comparar de un vistazo.
+function _testLlegadaLasTres() {
+  ['azul', 'lila', 'verde'].forEach(function(c) {
+    _testLlegadaAMiNumero(c);
+    Utilities.sleep(1500);   // que lleguen en orden
+  });
+}
+
 // El cliente tocó "Consultas y cambios" en la plantilla de confirmación.
 // → el Agente le ofrece un botón para escribirle directo a Josh, con un
 //   mensaje precargado que incluye su nombre, fecha y cabaña.
