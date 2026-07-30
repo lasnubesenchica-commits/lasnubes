@@ -2862,6 +2862,12 @@ function _botManualCabanaTexto(reserva, omitirAcceso) {
     .replace(/<\/?strong>/gi, '*')
     .replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/g, ' ')
+    // Las entidades numéricas (&#9888;) son la forma en que el resto del archivo
+    // escribe emoji para que Gmail no los muestre como "??????". En WhatsApp hay
+    // que decodificarlas o el huésped lee el código crudo.
+    .replace(/&#(\d+);/g, function(_, n) {
+      try { return String.fromCodePoint(parseInt(n, 10)); } catch(e) { return ''; }
+    })
     .replace(/&amp;/g, '&')
     .trim();
   let txt = '📖 *Manual de ' + (reserva.cabinName || 'la cabaña') + '*\n';
