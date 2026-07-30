@@ -2546,13 +2546,18 @@ const _LLEGADA_PARQUEO_POSTE =
   'tráfico, así que el auto queda bien.\n\n';
 
 function _botLlegadaTramoCabana(cabin) {
+  // Portal sigue la misma estructura que las otras dos —detenerse, estacionar
+  // con la tranquilidad de que el auto queda bien, bajar, reconocer, key box
+  // junto a la puerta— con su referencia propia: el tanque de agua azul en vez
+  // del poste de luz. La puerta acá es corrediza de METAL, no blanca.
   if (cabin === 'azul') {
-    return 'Unos *25 metros más adelante* verán un *tanque de reserva de agua azul*. ' +
-           'Se van a estacionar *antes del tanque*, en los laterales de la calle.\n\n' +
-           'Allí mismo, al lado del tanque, está la *escalera para bajar a la cabaña*. ' +
-           'Tiene un *techo blanco* y la reconocerán por los portales con las puertas ' +
-           'antiguas y la silla colgante.\n\n' +
-           'Al lado de la puerta está el *key box*.';
+    return 'Deténganse ahí mismo. Unos *25 metros más adelante* verán un *tanque de ' +
+           'reserva de agua azul*. Pueden estacionar *antes del tanque*, en los laterales ' +
+           'de la calle. Es una calle de muy poco tráfico, así que el auto queda bien.\n\n' +
+           'Justo al lado del tanque está la *escalera para bajar a la cabaña*. Tiene un ' +
+           '*techo blanco* y la reconocerán por los portales con las puertas antiguas y ' +
+           'la silla colgante.\n\n' +
+           'Al lado de la *puerta corrediza de metal* está el *key box*.';
   }
   if (cabin === 'lila') {
     return _LLEGADA_PARQUEO_POSTE +
