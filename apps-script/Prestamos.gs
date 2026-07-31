@@ -236,6 +236,13 @@ function _filaPorId(sheet, id) {
 // ─── Factura del préstamo a Drive ───────────────────────────────
 // Misma carpeta que los vouchers de pago: son comprobantes del mismo tipo y
 // tenerlos separados solo obliga a recordar en cuál buscar.
+// Además de guardar el archivo, LEE la factura con Claude y devuelve los datos
+// para prellenar el formulario. Reusa parseFacturaEgresoConClaude, el mismo
+// parser de las facturas de egresos: entiende facturas comerciales, Yappy y
+// transferencias ACH, así que no hace falta un prompt aparte.
+//
+// Si el OCR falla, el archivo igual queda subido: el adjunto es lo importante y
+// los campos siempre se pueden escribir a mano.
 function savePrestamoFacturaToDrive(payload) {
   try {
     const carpeta = _carpetaPagos();
@@ -246,7 +253,25 @@ function savePrestamoFacturaToDrive(payload) {
     const blob = Utilities.newBlob(bytes, payload.mimeType || 'image/jpeg', nombre);
     const file = carpeta.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    return { ok: true, url: file.getUrl() };
+
+    let datos = null;
+    try {
+      const p = parseFacturaEgresoConClaude(payload.base64, payload.mimeType || 'image/jpeg');
+      if (p && !p.error) {
+        // El concepto sale del detalle de la factura, que es lo que describe QUÉ
+        // se compró; el proveedor solo dice a quién se le pagó.
+        const primerItem = (p.items && p.items.length) ? p.items[0] : null;
+        datos = {
+          monto:     parseFloat(p.monto) || 0,
+          fecha:     p.fecha || '',
+          proveedor: p.proveedor || '',
+          concepto:  (primerItem && primerItem.desc) || p.proveedor || '',
+          numFactura: p.numFactura || ''
+        };
+      }
+    } catch (_) { /* sin OCR: se llena a mano */ }
+
+    return { ok: true, url: file.getUrl(), datos: datos };
   } catch (e) {
     return { ok: false, error: e.message };
   }

@@ -107,7 +107,22 @@ function saveTienditaVoucherToDrive(payload) {
                                    payload.mimeType || 'image/jpeg', nombre);
     const file = carpeta.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    return { ok: true, url: file.getUrl() };
+
+    // Lee el voucher del cliente para prellenar monto y fecha. Es el mismo
+    // parser de los vouchers de reserva, que ya entiende Yappy y ACH.
+    let datos = null;
+    try {
+      const v = parseVoucherWithClaude(payload.base64, payload.mimeType || 'image/jpeg');
+      if (v && !v.error) {
+        datos = {
+          monto: parseFloat(String(v.monto || '').replace(/[^0-9.]/g, '')) || 0,
+          fecha: v.fechaPago || '',
+          remitente: v.sender || ''
+        };
+      }
+    } catch (_) { /* sin OCR: se llena a mano */ }
+
+    return { ok: true, url: file.getUrl(), datos: datos };
   } catch (e) {
     return { ok: false, error: e.message };
   }

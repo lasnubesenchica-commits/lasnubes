@@ -16112,7 +16112,28 @@ async function _tvSubirVoucher(ev) {
     const r = await (await fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify({
       action: 'saveTienditaVoucher', base64: b64, mimeType: file.type, ventaId: _tvEditId || 'nueva'
     })})).json();
-    if (r && r.ok) { _tvVoucherURL = r.url; showToast('✓ Voucher subido'); }
+    if (r && r.ok) {
+      _tvVoucherURL = r.url;
+      const d = r.datos;
+      let llenados = 0;
+      if (d) {
+        const fEl = document.getElementById('tvFecha');
+        // El monto del voucher es el TOTAL cobrado. Se vuelca al precio
+        // unitario solo si la cantidad es 1; con más unidades, dividirlo sería
+        // adivinar el precio de lista.
+        const cant = parseFloat(document.getElementById('tvCantidad').value) || 1;
+        const pEl = document.getElementById('tvPrecio');
+        if (d.monto > 0 && pEl && !pEl.value && cant === 1) { pEl.value = d.monto.toFixed(2); llenados++; }
+        if (d.fecha && fEl) { fEl.value = d.fecha; llenados++; }
+        if (d.remitente && !document.getElementById('tvHuesped').value) {
+          document.getElementById('tvHuesped').value = d.remitente; llenados++;
+        }
+        _tvCalc();
+      }
+      showToast(llenados
+        ? '✓ Voucher leído · ' + llenados + ' campo' + (llenados === 1 ? '' : 's') + ' completado' + (llenados === 1 ? '' : 's')
+        : '✓ Voucher subido · no se pudieron leer los datos');
+    }
     else showToast('✗ No se pudo subir: ' + ((r && r.error) || 'error'));
   } catch (e) {
     showToast('✗ No se pudo subir: ' + e.message);
@@ -16329,7 +16350,43 @@ async function _prSubirFactura(ev) {
       action: 'savePrestamoFactura', base64: b64, mimeType: file.type,
       prestamoId: _prEditId || 'nuevo'
     })})).json();
-    if (r && r.ok) { _prFacturaURL = r.url; showToast('✓ Factura subida'); }
+    // "Unknown action" = el Apps Script todavía no tiene esta versión. Decirlo
+    // así evita buscar el problema en el archivo o en la conexión.
+    if (r && r.error === 'Unknown action') {
+      showToast('El backend todavía no está actualizado — falta el deploy de Apps Script');
+      return;
+    }
+    if (r && r.ok) {
+      _prFacturaURL = r.url;
+      // El OCR solo LLENA CAMPOS VACÍOS: si ya se escribió algo a mano, eso
+      // gana. Leer una factura no debería pisar lo que el usuario ya decidió.
+      const d = r.datos;
+      let llenados = 0;
+      if (d) {
+        const poner = (id, val) => {
+          const el = document.getElementById(id);
+          if (el && val && !el.value) { el.value = val; llenados++; }
+        };
+        poner('prMonto',    d.monto > 0 ? d.monto.toFixed(2) : '');
+        poner('prConcepto', d.concepto);
+        // La fecha es la excepción a "solo campos vacíos": el modal la prellena
+        // con hoy, así que nunca estaría vacía y el dato de la factura —que es
+        // el correcto— se perdía. Se pisa solo si sigue en ese default.
+        const fEl = document.getElementById('prFecha');
+        if (fEl && d.fecha && fEl.value === new Date().toISOString().slice(0,10)) {
+          fEl.value = d.fecha; llenados++;
+        }
+        if (d.proveedor && !document.getElementById('prNotas').value) {
+          document.getElementById('prNotas').value = 'Proveedor: ' + d.proveedor
+            + (d.numFactura ? ' · Factura ' + d.numFactura : '');
+          llenados++;
+        }
+        _prActualizarHint();
+      }
+      showToast(llenados
+        ? '✓ Factura leída · ' + llenados + ' campo' + (llenados === 1 ? '' : 's') + ' completado' + (llenados === 1 ? '' : 's')
+        : '✓ Factura subida · no se pudieron leer los datos');
+    }
     else showToast('✗ No se pudo subir: ' + ((r && r.error) || 'error'));
   } catch (e) {
     showToast('✗ No se pudo subir: ' + e.message);
