@@ -2092,6 +2092,20 @@
     font-family: monospace;
   }
 
+  /* Avisos del modal (choque de fechas, voucher vs tarifa, ventanas libres) */
+  .modal-aviso {
+    border-radius: 10px; padding: 9px 12px; font-size: 12.5px; line-height: 1.5;
+    border: 1px solid transparent;
+  }
+  .modal-aviso--rojo    { background: #fbecea; border-color: #e8c4bd; color: #8c3b2b; }
+  .modal-aviso--ambar   { background: #fdf5e6; border-color: #e8d8b0; color: #7a5a1f; }
+  .modal-aviso--info    { background: #eef3f8; border-color: #c9d9e8; color: #37536e; }
+  .modal-aviso button {
+    background: none; border: 1px solid currentColor; border-radius: 6px;
+    padding: 2px 9px; margin-left: 6px; font-family: inherit; font-size: 11.5px;
+    color: inherit; cursor: pointer;
+  }
+
   /* Desglose del tarifario en el modal de reserva */
   .price-preview {
     background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
@@ -4079,7 +4093,7 @@
     <div class="form-row">
       <div class="form-group">
         <label>Cabaña</label>
-        <select id="fCabin" onchange="applyModalCabinTint(this.value);calcPrice();">
+        <select id="fCabin" onchange="applyModalCabinTint(this.value);_refrescarAvisosModal();">
           <option value="verde">Paseo por Las Nubes</option>
           <option value="azul">Portal hacia Las Nubes</option>
           <option value="lila">Puente entre Las Nubes</option>
@@ -4091,15 +4105,23 @@
       </div>
     </div>
 
+    <!-- Choque de fechas, en vivo. Antes el conflicto solo aparecía al apretar
+         Guardar, con todo el formulario ya lleno. -->
+    <div class="form-row">
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <div id="conflictoAviso" class="modal-aviso modal-aviso--rojo" style="display:none;"></div>
+      </div>
+    </div>
+
     <!-- Fila 4: Entrada + Salida -->
     <div class="form-row" id="dateRow">
       <div class="form-group">
         <label>Entrada</label>
-        <input type="date" id="fCheckin" onchange="autoCheckout();calcPrice();_refreshMultiCabinAvailability();">
+        <input type="date" id="fCheckin" onchange="autoCheckout();_refrescarAvisosModal();_refreshMultiCabinAvailability();">
       </div>
       <div class="form-group">
         <label>Salida</label>
-        <input type="date" id="fCheckout" onchange="calcPrice();_refreshMultiCabinAvailability();">
+        <input type="date" id="fCheckout" onchange="_refrescarAvisosModal();_refreshMultiCabinAvailability();">
       </div>
     </div>
 
@@ -4126,6 +4148,7 @@
           <option value="late">Late check-out (2pm → 4pm día siguiente · bloquea noche siguiente)</option>
         </select>
         <div id="fTipoHint" style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.4;"></div>
+        <div id="tipoSugerencia" class="modal-aviso" style="display:none;margin-top:8px;"></div>
       </div>
     </div>
 
@@ -4185,7 +4208,7 @@
       </div>
       <div class="form-group">
         <label>Origen</label>
-        <select id="fOrigin" onchange="handleOriginChange();calcPrice();">
+        <select id="fOrigin" onchange="handleOriginChange();_refrescarAvisosModal();">
           <option value="Directa">Directa</option>
           <option value="Referido">Referido</option>
           <option value="Airbnb">Airbnb</option>
@@ -4217,6 +4240,7 @@
     <div class="form-row">
       <div class="form-group" style="grid-column: 1 / -1;">
         <div id="pricePreview" class="price-preview" style="display:none;"></div>
+        <div id="pagoAviso" class="modal-aviso" style="display:none;margin-top:8px;"></div>
       </div>
     </div>
     <div class="form-row">
@@ -8964,7 +8988,7 @@ function handleTipoChange() {
   // tipo ni las personas. Ahora lo cotiza el tarifario.
   _updateSalidaLock(tipo);
   calcSaldo();
-  calcPrice();
+  _refrescarAvisosModal();
   _refreshMultiCabinAvailability();
 }
 
@@ -9240,7 +9264,7 @@ function openModal(cabin, date) {
   renderVouchersRegistrados(null); // reserva nueva → sin pagos previos
   document.getElementById('voucherSection').style.display = 'block'; // Directa por defecto
   applyModalCabinTint(document.getElementById('fCabin').value);
-  calcPrice();
+  _refrescarAvisosModal();
 }
 
 function editReservation(id) {
@@ -9407,12 +9431,164 @@ function calcPrice() {
   }
   box.innerHTML = html;
   box.style.display = 'block';
+  _refrescarAvisoPago(q.total);
+}
+
+// ─── Voucher vs tarifa ───────────────────────────────────────
+// Contrasta lo REALMENTE cobrado (vouchers ya registrados + el que se acaba de
+// subir) contra lo que cotiza el tarifario. No alcanza con el "Saldo
+// pendiente", que compara contra el campo Monto: si ese campo se puso igual al
+// voucher —como hacía el viejo checkbox "Promocional"— el saldo da cero y la
+// diferencia contra la tarifa queda invisible.
+function _refrescarAvisoPago(totalTarifa) {
+  const box = document.getElementById('pagoAviso');
+  if (!box) return;
+  const origin = (document.getElementById('fOrigin') || {}).value || 'Directa';
+  if (SIN_PAGO_ORIGINS.includes(origin) || origin === 'Abierta' || !totalTarifa) {
+    box.style.display = 'none'; return;
+  }
+
+  // Ya registrados en la reserva que se está editando + el pendiente de subir.
+  const rEdit = editId ? reservations.find(x => x.id === editId) : null;
+  let cobrado = 0, hayDatos = false;
+  _voucherEntries(rEdit).forEach(v => { if (v.montoConocido) { cobrado += v.monto; hayDatos = true; } });
+  if (pendingVoucher) {
+    const m = _voucherMontoNumber(pendingVoucher.monto);
+    if (m > 0) { cobrado += m; hayDatos = true; }
+  }
+  if (!hayDatos) { box.style.display = 'none'; return; }
+
+  const dif = +(totalTarifa - cobrado).toFixed(2);
+  const amountInp = document.getElementById('fAmount');
+  if (Math.abs(dif) < 0.01) {
+    box.className = 'modal-aviso modal-aviso--info';
+    box.innerHTML = '✓ Los pagos ($' + cobrado.toFixed(2) + ') cubren la tarifa completa.';
+  } else if (dif > 0) {
+    box.className = 'modal-aviso modal-aviso--ambar';
+    box.innerHTML = 'El voucher suma <strong>$' + cobrado.toFixed(2) + '</strong> pero la estadía cotiza <strong>$'
+      + totalTarifa.toFixed(2) + '</strong> — faltan <strong>$' + dif.toFixed(2) + '</strong>.'
+      + (Math.abs((parseFloat(amountInp.value) || 0) - cobrado) < 0.01
+          ? ' <button type="button" onclick="usarTarifaCalculada()">Cobrar $' + totalTarifa.toFixed(2) + '</button>'
+          : '');
+  } else {
+    box.className = 'modal-aviso modal-aviso--info';
+    box.innerHTML = 'El voucher suma <strong>$' + cobrado.toFixed(2) + '</strong>, <strong>$'
+      + Math.abs(dif).toFixed(2) + '</strong> por encima de la tarifa ($' + totalTarifa.toFixed(2) + ').';
+  }
+  box.style.display = 'block';
 }
 
 // Vuelve a la tarifa de lista y reanuda el auto-cálculo.
 function usarTarifaCalculada() {
   _montoManual = false;
   calcPrice();
+}
+
+// ─── Conflicto de fechas ─────────────────────────────────────
+// Busca una reserva existente cuyo horario real se pise con lo que hay cargado
+// en el formulario. Compara SPANS efectivos (que respetan tipo, cortesía y
+// horas custom), no rangos de días: dos reservas pueden compartir un día sin
+// pisarse (ej. late 2pm→4pm + pasanoche 8pm→12:30pm).
+//
+// Lo usan el guard de saveReservation y el aviso en vivo del modal.
+function _buscarConflicto(opts) {
+  opts = opts || {};
+  const origin = (document.getElementById('fOrigin') || {}).value || 'Directa';
+  if (origin === 'Abierta') return null;   // sin fechas, no hay nada que pisar
+  const cabin    = (document.getElementById('fCabin') || {}).value;
+  const tipoForm = (document.getElementById('fTipo')  || {}).value || 'noche';
+  const fCi = (document.getElementById('fCheckin')  || {}).value;
+  const fCo = (document.getElementById('fCheckout') || {}).value;
+  if (!fCi) return null;
+
+  const st = _storedFromForm(fCi, fCo || fCi, tipoForm);
+  const checkin = st.checkin, checkout = st.checkout;
+  if (!checkin || !checkout) return null;
+
+  const prospecto = {
+    cabin, tipo: tipoForm, checkin, checkout,
+    horaEntrada: ((document.getElementById('fHoraEntrada') || {}).value || '').trim(),
+    horaSalida:  ((document.getElementById('fHoraSalida')  || {}).value || '').trim(),
+    checkoutExtendido: !!(document.getElementById('fCheckoutExtendido') || {}).checked
+  };
+  const spans = _reservationOccupancySpans(prospecto);
+  const pisa = (a, b) => a.start < b.end && b.start < a.end;
+
+  return reservations.find(r => {
+    if (opts.excluirId && r.id == opts.excluirId) return false;       // uno mismo al editar
+    if (opts.ademasExcluir && r.id === opts.ademasExcluir) return false; // será eliminada
+    if (r.cabin !== cabin) return false;
+    if (r.origin === 'Abierta') return false;
+    if (r.estadoPago === 'CANCELADA') return false;
+    // Prefiltro barato: si ni comparten día, el chequeo horario no puede dar.
+    if (!r.checkin || !r.checkout) return false;
+    if (r.checkout <= checkin || r.checkin >= checkout) return false;
+    const rSpans = _reservationOccupancySpans(r);
+    return spans.some(ps => rSpans.some(rs => pisa(ps, rs)));
+  }) || null;
+}
+
+// ─── Sugerir un tipo que sí entre ───────────────────────────
+// Si la noche completa está tomada pero quedan ventanas libres (pasatarde /
+// pasanoche), lo dice y ofrece cambiar el tipo. Antes el modal te dejaba elegir
+// algo imposible y el choque recién salía al guardar.
+function _refrescarSugerenciaTipo() {
+  const box = document.getElementById('tipoSugerencia');
+  if (!box) return;
+  const tipo   = (document.getElementById('fTipo')   || {}).value || 'noche';
+  const origin = (document.getElementById('fOrigin') || {}).value || 'Directa';
+  const cabin  = (document.getElementById('fCabin')  || {}).value;
+  const dia    = (document.getElementById('fCheckin')|| {}).value;
+  // Solo tiene sentido cuando se pidió una noche y esa noche no entra.
+  if (origin === 'Abierta' || !dia || tipo !== 'noche' || !_buscarConflicto({ excluirId: editId })) {
+    box.style.display = 'none'; return;
+  }
+
+  // Eventos del día en esa cabaña, excluyendo la reserva que se edita.
+  const eventos = [];
+  reservations.forEach(r => {
+    if (r.cabin !== cabin || r.origin === 'Abierta' || r.estadoPago === 'CANCELADA') return;
+    if (editId && r.id == editId) return;
+    _reservationOccupancySpans(r).forEach(s => eventos.push(s));
+  });
+  const libres = _findAvailableSlots(cabin, dia, eventos);
+  if (!libres.length) { box.style.display = 'none'; return; }
+
+  box.className = 'modal-aviso modal-aviso--info';
+  box.innerHTML = 'Esa noche está tomada, pero el día tiene libre: '
+    + libres.map(s => '<button type="button" onclick="_usarTipoSugerido(\'' + s.tipo + '\')">'
+        + (TIPO_LABEL[s.tipo] || s.tipo) + '</button>').join(' ');
+  box.style.display = 'block';
+}
+
+function _usarTipoSugerido(tipo) {
+  const sel = document.getElementById('fTipo');
+  if (!sel) return;
+  sel.value = tipo;
+  handleTipoChange();
+  _refrescarAvisosModal();
+}
+
+// Un solo punto para refrescar los tres avisos del modal.
+function _refrescarAvisosModal() {
+  _refrescarAvisoConflicto();
+  _refrescarSugerenciaTipo();
+  calcPrice();     // calcPrice a su vez refresca el aviso de pago
+}
+
+// Pinta / esconde el aviso de choque arriba del bloque de fechas.
+function _refrescarAvisoConflicto() {
+  const box = document.getElementById('conflictoAviso');
+  if (!box) return;
+  const dup = _buscarConflicto({ excluirId: editId });
+  if (!dup) { box.style.display = 'none'; return; }
+  const dd = reservaDisplayDates(dup);
+  const cab = { verde: 'Paseo', azul: 'Portal', lila: 'Puente' }[dup.cabin] || dup.cabin;
+  box.innerHTML = '⚠️ <strong>Choca con una reserva existente</strong><br>'
+    + escapeHtml(dup.name || 'Sin nombre') + ' · ' + cab + ' · '
+    + dd.displayCheckin + ' → ' + dd.displayCheckout
+    + ' <span style="opacity:.75;">(' + (TIPO_LABEL[dup.tipo || 'noche'] || dup.tipo) + ')</span>';
+  box.style.display = 'block';
 }
 
 function calcSaldo() {
@@ -9738,6 +9914,8 @@ function clearVoucher() {
   // editReservation/openModal clearVoucher corre ANTES del primer render.
   const _box = document.getElementById('vouchersRegistrados');
   if (_box && _box.classList.contains('shown')) _rerenderVouchersReg();
+  // Quitar el voucher cambia lo cobrado: el contraste contra la tarifa también.
+  if (document.getElementById('reservaModal').classList.contains('open')) calcPrice();
 }
 
 async function handleVoucherUpload(event) {
@@ -9851,6 +10029,7 @@ async function handleVoucherUpload(event) {
       calcSaldo();
       _updateMultiCabinSplitInfo();
     }
+    calcPrice();   // recalcula el contraste voucher vs tarifa
 
     document.getElementById('vcSender').textContent = pendingVoucher.sender || '—';
     document.getElementById('vcMonto').textContent  = montoNum > 0 ? '$' + montoNum.toFixed(2) : '—';
@@ -10294,38 +10473,11 @@ async function saveReservation() {
     }
   }
 
-  // ── Conflict check: overlap HORARIO real (no solo por fecha) ─────
-  // Construimos los spans del prospecto y de cada reserva existente en la
-  // misma cabaña y comparamos. Antes se chequeaba por rango de storage día
-  // a día — eso generaba falsos positivos entre reservas que compartían un
-  // día pero cuyos horarios no se pisaban (ej: late 2pm→4pm + pasanoche
-  // 4:30pm→12:30pm). Con los spans efectivos (que respetan tipo, cortesía
-  // y horas custom) el warning solo salta cuando realmente hay overlap.
-  const _prospectHoraEntrada = ((document.getElementById('fHoraEntrada') || {}).value || '').trim();
-  const _prospectHoraSalida  = ((document.getElementById('fHoraSalida')  || {}).value || '').trim();
-  const _prospectCheckoutExt = !!(document.getElementById('fCheckoutExtendido') || {}).checked;
-  const _prospectRes = {
-    cabin, tipo: tipoForm, checkin, checkout,
-    horaEntrada: _prospectHoraEntrada,
-    horaSalida:  _prospectHoraSalida,
-    checkoutExtendido: _prospectCheckoutExt
-  };
-  const _prospectSpans = _reservationOccupancySpans(_prospectRes);
-  const _spansOverlap = (a, b) => a.start < b.end && b.start < a.end;
-  const dup = reservations.find(r => {
-    if (editId && r.id == editId) return false; // skip self when editing
-    if (adjacentToDelete && r.id === adjacentToDelete) return false; // será eliminada
-    if (r.cabin !== cabin) return false;
-    if (r.origin === 'Abierta') return false;
-    if (r.estadoPago === 'CANCELADA') return false;
-    // Prefiltro barato por rango de storage: si ni siquiera comparten día
-    // el hour-check no puede matchear. Evita recalcular spans para todo el
-    // sheet cuando la cabaña tiene decenas de reservas.
-    if (!r.checkin || !r.checkout) return false;
-    if (r.checkout <= checkin || r.checkin >= checkout) return false;
-    const rSpans = _reservationOccupancySpans(r);
-    return _prospectSpans.some(ps => rSpans.some(rs => _spansOverlap(ps, rs)));
-  });
+  // ── Conflict check ──
+  // Se delega en _buscarConflicto, el mismo que corre en vivo mientras se
+  // eligen las fechas. Antes esta lógica vivía solo acá, así que el choque
+  // recién aparecía al apretar Guardar — con todo el formulario ya lleno.
+  const dup = _buscarConflicto({ excluirId: editId, ademasExcluir: adjacentToDelete });
   if (dup) {
     const msg = `⚠️ Conflicto horario
 
