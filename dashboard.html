@@ -17579,7 +17579,11 @@ async function mly_adminForceSync() {
     if (data.events && data.events.length) {
       summary += '\nEventos:\n';
       data.events.forEach(e => {
-        summary += '  ' + e.checkin + ' → ' + e.checkout + ' · ' + e.summary + '\n';
+        summary += '  [' + (e.tipo || '?') + '] ' + e.checkin + ' → ' + e.checkout + ' · ' + e.summary + '\n';
+        // Airbnb rotula igual ("Airbnb (Not available)") un bloqueo que puso
+        // Celestino y el eco de nuestro propio feed. El UID es lo único que
+        // los separa, así que se muestra.
+        if (e.uid) summary += '      uid: ' + e.uid + '\n';
       });
     } else {
       summary += '\nNo hay eventos. Si esperabas ver fechas bloqueadas, revisa: (a) MALAYA_AIRBNB_ICAL apunta al iCal correcto del listing, (b) Airbnb está sirviendo el .ics actualizado.';

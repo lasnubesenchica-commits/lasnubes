@@ -2953,7 +2953,12 @@ function doPost(e) {
         const events = data.map(r => ({
           checkin:  r[0] instanceof Date ? Utilities.formatDate(r[0], 'America/Panama', 'yyyy-MM-dd') : String(r[0]).slice(0,10),
           checkout: r[1] instanceof Date ? Utilities.formatDate(r[1], 'America/Panama', 'yyyy-MM-dd') : String(r[1]).slice(0,10),
-          summary:  String(r[2] || '')
+          summary:  String(r[2] || ''),
+          // El UID es el ÚNICO dato que distingue un bloqueo propio de Celestino
+          // del eco de nuestro feed: Airbnb rotula los dos como "Airbnb (Not
+          // available)". Va al panel para no depender del editor de Apps Script.
+          uid:      String(r[3] || ''),
+          tipo:     _malayaClasificarEvento({ summary: String(r[2] || ''), uid: String(r[3] || '') })
         }));
         const url = PropertiesService.getScriptProperties().getProperty('MALAYA_AIRBNB_ICAL') || null;
         // Lo que de verdad se quiere saber después de sincronizar: si mis
