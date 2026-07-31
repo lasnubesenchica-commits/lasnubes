@@ -2092,21 +2092,31 @@
     font-family: monospace;
   }
 
-  /* Promo checkbox debajo del field */
-  .promo-toggle {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 6px;
-    font-size: 12px;
-    color: var(--text-muted);
-    font-weight: 400;
-    cursor: pointer;
-    user-select: none;
+  /* Desglose del tarifario en el modal de reserva */
+  .price-preview {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 12px; font-size: 13px;
   }
-  .promo-toggle input { width: 14px; height: 14px; accent-color: var(--verde-dark); cursor: pointer; margin: 0; }
-  .promo-toggle.disabled { opacity: 0.4; cursor: not-allowed; }
-  .promo-toggle.disabled input { cursor: not-allowed; }
+  .price-preview .pp-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  }
+  .price-preview .pp-noches { font-weight: 600; }
+  .price-preview .pp-total  { font-weight: 700; font-size: 16px; }
+  .price-preview .pp-total s { font-weight: 400; font-size: 12px; color: var(--text-muted); margin-left: 4px; }
+  .price-preview .pp-rows { padding-top: 6px; }
+  .price-preview .pp-row {
+    display: flex; justify-content: space-between; gap: 10px;
+    padding: 3px 0; color: var(--text-muted); font-size: 12.5px;
+  }
+  .price-preview .pp-nota { margin-top: 8px; font-size: 12px; line-height: 1.45; }
+  .price-preview .pp-promo  { color: var(--verde-dark); }
+  .price-preview .pp-manual { color: #b06a2c; }
+  .price-preview .pp-manual button {
+    background: none; border: none; padding: 0; margin-left: 4px;
+    font-family: inherit; font-size: 12px; color: var(--verde-dark);
+    text-decoration: underline; cursor: pointer;
+  }
 
   /* Saldo "Pagada" */
   #fSaldoNote.pagada {
@@ -4069,7 +4079,7 @@
     <div class="form-row">
       <div class="form-group">
         <label>Cabaña</label>
-        <select id="fCabin" onchange="applyModalCabinTint(this.value);">
+        <select id="fCabin" onchange="applyModalCabinTint(this.value);calcPrice();">
           <option value="verde">Paseo por Las Nubes</option>
           <option value="azul">Portal hacia Las Nubes</option>
           <option value="lila">Puente entre Las Nubes</option>
@@ -4077,7 +4087,7 @@
       </div>
       <div class="form-group">
         <label>Personas</label>
-        <input type="number" id="fPersons" min="1" max="10" value="2">
+        <input type="number" id="fPersons" min="1" max="10" value="2" oninput="calcPrice()">
       </div>
     </div>
 
@@ -4175,7 +4185,7 @@
       </div>
       <div class="form-group">
         <label>Origen</label>
-        <select id="fOrigin" onchange="handleOriginChange()">
+        <select id="fOrigin" onchange="handleOriginChange();calcPrice();">
           <option value="Directa">Directa</option>
           <option value="Referido">Referido</option>
           <option value="Airbnb">Airbnb</option>
@@ -4197,11 +4207,16 @@
       </div>
       <div class="form-group">
         <label>Monto total ($)</label>
-        <input type="number" id="fAmount" placeholder="0.00" step="0.01" oninput="calcSaldo();_updateMultiCabinSplitInfo();">
-        <label class="promo-toggle disabled" id="promoToggleLabel" title="Disponible al cargar voucher">
-          <input type="checkbox" id="fPromoTarifa" onchange="togglePromoTarifa()" disabled>
-          Promocional
-        </label>
+        <input type="number" id="fAmount" placeholder="0.00" step="0.01" oninput="calcSaldo();_updateMultiCabinSplitInfo();_marcarMontoManual();">
+      </div>
+    </div>
+
+    <!-- Desglose del tarifario. Lo pinta calcPrice() y sale de las mismas
+         tarifas que usa el calendario público, así el modal y la cotización
+         que ve el cliente no pueden discrepar. -->
+    <div class="form-row">
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <div id="pricePreview" class="price-preview" style="display:none;"></div>
       </div>
     </div>
     <div class="form-row">
@@ -4211,8 +4226,6 @@
       </div>
     </div>
 
-    <!-- precio calculado eliminado: ya visible en campo Total -->
-    <div id="pricePreview" style="display:none;"></div>
     </div><!-- end modal-body -->
     <div class="modal-footer">
       <div id="notificarWrap" style="display:none;align-items:center;gap:14px;margin-right:auto;flex-wrap:wrap;">
@@ -4720,12 +4733,179 @@ function _canonOrigin(raw) {
   return ORIGINS_CANON.find(o => o.toLowerCase() === lower) || s;
 }
 
-const RATES = { weekday: 90, weekend: 110 }; // Vie/Sáb = 110
-// Tarifa de lista de los productos que no se cobran por noche. Sirve para
-// VALUAR estadías que no generaron cobro —colaboraciones, cortesías— y poder
-// decir cuánto representaron. Estaban hardcodeadas sueltas en el timeline de
-// Disponibilidad; esta es la fuente única.
-const TARIFA_TIPO = { pasatarde: 60, pasadia: 80, pasanoche: 75 };
+// ─── TARIFARIO ───────────────────────────────────────────────
+// Espejo del motor de precios del calendario público (index.html). Antes el
+// dashboard tenía TRES reglas de precio sueltas y desconectadas del tarifario:
+// `RATES` (90/110), el `fAmount` que openModal escribía a mano mirando el día
+// de la semana, y `TARIFA_TIPO`. Ninguna sabía de promociones, feriados,
+// vacaciones escolares, víspera, ni del recargo por persona extra — así que el
+// modal cotizaba distinto que el calendario con el que se cotiza al cliente.
+//
+// Ahora todo sale de acá y los valores se cargan de Config vía getTarifas.
+// Los números que quedan son solo el fallback de arranque, por si la llamada
+// falla; el backend los pisa apenas responde.
+const LN_TAR = {
+  weekday: 90, weekend: 110, promo: 75, promoActive: false, promoMeses: 0,
+  viernes: 110, sabado: 110, vispera: 110, feriado: 110, escolar: 110,
+  promoViernes: 0, promoSabado: 0, promoVispera: 0, promoFeriado: 0, promoEscolar: 0,
+  pasatarde: 60, pasanoche: 75, pasadia: 80,
+  recargoPersonaGrande: 20,   // Paseo (verde) y Puente (lila)
+  recargoPersonaPortal: 10,   // Portal (azul)
+  recargoEarly: 25, recargoLate: 25,
+  recargoPasatardePersona: 20, recargoPasanochePersona: 25, recargoPasadiaPersona: 25,
+  feriados: {}, escolares: {}
+};
+
+// Compatibilidad: RATES y TARIFA_TIPO siguen usándose para VALUAR estadías sin
+// cobro (colaboraciones, cortesías) en Ocupación. Se derivan del tarifario en
+// vez de estar hardcodeados, así una sola actualización de Config los mueve.
+const RATES = { get weekday() { return LN_TAR.weekday; }, get weekend() { return LN_TAR.weekend; } };
+const TARIFA_TIPO = {
+  get pasatarde() { return LN_TAR.pasatarde; },
+  get pasadia()   { return LN_TAR.pasadia; },
+  get pasanoche() { return LN_TAR.pasanoche; }
+};
+
+async function cargarTarifario() {
+  try {
+    const r = await (await fetch(SHEETS_API_URL + '?action=getTarifas&_=' + Date.now())).json();
+    if (!r || !r.ok || !r.tarifas) return;
+    const t = r.tarifas;
+    // Mapeo explícito: las claves del backend no son las mismas que las de acá.
+    const MAP = {
+      weekday:'weekday', weekend:'weekend', promo:'promo', promoActive:'promoActive',
+      promoMeses:'promoMeses', viernes:'viernes', sabado:'sabado', vispera:'vispera',
+      feriado:'feriado', escolar:'escolar', promoViernes:'promoViernes',
+      promoSabado:'promoSabado', promoVispera:'promoVispera', promoFeriado:'promoFeriado',
+      promoEscolar:'promoEscolar', pasatarde:'pasatarde', pasanoche:'pasanoche',
+      pasadia:'pasadia', recargoPersonaGrande:'recargoPersonaGrande',
+      recargoPersonaPortal:'recargoPersonaPortal', recargoEarly:'recargoEarly',
+      recargoLate:'recargoLate', recargoPasatardePersona:'recargoPasatardePersona',
+      recargoPasanochePersona:'recargoPasanochePersona',
+      recargoPasadiaPersona:'recargoPasadiaPersona', feriados:'feriados', escolares:'escolares'
+    };
+    Object.keys(MAP).forEach(k => { if (t[k] !== undefined) LN_TAR[MAP[k]] = t[k]; });
+    LN_TAR.promoActive = (t.promoActive === true || t.promoActive === 'true');
+    LN_TAR.feriados  = LN_TAR.feriados  || {};
+    LN_TAR.escolares = LN_TAR.escolares || {};
+    if (document.getElementById('reservaModal').classList.contains('open')) calcPrice();
+  } catch (_) { /* sin conexión: se siguen usando los defaults de arriba */ }
+}
+
+// ── Motor de precios ──
+// Un día puede caer en varias categorías (sábado + feriado + escolar). Gana la
+// más cara, igual que en el calendario.
+function _lnCatsDelDia(dateStr) {
+  const dow  = new Date(dateStr + 'T12:00:00').getDay();
+  const cats = [dow === 5 ? 'viernes' : dow === 6 ? 'sabado' : 'semana'];
+  if (LN_TAR.feriados[dateStr]) cats.push('feriado');
+  // La víspera se ata SOLO a feriados: en una semana de vacaciones cada día
+  // sería víspera del siguiente y la categoría perdería sentido.
+  if (LN_TAR.feriados[_addDaysISO(dateStr, 1)]) cats.push('vispera');
+  if (LN_TAR.escolares[dateStr]) cats.push('escolar');
+  return cats;
+}
+
+// Último mes 'YYYY-MM' con promo, o '' si no hay límite.
+function _lnPromoUltimoMes() {
+  if (!LN_TAR.promoMeses || LN_TAR.promoMeses <= 0) return '';
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + LN_TAR.promoMeses - 1);   // N=1 → solo el mes actual
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+function _lnPromoVigente(dateStr) {
+  if (!LN_TAR.promoActive) return false;
+  const hasta = _lnPromoUltimoMes();
+  if (!hasta) return true;
+  const mes = dateStr.slice(0, 7);
+  return mes >= new Date().toISOString().slice(0, 7) && mes <= hasta;
+}
+
+function _lnPrecioCat(cat, dateStr, sinPromo) {
+  const base  = { semana: LN_TAR.weekday, viernes: LN_TAR.viernes, sabado: LN_TAR.sabado,
+                  vispera: LN_TAR.vispera, feriado: LN_TAR.feriado, escolar: LN_TAR.escolar }[cat] || LN_TAR.weekday;
+  const promo = { semana: LN_TAR.promo, viernes: LN_TAR.promoViernes, sabado: LN_TAR.promoSabado,
+                  vispera: LN_TAR.promoVispera, feriado: LN_TAR.promoFeriado, escolar: LN_TAR.promoEscolar }[cat] || 0;
+  return (!sinPromo && promo > 0 && _lnPromoVigente(dateStr)) ? promo : base;
+}
+
+function _lnPrecioDia(dateStr, sinPromo) {
+  return _lnCatsDelDia(dateStr).reduce((max, c) => Math.max(max, _lnPrecioCat(c, dateStr, sinPromo)), 0);
+}
+
+// Etiqueta de la categoría que ganó, para el desglose: sin esto una noche a
+// $130 en medio de la semana parece un error de tipeo.
+function _lnMotivoDia(dateStr, sinPromo) {
+  const LBL = { semana:'entre semana', viernes:'viernes', sabado:'sábado',
+                vispera:'víspera de feriado', feriado:'feriado', escolar:'vac. escolares' };
+  const cats = _lnCatsDelDia(dateStr);
+  const gana = cats.reduce((a, c) => _lnPrecioCat(c, dateStr, sinPromo) > _lnPrecioCat(a, dateStr, sinPromo) ? c : a, cats[0]);
+  return LBL[gana] || gana;
+}
+
+function _lnRecargoPersona(cabinKey) {
+  return cabinKey === 'azul' ? LN_TAR.recargoPersonaPortal : LN_TAR.recargoPersonaGrande;
+}
+
+// Devuelve { total, noches[], extras[], sinPromo } para una estadía del modal.
+// `noches` trae una entrada por noche con su fecha, precio y motivo; `extras`
+// los recargos que no son por noche (persona adicional, early/late).
+function _lnCotizar(tipo, cabinKey, entradaISO, salidaISO, personas, sinPromo) {
+  personas = Math.max(1, parseInt(personas, 10) || 2);
+  const out = { total: 0, noches: [], extras: [], nNoches: 0 };
+
+  // Productos de tarifa plana: no se cobran por noche.
+  if (tipo === 'pasatarde' || tipo === 'pasanoche' || tipo === 'pasadia') {
+    const base    = { pasatarde: LN_TAR.pasatarde, pasanoche: LN_TAR.pasanoche, pasadia: LN_TAR.pasadia }[tipo];
+    const recargo = { pasatarde: LN_TAR.recargoPasatardePersona,
+                      pasanoche: LN_TAR.recargoPasanochePersona,
+                      pasadia:   LN_TAR.recargoPasadiaPersona }[tipo];
+    out.total = base;
+    out.noches.push({ fecha: entradaISO, precio: base, motivo: TIPO_LABEL[tipo] || tipo });
+    if (personas > 2) {
+      const extra = recargo * (personas - 2);
+      out.total += extra;
+      out.extras.push({ label: (personas - 2) + ' persona' + (personas - 2 > 1 ? 's' : '') + ' extra × $' + recargo, monto: extra });
+    }
+    return out;
+  }
+
+  if (!entradaISO || !salidaISO || salidaISO <= entradaISO) return out;
+
+  let cur = entradaISO;
+  while (cur < salidaISO && out.noches.length < 400) {
+    const p = _lnPrecioDia(cur, sinPromo);
+    out.noches.push({ fecha: cur, precio: p, motivo: _lnMotivoDia(cur, sinPromo) });
+    out.total += p;
+    cur = _addDaysISO(cur, 1);
+  }
+  out.nNoches = out.noches.length;
+
+  if (personas > 2 && out.nNoches) {
+    const porPersona = _lnRecargoPersona(cabinKey);
+    const extra = porPersona * (personas - 2) * out.nNoches;
+    out.total += extra;
+    out.extras.push({
+      label: (personas - 2) + ' persona' + (personas - 2 > 1 ? 's' : '') + ' extra × $' + porPersona
+             + ' × ' + out.nNoches + ' noche' + (out.nNoches > 1 ? 's' : ''),
+      monto: extra
+    });
+  }
+
+  // El recargo de early/late va UNA vez por estadía: son horas del primer o del
+  // último día, no de cada noche.
+  if (tipo === 'early' && LN_TAR.recargoEarly) {
+    out.total += LN_TAR.recargoEarly;
+    out.extras.push({ label: 'Early check-in (9am)', monto: LN_TAR.recargoEarly });
+  }
+  if (tipo === 'late' && LN_TAR.recargoLate) {
+    out.total += LN_TAR.recargoLate;
+    out.extras.push({ label: 'Late check-out (4pm)', monto: LN_TAR.recargoLate });
+  }
+  return out;
+}
 
 // ─── ESTIMACIÓN DE COMISIÓN AIRBNB ───────────────────────────
 // Análisis del CSV histórico reveló:
@@ -8747,7 +8927,7 @@ function handleTipoChange() {
   const _ceEl2 = document.getElementById('fCheckoutExtendido');
   _updateHorasCustomHint(tipo, !!(_ceEl2 && _ceEl2.checked));
 
-  if (!ciInp.value) { _updateSalidaLock(tipo); calcSaldo(); return; }
+  if (!ciInp.value) { _updateSalidaLock(tipo); calcSaldo(); calcPrice(); return; }
 
   // FORM en modo "real-day": entrada = día que el huésped percibe como llegada.
   // Calcular noches actuales solo para la heurística legacy.
@@ -8780,11 +8960,11 @@ function handleTipoChange() {
   }
 
   // Default monto para pasatarde, pasadía y pasanoche.
-  if (tipo === 'pasatarde' || tipo === 'pasadia' || tipo === 'pasanoche') {
-    amountInp.value = '75.00';
-  }
+  // Antes acá se escribía '75.00' fijo para cualquier pasadía, sin mirar el
+  // tipo ni las personas. Ahora lo cotiza el tarifario.
   _updateSalidaLock(tipo);
   calcSaldo();
+  calcPrice();
   _refreshMultiCabinAvailability();
 }
 
@@ -9028,15 +9208,11 @@ function openModal(cabin, date) {
   const _waCkNew = document.getElementById('fNotificarWhatsApp');
   if (_waCkNew) _waCkNew.checked = false;
   document.getElementById('notificarWrap').style.display = 'none';
-  document.getElementById('fPromoTarifa').checked = false;
-  // 110 si es viernes o sábado, 90 el resto
-  if (date) {
-    const d = new Date(date + 'T12:00:00');
-    const dow = d.getDay(); // 0=dom, 5=vie, 6=sab
-    document.getElementById('fAmount').value = (dow === 5 || dow === 6) ? '110.00' : '90.00';
-  } else {
-    document.getElementById('fAmount').value = '90.00';
-  }
+  // El monto lo pone calcPrice() al final, con el tarifario completo. Antes acá
+  // se escribía 110 si era vie/sáb y 90 si no — sin promo, sin feriados, sin
+  // persona extra y sin mirar cuántas noches eran.
+  document.getElementById('fAmount').value = '';
+  _montoManual = false;
   const _tipo = document.getElementById('fTipo');
   if (_tipo) { _tipo.value = 'noche'; _tipo.dataset.prevTipo = 'noche'; }
   const _hint = document.getElementById('fTipoHint');
@@ -9093,8 +9269,11 @@ function editReservation(id) {
   // Para orígenes Airbnb no aplica (no llevan abono manual).
   document.getElementById('fDeposit').value = (r.origin === 'Airbnb') ? (r.deposit || 0) : montoRecibido(r);
   document.getElementById('fAmount').value = r.amount;
+  // Una reserva ya guardada tiene su precio cerrado —quizás negociado— así que
+  // el auto-cálculo NO lo pisa. El desglose igual se muestra y avisa si difiere
+  // de la tarifa de lista, con un botón para adoptarla.
+  _montoManual = true;
   document.getElementById('fComentarios').value = r.comentarios || '';
-  document.getElementById('fPromoTarifa').checked = false;
   const _ceEl = document.getElementById('fCheckoutExtendido');
   if (_ceEl) _ceEl.checked = !!r.checkoutExtendido;
   const _tipoEl = document.getElementById('fTipo');
@@ -9136,39 +9315,104 @@ function closeModal() {
   document.getElementById('reservaModal').classList.remove('open');
 }
 
+// El monto se auto-calcula, pero jamás pisa un número escrito a mano: si el
+// admin negocia un precio, ese gana. `_montoManual` se prende cuando el usuario
+// teclea en el campo y se apaga al abrir el modal o al tocar "usar".
+let _montoManual = false;
+
+function _marcarMontoManual() {
+  _montoManual = true;
+  calcPrice();          // refresca la comparación contra la tarifa de lista
+}
+
+// Rehace la cotización con el tarifario y la pinta. Se llama desde TODO lo que
+// mueve el precio: fechas, cabaña, personas, tipo. Antes solo la llamaban las
+// dos fechas y, encima, únicamente llenaba el monto si el campo estaba vacío —
+// por eso cambiar el rango a 2+ noches no recalculaba nada.
 function calcPrice() {
-  const checkin = document.getElementById('fCheckin').value;
-  const checkout = document.getElementById('fCheckout').value;
-  if(!checkin || !checkout) { const pp = document.getElementById('pricePreview'); if(pp) pp.style.display='none'; return; }
+  const box = document.getElementById('pricePreview');
+  if (!box) return;
+  const tipo    = (document.getElementById('fTipo')    || {}).value || 'noche';
+  const cabin   = (document.getElementById('fCabin')   || {}).value || 'verde';
+  const origin  = (document.getElementById('fOrigin')  || {}).value || 'Directa';
+  const personas = (document.getElementById('fPersons') || {}).value || 2;
+  const entrada = document.getElementById('fCheckin').value;
+  const salida  = document.getElementById('fCheckout').value;
 
-  const start = new Date(checkin + 'T12:00:00');
-  const end = new Date(checkout + 'T12:00:00');
-  if(end <= start) { const pp = document.getElementById('pricePreview'); if(pp) pp.style.display='none'; return; }
-
-  let total = 0, weekdays = 0, weekends = 0;
-  let cur = new Date(start);
-  while(cur < end) {
-    const dow = cur.getDay();
-    if(dow === 5 || dow === 6) { total += RATES.weekend; weekends++; }
-    else { total += RATES.weekday; weekdays++; }
-    cur.setDate(cur.getDate()+1);
+  // Orígenes sin cobro y reservas abiertas (sin fecha) no tienen nada que cotizar.
+  if (SIN_PAGO_ORIGINS.includes(origin) || origin === 'Abierta' || !entrada) {
+    box.style.display = 'none';
+    return;
   }
 
-  let breakdown = [];
-  if(weekdays) breakdown.push(`${weekdays} noche${weekdays>1?'s':''} sem × $${RATES.weekday}`);
-  if(weekends) breakdown.push(`${weekends} noche${weekends>1?'s':''} fin sem × $${RATES.weekend}`);
+  const q       = _lnCotizar(tipo, cabin, entrada, salida, personas, false);
+  const sinProm = _lnCotizar(tipo, cabin, entrada, salida, personas, true);
+  if (!q.noches.length) { box.style.display = 'none'; return; }
 
-  const priceAmountEl = document.getElementById('priceAmount');
-  const priceBreakdownEl = document.getElementById('priceBreakdown');
-  const pricePreviewEl = document.getElementById('pricePreview');
-  if (priceAmountEl) priceAmountEl.textContent = `$${total.toFixed(2)}`;
-  if (priceBreakdownEl) priceBreakdownEl.textContent = breakdown.join(' · ');
-  if (pricePreviewEl) pricePreviewEl.style.display = 'flex';
+  const hayPromo = sinProm.total > q.total;
+  const esPorNoche = !['pasatarde', 'pasanoche', 'pasadia'].includes(tipo);
 
-  if(!document.getElementById('fAmount').value) {
-    document.getElementById('fAmount').value = total.toFixed(2);
+  // Sincroniza el campo Monto salvo que el usuario lo haya escrito él.
+  const amountInp = document.getElementById('fAmount');
+  if (!_montoManual) {
+    amountInp.value = q.total.toFixed(2);
     calcSaldo();
   }
+  const actual = parseFloat(amountInp.value) || 0;
+  const difiere = _montoManual && Math.abs(actual - q.total) >= 0.01;
+
+  // ── Encabezado: noches ──
+  let html = '<div class="pp-head">';
+  if (esPorNoche) {
+    html += '<span class="pp-noches">' + q.nNoches + ' noche' + (q.nNoches > 1 ? 's' : '') + '</span>';
+  } else {
+    html += '<span class="pp-noches">' + (TIPO_LABEL[tipo] || tipo) + '</span>';
+  }
+  html += '<span class="pp-total">$' + q.total.toFixed(2)
+        + (hayPromo ? ' <s>$' + sinProm.total.toFixed(2) + '</s>' : '') + '</span>';
+  html += '</div>';
+
+  // ── Desglose noche por noche ──
+  html += '<div class="pp-rows">';
+  if (esPorNoche) {
+    // Noches consecutivas al mismo precio y motivo se agrupan: una estadía de
+    // 5 noches entre semana no necesita cinco renglones idénticos.
+    const grupos = [];
+    q.noches.forEach(n => {
+      const ult = grupos[grupos.length - 1];
+      if (ult && ult.precio === n.precio && ult.motivo === n.motivo) ult.n++;
+      else grupos.push({ precio: n.precio, motivo: n.motivo, n: 1, desde: n.fecha });
+    });
+    grupos.forEach(g => {
+      html += '<div class="pp-row"><span>' + g.n + ' × ' + g.motivo + '</span>'
+            + '<span>$' + (g.precio * g.n).toFixed(2) + '</span></div>';
+    });
+  } else {
+    html += '<div class="pp-row"><span>' + q.noches[0].motivo + '</span>'
+          + '<span>$' + q.noches[0].precio.toFixed(2) + '</span></div>';
+  }
+  q.extras.forEach(x => {
+    html += '<div class="pp-row"><span>' + x.label + '</span><span>$' + x.monto.toFixed(2) + '</span></div>';
+  });
+  html += '</div>';
+
+  if (hayPromo) {
+    html += '<div class="pp-nota pp-promo">🏷 Tarifa promocional aplicada · ahorra $'
+          + (sinProm.total - q.total).toFixed(2) + '</div>';
+  }
+  if (difiere) {
+    html += '<div class="pp-nota pp-manual">El monto cargado ($' + actual.toFixed(2)
+          + ') no coincide con la tarifa. '
+          + '<button type="button" onclick="usarTarifaCalculada()">Usar $' + q.total.toFixed(2) + '</button></div>';
+  }
+  box.innerHTML = html;
+  box.style.display = 'block';
+}
+
+// Vuelve a la tarifa de lista y reanuda el auto-cálculo.
+function usarTarifaCalculada() {
+  _montoManual = false;
+  calcPrice();
 }
 
 function calcSaldo() {
@@ -9478,7 +9722,6 @@ function renderDetailPagos(r) {
 
 function clearVoucher() {
   pendingVoucher = null;
-  _amountBeforePromo = null;
   const fileInp = document.getElementById('fVoucher');     if (fileInp) fileInp.value = '';
   const dz      = document.getElementById('voucherDropzone');
   const dzTitle = document.getElementById('voucherDropzoneTitle');
@@ -9488,11 +9731,6 @@ function clearVoucher() {
   if (dzHint)  dzHint.textContent  = 'Toca para abrir galería o cámara';
   const card = document.getElementById('voucherCard');
   if (card) card.classList.remove('shown');
-  // Promo toggle se deshabilita
-  const promoChk = document.getElementById('fPromoTarifa');
-  const promoLab = document.getElementById('promoToggleLabel');
-  if (promoChk) { promoChk.checked = false; promoChk.disabled = true; }
-  if (promoLab) promoLab.classList.add('disabled');
   const alertEl = document.getElementById('voucherValidationAlert');
   if (alertEl) alertEl.style.display = 'none';
   // Quitar el voucher pendiente saca su fila "por guardar" y devuelve el saldo
@@ -9614,12 +9852,6 @@ async function handleVoucherUpload(event) {
       _updateMultiCabinSplitInfo();
     }
 
-    // Habilitar promo y rellenar card
-    const promoChk = document.getElementById('fPromoTarifa');
-    const promoLab = document.getElementById('promoToggleLabel');
-    if (promoChk) promoChk.disabled = false;
-    if (promoLab) promoLab.classList.remove('disabled');
-
     document.getElementById('vcSender').textContent = pendingVoucher.sender || '—';
     document.getElementById('vcMonto').textContent  = montoNum > 0 ? '$' + montoNum.toFixed(2) : '—';
     document.getElementById('vcFecha').textContent  = _formatVoucherFecha(pendingVoucher.fechaPago);
@@ -9639,28 +9871,11 @@ async function handleVoucherUpload(event) {
   }
 }
 
-let _amountBeforePromo = null;
-
-function togglePromoTarifa() {
-  const chk = document.getElementById('fPromoTarifa');
-  if (!chk || chk.disabled) return;
-  if (!pendingVoucher) { chk.checked = false; return; }
-  const amountInp = document.getElementById('fAmount');
-  if (chk.checked) {
-    _amountBeforePromo = amountInp.value;
-    const monto = _voucherMontoNumber(pendingVoucher.monto);
-    if (monto > 0) {
-      amountInp.value = monto.toFixed(2);
-      calcSaldo();
-    }
-  } else {
-    if (_amountBeforePromo !== null) {
-      amountInp.value = _amountBeforePromo;
-      _amountBeforePromo = null;
-      calcSaldo();
-    }
-  }
-}
+// El checkbox "Promocional" se eliminó. No aplicaba ninguna tarifa: copiaba el
+// monto del voucher al total, o sea "cobrar lo que el cliente pagó" — que no es
+// una promoción y tapaba diferencias de pago en vez de mostrarlas. La promo
+// ahora sale del tarifario (LN_TAR/_lnCotizar), que ya sabe si está vigente
+// para esas fechas, y el desglose la muestra tachando el precio de lista.
 
 function handleOriginChange() {
   const origin = document.getElementById('fOrigin').value;
@@ -16708,6 +16923,11 @@ renderDisponibilidad();
 // Auto-sync con Google Sheets al cargar y cada 15 minutos
 syncFromSheets();
 setInterval(syncFromSheets, 15 * 60 * 1000);
+// Tarifario: alimenta el cálculo del modal de reserva. Va aparte de
+// syncFromSheets porque cambia poquísimo y no debe demorar el resto; si falla,
+// el modal sigue con los defaults y solo pierde promos/feriados.
+cargarTarifario();
+setInterval(cargarTarifario, 15 * 60 * 1000);
 
 // Modo admin via ?admin=1 → habilita acceso al tab Bot (CRM de conversaciones).
 // Solo la clave habilita el modo admin. Antes bastaba con ?admin=1, que dejaba
