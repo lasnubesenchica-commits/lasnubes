@@ -2092,6 +2092,20 @@
     font-family: monospace;
   }
 
+  /* Avisos del modal (choque de fechas, voucher vs tarifa, ventanas libres) */
+  .modal-aviso {
+    border-radius: 10px; padding: 9px 12px; font-size: 12.5px; line-height: 1.5;
+    border: 1px solid transparent;
+  }
+  .modal-aviso--rojo    { background: #fbecea; border-color: #e8c4bd; color: #8c3b2b; }
+  .modal-aviso--ambar   { background: #fdf5e6; border-color: #e8d8b0; color: #7a5a1f; }
+  .modal-aviso--info    { background: #eef3f8; border-color: #c9d9e8; color: #37536e; }
+  .modal-aviso button {
+    background: none; border: 1px solid currentColor; border-radius: 6px;
+    padding: 2px 9px; margin-left: 6px; font-family: inherit; font-size: 11.5px;
+    color: inherit; cursor: pointer;
+  }
+
   /* Desglose del tarifario en el modal de reserva */
   .price-preview {
     background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
@@ -2109,6 +2123,7 @@
     display: flex; justify-content: space-between; gap: 10px;
     padding: 3px 0; color: var(--text-muted); font-size: 12.5px;
   }
+  .price-preview .pp-desc { color: var(--verde-dark); }
   .price-preview .pp-nota { margin-top: 8px; font-size: 12px; line-height: 1.45; }
   .price-preview .pp-promo  { color: var(--verde-dark); }
   .price-preview .pp-manual { color: #b06a2c; }
@@ -4067,11 +4082,11 @@
     <div class="form-row">
       <div class="form-group">
         <label id="fEmailLabel">Email <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— confirmación</span></label>
-        <input type="email" id="fEmail" placeholder="correo@ejemplo.com">
+        <input type="email" id="fEmail" placeholder="correo@ejemplo.com" oninput="_refrescarAvisoLoyalty()">
       </div>
       <div class="form-group">
         <label>Teléfono</label>
-        <input type="tel" id="fTelefono" placeholder="N/A">
+        <input type="tel" id="fTelefono" placeholder="N/A" oninput="_refrescarAvisoLoyalty()">
       </div>
     </div>
 
@@ -4079,7 +4094,7 @@
     <div class="form-row">
       <div class="form-group">
         <label>Cabaña</label>
-        <select id="fCabin" onchange="applyModalCabinTint(this.value);calcPrice();">
+        <select id="fCabin" onchange="applyModalCabinTint(this.value);_refrescarAvisosModal();">
           <option value="verde">Paseo por Las Nubes</option>
           <option value="azul">Portal hacia Las Nubes</option>
           <option value="lila">Puente entre Las Nubes</option>
@@ -4087,7 +4102,15 @@
       </div>
       <div class="form-group">
         <label>Personas</label>
-        <input type="number" id="fPersons" min="1" max="10" value="2" oninput="calcPrice()">
+        <input type="number" id="fPersons" min="1" max="10" value="2" oninput="calcPrice();_updateMultiCabinSplitInfo();">
+      </div>
+    </div>
+
+    <!-- Choque de fechas, en vivo. Antes el conflicto solo aparecía al apretar
+         Guardar, con todo el formulario ya lleno. -->
+    <div class="form-row">
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <div id="conflictoAviso" class="modal-aviso modal-aviso--rojo" style="display:none;"></div>
       </div>
     </div>
 
@@ -4095,11 +4118,11 @@
     <div class="form-row" id="dateRow">
       <div class="form-group">
         <label>Entrada</label>
-        <input type="date" id="fCheckin" onchange="autoCheckout();calcPrice();_refreshMultiCabinAvailability();">
+        <input type="date" id="fCheckin" onchange="autoCheckout();_refrescarAvisosModal();_refreshMultiCabinAvailability();">
       </div>
       <div class="form-group">
         <label>Salida</label>
-        <input type="date" id="fCheckout" onchange="calcPrice();_refreshMultiCabinAvailability();">
+        <input type="date" id="fCheckout" onchange="_refrescarAvisosModal();_refreshMultiCabinAvailability();">
       </div>
     </div>
 
@@ -4126,6 +4149,7 @@
           <option value="late">Late check-out (2pm → 4pm día siguiente · bloquea noche siguiente)</option>
         </select>
         <div id="fTipoHint" style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.4;"></div>
+        <div id="tipoSugerencia" class="modal-aviso" style="display:none;margin-top:8px;"></div>
       </div>
     </div>
 
@@ -4185,7 +4209,7 @@
       </div>
       <div class="form-group">
         <label>Origen</label>
-        <select id="fOrigin" onchange="handleOriginChange();calcPrice();">
+        <select id="fOrigin" onchange="handleOriginChange();_refrescarAvisosModal();">
           <option value="Directa">Directa</option>
           <option value="Referido">Referido</option>
           <option value="Airbnb">Airbnb</option>
@@ -4217,6 +4241,8 @@
     <div class="form-row">
       <div class="form-group" style="grid-column: 1 / -1;">
         <div id="pricePreview" class="price-preview" style="display:none;"></div>
+        <div id="loyaltyAviso" class="modal-aviso" style="display:none;margin-top:8px;"></div>
+        <div id="pagoAviso" class="modal-aviso" style="display:none;margin-top:8px;"></div>
       </div>
     </div>
     <div class="form-row">
@@ -4239,6 +4265,7 @@
         </label>
       </div>
       <button class="btn btn-ghost" id="cancelReservationBtn" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-ghost" id="modalCotizarBtn" onclick="copiarCotizacionModal()" style="font-size:13px;" title="Copiar la cotización lista para pegar en WhatsApp o Instagram, con el total que se va a cobrar.">📋 Cotización</button>
       <button class="btn btn-ghost" id="modalPreviewBtn" onclick="previewConfirmacionAMi()" style="font-size:13px;" title="Enviarte a ti (email + WhatsApp) la confirmación tal como le llegará al cliente, para revisarla antes de mandarla.">👁 Vista previa</button>
       <button class="btn btn-ghost" id="modalWhatsAppBtn" style="display:none;font-size:13px;">💬 Enviar a WhatsApp</button>
       <button class="btn btn-primary" id="saveReservationBtn" onclick="saveReservation()">Guardar reserva</button>
@@ -4744,6 +4771,8 @@ function _canonOrigin(raw) {
 // Ahora todo sale de acá y los valores se cargan de Config vía getTarifas.
 // Los números que quedan son solo el fallback de arranque, por si la llamada
 // falla; el backend los pisa apenas responde.
+const DESCUENTO_REFERIDO = 20;   // lo que se le descuenta al referido
+
 const LN_TAR = {
   weekday: 90, weekend: 110, promo: 75, promoActive: false, promoMeses: 0,
   viernes: 110, sabado: 110, vispera: 110, feriado: 110, escolar: 110,
@@ -4852,7 +4881,7 @@ function _lnRecargoPersona(cabinKey) {
 // Devuelve { total, noches[], extras[], sinPromo } para una estadía del modal.
 // `noches` trae una entrada por noche con su fecha, precio y motivo; `extras`
 // los recargos que no son por noche (persona adicional, early/late).
-function _lnCotizar(tipo, cabinKey, entradaISO, salidaISO, personas, sinPromo) {
+function _lnCotizar(tipo, cabinKey, entradaISO, salidaISO, personas, sinPromo, cabinPorNoche) {
   personas = Math.max(1, parseInt(personas, 10) || 2);
   const out = { total: 0, noches: [], extras: [], nNoches: 0 };
 
@@ -4884,14 +4913,34 @@ function _lnCotizar(tipo, cabinKey, entradaISO, salidaISO, personas, sinPromo) {
   out.nNoches = out.noches.length;
 
   if (personas > 2 && out.nNoches) {
-    const porPersona = _lnRecargoPersona(cabinKey);
-    const extra = porPersona * (personas - 2) * out.nNoches;
-    out.total += extra;
-    out.extras.push({
-      label: (personas - 2) + ' persona' + (personas - 2 > 1 ? 's' : '') + ' extra × $' + porPersona
-             + ' × ' + out.nNoches + ' noche' + (out.nNoches > 1 ? 's' : ''),
-      monto: extra
-    });
+    // Con multi-cabaña cada noche puede estar en una cabaña distinta, y el
+    // recargo por persona no es el mismo en todas (Portal $10, las otras $20).
+    // Sin esto el total del modal no coincidía con el split de abajo.
+    if (cabinPorNoche) {
+      let extra = 0;
+      const usadas = {};
+      out.noches.forEach(n => {
+        const c = cabinPorNoche[n.fecha] || cabinKey;
+        extra += _lnRecargoPersona(c) * (personas - 2);
+        usadas[c] = (usadas[c] || 0) + 1;
+      });
+      out.total += extra;
+      const det = Object.keys(usadas)
+        .map(c => '$' + _lnRecargoPersona(c) + '×' + usadas[c]).join(' + ');
+      out.extras.push({
+        label: (personas - 2) + ' persona' + (personas - 2 > 1 ? 's' : '') + ' extra (' + det + ')',
+        monto: extra
+      });
+    } else {
+      const porPersona = _lnRecargoPersona(cabinKey);
+      const extra = porPersona * (personas - 2) * out.nNoches;
+      out.total += extra;
+      out.extras.push({
+        label: (personas - 2) + ' persona' + (personas - 2 > 1 ? 's' : '') + ' extra × $' + porPersona
+               + ' × ' + out.nNoches + ' noche' + (out.nNoches > 1 ? 's' : ''),
+        monto: extra
+      });
+    }
   }
 
   // El recargo de early/late va UNA vez por estadía: son horas del primer o del
@@ -8964,7 +9013,7 @@ function handleTipoChange() {
   // tipo ni las personas. Ahora lo cotiza el tarifario.
   _updateSalidaLock(tipo);
   calcSaldo();
-  calcPrice();
+  _refrescarAvisosModal();
   _refreshMultiCabinAvailability();
 }
 
@@ -9049,8 +9098,25 @@ function _regenerateMultiCabinNights() {
   _updateMultiCabinSplitInfo();
   // Al cambiar cualquier select, recalcular info.
   wrap.querySelectorAll('select[data-night-idx]').forEach(s => {
-    s.onchange = _updateMultiCabinSplitInfo;
+    // Recalcula también el TOTAL: el recargo por persona depende de la cabaña.
+    s.onchange = () => { calcPrice(); _updateMultiCabinSplitInfo(); };
   });
+}
+
+// Peso de cada cabaña en el reparto: lo que REALMENTE vale su tramo según el
+// tarifario. Antes se repartía en partes iguales por noche, lo que ignoraba dos
+// cosas: que un viernes vale más que un lunes, y que la persona extra cuesta
+// $10 en Portal contra $20 en las otras. Con noches de distinto valor, el
+// reparto parejo le cargaba de más a la cabaña barata.
+function _multiCabinPesos(selects, personas) {
+  const pesos = {};   // cabaña → valor de tarifa de su tramo
+  selects.forEach(s => {
+    const iso = s.dataset.nightIso, cab = s.value;
+    let v = _lnPrecioDia(iso, false);
+    if (personas > 2) v += _lnRecargoPersona(cab) * (personas - 2);
+    pesos[cab] = +((pesos[cab] || 0) + v).toFixed(2);
+  });
+  return pesos;
 }
 
 function _updateMultiCabinSplitInfo() {
@@ -9060,16 +9126,22 @@ function _updateMultiCabinSplitInfo() {
   const selects = wrap ? wrap.querySelectorAll('select[data-night-idx]') : [];
   const nights = selects.length;
   if (nights < 2) { infoEl.textContent = ''; return; }
-  const amount = parseFloat(document.getElementById('fAmount').value) || 0;
-  const perNight = amount / nights;
-  // Contar cuántas noches por cabaña
+  const amount   = parseFloat(document.getElementById('fAmount').value) || 0;
+  const personas = parseInt((document.getElementById('fPersons') || {}).value, 10) || 2;
+
   const counts = { verde: 0, azul: 0, lila: 0 };
   selects.forEach(s => { counts[s.value] = (counts[s.value] || 0) + 1; });
+  const pesos = _multiCabinPesos(selects, personas);
+  const sumaPesos = Object.keys(pesos).reduce((t, k) => t + pesos[k], 0);
+
   const names = { verde: 'Paseo', azul: 'Portal', lila: 'Puente' };
-  const breakdown = Object.keys(counts).filter(k => counts[k] > 0)
-    .map(k => names[k] + ': ' + counts[k] + ' × $' + perNight.toFixed(2) + ' = $' + (counts[k] * perNight).toFixed(2))
-    .join(' · ');
-  infoEl.textContent = 'Split: ' + breakdown + '  →  Total $' + amount.toFixed(2);
+  const partes = Object.keys(counts).filter(k => counts[k] > 0).map(k => {
+    // El total cobrado puede estar negociado: se reparte en proporción al
+    // valor de tarifa de cada tramo, no en partes iguales.
+    const share = sumaPesos > 0 ? amount * pesos[k] / sumaPesos : amount / nights;
+    return names[k] + ': ' + counts[k] + ' noche' + (counts[k] > 1 ? 's' : '') + ' = $' + share.toFixed(2);
+  });
+  infoEl.textContent = 'Split por tarifa · ' + partes.join(' · ') + '  →  Total $' + amount.toFixed(2);
 }
 
 function autoCheckout() {
@@ -9150,26 +9222,78 @@ function _previewRefCode() {
   const uses  = referralUses.filter(u => (u.referrerEmail || '').toLowerCase() === (ref.email || '').toLowerCase());
   const count = uses.length + 1;  // este sera el #(count)
   const btn = _refDiscountApplied
-    ? '<span style="margin-left:8px;color:var(--text-muted);font-size:11px;">✓ Descuento aplicado</span>'
-    : '<button type="button" onclick="_applyReferralDiscount()" style="margin-left:8px;background:#5a85b0;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;">Aplicar −$20</button>';
+    ? '<button type="button" onclick="_quitarDescuentoReferido()" style="margin-left:8px;background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;color:var(--text-muted);">✓ Aplicado · quitar</button>'
+    : '<button type="button" onclick="_applyReferralDiscount()" style="margin-left:8px;background:#5a85b0;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;">Aplicar −$' + DESCUENTO_REFERIDO + '</button>';
   prev.innerHTML = '✓ Código de <strong>' + (ref.nombre || ref.email) + '</strong> · sería su ' + count + 'ª referencia' + btn;
   prev.style.color = '#2c5e22';
 }
 
+// Los descuentos ya NO se restan a mano del campo Monto. Antes esto hacía
+// `montoEl.value = current - 20`, que tenía dos problemas: dependía de que el
+// monto base ya estuviera cargado (si no, avisaba y no hacía nada), y el
+// descuento desaparecía en silencio al recalcular la tarifa. Ahora son una
+// línea más del desglose y sobreviven a cualquier recálculo.
 function _applyReferralDiscount() {
   if (_refDiscountApplied) return;
-  const montoEl  = document.getElementById('fAmount');
-  const originEl = document.getElementById('fOrigin');
-  if (!montoEl) return;
-  const current = parseFloat(montoEl.value) || 0;
-  if (current <= 0) { showToast('⚠ Ingresá primero el monto base'); return; }
-  montoEl.value = (current - 20).toFixed(2);
-  if (originEl) originEl.value = 'Referido';
   _refDiscountApplied = true;
-  // Recalcular saldo si la funcion existe
-  if (typeof calcSaldo === 'function') calcSaldo();
-  _previewRefCode(); // re-render para mostrar "✓ Descuento aplicado"
-  showToast('✓ −$20 aplicado al monto · Origen: Referido');
+  const originEl = document.getElementById('fOrigin');
+  if (originEl) originEl.value = 'Referido';
+  _montoManual = false;      // el descuento manda: se recotiza con él
+  _refrescarAvisosModal();
+  _previewRefCode();         // re-render para mostrar "✓ Descuento aplicado"
+  showToast('✓ Descuento de referido aplicado · Origen: Referido');
+}
+
+function _quitarDescuentoReferido() {
+  _refDiscountApplied = false;
+  _montoManual = false;
+  _refrescarAvisosModal();
+  _previewRefCode();
+}
+
+// ─── Descuentos aplicables ───────────────────────────────────
+// Devuelve [{label, monto}] a restar del subtotal de la estadía.
+let _loyaltyAplicado = false;
+
+function _lnDescuentos(q) {
+  const out = [];
+  if (_refDiscountApplied) {
+    out.push({ label: 'Descuento por referido', monto: DESCUENTO_REFERIDO });
+  }
+  if (_loyaltyAplicado && q && q.noches.length) {
+    // Una noche de cortesía. Se valúa con la noche MÁS ECONÓMICA de la estadía:
+    // regalar la más cara (un feriado a $130) convertiría el beneficio en algo
+    // muy distinto según qué fechas eligiera el huésped.
+    const barata = q.noches.reduce((min, n) => Math.min(min, n.precio), Infinity);
+    out.push({ label: 'Cliente Fiel · 1 noche de cortesía (la más económica)', monto: barata });
+  }
+  return out;
+}
+
+// Aviso de crédito Cliente Fiel disponible para el huésped del formulario.
+function _refrescarAvisoLoyalty() {
+  const box = document.getElementById('loyaltyAviso');
+  if (!box) return;
+  const origin = (document.getElementById('fOrigin') || {}).value || 'Directa';
+  const email  = (document.getElementById('fEmail')    || {}).value || '';
+  const tel    = (document.getElementById('fTelefono') || {}).value || '';
+  if (SIN_PAGO_ORIGINS.includes(origin)) { box.style.display = 'none'; return; }
+  const credit = _findLoyaltyCreditFor(email, tel);
+  if (!credit || credit.usedAt) { box.style.display = 'none'; return; }
+
+  box.className = 'modal-aviso modal-aviso--info';
+  box.innerHTML = _loyaltyAplicado
+    ? '🎟 Crédito <strong>Cliente Fiel</strong> aplicado como noche de cortesía. '
+      + '<button type="button" onclick="_toggleLoyalty(false)">Quitar</button>'
+    : '🎟 Este huésped tiene un crédito <strong>Cliente Fiel</strong> sin usar. '
+      + '<button type="button" onclick="_toggleLoyalty(true)">Aplicar noche de cortesía</button>';
+  box.style.display = 'block';
+}
+
+function _toggleLoyalty(on) {
+  _loyaltyAplicado = !!on;
+  _montoManual = false;
+  _refrescarAvisosModal();
 }
 
 function openModal(cabin, date) {
@@ -9213,6 +9337,7 @@ function openModal(cabin, date) {
   // persona extra y sin mirar cuántas noches eran.
   document.getElementById('fAmount').value = '';
   _montoManual = false;
+  _loyaltyAplicado = false;
   const _tipo = document.getElementById('fTipo');
   if (_tipo) { _tipo.value = 'noche'; _tipo.dataset.prevTipo = 'noche'; }
   const _hint = document.getElementById('fTipoHint');
@@ -9240,7 +9365,7 @@ function openModal(cabin, date) {
   renderVouchersRegistrados(null); // reserva nueva → sin pagos previos
   document.getElementById('voucherSection').style.display = 'block'; // Directa por defecto
   applyModalCabinTint(document.getElementById('fCabin').value);
-  calcPrice();
+  _refrescarAvisosModal();
 }
 
 function editReservation(id) {
@@ -9345,11 +9470,19 @@ function calcPrice() {
     return;
   }
 
-  const q       = _lnCotizar(tipo, cabin, entrada, salida, personas, false);
-  const sinProm = _lnCotizar(tipo, cabin, entrada, salida, personas, true);
+  const mapaMulti = _mapaCabinPorNoche();
+  const q       = _lnCotizar(tipo, cabin, entrada, salida, personas, false, mapaMulti);
+  const sinProm = _lnCotizar(tipo, cabin, entrada, salida, personas, true,  mapaMulti);
   if (!q.noches.length) { box.style.display = 'none'; return; }
 
-  const hayPromo = sinProm.total > q.total;
+  // Los descuentos (referido, Cliente Fiel) se restan del subtotal y quedan
+  // como línea propia, no escondidos dentro del monto.
+  const descuentos = _lnDescuentos(q);
+  const subtotal   = q.total;
+  descuentos.forEach(d => { q.total -= d.monto; });
+  q.total = Math.max(0, +q.total.toFixed(2));
+
+  const hayPromo = sinProm.total > subtotal;
   const esPorNoche = !['pasatarde', 'pasanoche', 'pasadia'].includes(tipo);
 
   // Sincroniza el campo Monto salvo que el usuario lo haya escrito él.
@@ -9394,6 +9527,9 @@ function calcPrice() {
   q.extras.forEach(x => {
     html += '<div class="pp-row"><span>' + x.label + '</span><span>$' + x.monto.toFixed(2) + '</span></div>';
   });
+  descuentos.forEach(d => {
+    html += '<div class="pp-row pp-desc"><span>' + d.label + '</span><span>−$' + d.monto.toFixed(2) + '</span></div>';
+  });
   html += '</div>';
 
   if (hayPromo) {
@@ -9407,12 +9543,297 @@ function calcPrice() {
   }
   box.innerHTML = html;
   box.style.display = 'block';
+  _refrescarAvisoPago(q.total);
+}
+
+// ─── Voucher vs tarifa ───────────────────────────────────────
+// Contrasta lo REALMENTE cobrado (vouchers ya registrados + el que se acaba de
+// subir) contra lo que cotiza el tarifario. No alcanza con el "Saldo
+// pendiente", que compara contra el campo Monto: si ese campo se puso igual al
+// voucher —como hacía el viejo checkbox "Promocional"— el saldo da cero y la
+// diferencia contra la tarifa queda invisible.
+function _refrescarAvisoPago(totalTarifa) {
+  const box = document.getElementById('pagoAviso');
+  if (!box) return;
+  const origin = (document.getElementById('fOrigin') || {}).value || 'Directa';
+  if (SIN_PAGO_ORIGINS.includes(origin) || origin === 'Abierta' || !totalTarifa) {
+    box.style.display = 'none'; return;
+  }
+
+  // Ya registrados en la reserva que se está editando + el pendiente de subir.
+  const rEdit = editId ? reservations.find(x => x.id === editId) : null;
+  let cobrado = 0, hayDatos = false;
+  _voucherEntries(rEdit).forEach(v => { if (v.montoConocido) { cobrado += v.monto; hayDatos = true; } });
+  if (pendingVoucher) {
+    const m = _voucherMontoNumber(pendingVoucher.monto);
+    if (m > 0) { cobrado += m; hayDatos = true; }
+  }
+  if (!hayDatos) { box.style.display = 'none'; return; }
+
+  const dif = +(totalTarifa - cobrado).toFixed(2);
+  const amountInp = document.getElementById('fAmount');
+  if (Math.abs(dif) < 0.01) {
+    box.className = 'modal-aviso modal-aviso--info';
+    box.innerHTML = '✓ Los pagos ($' + cobrado.toFixed(2) + ') cubren la tarifa completa.';
+  } else if (dif > 0) {
+    box.className = 'modal-aviso modal-aviso--ambar';
+    box.innerHTML = 'El voucher suma <strong>$' + cobrado.toFixed(2) + '</strong> pero la estadía cotiza <strong>$'
+      + totalTarifa.toFixed(2) + '</strong> — faltan <strong>$' + dif.toFixed(2) + '</strong>.'
+      + (Math.abs((parseFloat(amountInp.value) || 0) - cobrado) < 0.01
+          ? ' <button type="button" onclick="usarTarifaCalculada()">Cobrar $' + totalTarifa.toFixed(2) + '</button>'
+          : '');
+  } else {
+    box.className = 'modal-aviso modal-aviso--info';
+    box.innerHTML = 'El voucher suma <strong>$' + cobrado.toFixed(2) + '</strong>, <strong>$'
+      + Math.abs(dif).toFixed(2) + '</strong> por encima de la tarifa ($' + totalTarifa.toFixed(2) + ').';
+  }
+  box.style.display = 'block';
 }
 
 // Vuelve a la tarifa de lista y reanuda el auto-cálculo.
 function usarTarifaCalculada() {
   _montoManual = false;
   calcPrice();
+}
+
+// Con multi-cabaña activo devuelve { fechaISO: cabaña } para que la cotización
+// use el recargo por persona de la cabaña real de cada noche. null si no aplica.
+function _mapaCabinPorNoche() {
+  const chk = document.getElementById('fMultiCabin');
+  if (!chk || !chk.checked) return null;
+  const sel = document.querySelectorAll('#fMultiNights select[data-night-idx]');
+  if (sel.length < 2) return null;
+  const mapa = {};
+  sel.forEach(s => { if (s.dataset.nightIso) mapa[s.dataset.nightIso] = s.value; });
+  return Object.keys(mapa).length ? mapa : null;
+}
+
+// ─── Copiar cotización desde el modal ───────────────────────
+// Mismo formato de iconos que el botón 📋 del calendario público, pero armado
+// con lo que hay cargado en el modal. Antes, para mandarle un presupuesto a
+// alguien que escribía por WhatsApp había que salir del modal, ir al
+// calendario, encontrar el día y cotizar de nuevo.
+//
+// El total es el que se va a cobrar de verdad (el campo Monto, que puede estar
+// negociado o llevar descuentos), no la tarifa de lista. Si está por debajo de
+// lista, se agrega la línea "Antes".
+const COT_CABIN_NOMBRES = { verde: 'Paseo por Las Nubes', azul: 'Portal hacia Las Nubes', lila: 'Puente entre Las Nubes' };
+const COT_CABIN_CAMAS = {
+  verde: '🛏 King + auxiliar twin',
+  azul:  '🛏 Full, sin cama auxiliar\n🛌 Traer colchón inflable',
+  lila:  '🛏 Queen + auxiliar full'
+};
+const COT_SECCIONES =
+    '*Incluye:*\n'
+  + '🍳 Cocina equipada\n'
+  + '🔥 Área de BBQ\n'
+  + '☕ Café, azúcar y especias\n'
+  + '🧊 Cooler grande incluido\n'
+  + '❄ Sin nevera: traer hielo\n'
+  + '☀ Iluminación con paneles solares\n'
+  + '🔋 Carga para tus dispositivos\n'
+  + '📶 Señal de todas las telefónicas\n'
+  + '🚿 Toallas, jabón y papel\n'
+  + '🦟 Fumigación semanal\n'
+  + '🧴 Sugerimos repelente\n'
+  + '🔒 Uso exclusivo del lugar\n'
+  + '\n'
+  + '*Para Reservar*\n'
+  + '💳 Pago por Yappy o ACH\n'
+  + 'Quedo atento si deseas proceder para compartirte las formas de pago.';
+
+const _COT_DOW = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+const _COT_MES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const _COT_MES_CORTO = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+function _cotLargo(iso) {
+  const d = new Date(iso + 'T12:00:00');
+  return _COT_DOW[d.getDay()] + ' ' + d.getDate() + ' de ' + _COT_MES[d.getMonth()];
+}
+// Sin día de la semana: la línea de horario tiene que entrar en un renglón.
+function _cotMin(iso) {
+  const d = new Date(iso + 'T12:00:00');
+  return d.getDate() + ' ' + _COT_MES_CORTO[d.getMonth()];
+}
+
+function copiarCotizacionModal() {
+  const tipo     = (document.getElementById('fTipo')    || {}).value || 'noche';
+  const cabin    = (document.getElementById('fCabin')   || {}).value || 'verde';
+  const personas = parseInt((document.getElementById('fPersons') || {}).value, 10) || 2;
+  const entrada  = (document.getElementById('fCheckin')  || {}).value;
+  const salida   = (document.getElementById('fCheckout') || {}).value;
+  if (!entrada) { showToast('Falta la fecha de entrada'); return; }
+
+  const q       = _lnCotizar(tipo, cabin, entrada, salida, personas, false, _mapaCabinPorNoche());
+  const sinProm = _lnCotizar(tipo, cabin, entrada, salida, personas, true,  _mapaCabinPorNoche());
+  if (!q.noches.length) { showToast('Faltan fechas para cotizar'); return; }
+
+  // Lo que se va a cobrar: el campo Monto manda.
+  const total = parseFloat((document.getElementById('fAmount') || {}).value) || q.total;
+  const lista = sinProm.total;
+  const hayDescuento = lista > total + 0.009;
+  const nombre = COT_CABIN_NOMBRES[cabin] || cabin;
+  const f2 = n => n.toFixed(2);
+
+  let texto;
+  if (tipo === 'pasatarde' || tipo === 'pasanoche' || tipo === 'pasadia') {
+    const horaIn  = tipo === 'pasatarde' ? '12:30 pm' : tipo === 'pasanoche' ? '8:00 pm' : '9:00 am';
+    const horaOut = tipo === 'pasatarde' ? '7:00 pm'  : tipo === 'pasanoche' ? '12:30 pm' : '5:00 pm';
+    const label   = tipo === 'pasatarde' ? 'pasatarde' : tipo === 'pasanoche' ? 'pasanoche' : 'pasadía';
+    // La pasanoche cruza la medianoche: la salida es el día SIGUIENTE.
+    const isoSalida = tipo === 'pasanoche' ? _addDaysISO(entrada, 1) : entrada;
+    texto = 'Tengo disponible el ' + _cotLargo(entrada) + ' en concepto de ' + label
+          + ' en $' + f2(total) + ' para ' + personas + ' personas.\n\n'
+      + '🏡 *' + nombre + '*\n'
+      + '💰 *Total:* $' + f2(total) + '\n'
+      + (hayDescuento ? '🏷 Antes: $' + f2(lista) + '\n' : '')
+      + '🕑 Entrada ' + _cotMin(entrada) + ' ' + horaIn + '\n'
+      + '🕚 Salida '  + _cotMin(isoSalida) + ' ' + horaOut + '\n'
+      + '\n' + COT_SECCIONES;
+  } else {
+    const noches = q.nNoches;
+    const extra  = tipo === 'early' ? ' con entrada anticipada (9:00 am)'
+                 : tipo === 'late'  ? ' con salida extendida (4:00 pm)' : '';
+    const cuando = (noches === 1
+      ? 'Tengo la noche del ' + _cotLargo(entrada) + ' disponible'
+      : 'Tengo las noches del ' + _cotLargo(entrada) + ' al ' + _cotLargo(salida) + ' disponibles') + extra;
+    const cabinaBlock = personas >= 3
+      ? '🏡 *' + nombre + '*\n' + (COT_CABIN_CAMAS[cabin] || '') + '\n'
+      : '🏡 *' + nombre + '*\n';
+    const horaIn  = tipo === 'early' ? '9:00 am' : '2:00 pm';
+    const horaOut = tipo === 'late'  ? '4:00 pm' : '11:00 am';
+    texto = cuando + ' para reserva '
+        + (hayDescuento ? 'en tarifa promocional de $' : 'a $') + f2(total)
+        + ' para ' + personas + ' personas.\n\n'
+      + cabinaBlock
+      + '💰 *Total:* $' + f2(total) + '\n'
+      + (hayDescuento ? '🏷 Antes: $' + f2(lista) + '\n' : '')
+      + '🕑 Check in '  + _cotMin(entrada) + ' ' + horaIn + '\n'
+      + '🕚 Check out ' + _cotMin(salida)  + ' ' + horaOut + '\n'
+      + (noches > 1 ? '📅 ' + (noches + 1) + ' días, ' + noches + ' noches\n' : '')
+      + '\n' + COT_SECCIONES;
+  }
+
+  // El conteo avisa si todavía no entra en un DM de Instagram (1.000).
+  const aviso = texto.length + ' caracteres' + (texto.length > 1000 ? ' ⚠ no entra en IG' : '');
+  const ok = () => showToast('📋 Cotización copiada · ' + aviso);
+  navigator.clipboard.writeText(texto).then(ok).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = texto;
+    ta.style.cssText = 'position:fixed;opacity:0;';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    ok();
+  });
+}
+
+// ─── Conflicto de fechas ─────────────────────────────────────
+// Busca una reserva existente cuyo horario real se pise con lo que hay cargado
+// en el formulario. Compara SPANS efectivos (que respetan tipo, cortesía y
+// horas custom), no rangos de días: dos reservas pueden compartir un día sin
+// pisarse (ej. late 2pm→4pm + pasanoche 8pm→12:30pm).
+//
+// Lo usan el guard de saveReservation y el aviso en vivo del modal.
+function _buscarConflicto(opts) {
+  opts = opts || {};
+  const origin = (document.getElementById('fOrigin') || {}).value || 'Directa';
+  if (origin === 'Abierta') return null;   // sin fechas, no hay nada que pisar
+  const cabin    = (document.getElementById('fCabin') || {}).value;
+  const tipoForm = (document.getElementById('fTipo')  || {}).value || 'noche';
+  const fCi = (document.getElementById('fCheckin')  || {}).value;
+  const fCo = (document.getElementById('fCheckout') || {}).value;
+  if (!fCi) return null;
+
+  const st = _storedFromForm(fCi, fCo || fCi, tipoForm);
+  const checkin = st.checkin, checkout = st.checkout;
+  if (!checkin || !checkout) return null;
+
+  const prospecto = {
+    cabin, tipo: tipoForm, checkin, checkout,
+    horaEntrada: ((document.getElementById('fHoraEntrada') || {}).value || '').trim(),
+    horaSalida:  ((document.getElementById('fHoraSalida')  || {}).value || '').trim(),
+    checkoutExtendido: !!(document.getElementById('fCheckoutExtendido') || {}).checked
+  };
+  const spans = _reservationOccupancySpans(prospecto);
+  const pisa = (a, b) => a.start < b.end && b.start < a.end;
+
+  return reservations.find(r => {
+    if (opts.excluirId && r.id == opts.excluirId) return false;       // uno mismo al editar
+    if (opts.ademasExcluir && r.id === opts.ademasExcluir) return false; // será eliminada
+    if (r.cabin !== cabin) return false;
+    if (r.origin === 'Abierta') return false;
+    if (r.estadoPago === 'CANCELADA') return false;
+    // Prefiltro barato: si ni comparten día, el chequeo horario no puede dar.
+    if (!r.checkin || !r.checkout) return false;
+    if (r.checkout <= checkin || r.checkin >= checkout) return false;
+    const rSpans = _reservationOccupancySpans(r);
+    return spans.some(ps => rSpans.some(rs => pisa(ps, rs)));
+  }) || null;
+}
+
+// ─── Sugerir un tipo que sí entre ───────────────────────────
+// Si la noche completa está tomada pero quedan ventanas libres (pasatarde /
+// pasanoche), lo dice y ofrece cambiar el tipo. Antes el modal te dejaba elegir
+// algo imposible y el choque recién salía al guardar.
+function _refrescarSugerenciaTipo() {
+  const box = document.getElementById('tipoSugerencia');
+  if (!box) return;
+  const tipo   = (document.getElementById('fTipo')   || {}).value || 'noche';
+  const origin = (document.getElementById('fOrigin') || {}).value || 'Directa';
+  const cabin  = (document.getElementById('fCabin')  || {}).value;
+  const dia    = (document.getElementById('fCheckin')|| {}).value;
+  // Solo tiene sentido cuando se pidió una noche y esa noche no entra.
+  if (origin === 'Abierta' || !dia || tipo !== 'noche' || !_buscarConflicto({ excluirId: editId })) {
+    box.style.display = 'none'; return;
+  }
+
+  // Eventos del día en esa cabaña, excluyendo la reserva que se edita.
+  const eventos = [];
+  reservations.forEach(r => {
+    if (r.cabin !== cabin || r.origin === 'Abierta' || r.estadoPago === 'CANCELADA') return;
+    if (editId && r.id == editId) return;
+    _reservationOccupancySpans(r).forEach(s => eventos.push(s));
+  });
+  const libres = _findAvailableSlots(cabin, dia, eventos);
+  if (!libres.length) { box.style.display = 'none'; return; }
+
+  box.className = 'modal-aviso modal-aviso--info';
+  box.innerHTML = 'Esa noche está tomada, pero el día tiene libre: '
+    + libres.map(s => '<button type="button" onclick="_usarTipoSugerido(\'' + s.tipo + '\')">'
+        + (TIPO_LABEL[s.tipo] || s.tipo) + '</button>').join(' ');
+  box.style.display = 'block';
+}
+
+function _usarTipoSugerido(tipo) {
+  const sel = document.getElementById('fTipo');
+  if (!sel) return;
+  sel.value = tipo;
+  handleTipoChange();
+  _refrescarAvisosModal();
+}
+
+// Un solo punto para refrescar los tres avisos del modal.
+function _refrescarAvisosModal() {
+  _refrescarAvisoConflicto();
+  _refrescarSugerenciaTipo();
+  _refrescarAvisoLoyalty();
+  calcPrice();     // calcPrice a su vez refresca el aviso de pago
+}
+
+// Pinta / esconde el aviso de choque arriba del bloque de fechas.
+function _refrescarAvisoConflicto() {
+  const box = document.getElementById('conflictoAviso');
+  if (!box) return;
+  const dup = _buscarConflicto({ excluirId: editId });
+  if (!dup) { box.style.display = 'none'; return; }
+  const dd = reservaDisplayDates(dup);
+  const cab = { verde: 'Paseo', azul: 'Portal', lila: 'Puente' }[dup.cabin] || dup.cabin;
+  box.innerHTML = '⚠️ <strong>Choca con una reserva existente</strong><br>'
+    + escapeHtml(dup.name || 'Sin nombre') + ' · ' + cab + ' · '
+    + dd.displayCheckin + ' → ' + dd.displayCheckout
+    + ' <span style="opacity:.75;">(' + (TIPO_LABEL[dup.tipo || 'noche'] || dup.tipo) + ')</span>';
+  box.style.display = 'block';
 }
 
 function calcSaldo() {
@@ -9738,6 +10159,8 @@ function clearVoucher() {
   // editReservation/openModal clearVoucher corre ANTES del primer render.
   const _box = document.getElementById('vouchersRegistrados');
   if (_box && _box.classList.contains('shown')) _rerenderVouchersReg();
+  // Quitar el voucher cambia lo cobrado: el contraste contra la tarifa también.
+  if (document.getElementById('reservaModal').classList.contains('open')) calcPrice();
 }
 
 async function handleVoucherUpload(event) {
@@ -9851,6 +10274,7 @@ async function handleVoucherUpload(event) {
       calcSaldo();
       _updateMultiCabinSplitInfo();
     }
+    calcPrice();   // recalcula el contraste voucher vs tarifa
 
     document.getElementById('vcSender').textContent = pendingVoucher.sender || '—';
     document.getElementById('vcMonto').textContent  = montoNum > 0 ? '$' + montoNum.toFixed(2) : '—';
@@ -9977,7 +10401,19 @@ async function _saveMultiCabinReservation() {
   // reparte en la misma proporción. Antes se copiaba el voucher COMPLETO en
   // cada hermana, así que un pago único de $150 en 2 cabañas se contaba como
   // $300 cobrados (inflaba "recibido" en Ingresos y tapaba saldos pendientes).
-  const groupAmounts = groups.map(g => +(g.nights.length * perNight).toFixed(2));
+  // Reparto proporcional al VALOR DE TARIFA de cada tramo, no por noche pareja:
+  // un viernes vale más que un lunes, y la persona extra cuesta $10 en Portal
+  // contra $20 en las otras. `perNight` queda solo como respaldo si el
+  // tarifario no pudo valuar nada (todas las noches en $0).
+  const _grpValor = groups.map(g => g.nights.reduce((t, iso) => {
+    let v = _lnPrecioDia(iso, false);
+    if (persons > 2) v += _lnRecargoPersona(g.cabin) * (persons - 2);
+    return t + v;
+  }, 0));
+  const _valorTotal = _grpValor.reduce((a, v) => a + v, 0);
+  const groupAmounts = _valorTotal > 0
+    ? groups.map((g, i) => +(totalAmount * _grpValor[i] / _valorTotal).toFixed(2))
+    : groups.map(g => +(g.nights.length * perNight).toFixed(2));
   const _fix = (arr, target) => {   // el último absorbe el redondeo
     if (!arr.length) return arr;
     const s = +arr.reduce((a,v) => a + v, 0).toFixed(2);
@@ -10294,38 +10730,11 @@ async function saveReservation() {
     }
   }
 
-  // ── Conflict check: overlap HORARIO real (no solo por fecha) ─────
-  // Construimos los spans del prospecto y de cada reserva existente en la
-  // misma cabaña y comparamos. Antes se chequeaba por rango de storage día
-  // a día — eso generaba falsos positivos entre reservas que compartían un
-  // día pero cuyos horarios no se pisaban (ej: late 2pm→4pm + pasanoche
-  // 4:30pm→12:30pm). Con los spans efectivos (que respetan tipo, cortesía
-  // y horas custom) el warning solo salta cuando realmente hay overlap.
-  const _prospectHoraEntrada = ((document.getElementById('fHoraEntrada') || {}).value || '').trim();
-  const _prospectHoraSalida  = ((document.getElementById('fHoraSalida')  || {}).value || '').trim();
-  const _prospectCheckoutExt = !!(document.getElementById('fCheckoutExtendido') || {}).checked;
-  const _prospectRes = {
-    cabin, tipo: tipoForm, checkin, checkout,
-    horaEntrada: _prospectHoraEntrada,
-    horaSalida:  _prospectHoraSalida,
-    checkoutExtendido: _prospectCheckoutExt
-  };
-  const _prospectSpans = _reservationOccupancySpans(_prospectRes);
-  const _spansOverlap = (a, b) => a.start < b.end && b.start < a.end;
-  const dup = reservations.find(r => {
-    if (editId && r.id == editId) return false; // skip self when editing
-    if (adjacentToDelete && r.id === adjacentToDelete) return false; // será eliminada
-    if (r.cabin !== cabin) return false;
-    if (r.origin === 'Abierta') return false;
-    if (r.estadoPago === 'CANCELADA') return false;
-    // Prefiltro barato por rango de storage: si ni siquiera comparten día
-    // el hour-check no puede matchear. Evita recalcular spans para todo el
-    // sheet cuando la cabaña tiene decenas de reservas.
-    if (!r.checkin || !r.checkout) return false;
-    if (r.checkout <= checkin || r.checkin >= checkout) return false;
-    const rSpans = _reservationOccupancySpans(r);
-    return _prospectSpans.some(ps => rSpans.some(rs => _spansOverlap(ps, rs)));
-  });
+  // ── Conflict check ──
+  // Se delega en _buscarConflicto, el mismo que corre en vivo mientras se
+  // eligen las fechas. Antes esta lógica vivía solo acá, así que el choque
+  // recién aparecía al apretar Guardar — con todo el formulario ya lleno.
+  const dup = _buscarConflicto({ excluirId: editId, ademasExcluir: adjacentToDelete });
   if (dup) {
     const msg = `⚠️ Conflicto horario
 
