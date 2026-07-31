@@ -2939,6 +2939,7 @@
       <button id="contabTabIngresos"  onclick="setContabTab('ingresos')"  style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Ingresos</button>
       <button id="contabTabEgresos"   onclick="setContabTab('egresos')"   style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Egresos</button>
       <button id="contabTabPrestamos" onclick="setContabTab('prestamos')" style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Préstamos</button>
+      <button id="contabTabTiendita"  onclick="setContabTab('tiendita')" style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Tiendita</button>
       <button id="contabTabCxC"       onclick="setContabTab('cxc')"       style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Por Cobrar</button>
     </div>
 
@@ -3284,6 +3285,25 @@
         <button class="btn btn-primary" onclick="openPrestamoModal()" style="font-size:13px;">+ Nuevo préstamo</button>
       </div>
       <div id="prestamosList"></div>
+    </div>
+
+    <!-- TIENDITA -->
+    <div id="contabPanelTiendita" style="display:none;">
+      <div style="background:#eef3f8;border-radius:10px;padding:12px 16px;margin-bottom:18px;display:flex;gap:10px;align-items:flex-start;">
+        <div style="font-size:15px;flex-shrink:0;margin-top:1px;">ℹ️</div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--azul-dark);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Costo desde Suministros, ventas acá</div>
+          <div style="font-size:13px;color:var(--text-muted);line-height:1.5;">
+            El costo sale de las compras de las palabras clave marcadas con 🛒 en
+            <a href="#" onclick="showSection('suministros');return false;" style="color:var(--azul-dark);">Suministros</a>
+            — incluido el reparto de facturas compartidas. Acá solo se cargan las ventas.
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
+        <button class="btn btn-primary" onclick="openVentaModal()" style="font-size:13px;">+ Registrar venta</button>
+      </div>
+      <div id="tienditaBody"></div>
     </div>
 
     <div id="contabPanelCxC" style="display:none;">
@@ -4030,6 +4050,65 @@
 <!-- RESERVATION MODAL -->
 
 <!-- ─── PRÉSTAMO A COLABORADOR ─── -->
+
+<!-- ─── VENTA DE TIENDITA ─── -->
+<div class="modal-overlay" id="ventaModal">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-body">
+      <div class="modal-title" id="ventaModalTitle">Registrar venta</div>
+
+      <div id="tvVoucherSection">
+        <input type="file" id="tvVoucherFile" accept="image/*" style="display:none;" onchange="_tvSubirVoucher(event)">
+        <div id="tvVoucherDrop" class="voucher-dropzone" onclick="document.getElementById('tvVoucherFile').click()">
+          <div class="voucher-dropzone-icon">📷</div>
+          <div class="voucher-dropzone-title" id="tvVoucherTitle">Subir voucher del cliente</div>
+          <div class="voucher-dropzone-hint" id="tvVoucherHint">Toca para abrir galería o cámara</div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Item</label>
+          <input type="text" id="tvItem" list="tvItemsList" placeholder="Ej: kit de fogata" oninput="_tvCalc()">
+          <datalist id="tvItemsList"></datalist>
+        </div>
+        <div class="form-group">
+          <label>Fecha</label>
+          <input type="date" id="tvFecha">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Cantidad</label>
+          <input type="number" id="tvCantidad" min="1" step="1" value="1" oninput="_tvCalc()">
+        </div>
+        <div class="form-group">
+          <label>Precio unitario ($)</label>
+          <input type="number" id="tvPrecio" step="0.01" placeholder="0.00" oninput="_tvCalc()">
+        </div>
+      </div>
+      <div id="tvTotal" class="modal-aviso modal-aviso--info" style="display:none;"></div>
+
+      <div class="form-group">
+        <label>Huésped <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— opcional</span></label>
+        <input type="text" id="tvHuesped" list="tvHuespedesList" placeholder="Nombre">
+        <datalist id="tvHuespedesList"></datalist>
+      </div>
+
+      <div class="form-group">
+        <label>Notas</label>
+        <input type="text" id="tvNotas" placeholder="Opcional">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="tvBorrarBtn" onclick="borrarVenta()" style="margin-right:auto;display:none;color:#b85c4a;">Eliminar</button>
+      <button class="btn btn-ghost" onclick="closeVentaModal()">Cancelar</button>
+      <button class="btn btn-primary" id="tvGuardarBtn" onclick="guardarVenta()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="prestamoModal">
   <div class="modal">
     <div class="modal-body">
@@ -4680,6 +4759,7 @@ async function syncFromSheets() {
     // Préstamos: van en su propia llamada porque cambian poco y no deben
     // demorar la carga de reservas, que es lo que se mira al abrir.
     cargarPrestamos();
+    cargarTiendita();
     if (dataRef && dataRef.ok) {
       referrals    = dataRef.referrals    || [];
       referralUses = dataRef.referralUses || [];
@@ -15796,6 +15876,7 @@ function _renderActiveContabTab() {
   if (_contabTab === 'ingresos')    renderWidgets7d();
   if (_contabTab === 'cxc')         renderCxC();
   if (_contabTab === 'prestamos')   renderPrestamos();
+  if (_contabTab === 'tiendita')    renderTiendita();
 }
 
 function setContabTab(tab) {
@@ -15803,20 +15884,22 @@ function setContabTab(tab) {
   // Suministros salió de acá: es sección propia (`#suministros`) con su propio
   // período. No es contabilidad — Contabilidad responde "¿cuánto gasté?",
   // Suministros "¿cuándo recompro el gas?".
-  const tabs   = ['resumen', 'ingresos', 'egresos', 'cxc', 'prestamos'];
+  const tabs   = ['resumen', 'ingresos', 'egresos', 'cxc', 'prestamos', 'tiendita'];
   const panels = {
     resumen:  'contabPanelResumen',
     ingresos: 'contabPanelIngresos',
     egresos:  'contabPanelEgresos',
     cxc:      'contabPanelCxC',
-    prestamos:'contabPanelPrestamos'
+    prestamos:'contabPanelPrestamos',
+    tiendita: 'contabPanelTiendita'
   };
   const btns = {
     resumen:  'contabTabResumen',
     ingresos: 'contabTabIngresos',
     egresos:  'contabTabEgresos',
     cxc:      'contabTabCxC',
-    prestamos:'contabTabPrestamos'
+    prestamos:'contabTabPrestamos',
+    tiendita: 'contabTabTiendita'
   };
   tabs.forEach(t => {
     const panelEl = document.getElementById(panels[t]);
@@ -15848,6 +15931,242 @@ function _repintarGraficasResumen() {
   renderCheckinChart();
 }
 
+
+
+// ═══════════════════════════════════════════════════════════
+//  TIENDITA
+// ═══════════════════════════════════════════════════════════
+// El COSTO no se carga acá: sale de las compras ya registradas en Egresos,
+// cruzadas con las keywords marcadas 🛒 en Suministros. Eso reusa el matcher
+// que ya resuelve facturas compartidas (_sumMatchesKw + _sumItemAmount), así
+// que un Yappy de gas + carbón aporta solo la porción del carbón.
+// Acá solo viven las VENTAS, que no tenían dónde registrarse.
+
+let tienditaVentas = [];
+let _tvEditId = null;
+let _tvVoucherURL = '';
+
+async function cargarTiendita() {
+  try {
+    const r = await (await fetch(SHEETS_API_URL + '?action=getTienditaVentas&_=' + Date.now())).json();
+    if (r && r.ok) tienditaVentas = r.ventas || [];
+    if (_contabTab === 'tiendita') renderTiendita();
+  } catch (_) { /* sin conexión: se queda con lo que haya */ }
+}
+
+// Costo de la mercadería comprada en el período: la porción de cada egreso que
+// corresponde a una keyword de reventa.
+function _tienditaCosto() {
+  const porItem = {};
+  const kws = (_suministrosKeywords || []).filter(_sumEsReventa);
+  kws.forEach(kw => {
+    const nkw = _sumNormalize(kw);
+    let total = 0, compras = 0;
+    egresos.forEach(e => {
+      if (!_sumCatOk(e) || !_matchesSelectedPeriod(e.date)) return;
+      if (!_sumMatchesKw(e, nkw)) return;
+      const m = _sumItemAmount(e, nkw);
+      total += (m == null ? (parseFloat(e.amount) || 0) : m);
+      compras++;
+    });
+    porItem[kw] = { costo: +total.toFixed(2), compras: compras };
+  });
+  return porItem;
+}
+
+function renderTiendita() {
+  const box = document.getElementById('tienditaBody');
+  if (!box) return;
+  // Las keywords se cargan perezosamente al abrir Suministros. Sin esto, entrar
+  // directo a Tiendita mostraba costo $0 y "no marcaste ninguna keyword",
+  // cuando en realidad sí estaban marcadas pero no se habían pedido todavía.
+  if (_suministrosKeywords === null) {
+    _loadSuministrosKeywords().then(() => renderTiendita());
+    box.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px;">Cargando…</div>';
+    return;
+  }
+  const kwsReventa = (_suministrosKeywords || []).filter(_sumEsReventa);
+  const costos = _tienditaCosto();
+  const costoTotal = Object.keys(costos).reduce((t, k) => t + costos[k].costo, 0);
+  const ventasPeriodo = tienditaVentas.filter(v => _matchesSelectedPeriod(v.fecha));
+  const ventaTotal = ventasPeriodo.reduce((t, v) => t + (parseFloat(v.monto) || 0), 0);
+  const ganancia = +(ventaTotal - costoTotal).toFixed(2);
+  const margen = ventaTotal > 0 ? (ganancia / ventaTotal) * 100 : 0;
+
+  let html = '<div class="contab-panel" style="margin-bottom:18px;">'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;padding:6px 0;">'
+    + _kpiCell('Vendido', '$' + ventaTotal.toFixed(2), '#2c5e22')
+    + _kpiCell('Costo comprado', '$' + costoTotal.toFixed(2), '#7a5a1f')
+    + _kpiCell('Diferencia', '$' + ganancia.toFixed(2), ganancia >= 0 ? '#2c5e22' : '#b85c4a')
+    + _kpiCell('Margen', ventaTotal > 0 ? margen.toFixed(0) + '%' : '—')
+    + '</div>'
+    // La advertencia no es decorativa: en un mes suelto se compara una compra
+    // grande contra las ventas de ese mes, y el margen sale absurdo.
+    + '<div style="font-size:11.5px;color:var(--text-muted);line-height:1.5;padding-top:8px;border-top:1px solid var(--border);">'
+    + 'La <strong>diferencia</strong> compara lo vendido contra lo <em>comprado</em> en el período, no contra el costo de lo que se vendió. '
+    + 'En un mes suelto una compra grande la distorsiona; el margen recién es confiable en rangos largos.'
+    + '</div></div>';
+
+  if (!kwsReventa.length) {
+    html += '<div style="text-align:center;padding:24px 10px;color:var(--text-muted);font-size:13px;line-height:1.6;">'
+      + 'Todavía no marcaste ninguna palabra clave como de reventa.<br>'
+      + 'Ve a <a href="#" onclick="showSection(\'suministros\');return false;" style="color:var(--azul-dark);">Suministros</a> '
+      + 'y toca el 🛒 de los items que vendes en la tiendita.</div>';
+  } else {
+    html += '<div class="contab-panel" style="margin-bottom:18px;">'
+      + '<div class="contab-panel-header"><div class="contab-panel-title">📦 Costo por item</div></div>';
+    kwsReventa.forEach(kw => {
+      const c = costos[kw] || { costo: 0, compras: 0 };
+      const vendidoItem = ventasPeriodo
+        .filter(v => _sumNormalize(v.item) === _sumNormalize(kw))
+        .reduce((t, v) => t + (parseFloat(v.monto) || 0), 0);
+      html += '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid var(--border);font-size:13px;">'
+        + '<span>' + escapeHtml(kw) + ' <span style="color:var(--text-muted);font-size:11.5px;">· '
+        + c.compras + ' compra' + (c.compras === 1 ? '' : 's') + '</span></span>'
+        + '<span style="color:var(--text-muted);">costo $' + c.costo.toFixed(2)
+        + ' · <span style="color:#2c5e22;">vendido $' + vendidoItem.toFixed(2) + '</span></span></div>';
+    });
+    html += '</div>';
+  }
+
+  html += '<div class="contab-panel"><div class="contab-panel-header">'
+    + '<div class="contab-panel-title">🧾 Ventas del período (' + ventasPeriodo.length + ')</div></div>';
+  if (!ventasPeriodo.length) {
+    html += '<div style="text-align:center;padding:20px 10px;color:var(--text-muted);font-size:13px;">Sin ventas en este período.</div>';
+  } else {
+    html += ventasPeriodo.map(v =>
+      '<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--border);font-size:13px;align-items:center;">'
+      + '<div style="min-width:0;"><div>' + escapeHtml(v.item || '—')
+      +   (v.cantidad > 1 ? ' <span style="color:var(--text-muted);">×' + v.cantidad + '</span>' : '') + '</div>'
+      +   '<div style="font-size:11.5px;color:var(--text-muted);">' + v.fecha
+      +     (v.huesped ? ' · ' + escapeHtml(v.huesped) : '') + '</div></div>'
+      + '<div style="text-align:right;flex-shrink:0;white-space:nowrap;">'
+      +   '<span style="font-weight:600;">$' + (parseFloat(v.monto) || 0).toFixed(2) + '</span>'
+      +   (v.voucherURL ? ' <a href="' + v.voucherURL + '" target="_blank" rel="noopener" title="Ver voucher">📷</a>' : '')
+      +   ' <button onclick="openVentaModal(\'' + v.id + '\')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;">✎</button>'
+      + '</div></div>').join('');
+  }
+  html += '</div>';
+  box.innerHTML = html;
+}
+
+// ── Modal de venta ──
+function openVentaModal(id) {
+  _tvEditId = id || null;
+  const v = id ? tienditaVentas.find(x => x.id === id) : null;
+  document.getElementById('ventaModalTitle').textContent = v ? 'Editar venta' : 'Registrar venta';
+  // Sugerir los items de reventa ya definidos, para que el nombre coincida con
+  // la keyword y el cruce costo/venta por item funcione.
+  document.getElementById('tvItemsList').innerHTML =
+    (_suministrosKeywords || []).filter(_sumEsReventa).map(k => '<option value="' + escapeHtml(k) + '">').join('');
+  document.getElementById('tvHuespedesList').innerHTML =
+    [...new Set(reservations.map(r => r.name).filter(Boolean))].slice(0, 80)
+      .map(n => '<option value="' + escapeHtml(n) + '">').join('');
+  document.getElementById('tvItem').value     = v ? v.item : '';
+  document.getElementById('tvFecha').value    = v ? v.fecha : new Date().toISOString().slice(0,10);
+  document.getElementById('tvCantidad').value = v ? v.cantidad : 1;
+  document.getElementById('tvPrecio').value   = v ? v.precioUnitario : '';
+  document.getElementById('tvHuesped').value  = v ? v.huesped : '';
+  document.getElementById('tvNotas').value    = v ? v.notas : '';
+  _tvVoucherURL = v ? v.voucherURL : '';
+  _tvPintarVoucher();
+  document.getElementById('tvBorrarBtn').style.display = v ? '' : 'none';
+  _tvCalc();
+  document.getElementById('ventaModal').classList.add('open');
+}
+
+function closeVentaModal() {
+  document.getElementById('ventaModal').classList.remove('open');
+  _tvEditId = null; _tvVoucherURL = '';
+}
+
+function _tvPintarVoucher() {
+  const t = document.getElementById('tvVoucherTitle');
+  const h = document.getElementById('tvVoucherHint');
+  if (_tvVoucherURL) { t.textContent = '✓ Voucher adjunto'; h.textContent = 'Toca para reemplazarlo'; }
+  else { t.textContent = 'Subir voucher del cliente'; h.textContent = 'Toca para abrir galería o cámara'; }
+}
+
+function _tvCalc() {
+  const box = document.getElementById('tvTotal');
+  const cant = parseFloat(document.getElementById('tvCantidad').value) || 0;
+  const pu   = parseFloat(document.getElementById('tvPrecio').value) || 0;
+  if (!cant || !pu) { box.style.display = 'none'; return; }
+  box.innerHTML = cant + ' × $' + pu.toFixed(2) + ' = <strong>$' + (cant * pu).toFixed(2) + '</strong>';
+  box.style.display = 'block';
+}
+
+async function _tvSubirVoucher(ev) {
+  const file = ev.target.files[0];
+  if (!file) return;
+  const drop = document.getElementById('tvVoucherDrop');
+  drop.classList.add('loading');
+  document.getElementById('tvVoucherTitle').textContent = 'Subiendo…';
+  try {
+    const b64 = await new Promise((res, rej) => {
+      const fr = new FileReader();
+      fr.onload = () => res(fr.result.split(',')[1]);
+      fr.onerror = rej;
+      fr.readAsDataURL(file);
+    });
+    const r = await (await fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify({
+      action: 'saveTienditaVoucher', base64: b64, mimeType: file.type, ventaId: _tvEditId || 'nueva'
+    })})).json();
+    if (r && r.ok) { _tvVoucherURL = r.url; showToast('✓ Voucher subido'); }
+    else showToast('✗ No se pudo subir: ' + ((r && r.error) || 'error'));
+  } catch (e) {
+    showToast('✗ No se pudo subir: ' + e.message);
+  } finally {
+    drop.classList.remove('loading');
+    _tvPintarVoucher();
+    ev.target.value = '';
+  }
+}
+
+async function guardarVenta() {
+  const item = document.getElementById('tvItem').value.trim();
+  const cant = parseFloat(document.getElementById('tvCantidad').value) || 0;
+  const pu   = parseFloat(document.getElementById('tvPrecio').value) || 0;
+  if (!item) { showToast('Falta el item'); return; }
+  if (cant <= 0 || pu <= 0) { showToast('Cantidad y precio deben ser mayores a 0'); return; }
+  const btn = document.getElementById('tvGuardarBtn');
+  btn.disabled = true; btn.textContent = 'Guardando…';
+  try {
+    const r = await (await fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify({
+      action: 'saveTienditaVenta',
+      id: _tvEditId || '',
+      item: item,
+      fecha: document.getElementById('tvFecha').value,
+      cantidad: cant,
+      precioUnitario: pu,
+      huesped: document.getElementById('tvHuesped').value.trim(),
+      notas: document.getElementById('tvNotas').value.trim(),
+      voucherURL: _tvVoucherURL
+    })})).json();
+    if (!r || !r.ok) { showToast('✗ ' + ((r && r.error) || 'No se pudo guardar')); return; }
+    closeVentaModal();
+    await cargarTiendita();
+    renderTiendita();
+    showToast('✓ Venta registrada');
+  } catch (e) {
+    showToast('✗ Red: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Guardar';
+  }
+}
+
+async function borrarVenta() {
+  if (!_tvEditId) return;
+  if (!confirm('¿Eliminar esta venta?')) return;
+  const r = await (await fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify({
+    action: 'deleteTienditaVenta', ventaId: _tvEditId })})).json();
+  if (r && r.ok) {
+    closeVentaModal();
+    await cargarTiendita();
+    renderTiendita();
+    showToast('✓ Venta eliminada');
+  } else showToast('✗ No se pudo eliminar');
+}
 
 // ═══════════════════════════════════════════════════════════
 //  PRÉSTAMOS A COLABORADORES
@@ -16137,6 +16456,11 @@ async function borrarAbono(abonoId) {
 // llega a hoy; si superó la duración típica se pinta 🔴 (toca recomprar).
 let _suministrosKeywords = null;   // cache de la lista (null = no cargada aún)
 let _sumNoTimeline = new Set();    // keywords normalizadas "solo detalle" (no van en el timeline, ej. Delivery)
+// Keywords cuyos insumos se REVENDEN en la tiendita. De sus compras sale el
+// costo de la mercadería vendida. Se reusa el mismo mecanismo de keywords en
+// vez de inventar otra forma de marcar facturas: el repartidor de montos ya
+// resuelve las facturas compartidas (un Yappy de gas + carbón).
+let _sumReventa = new Set();
 let _sumKeywordsLoading = false;
 let _sumBarMeta = {};              // barKey → { egresoId, kw, nkw, autoEnd, isLast, avg, effEnd } (poblado al renderizar)
 let _sumView = 'timeline';        // 'timeline' | 'detalle'
@@ -16396,11 +16720,14 @@ async function _loadSuministrosKeywords() {
       const j = await r.json();
       _suministrosKeywords = (j && j.ok && Array.isArray(j.keywords)) ? j.keywords : [];
       _sumNoTimeline = new Set((j && Array.isArray(j.noTimeline) ? j.noTimeline : []).map(_sumNormalize));
+      _sumReventa    = new Set((j && Array.isArray(j.reventa)    ? j.reventa    : []).map(_sumNormalize));
     } else {
       let ls = null; try { ls = JSON.parse(localStorage.getItem('ln_sum_keywords') || 'null'); } catch(_) {}
       _suministrosKeywords = Array.isArray(ls) ? ls : ['Papel higiénico','Café','Agua','Gas','Hielo','Cloro','Desinfectante','Detergente','Jabón','Kerosene'];
       let ln = null; try { ln = JSON.parse(localStorage.getItem('ln_sum_notimeline') || 'null'); } catch(_) {}
       _sumNoTimeline = new Set(Array.isArray(ln) ? ln.map(_sumNormalize) : []);
+      let lr = null; try { lr = JSON.parse(localStorage.getItem('ln_sum_reventa') || 'null'); } catch(_) {}
+      _sumReventa = new Set(Array.isArray(lr) ? lr.map(_sumNormalize) : []);
     }
   } catch(e) { _suministrosKeywords = []; }
   finally { _sumKeywordsLoading = false; }
@@ -16408,15 +16735,28 @@ async function _loadSuministrosKeywords() {
 
 function _saveSuministrosKeywords() {
   const noTimeline = (_suministrosKeywords || []).filter(k => _sumNoTimeline.has(_sumNormalize(k)));
+  const reventa    = (_suministrosKeywords || []).filter(k => _sumReventa.has(_sumNormalize(k)));
   try {
     localStorage.setItem('ln_sum_keywords', JSON.stringify(_suministrosKeywords || []));
     localStorage.setItem('ln_sum_notimeline', JSON.stringify(noTimeline));
+    localStorage.setItem('ln_sum_reventa', JSON.stringify(reventa));
   } catch(_) {}
   if (USE_SHEETS) {
     fetch(SHEETS_API_URL, { method: 'POST',
-      body: JSON.stringify({ action: 'saveSuministrosItems', keywords: _suministrosKeywords || [], noTimeline })
+      body: JSON.stringify({ action: 'saveSuministrosItems', keywords: _suministrosKeywords || [], noTimeline, reventa })
     }).catch(e => console.warn('save keywords', e));
   }
+}
+
+function _sumEsReventa(kw) { return _sumReventa.has(_sumNormalize(kw)); }
+
+// Alterna si los insumos de esta keyword se revenden en la tiendita.
+function toggleSumReventa(kw) {
+  const n = _sumNormalize(kw);
+  if (_sumReventa.has(n)) _sumReventa.delete(n); else _sumReventa.add(n);
+  _saveSuministrosKeywords();
+  renderSuministrosTab();
+  if (_contabTab === 'tiendita') renderTiendita();
 }
 
 // Alterna si una keyword va en el timeline o es "solo detalle" (ej. Delivery).
@@ -16472,6 +16812,7 @@ async function renderSuministrosTab() {
     return `<span style="display:inline-flex;align-items:center;gap:5px;background:${noTl?'#f3ede0':'var(--card-bg)'};border:1px ${noTl?'dashed':'solid'} var(--border);border-radius:999px;padding:5px 6px 5px 12px;font-size:13px;color:var(--text);">
       ${escapeHtml(kw)}${noTl?'<span style="font-size:10px;color:var(--text-muted);">· solo detalle</span>':''}
       <button onclick="toggleSumNoTimeline('${esc}')" title="${tglTitle}" style="border:none;background:transparent;cursor:pointer;font-size:12px;line-height:1;padding:0 1px;">${tglIcon}</button>
+      <button onclick="toggleSumReventa('${esc}')" title="${_sumEsReventa(kw) ? 'Se revende en la tiendita — quitar' : 'Marcar: se revende en la tiendita'}" style="border:none;background:transparent;cursor:pointer;font-size:12px;line-height:1;padding:0 1px;opacity:${_sumEsReventa(kw) ? '1' : '.35'};">🛒</button>
       <button onclick="removeSuministroKeyword('${esc}')" title="Quitar" style="border:none;background:var(--border);color:var(--text-muted);width:18px;height:18px;border-radius:50%;cursor:pointer;font-size:12px;line-height:1;">&times;</button>
     </span>`;
   }).join('') +

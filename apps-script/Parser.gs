@@ -1788,7 +1788,7 @@ function _getSuministrosItemsSheet(ss) {
   let sh = ss.getSheetByName('SuministrosItems');
   if (!sh) {
     sh = ss.insertSheet('SuministrosItems');
-    sh.getRange(1,1,1,2).setValues([['Keyword','NoTimeline']]).setFontWeight('bold');
+    sh.getRange(1,1,1,3).setValues([['Keyword','NoTimeline','Reventa']]).setFontWeight('bold');
     sh.setFrozenRows(1);
     // Semilla inicial de keywords sugeridos.
     const seed = ['Papel','Café','Agua','Gas','Hielo','Cloro','Desinfectante','Detergente','Jabón','Kerosene'];
@@ -1797,9 +1797,14 @@ function _getSuministrosItemsSheet(ss) {
   }
   // Auto-migración: asegurar la columna 2 NoTimeline (keywords que NO van en el
   // timeline, ej. Delivery — no es un insumo consumible, solo se ve en Detalle).
-  const hdr = sh.getRange(1,1,1,Math.max(sh.getLastColumn(),1)).getValues()[0];
+  const hdr = sh.getRange(1,1,1,Math.max(sh.getLastColumn(),3)).getValues()[0];
   if ((hdr[1]||'').toString().toLowerCase().trim() !== 'notimeline') {
     sh.getRange(1,2).setValue('NoTimeline').setFontWeight('bold');
+  }
+  // Columna 3: keywords cuyos insumos se REVENDEN en la tiendita. Marca de
+  // qué compras sale el costo de la mercadería vendida.
+  if ((hdr[2]||'').toString().toLowerCase().trim() !== 'reventa') {
+    sh.getRange(1,3).setValue('Reventa').setFontWeight('bold');
   }
   return sh;
 }
@@ -2089,18 +2094,20 @@ function doGet(e) {
     if (action === 'getSuministrosItems') {
       const ss = SpreadsheetApp.openById(SHEET_ID);
       const sh = _getSuministrosItemsSheet(ss);
-      const rows = sh.getLastRow() > 1 ? sh.getRange(2,1,sh.getLastRow()-1,2).getValues() : [];
+      const rows = sh.getLastRow() > 1 ? sh.getRange(2,1,sh.getLastRow()-1,3).getValues() : [];
       const keywords = [];
       const noTimeline = [];
+      const reventa = [];
+      const esFlag = f => (f === true || f === 'TRUE' || f === 'true' || f === 1 || f === '1');
       rows.forEach(r => {
         const kw = (r[0]||'').toString().trim();
         if (!kw) return;
         keywords.push(kw);
-        const flag = r[1];
-        if (flag === true || flag === 'TRUE' || flag === 'true' || flag === 1 || flag === '1') noTimeline.push(kw);
+        if (esFlag(r[1])) noTimeline.push(kw);
+        if (esFlag(r[2])) reventa.push(kw);
       });
       return ContentService
-        .createTextOutput(JSON.stringify({ ok: true, keywords, noTimeline }))
+        .createTextOutput(JSON.stringify({ ok: true, keywords, noTimeline, reventa }))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -2152,6 +2159,10 @@ function doGet(e) {
     if (action === 'getDebugLog')       return handleGetDebugLog(e);
     if (action === 'getConversaciones') return handleGetConversaciones(e);
     if (action === 'getMensajes')       return handleGetMensajes(e);
+    if (action === 'getTienditaVentas')
+      return ContentService
+        .createTextOutput(JSON.stringify(Object.assign({ ok: true }, getTienditaVentas())))
+        .setMimeType(ContentService.MimeType.JSON);
     if (action === 'getPrestamos')
       return ContentService
         .createTextOutput(JSON.stringify(Object.assign({ ok: true }, getPrestamosData())))
@@ -2732,18 +2743,37 @@ function doPost(e) {
       const ss = SpreadsheetApp.openById(SHEET_ID);
       const sh = _getSuministrosItemsSheet(ss);
       // Limpiar filas de datos y reescribir la lista completa que manda el front.
-      if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,2).clearContent();
+      if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,3).clearContent();
       const kws = (payload.keywords || []).map(k => (k||'').toString().trim()).filter(Boolean);
+      const norm = k => (k||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
       // Keywords marcadas "solo detalle / no timeline" (ej. Delivery), sin acentos.
       const noSet = {};
-      (payload.noTimeline || []).forEach(k => { noSet[(k||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim()] = 1; });
+      (payload.noTimeline || []).forEach(k => { noSet[norm(k)] = 1; });
+      // Keywords de REVENTA: sus compras son el costo de la tiendita.
+      const revSet = {};
+      (payload.reventa || []).forEach(k => { revSet[norm(k)] = 1; });
       if (kws.length) {
-        const norm = k => k.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
-        sh.getRange(2,1,kws.length,2).setValues(kws.map(k => [k, noSet[norm(k)] ? true : false]));
+        sh.getRange(2,1,kws.length,3).setValues(
+          kws.map(k => [k, noSet[norm(k)] ? true : false, revSet[norm(k)] ? true : false]));
       }
       return ContentService
         .createTextOutput(JSON.stringify({ ok: true, count: kws.length }))
         .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ── TIENDITA ──────────────────────────────────────────────
+    if (action === 'saveTienditaVenta' || action === 'deleteTienditaVenta'
+        || action === 'saveTienditaVoucher') {
+      try {
+        let r;
+        if (action === 'saveTienditaVenta')       r = saveTienditaVenta(payload);
+        else if (action === 'deleteTienditaVenta')r = deleteTienditaVenta(payload.ventaId);
+        else                                      r = saveTienditaVoucherToDrive(payload);
+        return ContentService.createTextOutput(JSON.stringify(r)).setMimeType(ContentService.MimeType.JSON);
+      } catch (err) {
+        return ContentService.createTextOutput(JSON.stringify({ ok: false, error: err.message }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
     }
 
     // ── PRÉSTAMOS A COLABORADORES ─────────────────────────────
