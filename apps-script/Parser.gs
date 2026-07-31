@@ -2152,6 +2152,10 @@ function doGet(e) {
     if (action === 'getDebugLog')       return handleGetDebugLog(e);
     if (action === 'getConversaciones') return handleGetConversaciones(e);
     if (action === 'getMensajes')       return handleGetMensajes(e);
+    if (action === 'getPrestamos')
+      return ContentService
+        .createTextOutput(JSON.stringify(Object.assign({ ok: true }, getPrestamosData())))
+        .setMimeType(ContentService.MimeType.JSON);
     if (action === 'getMalayaCalendar') {
       // ?admin=1 incluye datos de las reservas directas (id, huésped, teléfono,
       // etc.) para poblar el modal de edición. Sin admin=1, solo devuelve
@@ -2740,6 +2744,24 @@ function doPost(e) {
       return ContentService
         .createTextOutput(JSON.stringify({ ok: true, count: kws.length }))
         .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ── PRÉSTAMOS A COLABORADORES ─────────────────────────────
+    if (action === 'savePrestamo' || action === 'savePrestamoAbono'
+        || action === 'deletePrestamoAbono' || action === 'deletePrestamo'
+        || action === 'savePrestamoFactura') {
+      try {
+        let r;
+        if (action === 'savePrestamo')            r = savePrestamo(payload);
+        else if (action === 'savePrestamoAbono')  r = savePrestamoAbono(payload);
+        else if (action === 'deletePrestamoAbono')r = deletePrestamoAbono(payload.abonoId);
+        else if (action === 'deletePrestamo')     r = deletePrestamo(payload.prestamoId);
+        else                                      r = savePrestamoFacturaToDrive(payload);
+        return ContentService.createTextOutput(JSON.stringify(r)).setMimeType(ContentService.MimeType.JSON);
+      } catch (err) {
+        return ContentService.createTextOutput(JSON.stringify({ ok: false, error: err.message }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
     }
 
     // ── SAVE EGRESOS (multi-item) ─────────────────────────────

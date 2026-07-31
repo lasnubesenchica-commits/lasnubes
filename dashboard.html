@@ -2938,6 +2938,7 @@
       <button id="contabTabResumen"   onclick="setContabTab('resumen')"   style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid var(--azul-dark);margin-bottom:-2px;color:var(--azul-dark);">Resumen</button>
       <button id="contabTabIngresos"  onclick="setContabTab('ingresos')"  style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Ingresos</button>
       <button id="contabTabEgresos"   onclick="setContabTab('egresos')"   style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Egresos</button>
+      <button id="contabTabPrestamos" onclick="setContabTab('prestamos')" style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Préstamos</button>
       <button id="contabTabCxC"       onclick="setContabTab('cxc')"       style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Por Cobrar</button>
     </div>
 
@@ -3267,6 +3268,24 @@
     </div><!-- /contabPanelIngresos -->
 
     <!-- TAB: POR COBRAR (ex-CxC) -->
+    <!-- PRÉSTAMOS A COLABORADORES -->
+    <div id="contabPanelPrestamos" style="display:none;">
+      <div style="background:#eef3f8;border-radius:10px;padding:12px 16px;margin-bottom:18px;display:flex;gap:10px;align-items:flex-start;">
+        <div style="font-size:15px;flex-shrink:0;margin-top:1px;">ℹ️</div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--azul-dark);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Adelantos que se descuentan de pagos futuros</div>
+          <div style="font-size:13px;color:var(--text-muted);line-height:1.5;">
+            Cada abono es plata que <strong>no salió</strong>: el pago se registra completo como egreso pero se entrega menos.
+            Por eso los abonos del período se <strong>restan de los egresos</strong> en el Resumen, en vez de sumarse a Ingresos.
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
+        <button class="btn btn-primary" onclick="openPrestamoModal()" style="font-size:13px;">+ Nuevo préstamo</button>
+      </div>
+      <div id="prestamosList"></div>
+    </div>
+
     <div id="contabPanelCxC" style="display:none;">
 
       <div style="background:#eef3f8;border-radius:10px;padding:12px 16px;margin-bottom:20px;display:flex;gap:10px;align-items:flex-start;">
@@ -4009,6 +4028,101 @@
 </div>
 
 <!-- RESERVATION MODAL -->
+
+<!-- ─── PRÉSTAMO A COLABORADOR ─── -->
+<div class="modal-overlay" id="prestamoModal">
+  <div class="modal">
+    <div class="modal-body">
+      <div class="modal-title" id="prestamoModalTitle">Nuevo préstamo</div>
+
+      <div id="prFacturaSection">
+        <input type="file" id="prFacturaFile" accept="image/*" style="display:none;" onchange="_prSubirFactura(event)">
+        <div id="prFacturaDrop" class="voucher-dropzone" onclick="document.getElementById('prFacturaFile').click()">
+          <div class="voucher-dropzone-icon">🧾</div>
+          <div class="voucher-dropzone-title" id="prFacturaTitle">Subir factura o voucher</div>
+          <div class="voucher-dropzone-hint" id="prFacturaHint">Toca para abrir galería o cámara</div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Colaborador</label>
+          <input type="text" id="prBeneficiario" placeholder="Ej: Erika">
+        </div>
+        <div class="form-group">
+          <label>Fecha</label>
+          <input type="date" id="prFecha">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Concepto</label>
+        <input type="text" id="prConcepto" placeholder="Ej: centro de lavado">
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Monto prestado ($)</label>
+          <input type="number" id="prMonto" step="0.01" placeholder="0.00" oninput="_prActualizarHint()">
+        </div>
+        <div class="form-group">
+          <label>Descuento por cobro ($)</label>
+          <input type="number" id="prPorCobro" step="0.01" placeholder="0.00" oninput="_prActualizarHint()">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Forma de cobro</label>
+        <select id="prTipoCobro" onchange="_prActualizarHint()">
+          <option value="por_pago">Por pago periódico — se descuenta de cada pago</option>
+          <option value="por_evento">Por evento — se acredita cada vez que ocurre</option>
+          <option value="manual">Manual — sin ritmo fijo</option>
+        </select>
+        <input type="text" id="prFrecuencia" placeholder="Ej: semanal · o: por delivery" style="margin-top:8px;">
+        <div id="prHint" class="modal-aviso modal-aviso--info" style="display:none;margin-top:10px;"></div>
+      </div>
+
+      <div class="form-group">
+        <label>Notas</label>
+        <input type="text" id="prNotas" placeholder="Opcional">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="prBorrarBtn" onclick="borrarPrestamo()" style="margin-right:auto;display:none;color:#b85c4a;">Eliminar</button>
+      <button class="btn btn-ghost" onclick="closePrestamoModal()">Cancelar</button>
+      <button class="btn btn-primary" id="prGuardarBtn" onclick="guardarPrestamo()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── ABONO ─── -->
+<div class="modal-overlay" id="abonoModal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-body">
+      <div class="modal-title">Registrar abono</div>
+      <div id="abonoContexto" style="font-size:13px;color:var(--text-muted);margin-bottom:14px;line-height:1.5;"></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Monto ($)</label>
+          <input type="number" id="abMonto" step="0.01" placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label>Fecha</label>
+          <input type="date" id="abFecha">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Nota</label>
+        <input type="text" id="abNota" placeholder="Ej: pago semanal del 5 de agosto">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeAbonoModal()">Cancelar</button>
+      <button class="btn btn-primary" id="abGuardarBtn" onclick="guardarAbono()">Registrar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="reservaModal">
   <div class="modal">
     <div class="modal-body">
@@ -4496,6 +4610,8 @@ let editId = null;
 let pendingDeleteId = null;
 let sheetsReservations = []; // Reservas sincronizadas desde Airbnb/Gmail
 let loyaltyCredits     = []; // Creditos de Cliente Fiel (cargados desde Sheets)
+let prestamos          = []; // Prestamos a colaboradores (con saldo ya calculado)
+let prestamoAbonos     = []; // Abonos de esos prestamos (netean contra egresos)
 let referrals          = []; // Referidos: { email, code, ... }
 let referralUses       = []; // Uses de codigos: { code, referrerEmail, usedByReservaId, ... }
 let pagos = [];              // Cobros de Airbnb (una entrada por email de pago)
@@ -4561,6 +4677,9 @@ async function syncFromSheets() {
     ]);
     console.log('[fetch] Promise.all total: ' + (performance.now() - tAll).toFixed(0) + 'ms');
     if (dataLoyalty && dataLoyalty.ok) loyaltyCredits = dataLoyalty.credits || [];
+    // Préstamos: van en su propia llamada porque cambian poco y no deben
+    // demorar la carga de reservas, que es lo que se mira al abrir.
+    cargarPrestamos();
     if (dataRef && dataRef.ok) {
       referrals    = dataRef.referrals    || [];
       referralUses = dataRef.referralUses || [];
@@ -12217,7 +12336,15 @@ function renderContabilidad() {
   else if (origenFilter === 'Directa') totalIn = totalDirectas;
   else                                  totalIn = totalAirbnb + totalDirectas;
 
-  const totalOut = filteredEgr.reduce((s,e) => s + parseFloat(e.amount||0), 0);
+  const egrBruto = filteredEgr.reduce((s,e) => s + parseFloat(e.amount||0), 0);
+  // Los abonos de préstamos son plata que NUNCA salió: el pago semanal se
+  // registra por la tarifa completa aunque se entregue menos, así que sin
+  // restarlos el gasto queda inflado justo por lo que se recuperó. No van a
+  // Ingresos —eso inventaría facturación inexistente— sino que netean acá.
+  const abonosPeriodo = prestamoAbonos
+    .filter(x => _matchesSelectedPeriod(x.fecha))
+    .reduce((s, x) => s + (parseFloat(x.monto) || 0), 0);
+  const totalOut = +(egrBruto - abonosPeriodo).toFixed(2);
   const balance  = totalIn - totalOut;
 
   // Store for rentabilidad toggle reuse
@@ -12286,7 +12413,9 @@ function renderContabilidad() {
   _ingCountEl.textContent = countText;
 
   document.getElementById('statEgresos').textContent = `$${totalOut.toFixed(2)}`;
-  document.getElementById('statEgresosCount').textContent = `${filteredEgr.length} registro${filteredEgr.length!==1?'s':''}`;
+  document.getElementById('statEgresosCount').textContent =
+    `${filteredEgr.length} registro${filteredEgr.length!==1?'s':''}`
+    + (abonosPeriodo > 0 ? ` · neto de $${abonosPeriodo.toFixed(2)} en abonos` : '');
 
   const balEl = document.getElementById('statBalance');
   balEl.textContent = `$${balance.toFixed(2)}`;
@@ -15666,6 +15795,7 @@ function _renderActiveContabTab() {
   if (_contabTab === 'egresos')     renderEgresosTab();
   if (_contabTab === 'ingresos')    renderWidgets7d();
   if (_contabTab === 'cxc')         renderCxC();
+  if (_contabTab === 'prestamos')   renderPrestamos();
 }
 
 function setContabTab(tab) {
@@ -15673,18 +15803,20 @@ function setContabTab(tab) {
   // Suministros salió de acá: es sección propia (`#suministros`) con su propio
   // período. No es contabilidad — Contabilidad responde "¿cuánto gasté?",
   // Suministros "¿cuándo recompro el gas?".
-  const tabs   = ['resumen', 'ingresos', 'egresos', 'cxc'];
+  const tabs   = ['resumen', 'ingresos', 'egresos', 'cxc', 'prestamos'];
   const panels = {
     resumen:  'contabPanelResumen',
     ingresos: 'contabPanelIngresos',
     egresos:  'contabPanelEgresos',
-    cxc:      'contabPanelCxC'
+    cxc:      'contabPanelCxC',
+    prestamos:'contabPanelPrestamos'
   };
   const btns = {
     resumen:  'contabTabResumen',
     ingresos: 'contabTabIngresos',
     egresos:  'contabTabEgresos',
-    cxc:      'contabTabCxC'
+    cxc:      'contabTabCxC',
+    prestamos:'contabTabPrestamos'
   };
   tabs.forEach(t => {
     const panelEl = document.getElementById(panels[t]);
@@ -15714,6 +15846,287 @@ function _repintarGraficasResumen() {
   if (args) renderFlujoChart(args.filteredPagos, args.filteredDirectas);
   renderVentasChart();
   renderCheckinChart();
+}
+
+
+// ═══════════════════════════════════════════════════════════
+//  PRÉSTAMOS A COLABORADORES
+// ═══════════════════════════════════════════════════════════
+// Adelantos que se recuperan descontando de pagos futuros. Ver Prestamos.gs
+// para el modelo; acá solo va la UI y el cálculo de presentación.
+
+let _prEditId = null;
+let _prFacturaURL = '';
+let _abPrestamoId = null;
+
+async function cargarPrestamos() {
+  try {
+    const r = await (await fetch(SHEETS_API_URL + '?action=getPrestamos&_=' + Date.now())).json();
+    if (!r || !r.ok) return;
+    prestamos      = r.prestamos || [];
+    prestamoAbonos = r.abonos    || [];
+    if (_contabTab === 'prestamos') renderPrestamos();
+  } catch (_) { /* sin conexión: se queda con lo que haya */ }
+}
+
+const PR_TIPO_LBL = { por_pago: 'por pago', por_evento: 'por evento', manual: 'manual' };
+
+function renderPrestamos() {
+  const box = document.getElementById('prestamosList');
+  if (!box) return;
+  if (!prestamos.length) {
+    box.innerHTML = '<div style="text-align:center;padding:30px 10px;color:var(--text-muted);font-size:13px;">'
+      + 'Todavía no hay préstamos registrados.</div>';
+    return;
+  }
+  const activos  = prestamos.filter(p => p.estado !== 'saldado' && p.estado !== 'cancelado');
+  const cerrados = prestamos.filter(p => p.estado === 'saldado' || p.estado === 'cancelado');
+  const pendiente = activos.reduce((t, p) => t + Math.max(0, p.saldo), 0);
+
+  let html = '<div class="contab-panel" style="margin-bottom:18px;">'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;padding:6px 0;">'
+    + _kpiCell('Por recuperar', '$' + pendiente.toFixed(2), pendiente > 0 ? '#7a5a1f' : '#2c5e22')
+    + _kpiCell('Préstamos activos', activos.length)
+    + _kpiCell('Saldados', cerrados.length, '#2c5e22')
+    + '</div></div>';
+
+  html += activos.map(_prCardHtml).join('');
+  if (cerrados.length) {
+    html += '<details style="margin-top:16px;"><summary style="cursor:pointer;font-size:13px;color:var(--text-muted);padding:6px 0;">'
+          + 'Saldados y cancelados (' + cerrados.length + ')</summary><div style="margin-top:10px;">'
+          + cerrados.map(_prCardHtml).join('') + '</div></details>';
+  }
+  box.innerHTML = html;
+}
+
+function _prCardHtml(p) {
+  const abonos = prestamoAbonos.filter(a => a.prestamoId === p.id)
+                               .sort((x, y) => y.fecha.localeCompare(x.fecha));
+  const pct = p.montoTotal > 0 ? Math.min(100, (p.abonado / p.montoTotal) * 100) : 0;
+  const saldado = p.saldo <= 0.009;
+  const ritmo = (p.montoPorCobro > 0 && !saldado)
+    ? ' · $' + p.montoPorCobro.toFixed(2) + ' ' + (PR_TIPO_LBL[p.tipoCobro] || '')
+      + (p.cobrosRestantes ? ' · faltan ' + p.cobrosRestantes : '')
+    : '';
+  return ''
+  + '<div class="contab-panel" style="margin-bottom:12px;' + (saldado ? 'opacity:.62;' : '') + '">'
+  +   '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">'
+  +     '<div style="min-width:0;">'
+  +       '<div style="font-weight:600;font-size:14px;">' + escapeHtml(p.concepto || 'Sin concepto')
+  +         (saldado ? ' <span style="font-size:11px;color:#2c5e22;">✓ saldado</span>' : '') + '</div>'
+  +       '<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">'
+  +         escapeHtml(p.beneficiario || '—') + ' · ' + p.fecha
+  +         (p.frecuencia ? ' · ' + escapeHtml(p.frecuencia) : '') + ritmo + '</div>'
+  +     '</div>'
+  +     '<div style="text-align:right;flex-shrink:0;">'
+  +       '<div style="font-size:17px;font-weight:700;color:' + (saldado ? '#2c5e22' : '#7a5a1f') + ';">$'
+  +         Math.max(0, p.saldo).toFixed(2) + '</div>'
+  +       '<div style="font-size:11px;color:var(--text-muted);">de $' + p.montoTotal.toFixed(2) + '</div>'
+  +     '</div>'
+  +   '</div>'
+  +   '<div style="height:6px;background:var(--border);border-radius:4px;margin:10px 0 8px;overflow:hidden;">'
+  +     '<div style="height:100%;width:' + pct.toFixed(1) + '%;background:' + (saldado ? '#6a9e62' : '#c0956a') + ';"></div>'
+  +   '</div>'
+  +   '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px;">'
+  +     (saldado ? '' : '<button class="btn btn-ghost" style="font-size:12px;padding:4px 12px;" onclick="openAbonoModal(\'' + p.id + '\')">+ Abono</button>')
+  +     '<button class="btn btn-ghost" style="font-size:12px;padding:4px 12px;" onclick="openPrestamoModal(\'' + p.id + '\')">Editar</button>'
+  +     (p.urlFactura ? '<a href="' + p.urlFactura + '" target="_blank" rel="noopener" style="font-size:12px;color:var(--azul-dark);">🧾 Ver factura ↗</a>' : '')
+  +     '<span style="color:var(--text-muted);margin-left:auto;">' + abonos.length + ' abono' + (abonos.length===1?'':'s')
+  +       ' · $' + p.abonado.toFixed(2) + ' recuperado</span>'
+  +   '</div>'
+  +   (abonos.length
+      ? '<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted);">Ver abonos</summary>'
+        + '<div style="margin-top:6px;">' + abonos.map(a =>
+            '<div style="display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-top:1px solid var(--border);font-size:12px;">'
+          + '<span style="color:var(--text-muted);">' + a.fecha + (a.nota ? ' · ' + escapeHtml(a.nota) : '') + '</span>'
+          + '<span>$' + a.monto.toFixed(2)
+          + ' <button onclick="borrarAbono(\'' + a.id + '\')" title="Eliminar abono" '
+          + 'style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:0 2px;">✕</button></span></div>'
+          ).join('') + '</div></details>'
+      : '')
+  + '</div>';
+}
+
+// ── Modal del préstamo ──
+function openPrestamoModal(id) {
+  _prEditId = id || null;
+  const p = id ? prestamos.find(x => x.id === id) : null;
+  document.getElementById('prestamoModalTitle').textContent = p ? 'Editar préstamo' : 'Nuevo préstamo';
+  document.getElementById('prBeneficiario').value = p ? p.beneficiario : '';
+  document.getElementById('prFecha').value        = p ? p.fecha : new Date().toISOString().slice(0,10);
+  document.getElementById('prConcepto').value     = p ? p.concepto : '';
+  document.getElementById('prMonto').value        = p ? p.montoTotal : '';
+  document.getElementById('prPorCobro').value     = p ? p.montoPorCobro : '';
+  document.getElementById('prTipoCobro').value    = p ? p.tipoCobro : 'por_pago';
+  document.getElementById('prFrecuencia').value   = p ? p.frecuencia : '';
+  document.getElementById('prNotas').value        = p ? p.notas : '';
+  _prFacturaURL = p ? p.urlFactura : '';
+  _prPintarFactura();
+  document.getElementById('prBorrarBtn').style.display = p ? '' : 'none';
+  _prActualizarHint();
+  document.getElementById('prestamoModal').classList.add('open');
+}
+
+function closePrestamoModal() {
+  document.getElementById('prestamoModal').classList.remove('open');
+  _prEditId = null; _prFacturaURL = '';
+}
+
+function _prPintarFactura() {
+  const t = document.getElementById('prFacturaTitle');
+  const h = document.getElementById('prFacturaHint');
+  if (_prFacturaURL) { t.textContent = '✓ Factura adjunta'; h.textContent = 'Toca para reemplazarla'; }
+  else { t.textContent = 'Subir factura o voucher'; h.textContent = 'Toca para abrir galería o cámara'; }
+}
+
+// Traduce el monto y el ritmo a una frase, para no dejar al usuario haciendo la
+// división mental de cuántos pagos faltan.
+function _prActualizarHint() {
+  const box = document.getElementById('prHint');
+  const monto = parseFloat(document.getElementById('prMonto').value) || 0;
+  const cuota = parseFloat(document.getElementById('prPorCobro').value) || 0;
+  const tipo  = document.getElementById('prTipoCobro').value;
+  if (!monto || !cuota) { box.style.display = 'none'; return; }
+  const n = Math.ceil(monto / cuota);
+  const unidad = tipo === 'por_evento' ? (n === 1 ? 'evento' : 'eventos') : (n === 1 ? 'pago' : 'pagos');
+  box.innerHTML = '$' + monto.toFixed(2) + ' ÷ $' + cuota.toFixed(2) + ' = <strong>' + n + ' ' + unidad + '</strong> para saldarlo.';
+  box.style.display = 'block';
+}
+
+async function _prSubirFactura(ev) {
+  const file = ev.target.files[0];
+  if (!file) return;
+  const drop = document.getElementById('prFacturaDrop');
+  drop.classList.add('loading');
+  document.getElementById('prFacturaTitle').textContent = 'Subiendo…';
+  try {
+    const b64 = await new Promise((res, rej) => {
+      const fr = new FileReader();
+      fr.onload = () => res(fr.result.split(',')[1]);
+      fr.onerror = rej;
+      fr.readAsDataURL(file);
+    });
+    const r = await (await fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify({
+      action: 'savePrestamoFactura', base64: b64, mimeType: file.type,
+      prestamoId: _prEditId || 'nuevo'
+    })})).json();
+    if (r && r.ok) { _prFacturaURL = r.url; showToast('✓ Factura subida'); }
+    else showToast('✗ No se pudo subir: ' + ((r && r.error) || 'error'));
+  } catch (e) {
+    showToast('✗ No se pudo subir: ' + e.message);
+  } finally {
+    drop.classList.remove('loading');
+    _prPintarFactura();
+    ev.target.value = '';
+  }
+}
+
+async function guardarPrestamo() {
+  const benef = document.getElementById('prBeneficiario').value.trim();
+  const monto = parseFloat(document.getElementById('prMonto').value) || 0;
+  if (!benef) { showToast('Falta el colaborador'); return; }
+  if (monto <= 0) { showToast('El monto debe ser mayor a 0'); return; }
+  const btn = document.getElementById('prGuardarBtn');
+  btn.disabled = true; btn.textContent = 'Guardando…';
+  try {
+    const r = await (await fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify({
+      action: 'savePrestamo',
+      id: _prEditId || '',
+      beneficiario: benef,
+      fecha:        document.getElementById('prFecha').value,
+      concepto:     document.getElementById('prConcepto').value.trim(),
+      montoTotal:   monto,
+      montoPorCobro: parseFloat(document.getElementById('prPorCobro').value) || 0,
+      tipoCobro:    document.getElementById('prTipoCobro').value,
+      frecuencia:   document.getElementById('prFrecuencia').value.trim(),
+      notas:        document.getElementById('prNotas').value.trim(),
+      urlFactura:   _prFacturaURL
+    })})).json();
+    if (!r || !r.ok) { showToast('✗ ' + ((r && r.error) || 'No se pudo guardar')); return; }
+    closePrestamoModal();
+    await cargarPrestamos();
+    renderPrestamos();
+    showToast('✓ Préstamo guardado');
+  } catch (e) {
+    showToast('✗ Red: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Guardar';
+  }
+}
+
+async function borrarPrestamo() {
+  if (!_prEditId) return;
+  const p = prestamos.find(x => x.id === _prEditId);
+  const n = prestamoAbonos.filter(a => a.prestamoId === _prEditId).length;
+  if (!confirm('¿Eliminar el préstamo "' + (p ? p.concepto : '') + '"?'
+      + (n ? '\nSe borrarán también sus ' + n + ' abono' + (n===1?'':'s') + '.' : ''))) return;
+  const r = await (await fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify({
+    action: 'deletePrestamo', prestamoId: _prEditId })})).json();
+  if (r && r.ok) {
+    closePrestamoModal();
+    await cargarPrestamos();
+    renderPrestamos();
+    renderContabilidad();   // el neteo contra egresos cambió
+    showToast('✓ Préstamo eliminado');
+  } else showToast('✗ No se pudo eliminar');
+}
+
+// ── Modal del abono ──
+function openAbonoModal(prestamoId) {
+  _abPrestamoId = prestamoId;
+  const p = prestamos.find(x => x.id === prestamoId);
+  if (!p) return;
+  document.getElementById('abonoContexto').innerHTML =
+    '<strong>' + escapeHtml(p.concepto || '') + '</strong> · ' + escapeHtml(p.beneficiario || '')
+    + '<br>Saldo actual: <strong>$' + Math.max(0, p.saldo).toFixed(2) + '</strong>';
+  // Prellenado con el descuento configurado: es el caso normal, y así el abono
+  // se registra en dos toques.
+  document.getElementById('abMonto').value = p.montoPorCobro > 0 ? p.montoPorCobro : '';
+  document.getElementById('abFecha').value = new Date().toISOString().slice(0,10);
+  document.getElementById('abNota').value  = '';
+  document.getElementById('abonoModal').classList.add('open');
+}
+
+function closeAbonoModal() {
+  document.getElementById('abonoModal').classList.remove('open');
+  _abPrestamoId = null;
+}
+
+async function guardarAbono() {
+  if (!_abPrestamoId) return;
+  const monto = parseFloat(document.getElementById('abMonto').value) || 0;
+  if (monto <= 0) { showToast('El abono debe ser mayor a 0'); return; }
+  const btn = document.getElementById('abGuardarBtn');
+  btn.disabled = true; btn.textContent = 'Registrando…';
+  try {
+    const r = await (await fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify({
+      action: 'savePrestamoAbono', prestamoId: _abPrestamoId, monto: monto,
+      fecha: document.getElementById('abFecha').value,
+      nota:  document.getElementById('abNota').value.trim()
+    })})).json();
+    if (!r || !r.ok) { showToast('✗ ' + ((r && r.error) || 'No se pudo registrar')); return; }
+    closeAbonoModal();
+    await cargarPrestamos();
+    renderPrestamos();
+    renderContabilidad();   // los egresos del período bajan por este abono
+    showToast(r.saldado ? '✓ Abono registrado · préstamo saldado 🎉' : '✓ Abono registrado');
+  } catch (e) {
+    showToast('✗ Red: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Registrar';
+  }
+}
+
+async function borrarAbono(abonoId) {
+  if (!confirm('¿Eliminar este abono? El saldo del préstamo va a subir.')) return;
+  const r = await (await fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify({
+    action: 'deletePrestamoAbono', abonoId: abonoId })})).json();
+  if (r && r.ok) {
+    await cargarPrestamos();
+    renderPrestamos();
+    renderContabilidad();
+    showToast('✓ Abono eliminado');
+  } else showToast('✗ No se pudo eliminar');
 }
 
 // ─── SUMINISTROS: timeline de consumo por keyword ────────────
