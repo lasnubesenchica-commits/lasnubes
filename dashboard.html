@@ -2421,6 +2421,27 @@
   }
 
   /* Tarifas */
+  /* Al fondo del tab y colapsado: es referencia, no lo primero que se mira.
+     Sin la tarjeta grande de .mly-section-card, que lo hacía competir con el
+     calendario. El marcador va inline — con un <h2> adentro del summary el
+     triangulito quedaba en su propia línea, encima del texto. */
+  .mly-tarifas-box { margin-top: 18px; }
+  .mly-tarifas-sum {
+    display: flex; align-items: center; gap: 8px; cursor: pointer;
+    font-size: 13px; color: var(--text-muted); padding: 6px 2px;
+    list-style: none; user-select: none;
+  }
+  .mly-tarifas-sum::-webkit-details-marker { display: none; }
+  .mly-tarifas-sum::before { content: '\25B8'; font-size: 11px; transition: transform .15s; }
+  details[open] > .mly-tarifas-sum::before { transform: rotate(90deg); }
+  .mly-tarifas-sum:hover { color: var(--text); }
+  /* Compacto: tres columnas siempre, aunque la pantalla sea angosta. */
+  .mly-tarifas-box .mly-pricing { grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+  .mly-tarifas-box .mly-pricing .mly-card { padding: 10px 6px; }
+  .mly-tarifas-box .mly-pricing .mly-card .mly-val { font-size: 19px; }
+  .mly-tarifas-box .mly-pricing .mly-card .mly-lbl { font-size: 9px; letter-spacing: .06em; }
+  .mly-tarifas-box .mly-pricing .mly-card .mly-desc { font-size: 10px; }
+
   .mly-pricing {
     display: grid; gap: 12px;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -2533,10 +2554,6 @@
     background: var(--mly-sel-bg);
   }
 
-  /* Reservar (público) */
-  .mly-reserve-cta {
-    text-align: center; padding: 28px 0;
-  }
   .mly-btn {
     display: inline-block; padding: 12px 28px; border-radius: 10px;
     background: var(--mly-marca); color: #fff; border: none;
@@ -3367,11 +3384,33 @@
       </span>
     </div>
 
-  <!-- Tarifas (colapsable; abierto por default, cerrado en admin) -->
+
+  <!-- Calendario -->
   <section>
     <div class="mly-section-card">
-      <details class="mly-collapsible" id="tarifasDetails" open>
-        <summary><h2>Tarifas</h2></summary>
+      <h2 class="mly-solo-publico">Disponibilidad</h2>
+      <p class="mly-solo-publico" style="color:var(--text-muted);">Selecciona tus fechas. Las celdas en gris ya están reservadas.</p>
+
+      <div class="mly-cal-controls">
+        <button onclick="mly_shiftMonths(-1)">← Anterior</button>
+        <div id="calRangeInfo" style="font-size:13px; color:var(--text-muted);">Cargando…</div>
+        <button onclick="mly_shiftMonths(1)">Siguiente →</button>
+      </div>
+
+      <div id="mlyCal"></div>
+
+
+    </div>
+  </section>
+
+  <!-- Tarifas y sync al fondo: son referencia y mantenimiento, no lo que se
+       mira al abrir el tab. El aviso de "toca una fecha para reservar" se quitó
+       —es evidente— y el CTA público de WhatsApp no aplica acá. -->
+  <!-- Tarifas (colapsable; abierto por default, cerrado en admin) -->
+  <section>
+    <div class="mly-tarifas-box">
+      <details id="tarifasDetails">
+        <summary class="mly-tarifas-sum">Tarifas de Malaya</summary>
         <div class="mly-pricing" style="margin-top:14px;">
           <div class="mly-card">
             <div class="mly-lbl">Dom – Jue</div>
@@ -3396,41 +3435,11 @@
       </details>
     </div>
   </section>
-
-  <!-- Calendario -->
-  <section>
-    <div class="mly-section-card">
-      <h2 class="mly-solo-publico">Disponibilidad</h2>
-      <p class="mly-solo-publico" style="color:var(--text-muted);">Selecciona tus fechas. Las celdas en gris ya están reservadas.</p>
-
-      <div class="mly-cal-controls">
-        <button onclick="mly_shiftMonths(-1)">← Anterior</button>
-        <div id="calRangeInfo" style="font-size:13px; color:var(--text-muted);">Cargando…</div>
-        <button onclick="mly_shiftMonths(1)">Siguiente →</button>
-      </div>
-
-      <div id="mlyCal"></div>
-
-      <div class="mly-reserve-cta">
-        <a href="#" id="reserveBtn" class="mly-btn">Reservar por WhatsApp</a>
-        <div style="margin-top:8px; font-size:12px; color:var(--text-muted);">
-          Te respondo personalmente para coordinar.
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Admin toolbar compacto (solo con ?admin=1). El form de reserva vive
-       dentro del modal. Sync Airbnb es útil para forzar refresh del iCal
-       sin esperar el trigger de 30 min y confirmar la config. -->
-  <section class="mly-admin-panel" id="adminPanel">
-    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
-      <span style="font-size:12px; color:#8a6f1c; font-weight:600;">🔧 Admin</span>
-      <span style="font-size:11px; color:var(--text-muted); flex:1;">Tocá una fecha libre para abrir el form de reserva.</span>
-      <button onclick="mly_adminForceSync()" style="background:none; border:none; padding:4px 6px; font-family:inherit; font-size:12px; color:#8a6f1c; cursor:pointer; text-decoration:underline;" title="Forzar sync con el iCal de Airbnb (normalmente corre cada 30 min)">🔄 Sync Airbnb</button>
-    </div>
-    <div id="syncResult" style="display:none; margin-top:10px; padding:10px; background:var(--surface); border:1px solid var(--border); border-radius:8px; font-size:12px; white-space:pre-wrap;"></div>
-  </section>
+  <div style="margin-top:10px;text-align:right;">
+    <button onclick="mly_adminForceSync()" title="Forzar sync con el iCal de Airbnb (normalmente corre cada 30 min)"
+            style="background:none;border:none;padding:4px 2px;font-family:inherit;font-size:12px;color:var(--text-muted);cursor:pointer;text-decoration:underline;">🔄 Sync Airbnb</button>
+    <div id="syncResult" style="display:none;margin-top:10px;padding:10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:12px;white-space:pre-wrap;text-align:left;"></div>
+  </div>
 
   </div><!-- /tab-reservar -->
     </div>
@@ -16871,7 +16880,6 @@ function renderCalendar() {
 
   const fromIso = isoFromYMD(viewYear, viewMonth, 1);
   document.getElementById('calRangeInfo').textContent = '3 meses desde ' + fromIso.slice(0,7);
-  updateReserveBtn();
 }
 
 function mly_pickDay(iso) {
@@ -16930,17 +16938,6 @@ function _maxNochesFrom(iso) {
 function clearSelection() {
   selStart = null; selEnd = null;
   renderCalendar();
-}
-
-function updateReserveBtn() {
-  const btn = document.getElementById('reserveBtn');
-  let msg = 'Hola, quiero reservar *Malaya Lodge*';
-  if (selStart && selEnd) {
-    msg += ' del ' + selStart + ' al ' + selEnd + '.';
-  } else {
-    msg += '. ¿Qué fechas tienen disponibles?';
-  }
-  btn.href = 'https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg);
 }
 
 // ─── Tarifas helpers ───
