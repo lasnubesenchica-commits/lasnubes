@@ -379,6 +379,63 @@ function getMalayaCalendarData(includeAdminDetails) {
   return { blocked: blocked };
 }
 
+// ─── Ganancias ───────────────────────────────────────────────────
+//
+// Resumen de lo vendido en Malaya: cuántas reservas, cuánto dinero movieron
+// y cuánta comisión me tocó.
+//
+// OJO: esto NO se puede calcular con lo que devuelve getMalayaCalendarData.
+// Esa función se saltea las `completada` (ya pasaron, no ocupan calendario) y
+// son justamente las ventas ya cerradas — se perdería casi todo el histórico.
+// Por eso lee la hoja por su cuenta.
+//
+// Se excluyen solo las `cancelada`. Las `pendiente` y `no_bloqueada` sí suman
+// al total, pero vuelven aparte en `porEstado` para que el frontend pueda
+// avisar cuánto de ese número todavía no está firme.
+//
+// Devuelve totales agregados, sin datos del huésped.
+function getMalayaGanancias() {
+  const sheet = _malayaSheet();
+  const vacio = { n: 0, monto: 0, comision: 0 };
+  const out = { total: Object.assign({}, vacio), porEstado: {}, porAnio: {} };
+  if (sheet.getLastRow() < 2) return out;
+
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (!data[i][0]) continue;
+    const estado = String(data[i][10] || '').toLowerCase() || 'pendiente';
+    if (estado === 'cancelada') continue;
+
+    const monto    = parseFloat(data[i][7]) || 0;
+    const comision = parseFloat(data[i][8]) || 0;
+    // El año se toma del check-in (cuándo se prestó el servicio), no de la
+    // fecha de reserva: una estadía de enero vendida en diciembre cuenta
+    // como del año en que ocurre.
+    const ci = data[i][3] instanceof Date
+      ? Utilities.formatDate(data[i][3], 'America/Panama', 'yyyy-MM-dd')
+      : String(data[i][3] || '').slice(0, 10);
+    const anio = ci.slice(0, 4) || '—';
+
+    const sumar = (o) => { o.n += 1; o.monto += monto; o.comision += comision; };
+    sumar(out.total);
+    if (!out.porEstado[estado]) out.porEstado[estado] = Object.assign({}, vacio);
+    sumar(out.porEstado[estado]);
+    if (!out.porAnio[anio]) out.porAnio[anio] = Object.assign({}, vacio);
+    sumar(out.porAnio[anio]);
+  }
+  // Redondeo al final, no acumulando: sumar centavos redondeados arrastra error.
+  const r2 = (o) => { o.monto = Math.round(o.monto * 100) / 100; o.comision = Math.round(o.comision * 100) / 100; };
+  r2(out.total);
+  Object.keys(out.porEstado).forEach(k => r2(out.porEstado[k]));
+  Object.keys(out.porAnio).forEach(k => r2(out.porAnio[k]));
+  return out;
+}
+
+// Test desde el editor.
+function _testMalayaGanancias() {
+  Logger.log(JSON.stringify(getMalayaGanancias(), null, 2));
+}
+
 // ─── iCal feed público (para importar en Airbnb) ─────────────────
 //
 // Devuelve un .ics con todas las reservas directas ACTIVAS de Malaya
