@@ -232,9 +232,17 @@ function _malayaNoches(ciIso, coIso) {
 // Devuelve:
 //   { cubierta, faltantes[], porCelestino, soloEco, conflicto, detalle }
 // - cubierta     : todas las noches aparecen en algún evento del iCal.
-// - porCelestino : hay al menos una noche cubierta por un bloqueo manual.
-// - soloEco      : está cubierta, pero SOLO por el eco de nuestro feed.
-// - conflicto    : alguna noche la cubre una reserva ajena de Airbnb.
+// - conflicto    : alguna noche la cubre una RESERVA de Airbnb. Este es el
+//                  único caso grave: significa que Airbnb vendió una noche que
+//                  ya es mía.
+// - porCelestino : al menos una noche la cubre un bloqueo manual.
+// - soloEco      : cubierta solo por el eco de nuestro propio feed.
+//
+// Ojo con los dos últimos: son INFORMATIVOS, no cambian el veredicto. Da igual
+// quién puso el bloqueo —Celestino a mano, o Airbnb al importar nuestro feed—
+// porque el efecto es el mismo: la noche queda no-disponible y nadie más la
+// puede tomar. Un evento exportado por Airbnb es, por definición, una fecha
+// ocupada; que venga de nuestro propio calendario no la hace menos real.
 function _malayaEvaluarBloqueo(events, ciIso, coIso) {
   const noches = _malayaNoches(ciIso, coIso);
   const porNoche = {};
@@ -358,7 +366,12 @@ function syncMalayaAirbnb(force) {
       continue;
     }
 
-    if (ev.cubierta && !ev.soloEco) {
+    // Cubierta = protegida, sin importar quién la bloqueó. Antes esto exigía
+    // además `!ev.soloEco`, o sea que alertaba cuando la noche SÍ estaba
+    // bloqueada, solo porque el bloqueo venía de que Airbnb importó nuestro
+    // propio feed. Ese es justo el mecanismo que montamos para que se bloquee
+    // sola: alertar ahí era pedir trabajo manual por algo que ya funcionó.
+    if (ev.cubierta) {
       if (estado !== 'confirmada') {
         malayaSheet.getRange(i + 1, 11).setValue('confirmada');
         malayaSheet.getRange(i + 1, 12).setValue(true);
@@ -379,13 +392,13 @@ function syncMalayaAirbnb(force) {
       continue;
     }
 
-    // No está bloqueada (o solo la cubre nuestro propio eco). ¿Pasó el grace?
+    // Le faltan noches. ¿Pasó el grace period?
     const reservadaTs = row[12] instanceof Date ? row[12].getTime() : Date.parse(String(row[12] || ''));
     const minutos = reservadaTs ? (nowMs - reservadaTs) / 60000 : 0;
     if (minutos > graceMin && estado !== 'no_bloqueada') {
       malayaSheet.getRange(i + 1, 11).setValue('no_bloqueada');
       alerts.push({
-        tipo: ev.soloEco ? 'soloEco' : 'sinBloqueo',
+        tipo: 'sinBloqueo',
         id: row[0], guest: row[1], phone: row[2],
         checkin: ci, checkout: co, minutos: Math.round(minutos),
         faltantes: ev.faltantes, detalle: ev.detalle
@@ -431,12 +444,6 @@ function _malayaAlertNoBloqueada(a) {
       quien +
       (a.faltantes && a.faltantes.length ? 'Noches sin bloqueo: ' + a.faltantes.join(', ') + '\n\n' : '') +
       'Avisa a Celestino (+' + celestino + ') para que la vuelva a bloquear.';
-  } else if (a.tipo === 'soloEco') {
-    titulo = '⚠️ *Malaya — sin bloqueo propio de Celestino*';
-    asunto = '⚠️ Malaya: falta bloqueo de Celestino — ' + a.guest;
-    cuerpo = 'Las noches figuran ocupadas en Airbnb, pero SOLO por el calendario que Airbnb importa de nosotros. Es nuestro propio eco: no confirma que Celestino la haya bloqueado de su lado.\n\n' +
-      quien +
-      'Confirma con Celestino (+' + celestino + ') que la vea bloqueada en su calendario.';
   } else {
     titulo = '⚠️ *Malaya — falta bloqueo en Airbnb*';
     asunto = '⚠️ Malaya: falta bloqueo en Airbnb — ' + a.guest;
@@ -527,15 +534,16 @@ function getMalayaEstadoBloqueos() {
 
       const ev = _malayaEvaluarBloqueo(events, ci, co);
       let veredicto;
-      if (ev.conflicto)                    veredicto = 'conflicto';
-      else if (ev.cubierta && !ev.soloEco) veredicto = 'confirmada';
-      else if (ev.soloEco)                 veredicto = 'soloEco';
-      else                                 veredicto = 'sinBloqueo';
+      if (ev.conflicto)     veredicto = 'conflicto';
+      else if (ev.cubierta) veredicto = 'confirmada';
+      else                  veredicto = 'sinBloqueo';
 
       reservas.push({
         id: String(row[0]), guest: String(row[1] || ''),
         checkin: ci, checkout: co, estadoHoja: estado,
-        veredicto: veredicto, faltantes: ev.faltantes, detalle: ev.detalle
+        veredicto: veredicto, faltantes: ev.faltantes, detalle: ev.detalle,
+        // Informativo: de dónde salió el bloqueo. No cambia el veredicto.
+        soloEco: ev.soloEco, porCelestino: ev.porCelestino
       });
     }
   }

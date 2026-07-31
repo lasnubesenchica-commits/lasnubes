@@ -17546,17 +17546,21 @@ async function mly_adminForceSync() {
     let summary = '';
     const b = data.bloqueos || [];
     if (b.length) {
-      const ICONO = { confirmada: '✅', soloEco: '⚠️', conflicto: '🚨', sinBloqueo: '⚠️' };
+      const ICONO = { confirmada: '✅', conflicto: '🚨', sinBloqueo: '⚠️' };
       const TEXTO = {
-        confirmada: 'bloqueada por Celestino',
-        soloEco:    'solo la cubre nuestro propio calendario — Celestino no la bloqueó',
+        confirmada: 'bloqueada en Airbnb',
         conflicto:  'RESERVA DE AIRBNB sobre esas noches — posible doble booking',
         sinBloqueo: 'sin bloqueo en Airbnb'
       };
       summary += 'MIS RESERVAS (' + b.length + ')\n';
       b.forEach(r => {
         summary += (ICONO[r.veredicto] || '•') + ' ' + r.guest + '  ' + r.checkin + ' → ' + r.checkout + '\n';
-        summary += '   ' + (TEXTO[r.veredicto] || r.veredicto) + '\n';
+        summary += '   ' + (TEXTO[r.veredicto] || r.veredicto);
+        // De dónde salió el bloqueo es dato de color, no una advertencia: lo
+        // que importa es que la noche esté tomada.
+        if (r.veredicto === 'confirmada' && r.soloEco) summary += ' (vía nuestro calendario)';
+        else if (r.veredicto === 'confirmada' && r.porCelestino) summary += ' (bloqueo de Celestino)';
+        summary += '\n';
         if (r.faltantes && r.faltantes.length) {
           summary += '   noches sin cubrir: ' + r.faltantes.join(', ') + '\n';
         }
