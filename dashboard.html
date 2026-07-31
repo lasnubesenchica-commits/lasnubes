@@ -16322,17 +16322,18 @@ function _prCardHtml(p) {
           + '<div style="background:var(--bg);padding:8px 12px;font-size:11.5px;font-weight:600;color:var(--text-muted);">'
           +   '🔍 ' + pendientes.length + ' pago' + (pendientes.length === 1 ? '' : 's') + ' sin abonar · coinciden con «' + escapeHtml(p.keywords) + '»'
           + '</div>'
-          + pendientes.slice(0, 8).map(e =>
+          // Se listan TODOS: cortar en 8 obligaba a abonar, esperar el
+          // re-render y volver a mirar para ver los que faltaban. El scroll
+          // interno evita que la tarjeta crezca sin fin.
+          + '<div style="max-height:320px;overflow-y:auto;">'
+          + pendientes.map(e =>
               '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 12px;border-top:1px solid var(--border);font-size:12.5px;">'
             + '<div style="min-width:0;"><div>' + escapeHtml(e.desc || '—') + '</div>'
             +   '<div style="font-size:11px;color:var(--text-muted);">' + e.date + ' · egreso $' + (parseFloat(e.amount)||0).toFixed(2) + '</div></div>'
-            + '<button class="btn btn-ghost" style="font-size:12px;padding:4px 10px;white-space:nowrap;" '
+            + '<button class="btn btn-ghost" id="prAb_' + p.id + '_' + e.id + '" style="font-size:12px;padding:4px 10px;white-space:nowrap;" '
             +   'onclick="_prAbonarDesdeEgreso(\'' + p.id + '\',\'' + e.id + '\')">+ $' + p.montoPorCobro.toFixed(2) + '</button>'
             + '</div>').join('')
-          + (pendientes.length > 8
-              ? '<div style="padding:6px 12px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);">y ' + (pendientes.length - 8) + ' más…</div>'
-              : '')
-          + '</div>'
+          + '</div></div>'
         : (p.keywords && !saldado
             ? '<div style="margin-top:14px;font-size:12px;color:var(--text-muted);">🔍 Sin pagos nuevos que coincidan con «' + escapeHtml(p.keywords) + '».</div>'
             : ''))
@@ -16359,22 +16360,44 @@ function _prCardHtml(p) {
 
 // Registra el abono ligado al egreso, sin abrir el modal: el monto y la fecha
 // salen del préstamo y del pago, que es todo lo que hace falta.
+const _prAbonando = new Set();   // evita doble click sobre el mismo pago
+
 async function _prAbonarDesdeEgreso(prestamoId, egresoId) {
   const p = prestamos.find(x => x.id === prestamoId);
   const e = egresos.find(x => x.id === egresoId);
   if (!p || !e) return;
-  if (p.montoPorCobro <= 0) { showToast('Definí primero el descuento por cobro en el préstamo'); return; }
+  if (p.montoPorCobro <= 0) { showToast('Define primero el descuento por cobro en el préstamo'); return; }
+
+  // Sin feedback, el botón se veía inerte hasta que el re-render lo hacía
+  // desaparecer: en una conexión lenta parecía que el toque no había entrado y
+  // se volvía a tocar, registrando el abono dos veces.
+  const clave = prestamoId + '|' + egresoId;
+  if (_prAbonando.has(clave)) return;
+  _prAbonando.add(clave);
+  const btn = document.getElementById('prAb_' + prestamoId + '_' + egresoId);
+  const textoOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Guardando…'; btn.style.opacity = '.6'; }
+
   try {
     const r = await (await fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify({
       action: 'savePrestamoAbono', prestamoId: prestamoId, monto: p.montoPorCobro,
       fecha: e.date, nota: (e.desc || '').slice(0, 60), egresoId: egresoId
     })})).json();
-    if (!r || !r.ok) { showToast('✗ ' + ((r && r.error) || 'No se pudo registrar')); return; }
+    if (!r || !r.ok) {
+      showToast('✗ ' + ((r && r.error) || 'No se pudo registrar'));
+      if (btn) { btn.disabled = false; btn.textContent = textoOriginal; btn.style.opacity = ''; }
+      return;
+    }
     await cargarPrestamos();
-    renderPrestamos();
+    renderPrestamos();      // acá el botón desaparece: el pago ya está abonado
     renderContabilidad();
     showToast(r.saldado ? '✓ Abono registrado · préstamo saldado 🎉' : '✓ Abono de $' + p.montoPorCobro.toFixed(2) + ' registrado');
-  } catch (err) { showToast('✗ Red: ' + err.message); }
+  } catch (err) {
+    showToast('✗ Red: ' + err.message);
+    if (btn) { btn.disabled = false; btn.textContent = textoOriginal; btn.style.opacity = ''; }
+  } finally {
+    _prAbonando.delete(clave);
+  }
 }
 
 // ── Modal del préstamo ──
