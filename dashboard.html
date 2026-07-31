@@ -210,6 +210,10 @@
   .disp-day.alerta-mod .day-initials { color:#fff !important; }
   .disp-day.alerta-mod.past { opacity:0.5; }
   .disp-day.today-marker   { box-shadow:0 0 0 2px var(--text); }
+  /* Pie del mes en curso cuando se recortaron las semanas ya pasadas: avisa
+     que falta algo a propósito, para que no se lea como un bug de render.
+     La comparten los dos calendarios (Las Nubes y Malaya). */
+  .disp-recorte { font-size:11px; color:var(--text-muted); text-align:center; padding-top:10px; opacity:.75; }
   .disp-day.past           { opacity:0.38; }
   .disp-day .day-num       { font-size:14px; line-height:1; }
   .disp-day .day-initials  { font-size:9px; opacity:0.85; margin-top:2px; letter-spacing:0.03em; text-transform:uppercase; }
@@ -2539,6 +2543,7 @@
     background: var(--mly-marca-dark) !important; color: #fff !important;
     font-weight: 600; border-color: var(--mly-marca-dark) !important;
   }
+  .mly-cal-day.mly-today { box-shadow: inset 0 0 0 2px var(--mly-marca); font-weight: 700; }
   .mly-cal-day.mly-in-range {
     background: var(--mly-sel-bg);
   }
@@ -5322,6 +5327,34 @@ let dispMonthsShown = _dispPasoMeses();
 let dispMonthsBack  = 0;
 const CABIN_DIRECT_COLOR = { verde: '#a8c9a0', azul: '#8fb3d4', lila: '#b09fd4' };
 
+// ── Recorte de las semanas ya pasadas del mes en curso ───────────────
+// El calendario arrancaba siempre el día 1, así que un 31 de julio lo primero
+// que se veía eran 30 celdas grises. Se corta desde el DOMINGO de la semana de
+// hoy: al ser domingo la fila arranca en la primera columna, así que la grilla
+// no necesita celdas vacías de relleno y las columnas siguen alineadas bajo
+// Dom–Sáb. Cortar por semanas enteras (y no por día) también deja intactas las
+// barras multi-noche de Las Nubes, que ocupan varias columnas y se re-abren en
+// cada domingo.
+//
+// Devuelve { diaInicio, semanas }: desde qué día del mes dibujar y cuántas
+// filas quedaron ocultas (0 = mes completo, se dibuja como siempre).
+// Los usan buildDispMonth (Las Nubes) y renderCalendar (Malaya).
+function _corteSemanasPasadas(year, month, today, aplicar) {
+  const esMesEnCurso = year === today.getFullYear() && month === today.getMonth();
+  if (!aplicar || !esMesEnCurso) return { diaInicio: 1, semanas: 0 };
+  // Domingo de la semana de hoy. Si cae en el mes anterior (ej. hoy es sábado
+  // 1) queda <= 1 y no hay nada que cortar: la primera fila ya es la de hoy.
+  const domingo = today.getDate() - today.getDay();
+  if (domingo <= 1) return { diaInicio: 1, semanas: 0 };
+  const startDow = new Date(year, month, 1).getDay();
+  return { diaInicio: domingo, semanas: (startDow + domingo - 1) / 7 };
+}
+
+function _textoSemanasOcultas(n) {
+  if (!n) return '';
+  return n === 1 ? 'Se ocultó 1 semana ya pasada' : 'Se ocultaron ' + n + ' semanas ya pasadas';
+}
+
 // Vista: 'calendar' (default) o 'timeline'. Persistida en localStorage.
 let dispViewMode = (function () {
   try { return localStorage.getItem('dispViewMode') === 'timeline' ? 'timeline' : 'calendar'; }
@@ -6352,11 +6385,18 @@ function buildDispMonth(firstDay, cabinRes, today) {
     }
   });
 
+  // Con histórico cargado el mes en curso se muestra entero: el usuario pidió
+  // ver hacia atrás justamente para eso.
+  const corte = _corteSemanasPasadas(year, month, today, dispMonthsBack === 0);
+
   let grid = '';
   DAYS_ES.forEach(d => { grid += '<div class="disp-day-header">' + d + '</div>'; });
-  for (let e = 0; e < startDow; e++) { grid += '<div class="disp-day empty"></div>'; }
+  // Si se cortó, el primer día dibujado es un domingo y no hacen falta huecos.
+  if (!corte.semanas) {
+    for (let e = 0; e < startDow; e++) { grid += '<div class="disp-day empty"></div>'; }
+  }
 
-  let day = 1;
+  let day = corte.diaInicio;
   while (day <= daysInMonth) {
     const dateStr = year + '-' + String(month+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
     const thisDate = new Date(year, month, day);
@@ -6460,6 +6500,7 @@ function buildDispMonth(firstDay, cabinRes, today) {
   return '<div class="disp-month-block">'
        + '<div class="disp-month-title">' + MONTHS_ES[month] + ' ' + year + '</div>'
        + '<div class="disp-cal-grid">' + grid + '</div>'
+       + (corte.semanas ? '<div class="disp-recorte">' + _textoSemanasOcultas(corte.semanas) + '</div>' : '')
        + '</div>';
 }
 
@@ -16855,12 +16896,16 @@ function renderCalendar() {
     const y = ancla.getFullYear(), m = ancla.getMonth();
     const first = new Date(y, m, 1);
     const lastDay = new Date(y, m + 1, 0).getDate();
+    const corte = _corteSemanasPasadas(y, m, TODAY, mlyMonthsBack === 0);
     html += '<div class="mly-cal-month">';
     html += '<div class="mly-cal-month-title">' + MESES[m] + ' ' + y + '</div>';
     html += '<div class="mly-cal-grid">';
     DOW.forEach(d => { html += '<div class="mly-cal-dow">' + d + '</div>'; });
-    for (let i = 0; i < first.getDay(); i++) html += '<div class="mly-cal-day mly-empty"></div>';
-    for (let d = 1; d <= lastDay; d++) {
+    // Si se cortó, el primer día dibujado es un domingo: sin huecos de relleno.
+    if (!corte.semanas) {
+      for (let i = 0; i < first.getDay(); i++) html += '<div class="mly-cal-day mly-empty"></div>';
+    }
+    for (let d = corte.diaInicio; d <= lastDay; d++) {
       const iso = isoFromYMD(y, m, d);
       const dayDate = new Date(y, m, d); dayDate.setHours(0,0,0,0);
       const past = dayDate < TODAY;
@@ -16875,6 +16920,9 @@ function renderCalendar() {
       else if (occ) { cls += ' mly-occupied'; if (directa) cls += ' mly-editable'; }
       else if (sel) cls += ' mly-selected';
       else if (inRng) cls += ' mly-in-range';
+      // Con el mes recortado hace falta un ancla visual: sin ella no se sabe
+      // en qué día del rango visible estás parado.
+      if (dayDate.getTime() === TODAY.getTime()) cls += ' mly-today';
       let click = '';
       if (directa) {
         click = 'onclick="mly_pickDirectaForEdit(\'' + directa.id + '\')"';
@@ -16883,7 +16931,9 @@ function renderCalendar() {
       }
       html += '<div class="' + cls + '" ' + click + '>' + d + '</div>';
     }
-    html += '</div></div>';
+    html += '</div>';
+    if (corte.semanas) html += '<div class="disp-recorte">' + _textoSemanasOcultas(corte.semanas) + '</div>';
+    html += '</div>';
   }
   html += '</div>';
 
