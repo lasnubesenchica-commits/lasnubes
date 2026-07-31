@@ -2106,6 +2106,18 @@
     color: inherit; cursor: pointer;
   }
 
+  /* Filas clickeables de Préstamos (pagos detectados y abonos registrados) */
+  .pr-row {
+    display: flex; justify-content: space-between; gap: 10px; align-items: center;
+    padding: 8px 12px; border-top: 1px solid var(--border); font-size: 12.5px;
+    cursor: pointer; transition: background .12s;
+  }
+  .pr-row:hover { background: var(--bg); }
+  .pr-row:active { background: var(--border); }
+  .pr-row-sub { font-size: 11px; color: var(--text-muted); }
+  /* El botón inline es el atajo; el resto de la fila abre el detalle. */
+  .pr-row .pr-quick { flex-shrink: 0; white-space: nowrap; }
+
   /* Desglose del tarifario en el modal de reserva */
   .price-preview {
     background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
@@ -4052,6 +4064,22 @@
 <!-- ─── PRÉSTAMO A COLABORADOR ─── -->
 
 <!-- ─── VENTA DE TIENDITA ─── -->
+
+<!-- ─── DETALLE DE PAGO / ABONO DE PRÉSTAMO ─── -->
+<div class="modal-overlay" id="prDetalleModal">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-body">
+      <div class="modal-title" id="prDetalleTitulo">Detalle</div>
+      <div id="prDetalleBody"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="prDetalleBorrar" onclick="_prDetalleAccionSecundaria()" style="margin-right:auto;display:none;color:#b85c4a;">Eliminar abono</button>
+      <button class="btn btn-ghost" onclick="closePrDetalle()">Cerrar</button>
+      <button class="btn btn-primary" id="prDetallePrimario" onclick="_prDetalleAccionPrimaria()" style="display:none;">Registrar abono</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="ventaModal">
   <div class="modal" style="max-width:460px;">
     <div class="modal-body">
@@ -16327,11 +16355,13 @@ function _prCardHtml(p) {
           // interno evita que la tarjeta crezca sin fin.
           + '<div style="max-height:320px;overflow-y:auto;">'
           + pendientes.map(e =>
-              '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 12px;border-top:1px solid var(--border);font-size:12.5px;">'
+              '<div class="pr-row" onclick="_prVerPago(\'' + p.id + '\',\'' + e.id + '\')">'
             + '<div style="min-width:0;"><div>' + escapeHtml(e.desc || '—') + '</div>'
-            +   '<div style="font-size:11px;color:var(--text-muted);">' + e.date + ' · egreso $' + (parseFloat(e.amount)||0).toFixed(2) + '</div></div>'
-            + '<button class="btn btn-ghost" id="prAb_' + p.id + '_' + e.id + '" style="font-size:12px;padding:4px 10px;white-space:nowrap;" '
-            +   'onclick="_prAbonarDesdeEgreso(\'' + p.id + '\',\'' + e.id + '\')">+ $' + p.montoPorCobro.toFixed(2) + '</button>'
+            +   '<div class="pr-row-sub">' + e.date + ' · egreso $' + (parseFloat(e.amount)||0).toFixed(2)
+            +     (e.proveedor ? ' · ' + escapeHtml(e.proveedor) : '') + '</div></div>'
+            // stopPropagation: sin esto el atajo abriría además el modal.
+            + '<button class="btn btn-ghost pr-quick" id="prAb_' + p.id + '_' + e.id + '" style="font-size:12px;padding:4px 10px;" '
+            +   'onclick="event.stopPropagation();_prAbonarDesdeEgreso(\'' + p.id + '\',\'' + e.id + '\')">+ $' + p.montoPorCobro.toFixed(2) + '</button>'
             + '</div>').join('')
           + '</div></div>'
         : (p.keywords && !saldado
@@ -16346,13 +16376,12 @@ function _prCardHtml(p) {
 
   +     (abonos.length
         ? '<details style="margin-top:10px;"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted);">Ver ' + abonos.length + ' abono' + (abonos.length === 1 ? '' : 's') + '</summary>'
-          + '<div style="margin-top:4px;">' + abonos.map(a =>
-              '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid var(--border);font-size:12px;">'
-            + '<span style="color:var(--text-muted);">' + a.fecha + (a.nota ? ' · ' + escapeHtml(a.nota) : '') + '</span>'
-            + '<span>$' + a.monto.toFixed(2)
-            + ' <button onclick="borrarAbono(\'' + a.id + '\')" title="Eliminar abono" '
-            + 'style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:0 2px;">✕</button></span></div>'
-            ).join('') + '</div></details>'
+          + '<div style="margin-top:4px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">' + abonos.map(a =>
+              '<div class="pr-row" onclick="_prVerAbono(\'' + a.id + '\')">'
+            + '<div style="min-width:0;"><div>$' + a.monto.toFixed(2) + '</div>'
+            +   '<div class="pr-row-sub">' + a.fecha + (a.nota ? ' · ' + escapeHtml(a.nota) : '') + '</div></div>'
+            + '<span class="pr-row-sub pr-quick">' + (a.egresoId ? '🔗 ligado a un egreso' : 'manual') + ' ›</span>'
+            + '</div>').join('') + '</div></details>'
         : '')
   +   '</div>'
   + '</div>';
@@ -16360,6 +16389,103 @@ function _prCardHtml(p) {
 
 // Registra el abono ligado al egreso, sin abrir el modal: el monto y la fecha
 // salen del préstamo y del pago, que es todo lo que hace falta.
+
+// ─── Detalle de un pago detectado / de un abono ya registrado ──────
+// Las filas son clickeables: el botón inline sigue siendo el atajo de un toque,
+// y el resto de la fila abre esto para revisar antes de decidir.
+let _prDetalleCtx = null;
+
+function _prFila(label, valor) {
+  if (!valor && valor !== 0) return '';
+  return '<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid var(--border);font-size:13px;">'
+    + '<span style="color:var(--text-muted);">' + label + '</span>'
+    + '<span style="text-align:right;">' + valor + '</span></div>';
+}
+
+function _prVerPago(prestamoId, egresoId) {
+  const p = prestamos.find(x => x.id === prestamoId);
+  const e = egresos.find(x => x.id === egresoId);
+  if (!p || !e) return;
+  _prDetalleCtx = { tipo: 'pago', prestamoId, egresoId };
+  document.getElementById('prDetalleTitulo').textContent = 'Pago detectado';
+
+  const urls = (e.urlFoto || '').split('|').map(u => u.trim()).filter(Boolean);
+  document.getElementById('prDetalleBody').innerHTML =
+      '<div style="font-size:15px;font-weight:600;margin-bottom:6px;">' + escapeHtml(e.desc || '—') + '</div>'
+    + _prFila('Fecha', e.date)
+    + _prFila('Monto del egreso', '$' + (parseFloat(e.amount) || 0).toFixed(2))
+    + _prFila('Proveedor', escapeHtml(e.proveedor || '—'))
+    + _prFila('Categoría', escapeHtml(e.cat || '—'))
+    + (urls.length
+        ? _prFila('Comprobante', urls.map((u, i) =>
+            '<a href="' + u + '" target="_blank" rel="noopener" style="color:var(--azul-dark);">Ver' + (urls.length > 1 ? ' ' + (i+1) : '') + ' ↗</a>').join(' · '))
+        : '')
+    + '<div class="modal-aviso modal-aviso--info" style="margin-top:14px;">'
+    +   'Registrar el abono descuenta <strong>$' + p.montoPorCobro.toFixed(2) + '</strong> del saldo de «'
+    +   escapeHtml(p.concepto) + '», que quedaría en <strong>$'
+    +   Math.max(0, p.saldo - p.montoPorCobro).toFixed(2) + '</strong>.<br>'
+    +   '<span style="opacity:.8;">El egreso de $' + (parseFloat(e.amount) || 0).toFixed(2)
+    +   ' no se modifica: el abono se resta de los egresos del período en el Resumen.</span>'
+    + '</div>';
+
+  const prim = document.getElementById('prDetallePrimario');
+  prim.style.display = ''; prim.disabled = false;
+  prim.textContent = 'Registrar abono de $' + p.montoPorCobro.toFixed(2);
+  document.getElementById('prDetalleBorrar').style.display = 'none';
+  document.getElementById('prDetalleModal').classList.add('open');
+}
+
+function _prVerAbono(abonoId) {
+  const ab = prestamoAbonos.find(x => x.id === abonoId);
+  if (!ab) return;
+  const p = prestamos.find(x => x.id === ab.prestamoId);
+  const e = ab.egresoId ? egresos.find(x => x.id === ab.egresoId) : null;
+  _prDetalleCtx = { tipo: 'abono', abonoId };
+  document.getElementById('prDetalleTitulo').textContent = 'Abono registrado';
+
+  document.getElementById('prDetalleBody').innerHTML =
+      '<div style="font-family:\'Cormorant Garamond\',serif;font-size:30px;line-height:1;color:var(--verde-dark);margin-bottom:10px;">$'
+    +   ab.monto.toFixed(2) + '</div>'
+    + _prFila('Fecha', ab.fecha)
+    + _prFila('Préstamo', escapeHtml(p ? p.concepto : '—'))
+    + _prFila('Nota', escapeHtml(ab.nota || '—'))
+    + _prFila('Egreso vinculado', e
+        ? escapeHtml(e.desc || e.id) + '<br><span style="font-size:11px;color:var(--text-muted);">'
+          + e.date + ' · $' + (parseFloat(e.amount) || 0).toFixed(2) + '</span>'
+        : (ab.egresoId ? '<span style="color:var(--text-muted);">' + escapeHtml(ab.egresoId) + ' (no está en el período cargado)</span>'
+                       : '<span style="color:var(--text-muted);">Ninguno — abono manual</span>'))
+    + (p ? _prFila('Saldo del préstamo', '$' + Math.max(0, p.saldo).toFixed(2) + ' de $' + p.montoTotal.toFixed(2)) : '')
+    + '<div class="modal-aviso modal-aviso--ambar" style="margin-top:14px;">'
+    +   'Al eliminarlo, el saldo sube $' + ab.monto.toFixed(2) + ' y ese monto deja de restarse de los egresos del período.'
+    + '</div>';
+
+  document.getElementById('prDetallePrimario').style.display = 'none';
+  const del = document.getElementById('prDetalleBorrar');
+  del.style.display = ''; del.disabled = false; del.textContent = 'Eliminar abono';
+  document.getElementById('prDetalleModal').classList.add('open');
+}
+
+function closePrDetalle() {
+  document.getElementById('prDetalleModal').classList.remove('open');
+  _prDetalleCtx = null;
+}
+
+async function _prDetalleAccionPrimaria() {
+  if (!_prDetalleCtx || _prDetalleCtx.tipo !== 'pago') return;
+  const btn = document.getElementById('prDetallePrimario');
+  btn.disabled = true; btn.textContent = '⏳ Guardando…';
+  const { prestamoId, egresoId } = _prDetalleCtx;
+  closePrDetalle();
+  await _prAbonarDesdeEgreso(prestamoId, egresoId);
+}
+
+async function _prDetalleAccionSecundaria() {
+  if (!_prDetalleCtx || _prDetalleCtx.tipo !== 'abono') return;
+  const id = _prDetalleCtx.abonoId;
+  closePrDetalle();
+  await borrarAbono(id);
+}
+
 const _prAbonando = new Set();   // evita doble click sobre el mismo pago
 
 async function _prAbonarDesdeEgreso(prestamoId, egresoId) {
