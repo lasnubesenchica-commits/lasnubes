@@ -2375,14 +2375,17 @@
 /* ═══ MALAYA ═══ Mudado desde malaya.html. Todas sus clases van con prefijo
    mly- para que no toquen nada del dashboard. */
   
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; padding: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); line-height: 1.55; }
-  h1, h2, h3 { font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 500; letter-spacing: -0.01em; line-height: 1.1; }
-  h1 { font-size: 42px; margin: 0 0 12px; }
-  h2 { font-size: 30px; margin: 0 0 16px; }
-  h3 { font-size: 22px; margin: 0 0 10px; }
-  p  { margin: 0 0 12px; color: var(--text); }
-  a  { color: var(--mly-marca-dark); }
+  /* NO va nada de element-selectors acá. Al mudar malaya.html se copiaron sus
+     resets globales (`* {}`, `html, body {}`, `h1/h2/h3`, `p`, `a`) y, como
+     este bloque queda al final del <style>, le ganaban por orden a los del
+     dashboard: el sitio entero venía renderizando en Inter con line-height
+     1.55 en vez del DM Sans propio, y cualquier <a> sin clase salía terracota.
+     Malaya no los necesita —sus clases van prefijadas mly-—, así que lo único
+     que sobrevive es el h3 del modal, ya scopeado. */
+  .mly-modal-card h3 {
+    font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 500;
+    letter-spacing: -0.01em; line-height: 1.1; font-size: 22px;
+  }
 
   .mly-container { max-width: 920px; margin: 0 auto; padding: 0 18px; }
 
@@ -2415,14 +2418,12 @@
   }
 
   /* Sections */
-  section { padding: 8px 0; }
-  .mly-section-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 28px;
-    margin: 0 auto 18px;
-  }
+  /* Ojo: esto venía del trasplante como `section { ... }` a secas, un selector
+     de elemento que le metía padding a las 9 <section> del dashboard, no solo
+     a las de Malaya. Va con clase propia, como el resto de lo trasplantado.
+     La tarjeta contenedora (.mly-section-card) se eliminó: cada mes ya es su
+     propia tarjeta y el recuadro exterior no existe en Las Nubes. */
+  .mly-sec { padding: 8px 0; }
 
   /* Tarifas */
   /* Al fondo del tab y colapsado: es referencia, no lo primero que se mira.
@@ -2529,15 +2530,10 @@
     .mly-cal-day   { min-height: 38px; font-size: 12px; }
     .mly-cal-dow   { font-size: 10px; padding: 4px 0 6px; }
     .mly-cal-month-title { font-size: 18px; margin-bottom: 12px; }
-    /* Embebida el dashboard ya pone su propio margen lateral. */
-    body.embed .mly-section-card { padding-left: 10px; padding-right: 10px; }
   }
   /* Embebido el padding lateral lo pone el dashboard: duplicarlo le robaba
      ~36px al ancho, que en un iPhone es justo lo que falta. */
   body.embed .mly-container { padding: 0; }
-  /* El dashboard ya titula la sección "Disponibilidad": repetirlo adentro del
-     iframe es decir dos veces lo mismo y comerse una pantalla en el celular. */
-  body.embed .mly-solo-publico { display: none; }
 
   .mly-cal-day.mly-selected {
     background: var(--mly-marca-dark) !important; color: #fff !important;
@@ -2700,9 +2696,6 @@
   footer a { color: var(--mly-marca-dark); }
 
   @media (max-width: 600px) {
-    h1 { font-size: 32px; }
-    h2 { font-size: 24px; }
-    .mly-section-card { padding: 20px; }
     .mly-hero { padding: 36px 18px 12px; }
   }
 </style>
@@ -3380,26 +3373,20 @@
 
 
   <!-- Calendario -->
-  <section>
-    <div class="mly-section-card">
-      <h2 class="mly-solo-publico">Disponibilidad</h2>
-
-      <!-- Los meses se apilan verticalmente y se cargan con los botones de
-           arriba y abajo que renderCalendar() inyecta, igual que el calendario
-           de Las Nubes. Antes había un ← Anterior / Siguiente → que movía una
-           ventana fija de 3 meses: obligaba a ir y volver para comparar fechas
-           lejanas y no se parecía en nada al otro tab. -->
-      <div id="mlyCal"></div>
-
-
-    </div>
+  <!-- Sin tarjeta contenedora ni título propio: la sección del dashboard ya
+       se titula "Disponibilidad" y cada mes ya es su propia tarjeta, así que
+       el recuadro exterior era una caja dentro de otra caja que Las Nubes no
+       tiene. Los meses se apilan verticalmente y se cargan con los botones de
+       arriba y abajo que inyecta renderCalendar(). -->
+  <section class="mly-sec">
+    <div id="mlyCal"></div>
   </section>
 
   <!-- Tarifas y sync al fondo: son referencia y mantenimiento, no lo que se
        mira al abrir el tab. El aviso de "toca una fecha para reservar" se quitó
        —es evidente— y el CTA público de WhatsApp no aplica acá. -->
   <!-- Tarifas (colapsable; abierto por default, cerrado en admin) -->
-  <section>
+  <section class="mly-sec">
     <div class="mly-tarifas-box">
       <details id="tarifasDetails">
         <summary class="mly-tarifas-sum">Tarifas de Malaya</summary>
