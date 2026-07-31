@@ -16764,41 +16764,9 @@ if (IS_ADMIN) {
 
 const WHATSAPP_NUMBER = '50769812266';
 
-// Galería: pegá acá los links públicos de Drive (formato share normal) o
-// URLs directas. El JS detecta automáticamente Drive y convierte al
-// formato visualizable. Ejemplos válidos:
-//   'https://drive.google.com/file/d/FILE_ID/view?usp=sharing'
-//   'https://lh3.googleusercontent.com/d/FILE_ID'
-//   'https://malayalodge.com/foto.jpg'
-const MALAYA_GALLERY = [
-  'https://drive.google.com/file/d/1Fjc1fFmHQW29keoMgWMsJrK6_thWzUM0/view',
-  'https://drive.google.com/file/d/1TnVH5FhJraCrDBw67quAR2a_4AIbQwFX/view',
-  'https://drive.google.com/file/d/1iyaUDmNvKgz-7FO4X99wLc_XxRWdxEIv/view',
-  'https://drive.google.com/file/d/1WNqz3pXbviiFifwsQHGVLHm9atASLmnw/view',
-  'https://drive.google.com/file/d/18EM0iezpuCssN8Fc81srmFFWnzvbfsrV/view',
-  'https://drive.google.com/file/d/1f11eKjOfdUxFVN4mWBjLBFfcfMI7BNHz/view',
-  'https://drive.google.com/file/d/1C0mJ8B-f7yAL4_LGmHzuFpdBECYRh2IL/view'
-];
-
-// Helper: convierte un link de Drive (share o id) a una URL visualizable.
-function _resolveImageUrl(url) {
-  if (!url) return '';
-  // Patrón 1: drive.google.com/file/d/FILE_ID/view
-  let m = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
-  if (m) return 'https://lh3.googleusercontent.com/d/' + m[1] + '=w1200';
-  // Patrón 2: drive.google.com/open?id=FILE_ID
-  m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-  if (m && url.includes('drive.google.com')) return 'https://lh3.googleusercontent.com/d/' + m[1] + '=w1200';
-  // Patrón 3: ya es una URL lh3 / directa
-  return url;
-}
-
-// Embebido dentro del dashboard (?embed=1): se ocultan el hero y el pie, que
-// ahí serían chrome duplicado, y se le avisa al contenedor el alto real para
-// que el iframe crezca en vez de tener su propio scroll.
-//
-// La clave de admin NO viaja en la URL del iframe: es el mismo origen, así que
-// malaya.html lee de localStorage la que ya guardó el dashboard.
+// La galería de fotos y su helper _resolveImageUrl quedaron sin usar al portar
+// Malaya: eran material público y Malaya no tiene uso público. Se fueron junto
+// con malaya.html; si alguna vez hacen falta, están en el historial de git.
 
 // La clave sola alcanza, igual que en el dashboard y el calendario.
 // Dentro del dashboard, quien llegó hasta acá ya es admin.
@@ -16904,7 +16872,8 @@ let selStart = null, selEnd = null;   // ISO yyyy-MM-dd
 // de crear una nueva. Se limpia al cerrar el modal o guardar.
 let editingReservaId = null;
 let _editingReservaOriginal = null;
-  // La galería de fotos es material público: vive en malaya.html, no acá.
+  // La galería de fotos no se portó: era material público y Malaya no tiene
+  // uso público. Quedó en el historial de git junto con malaya.html.
 
 
 // ─── Calendario ───
