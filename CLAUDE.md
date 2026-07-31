@@ -15,7 +15,9 @@
 ## Despliegue
 
 - Cualquier push a `main` que toque `apps-script/**` dispara `Deploy Google Apps Script`. Sube los archivos, crea versión nueva y actualiza el deployment de producción.
-- **Límite de 200 versiones**: Apps Script topa en 200 versiones por proyecto y no se borran por API (solo a mano en el editor). Si se llena, el deploy falla con `RESOURCE_EXHAUSTED`; el usuario limpia versiones viejas desde el editor y re-corre el deploy.
+- **Límite de 200 versiones**: Apps Script topa en 200 versiones por proyecto. **No hay endpoint de borrado en la API** (`projects.versions` solo tiene create/get/list), así que se limpian a mano desde **Project History** en el editor — ahí sí se pueden borrar varias a la vez. Ojo: **una versión en uso por un deployment activo no se puede borrar**; hay que archivar el deployment primero.
+  - Si se llena, el deploy falla con `RESOURCE_EXHAUSTED`. **El código igual queda subido** (`updateContent` corre antes) pero no se crea versión ni se actualiza el deployment, así que la Web App sigue sirviendo la anterior y responde `Unknown action` a las acciones nuevas. El frontend traduce ese error a "falta el deploy de Apps Script".
+  - `scripts/deploy-gas.js` detecta el caso y reporta cuántas versiones hay, cuántas están en uso, cuáles son borrables y el link directo a Project History. Además avisa cuando quedan ≤20.
 - Después de cambios de schema (columnas nuevas en Sheets), recordar al usuario ejecutar manualmente la función de migración correspondiente desde el editor de Apps Script.
 
 ## Malaya Lodge (cabaña referida)
