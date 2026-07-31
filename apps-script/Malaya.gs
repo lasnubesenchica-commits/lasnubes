@@ -23,7 +23,10 @@
  * Script Properties requeridas:
  *   - MALAYA_AIRBNB_ICAL         : URL .ics del listing en Airbnb.
  *   - MALAYA_CELESTINO_PHONE     : 50765429927 (solo para texto de alertas).
- *   - MALAYA_GRACE_MINUTES       : 60 (opcional, default 60).
+ *   - MALAYA_GRACE_MINUTES       : opcional, default 360 (6 h). Airbnb pollea
+ *       nuestro feed cada varias horas, así que un grace corto alerta por algo
+ *       que todavía no le tocaba hacer. Con el check-in a ≤48 h se recorta a
+ *       2 h automáticamente.
  *   - MALAYA_EXTRA_NOTIFY_PHONES : opcional, CSV de teléfonos adicionales
  *       que también reciben la plantilla WA de reserva (redundancia por si
  *       Celestino no la ve). Default: '50761000079' (Glorimar).
@@ -282,6 +285,24 @@ function _malayaEvaluarBloqueo(events, ciIso, coIso) {
 // saltarse una corrida legítima por unos segundos de deriva.
 const MALAYA_SYNC_MIN_MINUTOS = 25;
 
+// Cuánto esperar antes de dar por hecho que la reserva no se bloqueó.
+//
+// Estaba en 60 min y alertaba casi siempre al meter una reserva, sin que
+// hubiera nada roto: Airbnb **pollea nuestro feed iCal cada varias horas**, así
+// que a la hora de creada lo normal es que todavía no lo haya leído. Le
+// estábamos reclamando por algo que aún no le tocaba hacer, y una alerta que
+// casi siempre es falsa enseña a ignorarlas — justo la que no hay que ignorar.
+//
+// 6 h le da a Airbnb margen de sobra para pollear, y el digesto de las 11am
+// atrapa lo que quede sin bloquear.
+const MALAYA_GRACE_DEFAULT_MIN = 360;
+
+// Excepción: si el check-in es inminente no hay tiempo de esperar 6 h. Con la
+// estadía a ≤ 48 h, el riesgo de que alguien tome la noche pesa más que el
+// ruido de una alerta temprana.
+const MALAYA_GRACE_URGENTE_MIN  = 120;
+const MALAYA_URGENTE_HORAS      = 48;
+
 // `force` lo usa el botón "Sincronizar ahora" del panel admin, que necesita
 // resultado inmediato.
 function syncMalayaAirbnb(force) {
@@ -299,7 +320,7 @@ function syncMalayaAirbnb(force) {
 
   const url   = props.getProperty('MALAYA_AIRBNB_ICAL');
   if (!url) { logDebugEntry('malaya-sync-no-url', {}); return; }
-  const graceMin = parseInt(props.getProperty('MALAYA_GRACE_MINUTES'), 10) || 60;
+  const graceMin = parseInt(props.getProperty('MALAYA_GRACE_MINUTES'), 10) || MALAYA_GRACE_DEFAULT_MIN;
 
   // Cache-bust: añadimos un timestamp para forzar a Airbnb a servir fresco.
   const sep = url.indexOf('?') === -1 ? '?' : '&';
@@ -395,12 +416,19 @@ function syncMalayaAirbnb(force) {
     // Le faltan noches. ¿Pasó el grace period?
     const reservadaTs = row[12] instanceof Date ? row[12].getTime() : Date.parse(String(row[12] || ''));
     const minutos = reservadaTs ? (nowMs - reservadaTs) / 60000 : 0;
-    if (minutos > graceMin && estado !== 'no_bloqueada') {
+    // Con el check-in encima no se puede esperar el grace largo: si la noche
+    // queda libre en Airbnb, alguien la puede tomar antes de que reaccionemos.
+    const horasAlCheckin = (new Date(ci + 'T14:00:00').getTime() - nowMs) / 3600000;
+    const graceEfectivo = horasAlCheckin <= MALAYA_URGENTE_HORAS
+      ? Math.min(graceMin, MALAYA_GRACE_URGENTE_MIN)
+      : graceMin;
+    if (minutos > graceEfectivo && estado !== 'no_bloqueada') {
       malayaSheet.getRange(i + 1, 11).setValue('no_bloqueada');
       alerts.push({
         tipo: 'sinBloqueo',
         id: row[0], guest: row[1], phone: row[2],
         checkin: ci, checkout: co, minutos: Math.round(minutos),
+        urgente: horasAlCheckin <= MALAYA_URGENTE_HORAS,
         faltantes: ev.faltantes, detalle: ev.detalle
       });
     }
@@ -445,12 +473,18 @@ function _malayaAlertNoBloqueada(a) {
       (a.faltantes && a.faltantes.length ? 'Noches sin bloqueo: ' + a.faltantes.join(', ') + '\n\n' : '') +
       'Avisa a Celestino (+' + celestino + ') para que la vuelva a bloquear.';
   } else {
-    titulo = '⚠️ *Malaya — falta bloqueo en Airbnb*';
+    // El horario en horas, no en minutos: a las 6 h "360 min" no se lee.
+    const horas = Math.round((a.minutos || 0) / 60);
+    const espera = horas >= 2 ? (horas + ' h') : ((a.minutos || 0) + ' min');
+    titulo = a.urgente
+      ? '⚠️ *Malaya — falta bloqueo y el check-in es pronto*'
+      : '⚠️ *Malaya — falta bloqueo en Airbnb*';
     asunto = '⚠️ Malaya: falta bloqueo en Airbnb — ' + a.guest;
-    cuerpo = 'Tu reserva directa de Malaya pasó ' + a.minutos + ' min sin que aparezca bloqueada en el iCal de Airbnb.\n\n' +
+    cuerpo = 'Pasaron ' + espera + ' desde que registraste esta reserva y sus noches siguen libres en el iCal de Airbnb.\n\n' +
       quien +
       (a.faltantes && a.faltantes.length ? 'Noches sin bloqueo: ' + a.faltantes.join(', ') + '\n\n' : '') +
-      'Avisa a Celestino (+' + celestino + ') para que la bloquee en Airbnb. Si no, hay riesgo de doble booking.';
+      (a.urgente ? 'El check-in es dentro de menos de 48 h, así que no hay margen para esperar más.\n\n' : '') +
+      'Revisa con Celestino (+' + celestino + '). Nota: si él ya la bloqueó de su lado, o si Airbnb todavía no leyó nuestro calendario, se confirma sola en el próximo sync.';
   }
 
   const msg = titulo + '\n\n' + cuerpo;
