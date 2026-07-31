@@ -17539,16 +17539,50 @@ async function mly_adminForceSync() {
     });
     const data = await res.json();
     if (!data.ok) { out.textContent = '✗ Error: ' + (data.error || 'falló'); return; }
-    let summary = '✅ Sync completado.\n\n';
+
+    // Primero el veredicto por reserva —lo que se vino a saber—, y recién
+    // después el volcado de eventos crudos. Antes solo estaba el volcado, que
+    // obliga a cruzar fechas a mano para contestar "¿quedó bloqueada?".
+    let summary = '';
+    const b = data.bloqueos || [];
+    if (b.length) {
+      const ICONO = { confirmada: '✅', soloEco: '⚠️', conflicto: '🚨', sinBloqueo: '⚠️' };
+      const TEXTO = {
+        confirmada: 'bloqueada por Celestino',
+        soloEco:    'solo la cubre nuestro propio calendario — Celestino no la bloqueó',
+        conflicto:  'RESERVA DE AIRBNB sobre esas noches — posible doble booking',
+        sinBloqueo: 'sin bloqueo en Airbnb'
+      };
+      summary += 'MIS RESERVAS (' + b.length + ')\n';
+      b.forEach(r => {
+        summary += (ICONO[r.veredicto] || '•') + ' ' + r.guest + '  ' + r.checkin + ' → ' + r.checkout + '\n';
+        summary += '   ' + (TEXTO[r.veredicto] || r.veredicto) + '\n';
+        if (r.faltantes && r.faltantes.length) {
+          summary += '   noches sin cubrir: ' + r.faltantes.join(', ') + '\n';
+        }
+      });
+      summary += '\n';
+    } else {
+      summary += 'No hay reservas directas futuras que verificar.\n\n';
+    }
+
+    summary += '───────────────\n';
     summary += '🔗 iCal configurado: ' + (data.icalUrlConfigured ? 'sí' : '✗ NO — falta MALAYA_AIRBNB_ICAL en Script Properties') + '\n';
-    summary += '📅 Eventos en iCal: ' + data.eventCount + '\n\n';
+    summary += '📅 Eventos en el iCal de Airbnb: ' + data.eventCount + '\n';
+    const t = data.tiposEventos || {};
+    if (data.eventCount) {
+      summary += '   ' + ['bloqueo', 'reserva', 'propio'].map(k => k + ': ' + (t[k] || 0)).join(' · ') + '\n';
+      // Si Airbnb no devuelve nuestros propios eventos, un bloqueo hecho por
+      // el feed importado es invisible acá y solo cuenta el manual.
+      if (!t.propio) summary += '   (Airbnb no re-exporta lo que importa de nuestro feed)\n';
+    }
     if (data.events && data.events.length) {
-      summary += 'Bloqueos actuales:\n';
+      summary += '\nEventos:\n';
       data.events.forEach(e => {
         summary += '  ' + e.checkin + ' → ' + e.checkout + ' · ' + e.summary + '\n';
       });
     } else {
-      summary += '_No hay eventos. Si esperabas ver fechas bloqueadas, revisa: (a) MALAYA_AIRBNB_ICAL apunta al iCal correcto del listing, (b) Airbnb está sirviendo el .ics actualizado._';
+      summary += '\nNo hay eventos. Si esperabas ver fechas bloqueadas, revisa: (a) MALAYA_AIRBNB_ICAL apunta al iCal correcto del listing, (b) Airbnb está sirviendo el .ics actualizado.';
     }
     out.textContent = summary;
     setTimeout(loadCalendar, 500);

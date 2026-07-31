@@ -485,6 +485,64 @@ function verificarMalayaPendientes() {
   try { sendWhatsAppText(BOT_ADMIN_PHONE, msg); } catch(_) {}
 }
 
+// ─── Estado de bloqueo de cada reserva (para el panel admin) ────
+//
+// Misma evaluación que hace el sync, pero devuelta como datos en vez de
+// escrita en la hoja. La usa el botón "Sync Airbnb" del dashboard para
+// contestar lo único que importa después de sincronizar: ¿quedaron
+// bloqueadas mis fechas o no?
+//
+// Lee el snapshot que el sync acaba de dejar en la hoja MalayaIcal (col 4 =
+// UID, que hace falta para distinguir nuestro propio eco).
+function getMalayaEstadoBloqueos() {
+  const icalSheet = _malayaIcalSheet();
+  const events = [];
+  if (icalSheet.getLastRow() > 1) {
+    const rows = icalSheet.getRange(2, 1, icalSheet.getLastRow() - 1, 4).getValues();
+    rows.forEach(r => {
+      const ci = r[0] instanceof Date ? Utilities.formatDate(r[0], 'America/Panama', 'yyyy-MM-dd') : String(r[0] || '').slice(0,10);
+      const co = r[1] instanceof Date ? Utilities.formatDate(r[1], 'America/Panama', 'yyyy-MM-dd') : String(r[1] || '').slice(0,10);
+      if (ci && co) events.push({ checkin: ci, checkout: co, summary: String(r[2] || ''), uid: String(r[3] || '') });
+    });
+  }
+
+  const tipos = {};
+  events.forEach(e => { const t = _malayaClasificarEvento(e); tipos[t] = (tipos[t] || 0) + 1; });
+
+  const sheet = _malayaSheet();
+  const hoyIso = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd');
+  const reservas = [];
+  if (sheet.getLastRow() > 1) {
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (!row[0]) continue;
+      const estado = String(row[10] || '').toLowerCase();
+      if (estado === 'cancelada' || estado === 'completada') continue;
+      if (String(row[9] || '') !== 'Directa') continue;
+      const ci = row[3] instanceof Date ? Utilities.formatDate(row[3], 'America/Panama', 'yyyy-MM-dd') : String(row[3] || '').slice(0,10);
+      const co = row[4] instanceof Date ? Utilities.formatDate(row[4], 'America/Panama', 'yyyy-MM-dd') : String(row[4] || '').slice(0,10);
+      if (!ci || !co) continue;
+      if (co <= hoyIso) continue;   // ya pasó: Airbnb borra los bloqueos viejos
+
+      const ev = _malayaEvaluarBloqueo(events, ci, co);
+      let veredicto;
+      if (ev.conflicto)                    veredicto = 'conflicto';
+      else if (ev.cubierta && !ev.soloEco) veredicto = 'confirmada';
+      else if (ev.soloEco)                 veredicto = 'soloEco';
+      else                                 veredicto = 'sinBloqueo';
+
+      reservas.push({
+        id: String(row[0]), guest: String(row[1] || ''),
+        checkin: ci, checkout: co, estadoHoja: estado,
+        veredicto: veredicto, faltantes: ev.faltantes, detalle: ev.detalle
+      });
+    }
+  }
+  reservas.sort((a, b) => a.checkin < b.checkin ? -1 : (a.checkin > b.checkin ? 1 : 0));
+  return { reservas: reservas, tiposEventos: tipos, totalEventos: events.length };
+}
+
 // ─── Diagnóstico: por qué una reserva no figura bloqueada ───────
 //
 // Correr desde el editor. Baja el iCal de Airbnb EN VIVO y, para cada reserva
