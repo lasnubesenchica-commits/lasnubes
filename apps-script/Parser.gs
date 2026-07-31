@@ -2956,9 +2956,14 @@ function doPost(e) {
           summary:  String(r[2] || '')
         }));
         const url = PropertiesService.getScriptProperties().getProperty('MALAYA_AIRBNB_ICAL') || null;
+        // Lo que de verdad se quiere saber después de sincronizar: si mis
+        // fechas quedaron bloqueadas. El listado de eventos crudos solo lo
+        // dice si uno se pone a cruzarlo a mano.
+        const bloqueos = getMalayaEstadoBloqueos();
         return ContentService.createTextOutput(JSON.stringify({
           ok: true, eventCount: events.length, events: events,
-          icalUrlConfigured: !!url
+          icalUrlConfigured: !!url,
+          bloqueos: bloqueos.reservas, tiposEventos: bloqueos.tiposEventos
         })).setMimeType(ContentService.MimeType.JSON);
       } catch(e) {
         return ContentService.createTextOutput(JSON.stringify({ ok: false, error: e.message })).setMimeType(ContentService.MimeType.JSON);
