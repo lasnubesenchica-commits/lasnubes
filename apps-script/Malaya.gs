@@ -5,11 +5,14 @@
  *   - No es mía: la cabaña es del cliente Celestino (+507 6542-9927).
  *   - Yo cierro la reserva por WhatsApp, le paso datos a Celestino, él la
  *     bloquea en Airbnb. Mi comisión: $10 (dom-jue) / $20 (vie-sáb) por noche.
- *   - El calendario público de Malaya se sincroniza con el iCal de Airbnb
- *     cada 30 min para evitar overbooking.
+ *   - El calendario de Malaya se sincroniza con el iCal de Airbnb cada 30 min
+ *     para evitar overbooking. No hay calendario público: las reservas se
+ *     toman por WhatsApp y se cargan a mano.
  *
  * Flujo:
- *   1. malaya.html?admin=1: selecciono rango + subo voucher + WA del huésped.
+ *   1. Dashboard → Disponibilidad → chip "Malaya": selecciono rango + subo
+ *      voucher + WA del huésped. (Antes esto vivía en malaya.html, que se
+ *      eliminó al mudar el flujo entero al dashboard.)
  *   2. saveMalayaReserva → fila en hoja Malaya con estado='pendiente'.
  *   3. Yo aviso a Celestino + huésped manualmente por WhatsApp.
  *   4. Celestino bloquea en Airbnb.
