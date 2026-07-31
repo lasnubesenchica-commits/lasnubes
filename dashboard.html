@@ -4388,6 +4388,53 @@ function cerrarSesionAdmin() {
 let reservations = JSON.parse(localStorage.getItem('ln_directas') || '[]');
 // Limpiar cache viejo de reservas mezcladas
 localStorage.removeItem('ln_reservas');
+
+// ─── Cache SOLO del panel "Reservas de hoy" ──────────────────────────
+// Es el único pedazo del dashboard que se sirve de cache. Al abrirlo en el
+// celular, los movimientos del día aparecen al instante y se reemplazan solos
+// cuando llega la data de Sheets. El calendario y el resto NO se cachean a
+// propósito: como se toman reservas todo el día, mostrarlos viejos sería peor
+// que esperar unos segundos.
+//
+// Sin esto el panel tampoco salía vacío: se pintaba con `reservations`, que
+// antes del sync solo tiene las directas locales — o sea, una lista a medias
+// (sin nada de Airbnb) que parece completa. El cache es más fiel que eso.
+const HOY_CACHE_KEY  = 'ln_hoy_cache';
+const HOY_CACHE_DIAS = 14;   // cubre la navegación ‹ HOY › del panel
+let _datosSheetsCargados = false;
+
+function _isoDeHoy() {
+  const h = new Date(); h.setHours(0, 0, 0, 0);
+  return h.toISOString().slice(0, 10);
+}
+
+function _guardarCacheHoy() {
+  try {
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    const desde = new Date(hoy); desde.setDate(desde.getDate() - 1);
+    const hasta = new Date(hoy); hasta.setDate(hasta.getDate() + HOY_CACHE_DIAS);
+    const dIso = desde.toISOString().slice(0, 10);
+    const hIso = hasta.toISOString().slice(0, 10);
+    const enVentana = reservations.filter(r => {
+      if (r.origin === 'Abierta' || r.estadoPago === 'CANCELADA' || !r.checkin || !r.checkout) return false;
+      const { displayCheckin, displayCheckout } = reservaDisplayDates(r);
+      return (displayCheckin  >= dIso && displayCheckin  <= hIso)
+          || (displayCheckout >= dIso && displayCheckout <= hIso);
+    });
+    localStorage.setItem(HOY_CACHE_KEY, JSON.stringify({ fecha: _isoDeHoy(), reservas: enVentana }));
+  } catch (_) { /* localStorage lleno o navegación privada: seguir sin cache */ }
+}
+
+// Devuelve las reservas cacheadas, o null si no sirven. Un cache de ayer se
+// descarta entero: diría "Reservas de hoy" sobre movimientos ya pasados, que
+// es peor que no mostrar nada.
+function _leerCacheHoy() {
+  try {
+    const c = JSON.parse(localStorage.getItem(HOY_CACHE_KEY) || 'null');
+    if (!c || !Array.isArray(c.reservas) || c.fecha !== _isoDeHoy()) return null;
+    return c.reservas.length ? c.reservas : null;
+  } catch (_) { return null; }
+}
 let egresos = JSON.parse(localStorage.getItem('ln_egresos') || '[]');
 let editId = null;
 let pendingDeleteId = null;
@@ -4544,6 +4591,10 @@ async function syncFromSheets() {
       const locales  = reservations.filter(r => !r.fromSheets && !sheetIds.has(r.id));
       reservations   = [...locales, ...sheetsReservations];
       localStorage.setItem('ln_directas', JSON.stringify(reservations.filter(r => !r.fromSheets)));
+      // A partir de acá los datos son frescos: el panel de hoy deja de usar
+      // el cache y lo re-graba con lo que acaba de llegar.
+      _datosSheetsCargados = true;
+      _guardarCacheHoy();
 
       renderCalendar();
       renderList();
@@ -6094,12 +6145,17 @@ function _formatDayLabel(dateStr) {
 }
 
 function renderReservasHoy() {
+  // Mientras Sheets no conteste se pinta el cache del último load (ver
+  // _leerCacheHoy). Es el único panel que hace esto; el resto espera datos
+  // frescos a propósito.
+  const cache = _datosSheetsCargados ? null : _leerCacheHoy();
+  const datos = cache || reservations;
   const base = new Date();
   base.setHours(0, 0, 0, 0);
   base.setDate(base.getDate() + reservasHoyOffset);
   const targetDate = base.toISOString().slice(0, 10);
   const items = [];
-  reservations
+  datos
     .filter(r => r.origin !== 'Abierta' && r.estadoPago !== 'CANCELADA' && r.checkin && r.checkout)
     .forEach(r => {
       const { displayCheckin, displayCheckout } = reservaDisplayDates(r);
@@ -6123,7 +6179,12 @@ function renderReservasHoy() {
   }
 
   const countEl = document.getElementById('reservasHoyCount');
-  if (countEl) countEl.textContent = items.length === 0 ? '· sin movimientos' : '· ' + items.length + (items.length === 1 ? ' movimiento' : ' movimientos');
+  if (countEl) {
+    const base = items.length === 0 ? '· sin movimientos' : '· ' + items.length + (items.length === 1 ? ' movimiento' : ' movimientos');
+    // Que se note que todavía no es data fresca: si algo cambió en la hoja
+    // hace un minuto, esto lo dice antes de que el usuario actúe.
+    countEl.textContent = base + (cache ? ' · actualizando…' : '');
+  }
 
   const list = document.getElementById('reservasHoyList');
   if (!list) return;
