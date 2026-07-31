@@ -4162,6 +4162,15 @@
       </div>
 
       <div class="form-group">
+        <label>Palabras para ubicar los pagos</label>
+        <input type="text" id="prKeywords" placeholder="Ej: Rafael, limpieza">
+        <div style="font-size:11.5px;color:var(--text-muted);margin-top:6px;line-height:1.45;">
+          El sistema busca en tus egresos los que contengan <strong>todas</strong> estas palabras
+          y te los lista con un botón para abonar de un toque. Separa con comas.
+        </div>
+      </div>
+
+      <div class="form-group">
         <label>Notas</label>
         <input type="text" id="prNotas" placeholder="Opcional">
       </div>
@@ -15993,19 +16002,23 @@ function renderTiendita() {
   const ganancia = +(ventaTotal - costoTotal).toFixed(2);
   const margen = ventaTotal > 0 ? (ganancia / ventaTotal) * 100 : 0;
 
-  let html = '<div class="contab-panel" style="margin-bottom:18px;">'
-    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;padding:6px 0;">'
-    + _kpiCell('Vendido', '$' + ventaTotal.toFixed(2), '#2c5e22')
-    + _kpiCell('Costo comprado', '$' + costoTotal.toFixed(2), '#7a5a1f')
-    + _kpiCell('Diferencia', '$' + ganancia.toFixed(2), ganancia >= 0 ? '#2c5e22' : '#b85c4a')
-    + _kpiCell('Margen', ventaTotal > 0 ? margen.toFixed(0) + '%' : '—')
+  let html = '<div class="stats-grid">'
+    + '<div class="stat-card"><div class="stat-label">Vendido</div>'
+    +   '<div class="stat-value positive">$' + ventaTotal.toFixed(2) + '</div>'
+    +   '<div class="stat-sub">' + ventasPeriodo.length + ' venta' + (ventasPeriodo.length === 1 ? '' : 's') + '</div></div>'
+    + '<div class="stat-card"><div class="stat-label">Costo comprado</div>'
+    +   '<div class="stat-value negative">$' + costoTotal.toFixed(2) + '</div>'
+    +   '<div class="stat-sub">' + kwsReventa.length + ' item' + (kwsReventa.length === 1 ? '' : 's') + ' de reventa</div></div>'
+    + '<div class="stat-card"><div class="stat-label">Diferencia</div>'
+    +   '<div class="stat-value ' + (ganancia >= 0 ? 'positive' : 'negative') + '">$' + ganancia.toFixed(2) + '</div>'
+    +   '<div class="stat-sub">' + (ventaTotal > 0 ? 'margen ' + margen.toFixed(0) + '%' : 'sin ventas') + '</div></div>'
     + '</div>'
     // La advertencia no es decorativa: en un mes suelto se compara una compra
     // grande contra las ventas de ese mes, y el margen sale absurdo.
-    + '<div style="font-size:11.5px;color:var(--text-muted);line-height:1.5;padding-top:8px;border-top:1px solid var(--border);">'
+    + '<div class="modal-aviso modal-aviso--ambar" style="margin-bottom:18px;">'
     + 'La <strong>diferencia</strong> compara lo vendido contra lo <em>comprado</em> en el período, no contra el costo de lo que se vendió. '
     + 'En un mes suelto una compra grande la distorsiona; el margen recién es confiable en rangos largos.'
-    + '</div></div>';
+    + '</div>';
 
   if (!kwsReventa.length) {
     html += '<div style="text-align:center;padding:24px 10px;color:var(--text-muted);font-size:13px;line-height:1.6;">'
@@ -16215,28 +16228,56 @@ function renderPrestamos() {
   const box = document.getElementById('prestamosList');
   if (!box) return;
   if (!prestamos.length) {
-    box.innerHTML = '<div style="text-align:center;padding:30px 10px;color:var(--text-muted);font-size:13px;">'
-      + 'Todavía no hay préstamos registrados.</div>';
+    box.innerHTML = '<div class="contab-panel" style="padding:34px 16px;text-align:center;color:var(--text-muted);font-size:13px;line-height:1.6;">'
+      + 'Todavía no hay préstamos registrados.<br>'
+      + 'Usa <strong>+ Nuevo préstamo</strong> para cargar el primero.</div>';
     return;
   }
   const activos  = prestamos.filter(p => p.estado !== 'saldado' && p.estado !== 'cancelado');
   const cerrados = prestamos.filter(p => p.estado === 'saldado' || p.estado === 'cancelado');
   const pendiente = activos.reduce((t, p) => t + Math.max(0, p.saldo), 0);
+  const recuperado = prestamos.reduce((t, p) => t + p.abonado, 0);
 
-  let html = '<div class="contab-panel" style="margin-bottom:18px;">'
-    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;padding:6px 0;">'
-    + _kpiCell('Por recuperar', '$' + pendiente.toFixed(2), pendiente > 0 ? '#7a5a1f' : '#2c5e22')
-    + _kpiCell('Préstamos activos', activos.length)
-    + _kpiCell('Saldados', cerrados.length, '#2c5e22')
-    + '</div></div>';
+  // Mismas stat-card que el Resumen: antes esto usaba _kpiCell, que es el
+  // formato chico para grillas DENTRO de un panel, y al ponerlo suelto se veía
+  // como una caja plana y desalineada del resto del dashboard.
+  let html = '<div class="stats-grid">'
+    + '<div class="stat-card"><div class="stat-label">Por recuperar</div>'
+    +   '<div class="stat-value' + (pendiente > 0 ? ' negative' : ' positive') + '">$' + pendiente.toFixed(2) + '</div>'
+    +   '<div class="stat-sub">' + activos.length + ' préstamo' + (activos.length === 1 ? '' : 's') + ' activo' + (activos.length === 1 ? '' : 's') + '</div></div>'
+    + '<div class="stat-card"><div class="stat-label">Recuperado</div>'
+    +   '<div class="stat-value positive">$' + recuperado.toFixed(2) + '</div>'
+    +   '<div class="stat-sub">' + prestamoAbonos.length + ' abono' + (prestamoAbonos.length === 1 ? '' : 's') + ' en total</div></div>'
+    + '<div class="stat-card"><div class="stat-label">Saldados</div>'
+    +   '<div class="stat-value">' + cerrados.length + '</div>'
+    +   '<div class="stat-sub">de ' + prestamos.length + ' registrado' + (prestamos.length === 1 ? '' : 's') + '</div></div>'
+    + '</div>';
 
   html += activos.map(_prCardHtml).join('');
   if (cerrados.length) {
-    html += '<details style="margin-top:16px;"><summary style="cursor:pointer;font-size:13px;color:var(--text-muted);padding:6px 0;">'
+    html += '<details style="margin-top:6px;"><summary style="cursor:pointer;font-size:13px;color:var(--text-muted);padding:8px 2px;">'
           + 'Saldados y cancelados (' + cerrados.length + ')</summary><div style="margin-top:10px;">'
           + cerrados.map(_prCardHtml).join('') + '</div></details>';
   }
   box.innerHTML = html;
+}
+
+// Egresos que matchean las keywords del préstamo y todavía NO tienen abono.
+// Es la respuesta a "¿cómo ubico todos los pagos a Rafael?": en vez de buscar a
+// mano en Egresos y tipear cada abono, el sistema los lista y cada uno se
+// registra de un toque. El abono queda ligado a su egreso (`egresoId`), así que
+// desaparece de la lista y no se puede contar dos veces.
+function _prPagosPendientes(p) {
+  const kws = (p.keywords || '').split(',').map(k => _sumNormalize(k)).filter(Boolean);
+  if (!kws.length) return [];
+  const yaUsados = new Set(prestamoAbonos.filter(a => a.egresoId).map(a => a.egresoId));
+  return egresos.filter(e => {
+    if (yaUsados.has(e.id)) return false;
+    const texto = _sumNormalize((e.desc || '') + ' ' + (e.proveedor || '') + ' ' + (e.cat || ''));
+    // Todas las keywords deben aparecer: con una sola ("Rafael") entrarían
+    // también los pagos que no son de este préstamo.
+    return kws.every(k => texto.indexOf(k) !== -1);
+  }).sort((a, b) => (a.date < b.date ? 1 : -1));
 }
 
 function _prCardHtml(p) {
@@ -16244,47 +16285,96 @@ function _prCardHtml(p) {
                                .sort((x, y) => y.fecha.localeCompare(x.fecha));
   const pct = p.montoTotal > 0 ? Math.min(100, (p.abonado / p.montoTotal) * 100) : 0;
   const saldado = p.saldo <= 0.009;
+  const pendientes = saldado ? [] : _prPagosPendientes(p);
   const ritmo = (p.montoPorCobro > 0 && !saldado)
-    ? ' · $' + p.montoPorCobro.toFixed(2) + ' ' + (PR_TIPO_LBL[p.tipoCobro] || '')
+    ? '$' + p.montoPorCobro.toFixed(2) + ' ' + (PR_TIPO_LBL[p.tipoCobro] || '')
       + (p.cobrosRestantes ? ' · faltan ' + p.cobrosRestantes : '')
     : '';
+
   return ''
-  + '<div class="contab-panel" style="margin-bottom:12px;' + (saldado ? 'opacity:.62;' : '') + '">'
-  +   '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">'
+  + '<div class="contab-panel" style="margin-bottom:16px;' + (saldado ? 'opacity:.6;' : '') + '">'
+  +   '<div class="contab-panel-header">'
   +     '<div style="min-width:0;">'
-  +       '<div style="font-weight:600;font-size:14px;">' + escapeHtml(p.concepto || 'Sin concepto')
-  +         (saldado ? ' <span style="font-size:11px;color:#2c5e22;">✓ saldado</span>' : '') + '</div>'
+  +       '<div class="contab-panel-title">' + escapeHtml(p.concepto || 'Sin concepto')
+  +         (saldado ? ' <span style="font-size:12px;font-family:inherit;color:var(--verde-dark);">✓ saldado</span>' : '') + '</div>'
   +       '<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">'
   +         escapeHtml(p.beneficiario || '—') + ' · ' + p.fecha
-  +         (p.frecuencia ? ' · ' + escapeHtml(p.frecuencia) : '') + ritmo + '</div>'
+  +         (p.frecuencia ? ' · ' + escapeHtml(p.frecuencia) : '') + '</div>'
   +     '</div>'
   +     '<div style="text-align:right;flex-shrink:0;">'
-  +       '<div style="font-size:17px;font-weight:700;color:' + (saldado ? '#2c5e22' : '#7a5a1f') + ';">$'
-  +         Math.max(0, p.saldo).toFixed(2) + '</div>'
-  +       '<div style="font-size:11px;color:var(--text-muted);">de $' + p.montoTotal.toFixed(2) + '</div>'
+  +       '<div style="font-family:\'Cormorant Garamond\',serif;font-size:26px;line-height:1;color:'
+  +         (saldado ? 'var(--verde-dark)' : '#b07d3a') + ';">$' + Math.max(0, p.saldo).toFixed(2) + '</div>'
+  +       '<div style="font-size:11px;color:var(--text-muted);margin-top:3px;">de $' + p.montoTotal.toFixed(2) + '</div>'
   +     '</div>'
   +   '</div>'
-  +   '<div style="height:6px;background:var(--border);border-radius:4px;margin:10px 0 8px;overflow:hidden;">'
-  +     '<div style="height:100%;width:' + pct.toFixed(1) + '%;background:' + (saldado ? '#6a9e62' : '#c0956a') + ';"></div>'
+  +   '<div style="padding:16px 20px;">'
+  +     '<div style="height:7px;background:var(--bg);border:1px solid var(--border);border-radius:5px;overflow:hidden;">'
+  +       '<div style="height:100%;width:' + pct.toFixed(1) + '%;background:' + (saldado ? 'var(--verde-dark)' : '#c0956a') + ';"></div>'
+  +     '</div>'
+  +     '<div style="display:flex;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--text-muted);margin-top:6px;">'
+  +       '<span>' + (ritmo || '&nbsp;') + '</span>'
+  +       '<span>$' + p.abonado.toFixed(2) + ' recuperado · ' + abonos.length + ' abono' + (abonos.length === 1 ? '' : 's') + '</span>'
+  +     '</div>'
+
+  //   ── Pagos detectados por keywords ──
+  +     (pendientes.length
+        ? '<div style="margin-top:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden;">'
+          + '<div style="background:var(--bg);padding:8px 12px;font-size:11.5px;font-weight:600;color:var(--text-muted);">'
+          +   '🔍 ' + pendientes.length + ' pago' + (pendientes.length === 1 ? '' : 's') + ' sin abonar · coinciden con «' + escapeHtml(p.keywords) + '»'
+          + '</div>'
+          + pendientes.slice(0, 8).map(e =>
+              '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 12px;border-top:1px solid var(--border);font-size:12.5px;">'
+            + '<div style="min-width:0;"><div>' + escapeHtml(e.desc || '—') + '</div>'
+            +   '<div style="font-size:11px;color:var(--text-muted);">' + e.date + ' · egreso $' + (parseFloat(e.amount)||0).toFixed(2) + '</div></div>'
+            + '<button class="btn btn-ghost" style="font-size:12px;padding:4px 10px;white-space:nowrap;" '
+            +   'onclick="_prAbonarDesdeEgreso(\'' + p.id + '\',\'' + e.id + '\')">+ $' + p.montoPorCobro.toFixed(2) + '</button>'
+            + '</div>').join('')
+          + (pendientes.length > 8
+              ? '<div style="padding:6px 12px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);">y ' + (pendientes.length - 8) + ' más…</div>'
+              : '')
+          + '</div>'
+        : (p.keywords && !saldado
+            ? '<div style="margin-top:14px;font-size:12px;color:var(--text-muted);">🔍 Sin pagos nuevos que coincidan con «' + escapeHtml(p.keywords) + '».</div>'
+            : ''))
+
+  +     '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px;">'
+  +       (saldado ? '' : '<button class="btn btn-ghost" style="font-size:12px;padding:5px 14px;" onclick="openAbonoModal(\'' + p.id + '\')">+ Abono manual</button>')
+  +       '<button class="btn btn-ghost" style="font-size:12px;padding:5px 14px;" onclick="openPrestamoModal(\'' + p.id + '\')">Editar</button>'
+  +       (p.urlFactura ? '<a href="' + p.urlFactura + '" target="_blank" rel="noopener" style="font-size:12px;color:var(--azul-dark);align-self:center;">🧾 Ver factura ↗</a>' : '')
+  +     '</div>'
+
+  +     (abonos.length
+        ? '<details style="margin-top:10px;"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted);">Ver ' + abonos.length + ' abono' + (abonos.length === 1 ? '' : 's') + '</summary>'
+          + '<div style="margin-top:4px;">' + abonos.map(a =>
+              '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid var(--border);font-size:12px;">'
+            + '<span style="color:var(--text-muted);">' + a.fecha + (a.nota ? ' · ' + escapeHtml(a.nota) : '') + '</span>'
+            + '<span>$' + a.monto.toFixed(2)
+            + ' <button onclick="borrarAbono(\'' + a.id + '\')" title="Eliminar abono" '
+            + 'style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:0 2px;">✕</button></span></div>'
+            ).join('') + '</div></details>'
+        : '')
   +   '</div>'
-  +   '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px;">'
-  +     (saldado ? '' : '<button class="btn btn-ghost" style="font-size:12px;padding:4px 12px;" onclick="openAbonoModal(\'' + p.id + '\')">+ Abono</button>')
-  +     '<button class="btn btn-ghost" style="font-size:12px;padding:4px 12px;" onclick="openPrestamoModal(\'' + p.id + '\')">Editar</button>'
-  +     (p.urlFactura ? '<a href="' + p.urlFactura + '" target="_blank" rel="noopener" style="font-size:12px;color:var(--azul-dark);">🧾 Ver factura ↗</a>' : '')
-  +     '<span style="color:var(--text-muted);margin-left:auto;">' + abonos.length + ' abono' + (abonos.length===1?'':'s')
-  +       ' · $' + p.abonado.toFixed(2) + ' recuperado</span>'
-  +   '</div>'
-  +   (abonos.length
-      ? '<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted);">Ver abonos</summary>'
-        + '<div style="margin-top:6px;">' + abonos.map(a =>
-            '<div style="display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-top:1px solid var(--border);font-size:12px;">'
-          + '<span style="color:var(--text-muted);">' + a.fecha + (a.nota ? ' · ' + escapeHtml(a.nota) : '') + '</span>'
-          + '<span>$' + a.monto.toFixed(2)
-          + ' <button onclick="borrarAbono(\'' + a.id + '\')" title="Eliminar abono" '
-          + 'style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:0 2px;">✕</button></span></div>'
-          ).join('') + '</div></details>'
-      : '')
   + '</div>';
+}
+
+// Registra el abono ligado al egreso, sin abrir el modal: el monto y la fecha
+// salen del préstamo y del pago, que es todo lo que hace falta.
+async function _prAbonarDesdeEgreso(prestamoId, egresoId) {
+  const p = prestamos.find(x => x.id === prestamoId);
+  const e = egresos.find(x => x.id === egresoId);
+  if (!p || !e) return;
+  if (p.montoPorCobro <= 0) { showToast('Definí primero el descuento por cobro en el préstamo'); return; }
+  try {
+    const r = await (await fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify({
+      action: 'savePrestamoAbono', prestamoId: prestamoId, monto: p.montoPorCobro,
+      fecha: e.date, nota: (e.desc || '').slice(0, 60), egresoId: egresoId
+    })})).json();
+    if (!r || !r.ok) { showToast('✗ ' + ((r && r.error) || 'No se pudo registrar')); return; }
+    await cargarPrestamos();
+    renderPrestamos();
+    renderContabilidad();
+    showToast(r.saldado ? '✓ Abono registrado · préstamo saldado 🎉' : '✓ Abono de $' + p.montoPorCobro.toFixed(2) + ' registrado');
+  } catch (err) { showToast('✗ Red: ' + err.message); }
 }
 
 // ── Modal del préstamo ──
@@ -16300,6 +16390,8 @@ function openPrestamoModal(id) {
   document.getElementById('prTipoCobro').value    = p ? p.tipoCobro : 'por_pago';
   document.getElementById('prFrecuencia').value   = p ? p.frecuencia : '';
   document.getElementById('prNotas').value        = p ? p.notas : '';
+  // Default útil: el nombre del colaborador ya alcanza para empezar a filtrar.
+  document.getElementById('prKeywords').value     = p ? (p.keywords || '') : '';
   _prFacturaURL = p ? p.urlFactura : '';
   _prPintarFactura();
   document.getElementById('prBorrarBtn').style.display = p ? '' : 'none';
@@ -16416,6 +16508,7 @@ async function guardarPrestamo() {
       tipoCobro:    document.getElementById('prTipoCobro').value,
       frecuencia:   document.getElementById('prFrecuencia').value.trim(),
       notas:        document.getElementById('prNotas').value.trim(),
+      keywords:     document.getElementById('prKeywords').value.trim(),
       urlFactura:   _prFacturaURL
     })})).json();
     if (!r || !r.ok) { showToast('✗ ' + ((r && r.error) || 'No se pudo guardar')); return; }

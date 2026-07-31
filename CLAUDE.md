@@ -43,6 +43,8 @@ Adelantos que se recuperan descontando de pagos futuros. Backend en `apps-script
 - **El SALDO no se guarda**: se deriva de los abonos en cada lectura. Un total guardado más una lista de abonos son dos fuentes para el mismo número y terminan separándose.
 - **Neteo contable**: el desembolso ya está como egreso (categoría `Prestamo`), así que la salida está contada. Los abonos **no son ingresos** —es plata que nunca salió—, pero como el pago semanal se registra por la tarifa completa aunque se entregue menos, el gasto queda inflado justo por lo recuperado. Por eso Contabilidad calcula **`egresos netos = egresos brutos − abonos del período`**. Sumarlos a Ingresos habría inventado facturación inexistente.
 - Borrar un préstamo borra sus abonos: dejarlos huérfanos seguiría neteando contra los egresos.
+- **Buscador de pagos por keywords** (col 13 `Keywords`, CSV): el préstamo guarda con qué palabras se ubican sus egresos (ej. `Rafael, limpieza`). `_prPagosPendientes` lista los egresos que contienen **todas** esas palabras en descripción/proveedor/categoría y que todavía no tienen abono, con un botón que registra el abono de un toque. El abono guarda `egresoId`, así que el pago desaparece de la lista y **no se puede contar dos veces**. Se exigen todas las palabras a propósito: con solo "Rafael" entrarían también los pagos que no son de ese préstamo (ej. un mantenimiento).
+- **Ojo con los montos**: el voucher a Rafael es de $135 pero el egreso se registra por $175 (la tarifa completa). Es a propósito — la diferencia es el abono. Por eso el buscador filtra por palabras y no por monto.
 
 ## Tiendita
 

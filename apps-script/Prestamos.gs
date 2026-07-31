@@ -35,7 +35,7 @@ const PRESTAMO_ABONOS_SHEET = 'PrestamoAbonos';
 const PRESTAMOS_COLS = [
   'ID', 'Fecha', 'Beneficiario', 'Concepto', 'MontoTotal',
   'TipoCobro', 'MontoPorCobro', 'Frecuencia', 'EgresoID',
-  'URLFactura', 'Estado', 'Notas'
+  'URLFactura', 'Estado', 'Notas', 'Keywords'
 ];
 const PRESTAMO_ABONOS_COLS = ['ID', 'PrestamoID', 'Fecha', 'Monto', 'Nota', 'EgresoID'];
 
@@ -109,6 +109,10 @@ function getPrestamosData() {
         frecuencia: String(r[7] || ''), egresoId: String(r[8] || ''),
         urlFactura: String(r[9] || ''), estado: String(r[10] || 'activo'),
         notas: String(r[11] || ''),
+        // Palabras con las que se ubican los egresos de este colaborador
+        // (ej. "Rafael, limpieza"). El cruce lo hace el frontend, que ya tiene
+        // los egresos cargados.
+        keywords: String(r[12] || ''),
         abonado: abonado,
         saldo: +(total - abonado).toFixed(2),
         // Cuántos cobros más faltan al ritmo configurado. Sirve para decir
@@ -156,7 +160,8 @@ function savePrestamo(payload) {
     String(payload.egresoId || ''),
     String(payload.urlFactura || ''),
     String(payload.estado || 'activo'),
-    String(payload.notas || '')
+    String(payload.notas || ''),
+    String(payload.keywords || '')
   ];
 
   const existente = _filaPorId(sheet, id);
