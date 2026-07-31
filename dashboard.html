@@ -2456,21 +2456,18 @@
   .mly-pricing .mly-card .mly-desc { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 
   /* Calendario */
-  .mly-cal-controls {
-    display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: 14px; gap: 12px;
+  /* Botones de "cargar más meses": mismo look que los de Disponibilidad. */
+  .mly-cal-more {
+    background: none; border: 1.5px solid var(--border); border-radius: 20px;
+    padding: 8px 24px; font-size: 13px; color: var(--text-muted);
+    cursor: pointer; transition: all .15s; font-family: inherit;
   }
-  .mly-cal-controls button {
-    background: var(--surface); border: 1px solid var(--border);
-    padding: 6px 14px; border-radius: 8px; cursor: pointer;
-    font-family: inherit; font-size: 13px; color: var(--text);
-  }
-  .mly-cal-controls button:hover { background: var(--bg); }
+  .mly-cal-more:hover { border-color: var(--text-muted); color: var(--text); }
   /* Mismo layout que Disponibilidad en el dashboard: cada mes es una tarjeta y
-     en escritorio entran dos por fila. El breakpoint es el mismo (960px) para
-     que la sensación al cambiar de tab sea la misma. */
-  #mlyCal { display: grid; grid-template-columns: 1fr; gap: 24px; }
-  @media (min-width: 960px) { #mlyCal { grid-template-columns: 1fr 1fr; } }
+     en escritorio entran dos por fila. La grilla la pone `.disp-month-grid`
+     —la misma clase que Las Nubes, con su breakpoint de 960px—, no `#mlyCal`:
+     los botones de cargar más viven dentro de #mlyCal y si él fuera la grilla
+     se convertirían en celdas de una columna. */
   .mly-cal-month {
     background: var(--surface); border: 1px solid var(--border);
     border-radius: 14px; padding: 24px;
@@ -2537,14 +2534,6 @@
   /* El dashboard ya titula la sección "Disponibilidad": repetirlo adentro del
      iframe es decir dos veces lo mismo y comerse una pantalla en el celular. */
   body.embed .mly-solo-publico { display: none; }
-  /* Los tres controles no entran en una fila de 340px y los botones partían el
-     texto en dos líneas. En móvil van apilados: la etiqueta arriba y los dos
-     botones abajo, cada uno a la mitad. */
-  @media (max-width: 600px) {
-    .mly-cal-controls { flex-wrap: wrap; justify-content: center; gap: 8px; }
-    .mly-cal-controls #calRangeInfo { order: -1; width: 100%; text-align: center; }
-    .mly-cal-controls button { flex: 1; white-space: nowrap; }
-  }
 
   .mly-cal-day.mly-selected {
     background: var(--mly-marca-dark) !important; color: #fff !important;
@@ -3389,14 +3378,12 @@
   <section>
     <div class="mly-section-card">
       <h2 class="mly-solo-publico">Disponibilidad</h2>
-      <p class="mly-solo-publico" style="color:var(--text-muted);">Selecciona tus fechas. Las celdas en gris ya están reservadas.</p>
 
-      <div class="mly-cal-controls">
-        <button onclick="mly_shiftMonths(-1)">← Anterior</button>
-        <div id="calRangeInfo" style="font-size:13px; color:var(--text-muted);">Cargando…</div>
-        <button onclick="mly_shiftMonths(1)">Siguiente →</button>
-      </div>
-
+      <!-- Los meses se apilan verticalmente y se cargan con los botones de
+           arriba y abajo que renderCalendar() inyecta, igual que el calendario
+           de Las Nubes. Antes había un ← Anterior / Siguiente → que movía una
+           ventana fija de 3 meses: obligaba a ir y volver para comparar fechas
+           lejanas y no se parecía en nada al otro tab. -->
       <div id="mlyCal"></div>
 
 
@@ -16637,7 +16624,7 @@ if (IS_ADMIN) {
 // ═══════════════════════════════════════════════════════════
 //  MALAYA — mudado desde malaya.html
 // ═══════════════════════════════════════════════════════════
-// Va dentro de un IIFE: sus ~47 variables globales (TODAY, viewYear, selStart,
+// Va dentro de un IIFE: sus ~47 variables globales (TODAY, blocked, selStart,
 // renderCalendar…) chocarían con las del dashboard o se las comerían en
 // silencio. Solo salen a window los handlers que los onclick necesitan,
 // con prefijo mly_.
@@ -16724,8 +16711,12 @@ if (ADMIN_MODE) {
 }
 
 const TODAY = new Date(); TODAY.setHours(0,0,0,0);
-let viewMonth = TODAY.getMonth();
-let viewYear  = TODAY.getFullYear();
+// Meses cargados hacia adelante y hacia atrás desde el mes actual, igual que
+// `dispMonthsShown`/`dispMonthsBack` en el calendario de Las Nubes. El paso lo
+// da `_dispPasoMeses()` (4 en dos columnas, 3 en una) para que cada carga
+// llene filas completas de la grilla.
+let mlyMonthsShown = _dispPasoMeses();
+let mlyMonthsBack  = 0;
 let blocked = [];   // [{ checkin, checkout, source }]  (admin: incluye id + datos)
 // Tarifas de Malaya. Estaban escritas dos veces —en el bloque visible y dentro
 // de calcTarifa— así que subir un precio obligaba a acordarse de los dos
@@ -16806,11 +16797,18 @@ let _editingReservaOriginal = null;
 
 
 // ─── Calendario ───
-function mly_shiftMonths(delta) {
-  viewMonth += delta;
-  while (viewMonth < 0)  { viewMonth += 12; viewYear--; }
-  while (viewMonth > 11) { viewMonth -= 12; viewYear++; }
+function mly_loadMoreMonths() {
+  mlyMonthsShown += _dispPasoMeses();
   renderCalendar();
+  const btn = document.querySelector('#mlyCal .mly-cal-more-next');
+  if (btn) btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function mly_loadMoreMonthsPast() {
+  mlyMonthsBack += _dispPasoMeses();
+  renderCalendar();
+  const primero = document.querySelector('#mlyCal .mly-cal-month');
+  if (primero) primero.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function isoFromYMD(y, m, d) {
@@ -16839,11 +16837,22 @@ function renderCalendar() {
   const container = document.getElementById('mlyCal');
   const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const DOW = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const paso = _dispPasoMeses();
   let html = '';
-  // Mostramos 3 meses consecutivos
-  for (let off = 0; off < 3; off++) {
-    let y = viewYear, m = viewMonth + off;
-    while (m > 11) { m -= 12; y++; }
+
+  html += '<div style="text-align:center;padding:0 0 16px;">'
+        + '<button class="mly-cal-more" onclick="mly_loadMoreMonthsPast()">'
+        + (mlyMonthsBack > 0
+             ? '↑ Cargar ' + paso + ' meses anteriores · viendo ' + mlyMonthsBack + ' atrás'
+             : '↑ Ver histórico (meses anteriores)')
+        + '</button></div>';
+
+  // Los meses en su propia grilla —la misma de Las Nubes— para que los botones
+  // de cargar más queden fuera y no se conviertan en una celda de la grilla.
+  html += '<div class="disp-month-grid">';
+  for (let off = -mlyMonthsBack; off < mlyMonthsShown; off++) {
+    const ancla = new Date(TODAY.getFullYear(), TODAY.getMonth() + off, 1);
+    const y = ancla.getFullYear(), m = ancla.getMonth();
     const first = new Date(y, m, 1);
     const lastDay = new Date(y, m + 1, 0).getDate();
     html += '<div class="mly-cal-month">';
@@ -16876,10 +16885,14 @@ function renderCalendar() {
     }
     html += '</div></div>';
   }
-  container.innerHTML = html;
+  html += '</div>';
 
-  const fromIso = isoFromYMD(viewYear, viewMonth, 1);
-  document.getElementById('calRangeInfo').textContent = '3 meses desde ' + fromIso.slice(0,7);
+  html += '<div style="text-align:center;padding:16px 0 8px;">'
+        + '<button class="mly-cal-more mly-cal-more-next" onclick="mly_loadMoreMonths()">'
+        + 'Cargar ' + paso + ' meses más ↓'
+        + '</button></div>';
+
+  container.innerHTML = html;
 }
 
 function mly_pickDay(iso) {
@@ -17482,7 +17495,8 @@ async function loadCalendar() {
   window.mly_pickDay = mly_pickDay;
   window.mly_pickDirectaForEdit = mly_pickDirectaForEdit;
   window.mly_resetTotalOverride = mly_resetTotalOverride;
-  window.mly_shiftMonths = mly_shiftMonths;
+  window.mly_loadMoreMonths = mly_loadMoreMonths;
+  window.mly_loadMoreMonthsPast = mly_loadMoreMonthsPast;
   window.mly_startEditTotal = mly_startEditTotal;
   window.mly_parseAdminVoucher = mly_parseAdminVoucher;
   window._mlyCargar = loadCalendar;   // lo llama setDispCabin al abrir el tab
