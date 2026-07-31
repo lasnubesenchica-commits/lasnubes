@@ -2123,6 +2123,7 @@
     display: flex; justify-content: space-between; gap: 10px;
     padding: 3px 0; color: var(--text-muted); font-size: 12.5px;
   }
+  .price-preview .pp-desc { color: var(--verde-dark); }
   .price-preview .pp-nota { margin-top: 8px; font-size: 12px; line-height: 1.45; }
   .price-preview .pp-promo  { color: var(--verde-dark); }
   .price-preview .pp-manual { color: #b06a2c; }
@@ -4081,11 +4082,11 @@
     <div class="form-row">
       <div class="form-group">
         <label id="fEmailLabel">Email <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— confirmación</span></label>
-        <input type="email" id="fEmail" placeholder="correo@ejemplo.com">
+        <input type="email" id="fEmail" placeholder="correo@ejemplo.com" oninput="_refrescarAvisoLoyalty()">
       </div>
       <div class="form-group">
         <label>Teléfono</label>
-        <input type="tel" id="fTelefono" placeholder="N/A">
+        <input type="tel" id="fTelefono" placeholder="N/A" oninput="_refrescarAvisoLoyalty()">
       </div>
     </div>
 
@@ -4101,7 +4102,7 @@
       </div>
       <div class="form-group">
         <label>Personas</label>
-        <input type="number" id="fPersons" min="1" max="10" value="2" oninput="calcPrice()">
+        <input type="number" id="fPersons" min="1" max="10" value="2" oninput="calcPrice();_updateMultiCabinSplitInfo();">
       </div>
     </div>
 
@@ -4240,6 +4241,7 @@
     <div class="form-row">
       <div class="form-group" style="grid-column: 1 / -1;">
         <div id="pricePreview" class="price-preview" style="display:none;"></div>
+        <div id="loyaltyAviso" class="modal-aviso" style="display:none;margin-top:8px;"></div>
         <div id="pagoAviso" class="modal-aviso" style="display:none;margin-top:8px;"></div>
       </div>
     </div>
@@ -4768,6 +4770,8 @@ function _canonOrigin(raw) {
 // Ahora todo sale de acá y los valores se cargan de Config vía getTarifas.
 // Los números que quedan son solo el fallback de arranque, por si la llamada
 // falla; el backend los pisa apenas responde.
+const DESCUENTO_REFERIDO = 20;   // lo que se le descuenta al referido
+
 const LN_TAR = {
   weekday: 90, weekend: 110, promo: 75, promoActive: false, promoMeses: 0,
   viernes: 110, sabado: 110, vispera: 110, feriado: 110, escolar: 110,
@@ -4876,7 +4880,7 @@ function _lnRecargoPersona(cabinKey) {
 // Devuelve { total, noches[], extras[], sinPromo } para una estadía del modal.
 // `noches` trae una entrada por noche con su fecha, precio y motivo; `extras`
 // los recargos que no son por noche (persona adicional, early/late).
-function _lnCotizar(tipo, cabinKey, entradaISO, salidaISO, personas, sinPromo) {
+function _lnCotizar(tipo, cabinKey, entradaISO, salidaISO, personas, sinPromo, cabinPorNoche) {
   personas = Math.max(1, parseInt(personas, 10) || 2);
   const out = { total: 0, noches: [], extras: [], nNoches: 0 };
 
@@ -4908,14 +4912,34 @@ function _lnCotizar(tipo, cabinKey, entradaISO, salidaISO, personas, sinPromo) {
   out.nNoches = out.noches.length;
 
   if (personas > 2 && out.nNoches) {
-    const porPersona = _lnRecargoPersona(cabinKey);
-    const extra = porPersona * (personas - 2) * out.nNoches;
-    out.total += extra;
-    out.extras.push({
-      label: (personas - 2) + ' persona' + (personas - 2 > 1 ? 's' : '') + ' extra × $' + porPersona
-             + ' × ' + out.nNoches + ' noche' + (out.nNoches > 1 ? 's' : ''),
-      monto: extra
-    });
+    // Con multi-cabaña cada noche puede estar en una cabaña distinta, y el
+    // recargo por persona no es el mismo en todas (Portal $10, las otras $20).
+    // Sin esto el total del modal no coincidía con el split de abajo.
+    if (cabinPorNoche) {
+      let extra = 0;
+      const usadas = {};
+      out.noches.forEach(n => {
+        const c = cabinPorNoche[n.fecha] || cabinKey;
+        extra += _lnRecargoPersona(c) * (personas - 2);
+        usadas[c] = (usadas[c] || 0) + 1;
+      });
+      out.total += extra;
+      const det = Object.keys(usadas)
+        .map(c => '$' + _lnRecargoPersona(c) + '×' + usadas[c]).join(' + ');
+      out.extras.push({
+        label: (personas - 2) + ' persona' + (personas - 2 > 1 ? 's' : '') + ' extra (' + det + ')',
+        monto: extra
+      });
+    } else {
+      const porPersona = _lnRecargoPersona(cabinKey);
+      const extra = porPersona * (personas - 2) * out.nNoches;
+      out.total += extra;
+      out.extras.push({
+        label: (personas - 2) + ' persona' + (personas - 2 > 1 ? 's' : '') + ' extra × $' + porPersona
+               + ' × ' + out.nNoches + ' noche' + (out.nNoches > 1 ? 's' : ''),
+        monto: extra
+      });
+    }
   }
 
   // El recargo de early/late va UNA vez por estadía: son horas del primer o del
@@ -9073,8 +9097,25 @@ function _regenerateMultiCabinNights() {
   _updateMultiCabinSplitInfo();
   // Al cambiar cualquier select, recalcular info.
   wrap.querySelectorAll('select[data-night-idx]').forEach(s => {
-    s.onchange = _updateMultiCabinSplitInfo;
+    // Recalcula también el TOTAL: el recargo por persona depende de la cabaña.
+    s.onchange = () => { calcPrice(); _updateMultiCabinSplitInfo(); };
   });
+}
+
+// Peso de cada cabaña en el reparto: lo que REALMENTE vale su tramo según el
+// tarifario. Antes se repartía en partes iguales por noche, lo que ignoraba dos
+// cosas: que un viernes vale más que un lunes, y que la persona extra cuesta
+// $10 en Portal contra $20 en las otras. Con noches de distinto valor, el
+// reparto parejo le cargaba de más a la cabaña barata.
+function _multiCabinPesos(selects, personas) {
+  const pesos = {};   // cabaña → valor de tarifa de su tramo
+  selects.forEach(s => {
+    const iso = s.dataset.nightIso, cab = s.value;
+    let v = _lnPrecioDia(iso, false);
+    if (personas > 2) v += _lnRecargoPersona(cab) * (personas - 2);
+    pesos[cab] = +((pesos[cab] || 0) + v).toFixed(2);
+  });
+  return pesos;
 }
 
 function _updateMultiCabinSplitInfo() {
@@ -9084,16 +9125,22 @@ function _updateMultiCabinSplitInfo() {
   const selects = wrap ? wrap.querySelectorAll('select[data-night-idx]') : [];
   const nights = selects.length;
   if (nights < 2) { infoEl.textContent = ''; return; }
-  const amount = parseFloat(document.getElementById('fAmount').value) || 0;
-  const perNight = amount / nights;
-  // Contar cuántas noches por cabaña
+  const amount   = parseFloat(document.getElementById('fAmount').value) || 0;
+  const personas = parseInt((document.getElementById('fPersons') || {}).value, 10) || 2;
+
   const counts = { verde: 0, azul: 0, lila: 0 };
   selects.forEach(s => { counts[s.value] = (counts[s.value] || 0) + 1; });
+  const pesos = _multiCabinPesos(selects, personas);
+  const sumaPesos = Object.keys(pesos).reduce((t, k) => t + pesos[k], 0);
+
   const names = { verde: 'Paseo', azul: 'Portal', lila: 'Puente' };
-  const breakdown = Object.keys(counts).filter(k => counts[k] > 0)
-    .map(k => names[k] + ': ' + counts[k] + ' × $' + perNight.toFixed(2) + ' = $' + (counts[k] * perNight).toFixed(2))
-    .join(' · ');
-  infoEl.textContent = 'Split: ' + breakdown + '  →  Total $' + amount.toFixed(2);
+  const partes = Object.keys(counts).filter(k => counts[k] > 0).map(k => {
+    // El total cobrado puede estar negociado: se reparte en proporción al
+    // valor de tarifa de cada tramo, no en partes iguales.
+    const share = sumaPesos > 0 ? amount * pesos[k] / sumaPesos : amount / nights;
+    return names[k] + ': ' + counts[k] + ' noche' + (counts[k] > 1 ? 's' : '') + ' = $' + share.toFixed(2);
+  });
+  infoEl.textContent = 'Split por tarifa · ' + partes.join(' · ') + '  →  Total $' + amount.toFixed(2);
 }
 
 function autoCheckout() {
@@ -9174,26 +9221,78 @@ function _previewRefCode() {
   const uses  = referralUses.filter(u => (u.referrerEmail || '').toLowerCase() === (ref.email || '').toLowerCase());
   const count = uses.length + 1;  // este sera el #(count)
   const btn = _refDiscountApplied
-    ? '<span style="margin-left:8px;color:var(--text-muted);font-size:11px;">✓ Descuento aplicado</span>'
-    : '<button type="button" onclick="_applyReferralDiscount()" style="margin-left:8px;background:#5a85b0;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;">Aplicar −$20</button>';
+    ? '<button type="button" onclick="_quitarDescuentoReferido()" style="margin-left:8px;background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;color:var(--text-muted);">✓ Aplicado · quitar</button>'
+    : '<button type="button" onclick="_applyReferralDiscount()" style="margin-left:8px;background:#5a85b0;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;">Aplicar −$' + DESCUENTO_REFERIDO + '</button>';
   prev.innerHTML = '✓ Código de <strong>' + (ref.nombre || ref.email) + '</strong> · sería su ' + count + 'ª referencia' + btn;
   prev.style.color = '#2c5e22';
 }
 
+// Los descuentos ya NO se restan a mano del campo Monto. Antes esto hacía
+// `montoEl.value = current - 20`, que tenía dos problemas: dependía de que el
+// monto base ya estuviera cargado (si no, avisaba y no hacía nada), y el
+// descuento desaparecía en silencio al recalcular la tarifa. Ahora son una
+// línea más del desglose y sobreviven a cualquier recálculo.
 function _applyReferralDiscount() {
   if (_refDiscountApplied) return;
-  const montoEl  = document.getElementById('fAmount');
-  const originEl = document.getElementById('fOrigin');
-  if (!montoEl) return;
-  const current = parseFloat(montoEl.value) || 0;
-  if (current <= 0) { showToast('⚠ Ingresá primero el monto base'); return; }
-  montoEl.value = (current - 20).toFixed(2);
-  if (originEl) originEl.value = 'Referido';
   _refDiscountApplied = true;
-  // Recalcular saldo si la funcion existe
-  if (typeof calcSaldo === 'function') calcSaldo();
-  _previewRefCode(); // re-render para mostrar "✓ Descuento aplicado"
-  showToast('✓ −$20 aplicado al monto · Origen: Referido');
+  const originEl = document.getElementById('fOrigin');
+  if (originEl) originEl.value = 'Referido';
+  _montoManual = false;      // el descuento manda: se recotiza con él
+  _refrescarAvisosModal();
+  _previewRefCode();         // re-render para mostrar "✓ Descuento aplicado"
+  showToast('✓ Descuento de referido aplicado · Origen: Referido');
+}
+
+function _quitarDescuentoReferido() {
+  _refDiscountApplied = false;
+  _montoManual = false;
+  _refrescarAvisosModal();
+  _previewRefCode();
+}
+
+// ─── Descuentos aplicables ───────────────────────────────────
+// Devuelve [{label, monto}] a restar del subtotal de la estadía.
+let _loyaltyAplicado = false;
+
+function _lnDescuentos(q) {
+  const out = [];
+  if (_refDiscountApplied) {
+    out.push({ label: 'Descuento por referido', monto: DESCUENTO_REFERIDO });
+  }
+  if (_loyaltyAplicado && q && q.noches.length) {
+    // Una noche de cortesía. Se valúa con la noche MÁS ECONÓMICA de la estadía:
+    // regalar la más cara (un feriado a $130) convertiría el beneficio en algo
+    // muy distinto según qué fechas eligiera el huésped.
+    const barata = q.noches.reduce((min, n) => Math.min(min, n.precio), Infinity);
+    out.push({ label: 'Cliente Fiel · 1 noche de cortesía (la más económica)', monto: barata });
+  }
+  return out;
+}
+
+// Aviso de crédito Cliente Fiel disponible para el huésped del formulario.
+function _refrescarAvisoLoyalty() {
+  const box = document.getElementById('loyaltyAviso');
+  if (!box) return;
+  const origin = (document.getElementById('fOrigin') || {}).value || 'Directa';
+  const email  = (document.getElementById('fEmail')    || {}).value || '';
+  const tel    = (document.getElementById('fTelefono') || {}).value || '';
+  if (SIN_PAGO_ORIGINS.includes(origin)) { box.style.display = 'none'; return; }
+  const credit = _findLoyaltyCreditFor(email, tel);
+  if (!credit || credit.usedAt) { box.style.display = 'none'; return; }
+
+  box.className = 'modal-aviso modal-aviso--info';
+  box.innerHTML = _loyaltyAplicado
+    ? '🎟 Crédito <strong>Cliente Fiel</strong> aplicado como noche de cortesía. '
+      + '<button type="button" onclick="_toggleLoyalty(false)">Quitar</button>'
+    : '🎟 Este huésped tiene un crédito <strong>Cliente Fiel</strong> sin usar. '
+      + '<button type="button" onclick="_toggleLoyalty(true)">Aplicar noche de cortesía</button>';
+  box.style.display = 'block';
+}
+
+function _toggleLoyalty(on) {
+  _loyaltyAplicado = !!on;
+  _montoManual = false;
+  _refrescarAvisosModal();
 }
 
 function openModal(cabin, date) {
@@ -9237,6 +9336,7 @@ function openModal(cabin, date) {
   // persona extra y sin mirar cuántas noches eran.
   document.getElementById('fAmount').value = '';
   _montoManual = false;
+  _loyaltyAplicado = false;
   const _tipo = document.getElementById('fTipo');
   if (_tipo) { _tipo.value = 'noche'; _tipo.dataset.prevTipo = 'noche'; }
   const _hint = document.getElementById('fTipoHint');
@@ -9369,11 +9469,19 @@ function calcPrice() {
     return;
   }
 
-  const q       = _lnCotizar(tipo, cabin, entrada, salida, personas, false);
-  const sinProm = _lnCotizar(tipo, cabin, entrada, salida, personas, true);
+  const mapaMulti = _mapaCabinPorNoche();
+  const q       = _lnCotizar(tipo, cabin, entrada, salida, personas, false, mapaMulti);
+  const sinProm = _lnCotizar(tipo, cabin, entrada, salida, personas, true,  mapaMulti);
   if (!q.noches.length) { box.style.display = 'none'; return; }
 
-  const hayPromo = sinProm.total > q.total;
+  // Los descuentos (referido, Cliente Fiel) se restan del subtotal y quedan
+  // como línea propia, no escondidos dentro del monto.
+  const descuentos = _lnDescuentos(q);
+  const subtotal   = q.total;
+  descuentos.forEach(d => { q.total -= d.monto; });
+  q.total = Math.max(0, +q.total.toFixed(2));
+
+  const hayPromo = sinProm.total > subtotal;
   const esPorNoche = !['pasatarde', 'pasanoche', 'pasadia'].includes(tipo);
 
   // Sincroniza el campo Monto salvo que el usuario lo haya escrito él.
@@ -9417,6 +9525,9 @@ function calcPrice() {
   }
   q.extras.forEach(x => {
     html += '<div class="pp-row"><span>' + x.label + '</span><span>$' + x.monto.toFixed(2) + '</span></div>';
+  });
+  descuentos.forEach(d => {
+    html += '<div class="pp-row pp-desc"><span>' + d.label + '</span><span>−$' + d.monto.toFixed(2) + '</span></div>';
   });
   html += '</div>';
 
@@ -9482,6 +9593,18 @@ function _refrescarAvisoPago(totalTarifa) {
 function usarTarifaCalculada() {
   _montoManual = false;
   calcPrice();
+}
+
+// Con multi-cabaña activo devuelve { fechaISO: cabaña } para que la cotización
+// use el recargo por persona de la cabaña real de cada noche. null si no aplica.
+function _mapaCabinPorNoche() {
+  const chk = document.getElementById('fMultiCabin');
+  if (!chk || !chk.checked) return null;
+  const sel = document.querySelectorAll('#fMultiNights select[data-night-idx]');
+  if (sel.length < 2) return null;
+  const mapa = {};
+  sel.forEach(s => { if (s.dataset.nightIso) mapa[s.dataset.nightIso] = s.value; });
+  return Object.keys(mapa).length ? mapa : null;
 }
 
 // ─── Conflicto de fechas ─────────────────────────────────────
@@ -9573,6 +9696,7 @@ function _usarTipoSugerido(tipo) {
 function _refrescarAvisosModal() {
   _refrescarAvisoConflicto();
   _refrescarSugerenciaTipo();
+  _refrescarAvisoLoyalty();
   calcPrice();     // calcPrice a su vez refresca el aviso de pago
 }
 
@@ -10156,7 +10280,19 @@ async function _saveMultiCabinReservation() {
   // reparte en la misma proporción. Antes se copiaba el voucher COMPLETO en
   // cada hermana, así que un pago único de $150 en 2 cabañas se contaba como
   // $300 cobrados (inflaba "recibido" en Ingresos y tapaba saldos pendientes).
-  const groupAmounts = groups.map(g => +(g.nights.length * perNight).toFixed(2));
+  // Reparto proporcional al VALOR DE TARIFA de cada tramo, no por noche pareja:
+  // un viernes vale más que un lunes, y la persona extra cuesta $10 en Portal
+  // contra $20 en las otras. `perNight` queda solo como respaldo si el
+  // tarifario no pudo valuar nada (todas las noches en $0).
+  const _grpValor = groups.map(g => g.nights.reduce((t, iso) => {
+    let v = _lnPrecioDia(iso, false);
+    if (persons > 2) v += _lnRecargoPersona(g.cabin) * (persons - 2);
+    return t + v;
+  }, 0));
+  const _valorTotal = _grpValor.reduce((a, v) => a + v, 0);
+  const groupAmounts = _valorTotal > 0
+    ? groups.map((g, i) => +(totalAmount * _grpValor[i] / _valorTotal).toFixed(2))
+    : groups.map(g => +(g.nights.length * perNight).toFixed(2));
   const _fix = (arr, target) => {   // el último absorbe el redondeo
     if (!arr.length) return arr;
     const s = +arr.reduce((a,v) => a + v, 0).toFixed(2);
