@@ -210,6 +210,11 @@
   .disp-day.alerta-mod .day-initials { color:#fff !important; }
   .disp-day.alerta-mod.past { opacity:0.5; }
   .disp-day.today-marker   { box-shadow:0 0 0 2px var(--text); }
+  /* Leyenda Airbnb / Directa. El layout va acá y no en el atributo style para
+     que prender y apagar la leyenda no se lo lleve puesto. */
+  .disp-legend { display:flex; gap:16px; margin-bottom:10px; font-size:11px; color:var(--text-muted); align-items:center; flex-wrap:wrap; }
+  .disp-legend > span { display:flex; align-items:center; gap:5px; }
+  .disp-legend > span > span { width:14px; height:14px; border-radius:3px; display:inline-block; flex:none; }
   /* Pie del mes en curso cuando se recortaron las semanas ya pasadas: avisa
      que falta algo a propósito, para que no se lea como un bug de render.
      La comparten los dos calendarios (Las Nubes y Malaya). */
@@ -3331,16 +3336,6 @@
       </div>
     </div>
 
-    <div style="display:flex;gap:16px;margin-bottom:10px;font-size:11px;color:var(--text-muted);align-items:center;">
-      <span style="display:flex;align-items:center;gap:5px;">
-        <span id="legendDotAirbnb" style="width:14px;height:14px;border-radius:3px;background:var(--verde-dark);display:inline-block;"></span>
-        Airbnb
-      </span>
-      <span style="display:flex;align-items:center;gap:5px;">
-        <span id="legendDotDirect" style="width:14px;height:14px;border-radius:3px;background:#a8c9a0;display:inline-block;"></span>
-        Directa / Otro
-      </span>
-    </div>
     <div class="disp-view-toggle" role="tablist" aria-label="Vista de disponibilidad">
       <button class="disp-view-btn active" data-view="calendar" onclick="setDispViewMode('calendar')" role="tab" aria-selected="true">📅 Calendario</button>
       <button class="disp-view-btn"        data-view="timeline" onclick="setDispViewMode('timeline')" role="tab" aria-selected="false">📊 Timeline</button>
@@ -3350,6 +3345,20 @@
       <button class="disp-cabin-tab azul"         onclick="setDispCabin('azul',this)">Portal</button>
       <button class="disp-cabin-tab lila"         onclick="setDispCabin('lila',this)">Puente</button>
       <button class="disp-cabin-tab malaya"       onclick="setDispCabin('malaya',this)">Malaya</button>
+    </div>
+    <!-- La leyenda va DESPUÉS de los chips y pegada al calendario, no arriba
+         del todo: los colores que explica dependen de la cabaña elegida, así
+         que leerla antes de elegir no dice nada. Es la misma posición que en
+         el tab de Malaya. -->
+    <div class="disp-legend" id="dispLegend">
+      <span>
+        <span id="legendDotAirbnb" style="background:var(--verde-dark);"></span>
+        Airbnb
+      </span>
+      <span>
+        <span id="legendDotDirect" style="background:#a8c9a0;"></span>
+        Directa / Otro
+      </span>
     </div>
     <div class="disp-calendars" id="dispCalendars"></div>
     <div class="mini-timeline" id="dispTimeline" style="display:none;padding:0;background:transparent;border:none;"></div>
@@ -5380,13 +5389,15 @@ let _malayaCargado = false;
 // Elementos que solo tienen sentido para las cabañas de Las Nubes: la leyenda
 // Airbnb/Directa y el toggle Calendario/Timeline. Malaya no los usa.
 function _dispSoloLasNubes(mostrar) {
-  const d = mostrar ? '' : 'none';
   const tog = document.querySelector('.disp-view-toggle');
   if (tog) tog.style.display = mostrar ? 'flex' : 'none';
-  const leg = document.getElementById('legendDotAirbnb');
-  if (leg && leg.parentElement && leg.parentElement.parentElement) {
-    leg.parentElement.parentElement.style.display = d;
-  }
+  // Ojo con el 'flex': la leyenda declaraba su layout en el atributo style, y
+  // acá se la volvía a mostrar con `style.display = ''`, que BORRA la
+  // propiedad inline —o sea, el único lugar donde vivía el flex—. Resultado:
+  // después de cambiar de cabaña los dos items quedaban uno debajo del otro.
+  // Ahora el layout está en .disp-legend (CSS) y acá solo se prende/apaga.
+  const leg = document.getElementById('dispLegend');
+  if (leg) leg.style.display = mostrar ? 'flex' : 'none';
 }
 
 function setDispCabin(cabin, btn) {
