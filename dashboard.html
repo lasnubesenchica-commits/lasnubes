@@ -4399,8 +4399,11 @@ localStorage.removeItem('ln_reservas');
 // Sin esto el panel tampoco salía vacío: se pintaba con `reservations`, que
 // antes del sync solo tiene las directas locales — o sea, una lista a medias
 // (sin nada de Airbnb) que parece completa. El cache es más fiel que eso.
-const HOY_CACHE_KEY  = 'ln_hoy_cache';
-const HOY_CACHE_DIAS = 14;   // cubre la navegación ‹ HOY › del panel
+// Se cachea SOLO el día de hoy, no una ventana de días. Los días siguientes
+// se usan para decidir si queda cabaña libre —se toman reservas para mañana
+// sobre la marcha—, y ahí una lista de hace horas puede hacer vender algo ya
+// vendido. Ver un día futuro siempre espera datos frescos.
+const HOY_CACHE_KEY = 'ln_hoy_cache';
 let _datosSheetsCargados = false;
 
 function _isoDeHoy() {
@@ -4410,25 +4413,23 @@ function _isoDeHoy() {
 
 function _guardarCacheHoy() {
   try {
-    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-    const desde = new Date(hoy); desde.setDate(desde.getDate() - 1);
-    const hasta = new Date(hoy); hasta.setDate(hasta.getDate() + HOY_CACHE_DIAS);
-    const dIso = desde.toISOString().slice(0, 10);
-    const hIso = hasta.toISOString().slice(0, 10);
-    const enVentana = reservations.filter(r => {
+    const hIso = _isoDeHoy();
+    const deHoy = reservations.filter(r => {
       if (r.origin === 'Abierta' || r.estadoPago === 'CANCELADA' || !r.checkin || !r.checkout) return false;
       const { displayCheckin, displayCheckout } = reservaDisplayDates(r);
-      return (displayCheckin  >= dIso && displayCheckin  <= hIso)
-          || (displayCheckout >= dIso && displayCheckout <= hIso);
+      return displayCheckin === hIso || displayCheckout === hIso;
     });
-    localStorage.setItem(HOY_CACHE_KEY, JSON.stringify({ fecha: _isoDeHoy(), reservas: enVentana }));
+    localStorage.setItem(HOY_CACHE_KEY, JSON.stringify({ fecha: hIso, reservas: deHoy }));
   } catch (_) { /* localStorage lleno o navegación privada: seguir sin cache */ }
 }
 
-// Devuelve las reservas cacheadas, o null si no sirven. Un cache de ayer se
-// descarta entero: diría "Reservas de hoy" sobre movimientos ya pasados, que
-// es peor que no mostrar nada.
+// Devuelve las reservas cacheadas, o null si no sirven. Dos motivos para
+// descartarlo: (1) es de otro día —diría "Reservas de hoy" sobre movimientos
+// ya pasados—, o (2) el panel está mirando otro día, que no se cachea.
+// Devolver null hace que el panel muestre "Cargando…", no "sin movimientos":
+// no saber todavía no es lo mismo que saber que no hay nada.
 function _leerCacheHoy() {
+  if (reservasHoyOffset !== 0) return null;
   try {
     const c = JSON.parse(localStorage.getItem(HOY_CACHE_KEY) || 'null');
     if (!c || !Array.isArray(c.reservas) || c.fecha !== _isoDeHoy()) return null;
@@ -6149,6 +6150,10 @@ function renderReservasHoy() {
   // _leerCacheHoy). Es el único panel que hace esto; el resto espera datos
   // frescos a propósito.
   const cache = _datosSheetsCargados ? null : _leerCacheHoy();
+  // Sin cache utilizable y sin datos frescos no sabemos nada todavía: hay que
+  // decir "Cargando…", no "no hay entradas ni salidas". Pasa cada mañana —el
+  // cache de ayer se descarta— y al mirar un día futuro, que nunca se cachea.
+  const cargando = !_datosSheetsCargados && !cache;
   const datos = cache || reservations;
   const base = new Date();
   base.setHours(0, 0, 0, 0);
@@ -6180,14 +6185,20 @@ function renderReservasHoy() {
 
   const countEl = document.getElementById('reservasHoyCount');
   if (countEl) {
-    const base = items.length === 0 ? '· sin movimientos' : '· ' + items.length + (items.length === 1 ? ' movimiento' : ' movimientos');
     // Que se note que todavía no es data fresca: si algo cambió en la hoja
     // hace un minuto, esto lo dice antes de que el usuario actúe.
-    countEl.textContent = base + (cache ? ' · actualizando…' : '');
+    countEl.textContent = cargando
+      ? '· cargando…'
+      : (items.length === 0 ? '· sin movimientos' : '· ' + items.length + (items.length === 1 ? ' movimiento' : ' movimientos'))
+        + (cache ? ' · actualizando…' : '');
   }
 
   const list = document.getElementById('reservasHoyList');
   if (!list) return;
+  if (cargando) {
+    list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:10px;text-align:center;">Consultando la hoja…</div>';
+    return;
+  }
   if (items.length === 0) {
     const dayWord = reservasHoyOffset === 0 ? 'Hoy' : (reservasHoyOffset === 1 ? 'Mañana' : 'Este día');
     list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:10px;text-align:center;">'+dayWord+' no hay entradas ni salidas.</div>';
