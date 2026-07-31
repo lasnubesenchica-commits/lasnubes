@@ -4265,6 +4265,7 @@
         </label>
       </div>
       <button class="btn btn-ghost" id="cancelReservationBtn" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-ghost" id="modalCotizarBtn" onclick="copiarCotizacionModal()" style="font-size:13px;" title="Copiar la cotización lista para pegar en WhatsApp o Instagram, con el total que se va a cobrar.">📋 Cotización</button>
       <button class="btn btn-ghost" id="modalPreviewBtn" onclick="previewConfirmacionAMi()" style="font-size:13px;" title="Enviarte a ti (email + WhatsApp) la confirmación tal como le llegará al cliente, para revisarla antes de mandarla.">👁 Vista previa</button>
       <button class="btn btn-ghost" id="modalWhatsAppBtn" style="display:none;font-size:13px;">💬 Enviar a WhatsApp</button>
       <button class="btn btn-primary" id="saveReservationBtn" onclick="saveReservation()">Guardar reserva</button>
@@ -9605,6 +9606,126 @@ function _mapaCabinPorNoche() {
   const mapa = {};
   sel.forEach(s => { if (s.dataset.nightIso) mapa[s.dataset.nightIso] = s.value; });
   return Object.keys(mapa).length ? mapa : null;
+}
+
+// ─── Copiar cotización desde el modal ───────────────────────
+// Mismo formato de iconos que el botón 📋 del calendario público, pero armado
+// con lo que hay cargado en el modal. Antes, para mandarle un presupuesto a
+// alguien que escribía por WhatsApp había que salir del modal, ir al
+// calendario, encontrar el día y cotizar de nuevo.
+//
+// El total es el que se va a cobrar de verdad (el campo Monto, que puede estar
+// negociado o llevar descuentos), no la tarifa de lista. Si está por debajo de
+// lista, se agrega la línea "Antes".
+const COT_CABIN_NOMBRES = { verde: 'Paseo por Las Nubes', azul: 'Portal hacia Las Nubes', lila: 'Puente entre Las Nubes' };
+const COT_CABIN_CAMAS = {
+  verde: '🛏 King + auxiliar twin',
+  azul:  '🛏 Full, sin cama auxiliar\n🛌 Traer colchón inflable',
+  lila:  '🛏 Queen + auxiliar full'
+};
+const COT_SECCIONES =
+    '*Incluye:*\n'
+  + '🍳 Cocina equipada\n'
+  + '🔥 Área de BBQ\n'
+  + '☕ Café, azúcar y especias\n'
+  + '🧊 Cooler grande incluido\n'
+  + '❄ Sin nevera: traer hielo\n'
+  + '☀ Iluminación con paneles solares\n'
+  + '🔋 Carga para tus dispositivos\n'
+  + '📶 Señal de todas las telefónicas\n'
+  + '🚿 Toallas, jabón y papel\n'
+  + '🦟 Fumigación semanal\n'
+  + '🧴 Sugerimos repelente\n'
+  + '🔒 Uso exclusivo del lugar\n'
+  + '\n'
+  + '*Para Reservar*\n'
+  + '💳 Pago por Yappy o ACH\n'
+  + 'Quedo atento si deseas proceder para compartirte las formas de pago.';
+
+const _COT_DOW = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+const _COT_MES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const _COT_MES_CORTO = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+function _cotLargo(iso) {
+  const d = new Date(iso + 'T12:00:00');
+  return _COT_DOW[d.getDay()] + ' ' + d.getDate() + ' de ' + _COT_MES[d.getMonth()];
+}
+// Sin día de la semana: la línea de horario tiene que entrar en un renglón.
+function _cotMin(iso) {
+  const d = new Date(iso + 'T12:00:00');
+  return d.getDate() + ' ' + _COT_MES_CORTO[d.getMonth()];
+}
+
+function copiarCotizacionModal() {
+  const tipo     = (document.getElementById('fTipo')    || {}).value || 'noche';
+  const cabin    = (document.getElementById('fCabin')   || {}).value || 'verde';
+  const personas = parseInt((document.getElementById('fPersons') || {}).value, 10) || 2;
+  const entrada  = (document.getElementById('fCheckin')  || {}).value;
+  const salida   = (document.getElementById('fCheckout') || {}).value;
+  if (!entrada) { showToast('Falta la fecha de entrada'); return; }
+
+  const q       = _lnCotizar(tipo, cabin, entrada, salida, personas, false, _mapaCabinPorNoche());
+  const sinProm = _lnCotizar(tipo, cabin, entrada, salida, personas, true,  _mapaCabinPorNoche());
+  if (!q.noches.length) { showToast('Faltan fechas para cotizar'); return; }
+
+  // Lo que se va a cobrar: el campo Monto manda.
+  const total = parseFloat((document.getElementById('fAmount') || {}).value) || q.total;
+  const lista = sinProm.total;
+  const hayDescuento = lista > total + 0.009;
+  const nombre = COT_CABIN_NOMBRES[cabin] || cabin;
+  const f2 = n => n.toFixed(2);
+
+  let texto;
+  if (tipo === 'pasatarde' || tipo === 'pasanoche' || tipo === 'pasadia') {
+    const horaIn  = tipo === 'pasatarde' ? '12:30 pm' : tipo === 'pasanoche' ? '8:00 pm' : '9:00 am';
+    const horaOut = tipo === 'pasatarde' ? '7:00 pm'  : tipo === 'pasanoche' ? '12:30 pm' : '5:00 pm';
+    const label   = tipo === 'pasatarde' ? 'pasatarde' : tipo === 'pasanoche' ? 'pasanoche' : 'pasadía';
+    // La pasanoche cruza la medianoche: la salida es el día SIGUIENTE.
+    const isoSalida = tipo === 'pasanoche' ? _addDaysISO(entrada, 1) : entrada;
+    texto = 'Tengo disponible el ' + _cotLargo(entrada) + ' en concepto de ' + label
+          + ' en $' + f2(total) + ' para ' + personas + ' personas.\n\n'
+      + '🏡 *' + nombre + '*\n'
+      + '💰 *Total:* $' + f2(total) + '\n'
+      + (hayDescuento ? '🏷 Antes: $' + f2(lista) + '\n' : '')
+      + '🕑 Entrada ' + _cotMin(entrada) + ' ' + horaIn + '\n'
+      + '🕚 Salida '  + _cotMin(isoSalida) + ' ' + horaOut + '\n'
+      + '\n' + COT_SECCIONES;
+  } else {
+    const noches = q.nNoches;
+    const extra  = tipo === 'early' ? ' con entrada anticipada (9:00 am)'
+                 : tipo === 'late'  ? ' con salida extendida (4:00 pm)' : '';
+    const cuando = (noches === 1
+      ? 'Tengo la noche del ' + _cotLargo(entrada) + ' disponible'
+      : 'Tengo las noches del ' + _cotLargo(entrada) + ' al ' + _cotLargo(salida) + ' disponibles') + extra;
+    const cabinaBlock = personas >= 3
+      ? '🏡 *' + nombre + '*\n' + (COT_CABIN_CAMAS[cabin] || '') + '\n'
+      : '🏡 *' + nombre + '*\n';
+    const horaIn  = tipo === 'early' ? '9:00 am' : '2:00 pm';
+    const horaOut = tipo === 'late'  ? '4:00 pm' : '11:00 am';
+    texto = cuando + ' para reserva '
+        + (hayDescuento ? 'en tarifa promocional de $' : 'a $') + f2(total)
+        + ' para ' + personas + ' personas.\n\n'
+      + cabinaBlock
+      + '💰 *Total:* $' + f2(total) + '\n'
+      + (hayDescuento ? '🏷 Antes: $' + f2(lista) + '\n' : '')
+      + '🕑 Check in '  + _cotMin(entrada) + ' ' + horaIn + '\n'
+      + '🕚 Check out ' + _cotMin(salida)  + ' ' + horaOut + '\n'
+      + (noches > 1 ? '📅 ' + (noches + 1) + ' días, ' + noches + ' noches\n' : '')
+      + '\n' + COT_SECCIONES;
+  }
+
+  // El conteo avisa si todavía no entra en un DM de Instagram (1.000).
+  const aviso = texto.length + ' caracteres' + (texto.length > 1000 ? ' ⚠ no entra en IG' : '');
+  const ok = () => showToast('📋 Cotización copiada · ' + aviso);
+  navigator.clipboard.writeText(texto).then(ok).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = texto;
+    ta.style.cssText = 'position:fixed;opacity:0;';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    ok();
+  });
 }
 
 // ─── Conflicto de fechas ─────────────────────────────────────
