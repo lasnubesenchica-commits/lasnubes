@@ -184,6 +184,82 @@ function _malayaParseIcal(icsText) {
   return events;
 }
 
+// ─── Evaluación del bloqueo ─────────────────────────────────────
+//
+// Responde: ¿las noches de esta reserva están bloqueadas en Airbnb, y QUIÉN
+// las bloqueó? Antes esto era una línea suelta dentro de syncMalayaAirbnb:
+//
+//     events.some(e => e.checkin <= ci && co <= e.checkout)
+//
+// que tenía dos problemas serios:
+//
+//   1. Exigía que UN SOLO evento cubriera toda la estadía. Si Airbnb parte el
+//      bloqueo en tramos (muy común: uno importado de nuestro feed + uno que
+//      puso Celestino a mano, o dos contiguos), la unión cubre la estadía pero
+//      ningún evento suelto lo hace → alerta falsa. Ahora se compara contra la
+//      UNIÓN de noches, no evento por evento.
+//
+//   2. No miraba QUIÉN bloqueó, y eso importa porque el iCal es
+//      BIDIRECCIONAL: Airbnb importa nuestro propio feed. Si Airbnb re-exporta
+//      esos bloques, confirmar contra ellos es confirmar contra nuestro propio
+//      eco — no prueba nada sobre Celestino. Y una reserva ajena que caiga en
+//      esas fechas también "cubre" el rango, y eso no es una confirmación:
+//      es un doble booking.
+//
+// Clasificación de cada evento:
+//   'propio'  → el eco de nuestro feed (UID @lasnubes.cloud o summary nuestro).
+//   'reserva' → una reserva de Airbnb ("Reserved"/"Reservado") que no es nuestra.
+//   'bloqueo' → todo lo demás ("Not available", "Blocked", etc.) = Celestino.
+const MALAYA_ICAL_UID_PROPIO = '@lasnubes.cloud';
+
+function _malayaClasificarEvento(e) {
+  const uid = String(e.uid || '').toLowerCase();
+  const sum = String(e.summary || '').toLowerCase();
+  if (uid.indexOf(MALAYA_ICAL_UID_PROPIO) !== -1 || sum.indexOf('las nubes') !== -1) return 'propio';
+  if (/reserv/.test(sum)) return 'reserva';
+  return 'bloqueo';
+}
+
+// Noches de una estadía: [ci, co) — el día de check-out no se duerme.
+function _malayaNoches(ciIso, coIso) {
+  const noches = [];
+  let d = ciIso;
+  let guard = 0;
+  while (d < coIso && guard++ < 400) { noches.push(d); d = _malayaAddDays(d, 1); }
+  return noches;
+}
+
+// Devuelve:
+//   { cubierta, faltantes[], porCelestino, soloEco, conflicto, detalle }
+// - cubierta     : todas las noches aparecen en algún evento del iCal.
+// - porCelestino : hay al menos una noche cubierta por un bloqueo manual.
+// - soloEco      : está cubierta, pero SOLO por el eco de nuestro feed.
+// - conflicto    : alguna noche la cubre una reserva ajena de Airbnb.
+function _malayaEvaluarBloqueo(events, ciIso, coIso) {
+  const noches = _malayaNoches(ciIso, coIso);
+  const porNoche = {};
+  events.forEach(e => {
+    const tipo = _malayaClasificarEvento(e);
+    _malayaNoches(e.checkin, e.checkout).forEach(n => {
+      if (!porNoche[n]) porNoche[n] = {};
+      porNoche[n][tipo] = true;
+    });
+  });
+  const faltantes = noches.filter(n => !porNoche[n]);
+  const tiene = tipo => noches.some(n => porNoche[n] && porNoche[n][tipo]);
+  const cubierta = noches.length > 0 && faltantes.length === 0;
+  const porCelestino = tiene('bloqueo');
+  const conflicto    = tiene('reserva');
+  return {
+    cubierta: cubierta,
+    faltantes: faltantes,
+    porCelestino: porCelestino,
+    soloEco: cubierta && !porCelestino && !conflicto && tiene('propio'),
+    conflicto: conflicto,
+    detalle: noches.map(n => n + ':' + Object.keys(porNoche[n] || { '-': 1 }).join('+')).join(' ')
+  };
+}
+
 // ─── Sync trigger ───────────────────────────────────────────────
 
 // Cada cuánto se permite correr de verdad. El trigger se instala cada 30 min,
@@ -250,33 +326,70 @@ function syncMalayaAirbnb(force) {
   let transitioned = 0;
   const alerts = [];
   const nowMs = Date.now();
+  const hoyIso = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd');
+  let revertidas = 0;
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
     const estado = String(row[10] || '').toLowerCase();
-    if (estado !== 'pendiente' && estado !== 'no_bloqueada') continue;
+    // `confirmada` también se re-verifica: la confirmación era de ida nomás,
+    // así que si Celestino soltaba el bloqueo en Airbnb el sistema no se
+    // enteraba nunca y la reserva quedaba en verde sobre una fecha libre.
+    if (estado !== 'pendiente' && estado !== 'no_bloqueada' && estado !== 'confirmada') continue;
     const origen = String(row[9] || '');
     if (origen !== 'Directa') continue;   // solo verificamos las mías
     const ci = row[3] instanceof Date ? Utilities.formatDate(row[3], 'America/Panama', 'yyyy-MM-dd') : String(row[3] || '').slice(0,10);
     const co = row[4] instanceof Date ? Utilities.formatDate(row[4], 'America/Panama', 'yyyy-MM-dd') : String(row[4] || '').slice(0,10);
     if (!ci || !co) continue;
-    const blockedByIcal = events.some(e => e.checkin <= ci && co <= e.checkout);
-    if (blockedByIcal) {
+    // Estadía ya terminada: Airbnb saca los bloqueos viejos de su calendario,
+    // así que dejaría de "estar cubierta" y alertaríamos por algo que ya pasó.
+    if (co <= hoyIso) continue;
+
+    const ev = _malayaEvaluarBloqueo(events, ci, co);
+
+    // Una reserva ajena de Airbnb sobre mis noches no es una confirmación: es
+    // exactamente el doble booking que este sync existe para evitar. Antes
+    // "cubría" el rango y la reserva pasaba a confirmada en silencio.
+    if (ev.conflicto) {
+      if (estado !== 'no_bloqueada') malayaSheet.getRange(i + 1, 11).setValue('no_bloqueada');
+      alerts.push({
+        tipo: 'conflicto', id: row[0], guest: row[1], phone: row[2],
+        checkin: ci, checkout: co, detalle: ev.detalle
+      });
+      continue;
+    }
+
+    if (ev.cubierta && !ev.soloEco) {
       if (estado !== 'confirmada') {
         malayaSheet.getRange(i + 1, 11).setValue('confirmada');
         malayaSheet.getRange(i + 1, 12).setValue(true);
         transitioned++;
       }
-    } else {
-      // No está bloqueada. ¿Pasó el grace period?
-      const reservadaTs = row[12] instanceof Date ? row[12].getTime() : Date.parse(String(row[12] || ''));
-      const minutos = reservadaTs ? (nowMs - reservadaTs) / 60000 : 0;
-      if (minutos > graceMin && estado !== 'no_bloqueada') {
-        malayaSheet.getRange(i + 1, 11).setValue('no_bloqueada');
-        alerts.push({
-          id: row[0], guest: row[1], phone: row[2],
-          checkin: ci, checkout: co, minutos: Math.round(minutos)
-        });
-      }
+      continue;
+    }
+
+    // Estaba confirmada y dejó de estarlo → alguien soltó el bloqueo.
+    if (estado === 'confirmada') {
+      malayaSheet.getRange(i + 1, 11).setValue('no_bloqueada');
+      malayaSheet.getRange(i + 1, 12).setValue(false);
+      revertidas++;
+      alerts.push({
+        tipo: 'revertida', id: row[0], guest: row[1], phone: row[2],
+        checkin: ci, checkout: co, faltantes: ev.faltantes, detalle: ev.detalle
+      });
+      continue;
+    }
+
+    // No está bloqueada (o solo la cubre nuestro propio eco). ¿Pasó el grace?
+    const reservadaTs = row[12] instanceof Date ? row[12].getTime() : Date.parse(String(row[12] || ''));
+    const minutos = reservadaTs ? (nowMs - reservadaTs) / 60000 : 0;
+    if (minutos > graceMin && estado !== 'no_bloqueada') {
+      malayaSheet.getRange(i + 1, 11).setValue('no_bloqueada');
+      alerts.push({
+        tipo: ev.soloEco ? 'soloEco' : 'sinBloqueo',
+        id: row[0], guest: row[1], phone: row[2],
+        checkin: ci, checkout: co, minutos: Math.round(minutos),
+        faltantes: ev.faltantes, detalle: ev.detalle
+      });
     }
   }
 
@@ -284,28 +397,62 @@ function syncMalayaAirbnb(force) {
   alerts.forEach(a => _malayaAlertNoBloqueada(a));
 
   logDebugEntry('malaya-sync', {
-    icalEvents: events.length, transitioned: transitioned, alerts: alerts.length
+    icalEvents: events.length, transitioned: transitioned,
+    revertidas: revertidas, alerts: alerts.length,
+    // Cuántos eventos de cada tipo trajo Airbnb. Si `propio` es 0 significa
+    // que Airbnb NO re-exporta los bloqueos que importó de nuestro feed, y si
+    // es alto significa que sí — dato clave para leer las alertas.
+    tipos: events.reduce((a, e) => {
+      const t = _malayaClasificarEvento(e); a[t] = (a[t] || 0) + 1; return a;
+    }, {})
   });
 }
 
+// Una alerta distinta por causa. Antes había un solo texto ("falta bloqueo"),
+// que para un doble booking decía justo lo que no era.
 function _malayaAlertNoBloqueada(a) {
   const celestino = PropertiesService.getScriptProperties().getProperty('MALAYA_CELESTINO_PHONE') || '50765429927';
-  const msg =
-    '⚠️ *Malaya — falta bloqueo en Airbnb*\n\n' +
-    'Tu reserva directa de Malaya pasó ' + a.minutos + ' min sin que aparezca bloqueada en el iCal de Airbnb.\n\n' +
+  const quien =
     '👤 ' + a.guest + '\n' +
     '📱 +' + a.phone + '\n' +
-    '📅 ' + a.checkin + ' → ' + a.checkout + '\n\n' +
-    'Avisa a Celestino (+' + celestino + ') para que la bloquee en Airbnb. Si no, hay riesgo de doble booking.';
+    '📅 ' + a.checkin + ' → ' + a.checkout + '\n\n';
+  let titulo, cuerpo, asunto;
+
+  if (a.tipo === 'conflicto') {
+    titulo = '🚨 *Malaya — POSIBLE DOBLE BOOKING*';
+    asunto = '🚨 Malaya: posible doble booking — ' + a.guest;
+    cuerpo = 'El iCal de Airbnb muestra una RESERVA DE AIRBNB sobre esas mismas noches. No es un bloqueo de Celestino: alguien más las tomó.\n\n' +
+      quien +
+      'Verifica ya con Celestino (+' + celestino + ') cuál de las dos reservas queda.';
+  } else if (a.tipo === 'revertida') {
+    titulo = '⚠️ *Malaya — se soltó el bloqueo*';
+    asunto = '⚠️ Malaya: se soltó el bloqueo — ' + a.guest;
+    cuerpo = 'Esta reserva estaba confirmada y ya NO aparece bloqueada en el iCal de Airbnb.\n\n' +
+      quien +
+      (a.faltantes && a.faltantes.length ? 'Noches sin bloqueo: ' + a.faltantes.join(', ') + '\n\n' : '') +
+      'Avisa a Celestino (+' + celestino + ') para que la vuelva a bloquear.';
+  } else if (a.tipo === 'soloEco') {
+    titulo = '⚠️ *Malaya — sin bloqueo propio de Celestino*';
+    asunto = '⚠️ Malaya: falta bloqueo de Celestino — ' + a.guest;
+    cuerpo = 'Las noches figuran ocupadas en Airbnb, pero SOLO por el calendario que Airbnb importa de nosotros. Es nuestro propio eco: no confirma que Celestino la haya bloqueado de su lado.\n\n' +
+      quien +
+      'Confirma con Celestino (+' + celestino + ') que la vea bloqueada en su calendario.';
+  } else {
+    titulo = '⚠️ *Malaya — falta bloqueo en Airbnb*';
+    asunto = '⚠️ Malaya: falta bloqueo en Airbnb — ' + a.guest;
+    cuerpo = 'Tu reserva directa de Malaya pasó ' + a.minutos + ' min sin que aparezca bloqueada en el iCal de Airbnb.\n\n' +
+      quien +
+      (a.faltantes && a.faltantes.length ? 'Noches sin bloqueo: ' + a.faltantes.join(', ') + '\n\n' : '') +
+      'Avisa a Celestino (+' + celestino + ') para que la bloquee en Airbnb. Si no, hay riesgo de doble booking.';
+  }
+
+  const msg = titulo + '\n\n' + cuerpo;
   try { sendWhatsAppText(BOT_ADMIN_PHONE, msg); } catch(_) {}
   // Email backup, por las dudas.
   try {
-    GmailApp.sendEmail(REPLY_TO_EMAIL,
-      '⚠️ Malaya: falta bloqueo en Airbnb — ' + a.guest,
-      msg,
-      { name: 'Las Nubes Agente' });
+    GmailApp.sendEmail(REPLY_TO_EMAIL, asunto, msg, { name: 'Las Nubes Agente' });
   } catch(_) {}
-  logDebugEntry('malaya-alert-no-bloqueada', { id: a.id, guest: a.guest });
+  logDebugEntry('malaya-alert-no-bloqueada', { id: a.id, guest: a.guest, tipo: a.tipo || 'sinBloqueo', detalle: a.detalle || '' });
 }
 
 // ─── Verificación diaria 11am (digesto) ─────────────────────────
@@ -313,10 +460,17 @@ function _malayaAlertNoBloqueada(a) {
 function verificarMalayaPendientes() {
   const sheet = _malayaSheet();
   const data  = sheet.getDataRange().getValues();
+  const hoyIso = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd');
   const items = [];
   for (let i = 1; i < data.length; i++) {
     const estado = String(data[i][10] || '').toLowerCase();
     if (estado !== 'no_bloqueada') continue;
+    // Estadías ya terminadas no se pueden bloquear: repetirlas cada día en el
+    // digesto solo entrena a ignorarlo.
+    const co = data[i][4] instanceof Date
+      ? Utilities.formatDate(data[i][4], 'America/Panama', 'yyyy-MM-dd')
+      : String(data[i][4] || '').slice(0, 10);
+    if (co && co <= hoyIso) continue;
     items.push({
       guest: data[i][1], phone: data[i][2],
       checkin: data[i][3], checkout: data[i][4]
@@ -329,6 +483,75 @@ function verificarMalayaPendientes() {
   });
   msg += '\nCoordina con Celestino para que las bloquee.';
   try { sendWhatsAppText(BOT_ADMIN_PHONE, msg); } catch(_) {}
+}
+
+// ─── Diagnóstico: por qué una reserva no figura bloqueada ───────
+//
+// Correr desde el editor. Baja el iCal de Airbnb EN VIVO y, para cada reserva
+// directa activa, imprime noche por noche quién la cubre. Sirve para contestar
+// con datos —y no adivinando— por qué el sync la marcó `no_bloqueada`.
+//
+// Lo primero a mirar es el conteo por tipo:
+//   - `propio` > 0  → Airbnb SÍ re-exporta los bloqueos que importó de nuestro
+//     feed. Ojo: confirmar contra esos es confirmar contra nuestro propio eco.
+//   - `propio` = 0  → Airbnb NO los re-exporta, así que la única confirmación
+//     válida es un bloqueo manual de Celestino ('bloqueo').
+function diagnosticoMalayaBloqueo() {
+  const props = PropertiesService.getScriptProperties();
+  const url = props.getProperty('MALAYA_AIRBNB_ICAL');
+  if (!url) { Logger.log('✗ Falta MALAYA_AIRBNB_ICAL en Script Properties.'); return; }
+
+  let events = [];
+  try {
+    const res = UrlFetchApp.fetch(url + (url.indexOf('?') === -1 ? '?' : '&') + '_=' + Date.now(),
+                                  { muteHttpExceptions: true });
+    if (res.getResponseCode() < 200 || res.getResponseCode() >= 300) {
+      Logger.log('✗ Airbnb respondió HTTP ' + res.getResponseCode()); return;
+    }
+    events = _malayaParseIcal(res.getContentText());
+  } catch (e) { Logger.log('✗ Error bajando el iCal: ' + e.message); return; }
+
+  const tipos = {};
+  Logger.log('═══ EVENTOS EN EL iCAL DE AIRBNB (' + events.length + ') ═══');
+  events.forEach(e => {
+    const t = _malayaClasificarEvento(e);
+    tipos[t] = (tipos[t] || 0) + 1;
+    Logger.log('  [' + t + '] ' + e.checkin + ' → ' + e.checkout + '  "' + e.summary + '"  uid=' + e.uid);
+  });
+  Logger.log('  Totales por tipo: ' + JSON.stringify(tipos));
+  Logger.log('  → propio=0 significa que Airbnb NO re-exporta lo que importa de nuestro feed.');
+
+  const sheet = _malayaSheet();
+  const data = sheet.getDataRange().getValues();
+  const hoyIso = Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd');
+  Logger.log('');
+  Logger.log('═══ RESERVAS DIRECTAS ACTIVAS ═══');
+  let n = 0;
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (!row[0]) continue;
+    const estado = String(row[10] || '').toLowerCase();
+    if (estado === 'cancelada' || estado === 'completada') continue;
+    if (String(row[9] || '') !== 'Directa') continue;
+    const ci = row[3] instanceof Date ? Utilities.formatDate(row[3], 'America/Panama', 'yyyy-MM-dd') : String(row[3] || '').slice(0,10);
+    const co = row[4] instanceof Date ? Utilities.formatDate(row[4], 'America/Panama', 'yyyy-MM-dd') : String(row[4] || '').slice(0,10);
+    if (!ci || !co) continue;
+    n++;
+    const ev = _malayaEvaluarBloqueo(events, ci, co);
+    Logger.log('');
+    Logger.log('▸ ' + row[1] + '  ' + ci + ' → ' + co + '  [estado en hoja: ' + estado + ']'
+               + (co <= hoyIso ? '  (estadía ya pasada — el sync la saltea)' : ''));
+    Logger.log('   noche:quién  → ' + ev.detalle);
+    Logger.log('   cubierta=' + ev.cubierta
+               + '  porCelestino=' + ev.porCelestino
+               + '  soloEco=' + ev.soloEco
+               + '  conflicto=' + ev.conflicto);
+    if (ev.faltantes.length) Logger.log('   ⚠ noches SIN cubrir: ' + ev.faltantes.join(', '));
+    // Qué habría dicho el criterio viejo, para ver si este cambio la arregla.
+    const viejo = events.some(e => e.checkin <= ci && co <= e.checkout);
+    Logger.log('   criterio viejo (un solo evento que contenga todo): ' + (viejo ? 'bloqueada' : 'NO bloqueada'));
+  }
+  if (!n) Logger.log('  (no hay reservas directas activas)');
 }
 
 // ─── Calendar (API para el landing) ─────────────────────────────
