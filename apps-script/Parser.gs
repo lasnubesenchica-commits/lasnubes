@@ -2160,6 +2160,11 @@ function doGet(e) {
       const data = getMalayaCalendarData(isAdmin);
       return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
     }
+    // No va en ACCIONES_PUBLICAS: son mis números, exige clave.
+    if (action === 'getMalayaGanancias')
+      return ContentService
+        .createTextOutput(JSON.stringify({ ok: true, ganancias: getMalayaGanancias() }))
+        .setMimeType(ContentService.MimeType.JSON);
     if (action === 'getBotAlertConfig')
       return ContentService
         .createTextOutput(JSON.stringify({ ok: true, config: _botGetAlertConfig() }))

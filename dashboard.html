@@ -3423,6 +3423,21 @@
       </details>
     </div>
   </section>
+
+  <!-- Ganancias (colapsable, cerrado). Va al fondo y detrás de un click: es
+       para revisar de vez en cuando, no lo que se mira al abrir el tab.
+       Se carga la primera vez que se abre, no al cargar el tab. -->
+  <section class="mly-sec">
+    <div class="mly-tarifas-box">
+      <details id="gananciasDetails" ontoggle="mly_onToggleGanancias(this)">
+        <summary class="mly-tarifas-sum">Ganancias de Malaya</summary>
+        <div id="mlyGanancias" style="margin-top:14px;">
+          <div style="font-size:13px;color:var(--text-muted);padding:6px 2px;">Cargando…</div>
+        </div>
+      </details>
+    </div>
+  </section>
+
   <div style="margin-top:10px;text-align:right;">
     <button onclick="mly_adminForceSync()" title="Forzar sync con el iCal de Airbnb (normalmente corre cada 30 min)"
             style="background:none;border:none;padding:4px 2px;font-family:inherit;font-size:12px;color:var(--text-muted);cursor:pointer;text-decoration:underline;">🔄 Sync Airbnb</button>
@@ -17542,6 +17557,79 @@ async function mly_adminForceSync() {
   }
 }
 
+// ─── Ganancias ───
+// Se pide al abrir el desplegable, no al abrir el tab: es un dato que se mira
+// de vez en cuando y no vale un viaje extra en cada carga. Se recarga en cada
+// apertura para no mostrar números viejos después de cargar una reserva.
+let _mlyGananciasCargando = false;
+
+function mly_onToggleGanancias(det) {
+  if (det.open && !_mlyGananciasCargando) mly_cargarGanancias();
+}
+
+async function mly_cargarGanancias() {
+  const box = document.getElementById('mlyGanancias');
+  if (!box) return;
+  _mlyGananciasCargando = true;
+  box.innerHTML = '<div style="font-size:13px;color:var(--text-muted);padding:6px 2px;">Cargando…</div>';
+  try {
+    const r = await (await fetch(SHEETS_API_URL + '?action=getMalayaGanancias')).json();
+    if (!r || !r.ok || !r.ganancias) throw new Error((r && r.error) || 'sin datos');
+    box.innerHTML = _mlyGananciasHtml(r.ganancias);
+  } catch (e) {
+    box.innerHTML = '<div style="font-size:13px;color:var(--text-muted);padding:6px 2px;">✗ No se pudo cargar: '
+      + String(e.message || e) + '</div>';
+  } finally {
+    _mlyGananciasCargando = false;
+  }
+}
+
+function _mlyMoneda(n) {
+  return '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function _mlyGananciasHtml(g) {
+  const t = g.total || { n: 0, monto: 0, comision: 0 };
+  if (!t.n) {
+    return '<div style="font-size:13px;color:var(--text-muted);padding:6px 2px;">Todavía no hay reservas registradas.</div>';
+  }
+  let html = '<div class="mly-pricing" style="margin-top:0;">'
+    + '<div class="mly-card"><div class="mly-lbl">Reservas</div><div class="mly-val">' + t.n + '</div>'
+      + '<div class="mly-desc">' + (t.n === 1 ? 'vendida' : 'vendidas') + '</div></div>'
+    + '<div class="mly-card"><div class="mly-lbl">Vendido</div><div class="mly-val">' + _mlyMoneda(t.monto) + '</div>'
+      + '<div class="mly-desc">cobrado al huésped</div></div>'
+    + '<div class="mly-card"><div class="mly-lbl">Mi comisión</div><div class="mly-val">' + _mlyMoneda(t.comision) + '</div>'
+      + '<div class="mly-desc">$10 dom–jue · $20 vie–sáb</div></div>'
+    + '</div>';
+
+  // Desglose por año, de más reciente a más viejo.
+  const anios = Object.keys(g.porAnio || {}).sort().reverse();
+  if (anios.length > 1) {
+    html += '<div style="margin-top:14px;font-size:12px;">';
+    anios.forEach(a => {
+      const x = g.porAnio[a];
+      html += '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 2px;border-top:1px solid var(--border);">'
+        + '<span style="color:var(--text-muted);">' + a + ' · ' + x.n + (x.n === 1 ? ' reserva' : ' reservas') + '</span>'
+        + '<span>' + _mlyMoneda(x.monto) + ' <span style="color:var(--mly-marca-dark);">· ' + _mlyMoneda(x.comision) + '</span></span>'
+        + '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Lo pendiente ya está sumado arriba, pero no está cobrado: si no se aclara,
+  // el número grande se lee como plata en mano.
+  const pe = g.porEstado || {};
+  const noFirme = ['pendiente', 'no_bloqueada']
+    .map(k => pe[k]).filter(Boolean)
+    .reduce((acc, x) => ({ n: acc.n + x.n, comision: acc.comision + x.comision }), { n: 0, comision: 0 });
+  if (noFirme.n) {
+    html += '<p style="font-size:12px;color:var(--text-muted);margin-top:12px;">'
+      + '⏳ Incluye ' + noFirme.n + (noFirme.n === 1 ? ' reserva' : ' reservas')
+      + ' sin confirmar todavía (' + _mlyMoneda(noFirme.comision) + ' de comisión).</p>';
+  }
+  return html;
+}
+
 // ─── Tabs ───
 
 // ─── Cargar calendario ───
@@ -17578,6 +17666,7 @@ async function loadCalendar() {
   window.mly_adjustPersonas = mly_adjustPersonas;
   window.mly_adminCancelReserva = mly_adminCancelReserva;
   window.mly_adminForceSync = mly_adminForceSync;
+  window.mly_onToggleGanancias = mly_onToggleGanancias;
   window.mly_adminSubmitReserva = mly_adminSubmitReserva;
   window.mly_closeQuoteModal = mly_closeQuoteModal;
   window.mly_copyQuoteFromModal = mly_copyQuoteFromModal;
