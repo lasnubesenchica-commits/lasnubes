@@ -1459,9 +1459,69 @@ function botHandleMessage(from, text, contactName, kind) {
   // Boton "Mantener abierta" del recordatorio de ventana 24h al admin.
   // El tap solo sirve para registrar el inbound (que renueva la ventana en
   // ADMIN_LAST_INBOUND_TS). Acá solo confirmamos al admin.
+
+// ─── Anti doble-toque ───────────────────────────────────────────
+//
+// El guard del webhook (_yaProcesado) deduplica por `wamid` y funciona: en
+// todo el historial no hay un solo wamid repetido después de que se desplegó.
+// Pero NO cubre este caso, porque son mensajes genuinamente distintos:
+//
+//   17:13:40  button_reply  acceso_178535…   wamid …A8A42A93
+//   17:13:41  button_reply  acceso_178535…   wamid …4C38A6E7A   ← otro id
+//
+// El huésped tocó el botón dos veces con un segundo de diferencia —lo normal
+// cuando la respuesta tarda— y el bot ejecutó la acción dos veces.
+//
+// Hay una segunda forma del mismo problema: la MISMA acción alcanzable por dos
+// payloads distintos. "He llegado" existe como botón de la plantilla
+// (`llegada_<id>`) y como ítem del menú (`menu_he_llegado`); tocar los dos
+// mandaba las instrucciones de bienvenida dos veces. Por eso la clave se
+// normaliza a la ACCIÓN, no al payload.
+const _ACCION_COOLDOWN_SEG = 90;
+
+function _accionRepetida(from, accion) {
+  if (!from || !accion) return false;
+  try {
+    const cache = CacheService.getScriptCache();
+    const key   = 'wa-accion-' + from + '-' + accion;
+    if (cache.get(key)) {
+      logDebugEntry('WA-accion-repetida', { from: from, accion: accion });
+      return true;
+    }
+    cache.put(key, '1', _ACCION_COOLDOWN_SEG);
+    return false;
+  } catch (e) {
+    // Ante un fallo del guard se EJECUTA: dejar al huésped sin respuesta es
+    // peor que mandarle algo dos veces.
+    return false;
+  }
+}
+
+// Traduce un payload a la acción que dispara. Dos payloads distintos que hacen
+// lo mismo comparten clave.
+function _accionDePayload(text) {
+  const t = String(text || '');
+  if (t.indexOf('llegada_') === 0 || t === 'menu_he_llegado') return 'llegada';
+  if (t.indexOf('acceso_') === 0)  return 'acceso';
+  if (t.indexOf('manual_') === 0)  return 'manual';
+  if (t.indexOf('llamar_') === 0)  return 'llamar';
+  if (t.indexOf('ubicacion_') === 0) return 'ubicacion';
+  if (t.indexOf('referido_') === 0)  return 'referido';
+  if (/^menu_/.test(t)) return t;   // cada ítem de menú es su propia acción
+  return '';
+}
+
   if (kind === 'button_reply' && text === 'admin_keep_window') {
     try { sendWhatsAppText(from, '✓ Ventana renovada por 24h. Las alertas operativas siguen llegando.'); } catch(_) {}
     return;
+  }
+
+  // Doble toque: se ignora la repetición de la MISMA acción dentro del
+  // cooldown. Va antes de todo el despacho de botones para cubrirlos a todos
+  // de una, en vez de acordarse handler por handler.
+  if (kind === 'button_reply' || kind === 'list_reply') {
+    const _accion = _accionDePayload(text);
+    if (_accion && _accionRepetida(from, _accion)) return;
   }
 
   // Boton "He llegado" de la plantilla del día de llegada (listos_para_recibirte,
