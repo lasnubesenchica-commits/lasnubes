@@ -117,7 +117,11 @@ function saveTienditaVoucherToDrive(payload) {
         datos = {
           monto: parseFloat(String(v.monto || '').replace(/[^0-9.]/g, '')) || 0,
           fecha: v.fechaPago || '',
-          remitente: v.sender || ''
+          remitente: v.sender || '',
+          // El campo "Mensaje" del Yappy suele traer qué se compró ("kit de
+          // fogata", "2 hielos"). El frontend lo cruza con los items para
+          // preseleccionar el correcto.
+          mensaje: v.mensaje || ''
         };
       }
     } catch (_) { /* sin OCR: se llena a mano */ }
