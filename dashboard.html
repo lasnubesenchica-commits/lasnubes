@@ -2106,6 +2106,25 @@
     color: inherit; cursor: pointer;
   }
 
+  /* Encabezado de sección: título a la izquierda, acciones a la derecha.
+     En móvil las acciones bajan a su propia fila. Con DOS botones (Contabilidad
+     tiene Actualizar + Nuevo egreso) la columna derecha se comía el ancho del
+     título: "Contabilidad" quedaba pegado a los botones y "+ Nuevo egreso" se
+     partía en tres renglones. */
+  .page-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 12px; margin-bottom: 4px; flex-wrap: wrap;
+  }
+  .page-head-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .page-head-actions .btn, .page-head-actions button { white-space: nowrap; }
+  @media (max-width: 600px) {
+    /* El título toma la fila entera y las acciones van debajo, alineadas a la
+       derecha. Así ninguno le roba ancho al otro. */
+    .page-head > :first-child { flex: 1 1 100%; }
+    .page-head > .page-head-actions,
+    .page-head > .btn { flex: 0 0 auto; margin-left: auto; }
+  }
+
   .contab-tabs {
     display: flex; gap: 4px; margin-bottom: 20px;
     border-bottom: 2px solid var(--border);
@@ -2113,6 +2132,10 @@
     scrollbar-width: none;               /* Firefox */
   }
   .contab-tabs::-webkit-scrollbar { display: none; }
+  .contab-tabs {
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+            mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+  }
   /* Sin esto los botones se encogen y "Por Cobrar" se parte en dos líneas. */
   .contab-tabs > button { flex: 0 0 auto; white-space: nowrap; }
   @media (max-width: 600px) {
@@ -2338,6 +2361,16 @@
     padding-bottom: 2px;
   }
   .month-filter::-webkit-scrollbar { display: none; }
+  /* Difuminado en los bordes: sin él, con el chip activo centrado, la fila se
+     lee como una lista cortada al azar en vez de una que sigue. El degradado
+     dice "hay más de este lado" sin ocupar espacio ni pedir un botón. */
+  .month-filter {
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+            mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+  }
+  /* Los chips se alinean al soltar, así ninguno queda partido a la mitad. */
+  .month-filter { scroll-snap-type: x proximity; }
+  .month-filter > .month-chip { scroll-snap-align: center; }
   /* Sin esto los chips se comprimen y los nombres largos se parten. */
   .month-filter > .month-chip { flex: 0 0 auto; white-space: nowrap; }
 
@@ -2805,7 +2838,7 @@
 
   <!-- ===== RESERVAS ===== -->
   <section id="reservas" class="section">
-    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px;">
+    <div class="page-head">
       <div>
         <h1 class="page-title">Reservas</h1>
         <p class="page-subtitle">Gestión de las 3 cabañas · Temporada 2026</p>
@@ -2953,12 +2986,12 @@
 
   <!-- ===== CONTABILIDAD ===== -->
   <section id="contabilidad" class="section">
-    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px;">
+    <div class="page-head">
       <div>
         <h1 class="page-title">Contabilidad</h1>
         <p class="page-subtitle">Ingresos, egresos y balance mensual</p>
       </div>
-      <div style="display:flex;align-items:center;gap:10px;">
+      <div class="page-head-actions">
         <button id="contabRefreshBtn" onclick="refreshContabilidad()" title="Actualizar datos desde la hoja"
           style="display:inline-flex;align-items:center;gap:6px;background:none;border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px;color:var(--text-muted);cursor:pointer;font-family:inherit;transition:all .15s;"
           onmouseover="this.style.borderColor='var(--text-muted)';this.style.color='var(--text)'"
@@ -3557,7 +3590,7 @@
   <!-- ===== OCUPACIÓN ===== -->
   <!-- ══════════ SUMINISTROS ══════════ -->
   <section id="suministros" class="section">
-    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px;">
+    <div class="page-head">
       <div>
         <h1 class="page-title">Suministros</h1>
         <p class="page-subtitle">Consumo y recompra de insumos y servicios</p>
