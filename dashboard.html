@@ -3375,6 +3375,8 @@
         </div>
       </div>
       <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
+        <button class="btn btn-ghost" id="tvImportarBtn" onclick="_tvImportarDeWeb()" style="font-size:13px;margin-right:8px;"
+                title="Lee los productos y precios de la sección Insumos de index.html">⬇ Importar de la web</button>
         <button class="btn btn-primary" onclick="openVentaModal()" style="font-size:13px;">+ Registrar venta</button>
       </div>
       <div id="tienditaBody"></div>
@@ -16188,6 +16190,83 @@ function renderTiendita() {
   }
   html += '</div>';
   box.innerHTML = html;
+}
+
+
+// ─── Importar los items desde la web ────────────────────────────
+// La lista de la tiendita ya vive en index.html (sección Insumos) con nombre,
+// descripción y precio. Copiarla a mano acá crearía DOS listas que se separan
+// en cuanto se cambie un precio en la web, así que se lee de ahí: mismo
+// origen, sin backend de por medio, y se puede re-sincronizar cuando cambien.
+//
+// Ojo con el costo: el nombre comercial y lo que dice la factura no siempre
+// coinciden. "Bolsa de Carbón" matchea una compra de carbón, pero un "Kit de
+// Fogata" se arma con leña + malvaviscos + cerillos y su costo está repartido
+// en varias compras. El precio de VENTA entra siempre; el costo solo cuadra
+// para lo que se compra tal cual se vende.
+async function _tvImportarDeWeb() {
+  const btn = document.getElementById('tvImportarBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Leyendo la web…'; }
+  try {
+    const html = await (await fetch('index.html?_=' + Date.now())).text();
+    const doc  = new DOMParser().parseFromString(html, 'text/html');
+    const encontrados = [];
+    doc.querySelectorAll('.ins-product').forEach(el => {
+      const nombreEl = el.querySelector('.ins-product-name');
+      const precioEl = el.querySelector('.ins-product-price');
+      if (!nombreEl || !precioEl) return;
+      // El nombre trae emoji delante; la keyword se usa para matchear texto de
+      // facturas, así que va sin él.
+      const nombre = nombreEl.textContent.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}️]/gu, '').trim();
+      const precio = parseFloat(String(precioEl.textContent).replace(/[^0-9.]/g, ''));
+      if (nombre && precio > 0) encontrados.push({ nombre: nombre, precio: precio });
+    });
+
+    if (!encontrados.length) {
+      showToast('No encontré productos en index.html');
+      return;
+    }
+
+    _suministrosKeywords = _suministrosKeywords || [];
+    const nuevos = [], actualizados = [], iguales = [];
+    encontrados.forEach(p => {
+      const n = _sumNormalize(p.nombre);
+      const yaEsta = _suministrosKeywords.find(k => _sumNormalize(k) === n);
+      const precioPrevio = _sumPrecioVenta(p.nombre);
+      if (!yaEsta) nuevos.push(p);
+      else if (Math.abs(precioPrevio - p.precio) >= 0.005) actualizados.push({ ...p, antes: precioPrevio });
+      else iguales.push(p);
+    });
+
+    if (!nuevos.length && !actualizados.length) {
+      showToast('✓ Ya está todo al día · ' + iguales.length + ' item' + (iguales.length === 1 ? '' : 's'));
+      return;
+    }
+
+    let msg = 'Importar de la web:\n\n';
+    if (nuevos.length) msg += 'NUEVOS (' + nuevos.length + ')\n'
+      + nuevos.map(p => '  + ' + p.nombre + ' — $' + p.precio.toFixed(2)).join('\n') + '\n\n';
+    if (actualizados.length) msg += 'CAMBIA EL PRECIO (' + actualizados.length + ')\n'
+      + actualizados.map(p => '  · ' + p.nombre + ': $' + p.antes.toFixed(2) + ' → $' + p.precio.toFixed(2)).join('\n') + '\n\n';
+    if (iguales.length) msg += 'Sin cambios: ' + iguales.length + '\n\n';
+    msg += 'Todos quedan marcados como de reventa 🛒.';
+    if (!confirm(msg)) return;
+
+    encontrados.forEach(p => {
+      const n = _sumNormalize(p.nombre);
+      if (!_suministrosKeywords.some(k => _sumNormalize(k) === n)) _suministrosKeywords.push(p.nombre);
+      _sumReventa.add(n);
+      _sumPrecios[n] = p.precio;
+    });
+    _saveSuministrosKeywords();
+    renderTiendita();
+    showToast('✓ ' + nuevos.length + ' nuevo' + (nuevos.length === 1 ? '' : 's')
+      + (actualizados.length ? ' · ' + actualizados.length + ' con precio actualizado' : ''));
+  } catch (e) {
+    showToast('✗ No se pudo leer index.html: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⬇ Importar de la web'; }
+  }
 }
 
 // ── Modal de venta ──
