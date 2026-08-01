@@ -1788,7 +1788,7 @@ function _getSuministrosItemsSheet(ss) {
   let sh = ss.getSheetByName('SuministrosItems');
   if (!sh) {
     sh = ss.insertSheet('SuministrosItems');
-    sh.getRange(1,1,1,3).setValues([['Keyword','NoTimeline','Reventa']]).setFontWeight('bold');
+    sh.getRange(1,1,1,4).setValues([['Keyword','NoTimeline','Reventa','PrecioVenta']]).setFontWeight('bold');
     sh.setFrozenRows(1);
     // Semilla inicial de keywords sugeridos.
     const seed = ['Papel','Café','Agua','Gas','Hielo','Cloro','Desinfectante','Detergente','Jabón','Kerosene'];
@@ -1805,6 +1805,12 @@ function _getSuministrosItemsSheet(ss) {
   // qué compras sale el costo de la mercadería vendida.
   if ((hdr[2]||'').toString().toLowerCase().trim() !== 'reventa') {
     sh.getRange(1,3).setValue('Reventa').setFontWeight('bold');
+  }
+  // Columna 4: precio al que se VENDE el item en la tiendita. El costo sale de
+  // los egresos; el precio de venta no existía en ningún lado y había que
+  // teclearlo en cada venta.
+  if ((hdr[3]||'').toString().toLowerCase().trim() !== 'precioventa') {
+    sh.getRange(1,4).setValue('PrecioVenta').setFontWeight('bold');
   }
   return sh;
 }
@@ -2094,10 +2100,11 @@ function doGet(e) {
     if (action === 'getSuministrosItems') {
       const ss = SpreadsheetApp.openById(SHEET_ID);
       const sh = _getSuministrosItemsSheet(ss);
-      const rows = sh.getLastRow() > 1 ? sh.getRange(2,1,sh.getLastRow()-1,3).getValues() : [];
+      const rows = sh.getLastRow() > 1 ? sh.getRange(2,1,sh.getLastRow()-1,4).getValues() : [];
       const keywords = [];
       const noTimeline = [];
       const reventa = [];
+      const precios = {};
       const esFlag = f => (f === true || f === 'TRUE' || f === 'true' || f === 1 || f === '1');
       rows.forEach(r => {
         const kw = (r[0]||'').toString().trim();
@@ -2105,9 +2112,11 @@ function doGet(e) {
         keywords.push(kw);
         if (esFlag(r[1])) noTimeline.push(kw);
         if (esFlag(r[2])) reventa.push(kw);
+        const pv = parseFloat(r[3]);
+        if (!isNaN(pv) && pv > 0) precios[kw] = pv;
       });
       return ContentService
-        .createTextOutput(JSON.stringify({ ok: true, keywords, noTimeline, reventa }))
+        .createTextOutput(JSON.stringify({ ok: true, keywords, noTimeline, reventa, precios }))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -2743,7 +2752,7 @@ function doPost(e) {
       const ss = SpreadsheetApp.openById(SHEET_ID);
       const sh = _getSuministrosItemsSheet(ss);
       // Limpiar filas de datos y reescribir la lista completa que manda el front.
-      if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,3).clearContent();
+      if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,4).clearContent();
       const kws = (payload.keywords || []).map(k => (k||'').toString().trim()).filter(Boolean);
       const norm = k => (k||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
       // Keywords marcadas "solo detalle / no timeline" (ej. Delivery), sin acentos.
@@ -2752,9 +2761,16 @@ function doPost(e) {
       // Keywords de REVENTA: sus compras son el costo de la tiendita.
       const revSet = {};
       (payload.reventa || []).forEach(k => { revSet[norm(k)] = 1; });
+      // Precio de venta por keyword (normalizada, para que no dependa de acentos).
+      const precios = {};
+      Object.keys(payload.precios || {}).forEach(k => {
+        const v = parseFloat(payload.precios[k]);
+        if (!isNaN(v) && v > 0) precios[norm(k)] = v;
+      });
       if (kws.length) {
-        sh.getRange(2,1,kws.length,3).setValues(
-          kws.map(k => [k, noSet[norm(k)] ? true : false, revSet[norm(k)] ? true : false]));
+        sh.getRange(2,1,kws.length,4).setValues(
+          kws.map(k => [k, noSet[norm(k)] ? true : false, revSet[norm(k)] ? true : false,
+                        precios[norm(k)] || '']));
       }
       return ContentService
         .createTextOutput(JSON.stringify({ ok: true, count: kws.length }))

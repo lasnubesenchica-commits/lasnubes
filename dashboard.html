@@ -4159,8 +4159,8 @@
       <div class="form-row">
         <div class="form-group">
           <label>Item</label>
-          <input type="text" id="tvItem" list="tvItemsList" placeholder="Ej: kit de fogata" oninput="_tvCalc()">
-          <datalist id="tvItemsList"></datalist>
+          <select id="tvItem" onchange="_tvItemElegido()"></select>
+          <input type="text" id="tvItemOtro" placeholder="Nombre del item" style="display:none;margin-top:8px;" oninput="_tvCalc()">
         </div>
         <div class="form-group">
           <label>Fecha</label>
@@ -4182,8 +4182,8 @@
 
       <div class="form-group">
         <label>Huésped <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— opcional</span></label>
-        <input type="text" id="tvHuesped" list="tvHuespedesList" placeholder="Nombre">
-        <datalist id="tvHuespedesList"></datalist>
+        <select id="tvHuesped" onchange="_tvHuespedElegido()"></select>
+        <input type="text" id="tvHuespedOtro" placeholder="Nombre" style="display:none;margin-top:8px;">
       </div>
 
       <div class="form-group">
@@ -16148,11 +16148,23 @@ function renderTiendita() {
       const vendidoItem = ventasPeriodo
         .filter(v => _sumNormalize(v.item) === _sumNormalize(kw))
         .reduce((t, v) => t + (parseFloat(v.monto) || 0), 0);
-      html += '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid var(--border);font-size:13px;">'
+      const pv = _sumPrecioVenta(kw);
+      // Costo UNITARIO estimado: total comprado ÷ unidades. Sirve de referencia
+      // para poner el precio de venta y para ver el margen.
+      const uds = ventasPeriodo.filter(v => _sumNormalize(v.item) === _sumNormalize(kw))
+                               .reduce((t, v) => t + (parseFloat(v.cantidad) || 1), 0);
+      html += '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid var(--border);font-size:13px;align-items:center;flex-wrap:wrap;">'
         + '<span>' + escapeHtml(kw) + ' <span style="color:var(--text-muted);font-size:11.5px;">· '
-        + c.compras + ' compra' + (c.compras === 1 ? '' : 's') + '</span></span>'
-        + '<span style="color:var(--text-muted);">costo $' + c.costo.toFixed(2)
-        + ' · <span style="color:#2c5e22;">vendido $' + vendidoItem.toFixed(2) + '</span></span></div>';
+        + c.compras + ' compra' + (c.compras === 1 ? '' : 's')
+        + (uds ? ' · ' + uds + ' vendida' + (uds === 1 ? '' : 's') : '') + '</span></span>'
+        + '<span style="color:var(--text-muted);white-space:nowrap;">costo $' + c.costo.toFixed(2)
+        + ' · <span style="color:#2c5e22;">vendido $' + vendidoItem.toFixed(2) + '</span>'
+        + ' · <button onclick="_tvSetPrecio(' + JSON.stringify(kw).replace(/"/g, '&quot;') + ')" '
+        +   'title="Precio al que se vende. Se usa para prellenar la venta." '
+        +   'style="background:none;border:1px dashed var(--border);border-radius:6px;padding:2px 8px;'
+        +   'font-family:inherit;font-size:12px;cursor:pointer;color:' + (pv > 0 ? 'var(--text)' : 'var(--text-muted)') + ';">'
+        +   (pv > 0 ? 'PVP $' + pv.toFixed(2) : '+ precio') + '</button>'
+        + '</span></div>';
     });
     html += '</div>';
   }
@@ -16183,24 +16195,119 @@ function openVentaModal(id) {
   _tvEditId = id || null;
   const v = id ? tienditaVentas.find(x => x.id === id) : null;
   document.getElementById('ventaModalTitle').textContent = v ? 'Editar venta' : 'Registrar venta';
-  // Sugerir los items de reventa ya definidos, para que el nombre coincida con
-  // la keyword y el cruce costo/venta por item funcione.
-  document.getElementById('tvItemsList').innerHTML =
-    (_suministrosKeywords || []).filter(_sumEsReventa).map(k => '<option value="' + escapeHtml(k) + '">').join('');
-  document.getElementById('tvHuespedesList').innerHTML =
-    [...new Set(reservations.map(r => r.name).filter(Boolean))].slice(0, 80)
-      .map(n => '<option value="' + escapeHtml(n) + '">').join('');
-  document.getElementById('tvItem').value     = v ? v.item : '';
+  _tvLlenarItems(v ? v.item : '');
+  _tvLlenarHuespedes(v ? (v.reservaId || v.huesped) : '');
   document.getElementById('tvFecha').value    = v ? v.fecha : new Date().toISOString().slice(0,10);
   document.getElementById('tvCantidad').value = v ? v.cantidad : 1;
   document.getElementById('tvPrecio').value   = v ? v.precioUnitario : '';
-  document.getElementById('tvHuesped').value  = v ? v.huesped : '';
   document.getElementById('tvNotas').value    = v ? v.notas : '';
   _tvVoucherURL = v ? v.voucherURL : '';
   _tvPintarVoucher();
   document.getElementById('tvBorrarBtn').style.display = v ? '' : 'none';
+  if (!v) _tvItemElegido();      // aplica el precio del item preseleccionado
   _tvCalc();
   document.getElementById('ventaModal').classList.add('open');
+}
+
+// Los items salen de las keywords marcadas 🛒 en Suministros: son las mismas
+// que definen el costo, así que venta y costo quedan atados por nombre y el
+// cruce por item del panel funciona sin depender de cómo se tipeó.
+function _tvLlenarItems(seleccion) {
+  const sel = document.getElementById('tvItem');
+  const kws = (_suministrosKeywords || []).filter(_sumEsReventa);
+  let html = '<option value="">— Elegir item —</option>';
+  kws.forEach(k => {
+    const pv = _sumPrecioVenta(k);
+    html += '<option value="' + escapeHtml(k) + '">' + escapeHtml(k)
+          + (pv > 0 ? '  ·  $' + pv.toFixed(2) : '') + '</option>';
+  });
+  html += '<option value="__otro">Otro…</option>';
+  sel.innerHTML = html;
+  // Al editar, un item que ya no está marcado como de reventa no debe perderse.
+  if (seleccion) {
+    const existe = kws.some(k => _sumNormalize(k) === _sumNormalize(seleccion));
+    if (existe) sel.value = kws.find(k => _sumNormalize(k) === _sumNormalize(seleccion));
+    else { sel.value = '__otro'; document.getElementById('tvItemOtro').value = seleccion; }
+  }
+  _tvToggleOtroItem();
+}
+
+function _tvToggleOtroItem() {
+  const esOtro = document.getElementById('tvItem').value === '__otro';
+  document.getElementById('tvItemOtro').style.display = esOtro ? '' : 'none';
+}
+
+// Al elegir un item se trae su precio configurado. Solo pisa el campo si está
+// vacío o si traía el precio de OTRO item: un precio escrito a mano se respeta.
+function _tvItemElegido() {
+  _tvToggleOtroItem();
+  const kw = _tvItemActual();
+  const pEl = document.getElementById('tvPrecio');
+  const pv = kw ? _sumPrecioVenta(kw) : 0;
+  const previo = parseFloat(pEl.dataset.autoPrecio || '') || 0;
+  const actual = parseFloat(pEl.value) || 0;
+  if (pv > 0 && (!actual || Math.abs(actual - previo) < 0.005)) {
+    pEl.value = pv.toFixed(2);
+    pEl.dataset.autoPrecio = pv.toFixed(2);
+  }
+  _tvCalc();
+}
+
+function _tvItemActual() {
+  const sel = document.getElementById('tvItem').value;
+  if (sel === '__otro') return document.getElementById('tvItemOtro').value.trim();
+  return sel;
+}
+
+// Reservas agrupadas: primero las de HOY —que es el caso normal, el huésped
+// está en la cabaña— y después el resto hacia atrás.
+function _tvLlenarHuespedes(seleccion) {
+  const sel = document.getElementById('tvHuesped');
+  const hoy = new Date().toISOString().slice(0,10);
+  const activas = [], otras = [];
+  reservations
+    .filter(r => r.origin !== 'Abierta' && r.estadoPago !== 'CANCELADA' && r.checkin && r.checkout && r.name)
+    .forEach(r => {
+      const d = reservaDisplayDates(r);
+      // "De hoy" = la estadía cubre hoy, incluido el día de salida: el huésped
+      // todavía puede comprar la mañana que se va.
+      (d.displayCheckin <= hoy && hoy <= d.displayCheckout ? activas : otras).push({ r, d });
+    });
+  otras.sort((a, b) => b.d.displayCheckin.localeCompare(a.d.displayCheckin));
+  activas.sort((a, b) => a.r.cabin.localeCompare(b.r.cabin));
+
+  const CAB = { verde: 'Paseo', azul: 'Portal', lila: 'Puente' };
+  const opt = x => '<option value="' + x.r.id + '">' + escapeHtml(x.r.name)
+    + ' · ' + (CAB[x.r.cabin] || x.r.cabin) + ' · ' + x.d.displayCheckin + '</option>';
+
+  let html = '<option value="">— Sin asociar —</option>';
+  if (activas.length) html += '<optgroup label="En la cabaña hoy">' + activas.map(opt).join('') + '</optgroup>';
+  if (otras.length)   html += '<optgroup label="Otras reservas">' + otras.slice(0, 60).map(opt).join('') + '</optgroup>';
+  html += '<option value="__otro">Otro (escribir nombre)…</option>';
+  sel.innerHTML = html;
+
+  if (seleccion) {
+    const porId = reservations.some(r => r.id === seleccion);
+    if (porId) sel.value = seleccion;
+    else { sel.value = '__otro'; document.getElementById('tvHuespedOtro').value = seleccion; }
+  }
+  _tvToggleOtroHuesped();
+}
+
+function _tvToggleOtroHuesped() {
+  const esOtro = document.getElementById('tvHuesped').value === '__otro';
+  document.getElementById('tvHuespedOtro').style.display = esOtro ? '' : 'none';
+}
+
+function _tvHuespedElegido() { _tvToggleOtroHuesped(); }
+
+// Devuelve { reservaId, huesped } según lo elegido.
+function _tvHuespedActual() {
+  const val = document.getElementById('tvHuesped').value;
+  if (val === '__otro') return { reservaId: '', huesped: document.getElementById('tvHuespedOtro').value.trim() };
+  if (!val) return { reservaId: '', huesped: '' };
+  const r = reservations.find(x => x.id === val);
+  return { reservaId: val, huesped: r ? r.name : '' };
 }
 
 function closeVentaModal() {
@@ -16220,7 +16327,15 @@ function _tvCalc() {
   const cant = parseFloat(document.getElementById('tvCantidad').value) || 0;
   const pu   = parseFloat(document.getElementById('tvPrecio').value) || 0;
   if (!cant || !pu) { box.style.display = 'none'; return; }
-  box.innerHTML = cant + ' × $' + pu.toFixed(2) + ' = <strong>$' + (cant * pu).toFixed(2) + '</strong>';
+  let html = cant + ' × $' + pu.toFixed(2) + ' = <strong>$' + (cant * pu).toFixed(2) + '</strong>';
+  // Si el item tiene precio configurado y se cobró otro, decirlo: normalmente
+  // es un descuento a propósito, pero también puede ser un cero de más.
+  const kw = _tvItemActual();
+  const pv = kw ? _sumPrecioVenta(kw) : 0;
+  if (pv > 0 && Math.abs(pv - pu) >= 0.005) {
+    html += '<br><span style="opacity:.8;">Precio de lista de «' + escapeHtml(kw) + '»: $' + pv.toFixed(2) + '</span>';
+  }
+  box.innerHTML = html;
   box.style.display = 'block';
 }
 
@@ -16253,8 +16368,21 @@ async function _tvSubirVoucher(ev) {
         const pEl = document.getElementById('tvPrecio');
         if (d.monto > 0 && pEl && !pEl.value && cant === 1) { pEl.value = d.monto.toFixed(2); llenados++; }
         if (d.fecha && fEl) { fEl.value = d.fecha; llenados++; }
-        if (d.remitente && !document.getElementById('tvHuesped').value) {
-          document.getElementById('tvHuesped').value = d.remitente; llenados++;
+        // El remitente del voucher puede ser el huésped: si coincide con alguna
+        // reserva se selecciona ésa; si no, va como nombre libre.
+        if (d.remitente && !_tvHuespedActual().huesped) {
+          const r = reservations.find(x => _sumNormalize(x.name || '') === _sumNormalize(d.remitente));
+          const selH = document.getElementById('tvHuesped');
+          if (r && [...selH.options].some(o => o.value === r.id)) { selH.value = r.id; }
+          else { selH.value = '__otro'; document.getElementById('tvHuespedOtro').value = d.remitente; }
+          _tvToggleOtroHuesped(); llenados++;
+        }
+        // El campo "Mensaje" del Yappy suele decir qué se compró.
+        if (d.mensaje && !_tvItemActual()) {
+          const msg = _sumNormalize(d.mensaje);
+          const kw = (_suministrosKeywords || []).filter(_sumEsReventa)
+                       .find(k => msg.indexOf(_sumNormalize(k)) !== -1);
+          if (kw) { document.getElementById('tvItem').value = kw; _tvItemElegido(); llenados++; }
         }
         _tvCalc();
       }
@@ -16273,7 +16401,8 @@ async function _tvSubirVoucher(ev) {
 }
 
 async function guardarVenta() {
-  const item = document.getElementById('tvItem').value.trim();
+  const item = _tvItemActual();
+  const quien = _tvHuespedActual();
   const cant = parseFloat(document.getElementById('tvCantidad').value) || 0;
   const pu   = parseFloat(document.getElementById('tvPrecio').value) || 0;
   if (!item) { showToast('Falta el item'); return; }
@@ -16288,7 +16417,8 @@ async function guardarVenta() {
       fecha: document.getElementById('tvFecha').value,
       cantidad: cant,
       precioUnitario: pu,
-      huesped: document.getElementById('tvHuesped').value.trim(),
+      reservaId: quien.reservaId,
+      huesped: quien.huesped,
       notas: document.getElementById('tvNotas').value.trim(),
       voucherURL: _tvVoucherURL
     })})).json();
@@ -16847,6 +16977,9 @@ let _sumNoTimeline = new Set();    // keywords normalizadas "solo detalle" (no v
 // vez de inventar otra forma de marcar facturas: el repartidor de montos ya
 // resuelve las facturas compartidas (un Yappy de gas + carbón).
 let _sumReventa = new Set();
+// Precio de VENTA por keyword normalizada. El costo sale de los egresos; el
+// precio de venta no vivía en ningún lado y había que teclearlo en cada venta.
+let _sumPrecios = {};
 let _sumKeywordsLoading = false;
 let _sumBarMeta = {};              // barKey → { egresoId, kw, nkw, autoEnd, isLast, avg, effEnd } (poblado al renderizar)
 let _sumView = 'timeline';        // 'timeline' | 'detalle'
@@ -17107,6 +17240,8 @@ async function _loadSuministrosKeywords() {
       _suministrosKeywords = (j && j.ok && Array.isArray(j.keywords)) ? j.keywords : [];
       _sumNoTimeline = new Set((j && Array.isArray(j.noTimeline) ? j.noTimeline : []).map(_sumNormalize));
       _sumReventa    = new Set((j && Array.isArray(j.reventa)    ? j.reventa    : []).map(_sumNormalize));
+      _sumPrecios = {};
+      Object.keys((j && j.precios) || {}).forEach(k => { _sumPrecios[_sumNormalize(k)] = j.precios[k]; });
     } else {
       let ls = null; try { ls = JSON.parse(localStorage.getItem('ln_sum_keywords') || 'null'); } catch(_) {}
       _suministrosKeywords = Array.isArray(ls) ? ls : ['Papel higiénico','Café','Agua','Gas','Hielo','Cloro','Desinfectante','Detergente','Jabón','Kerosene'];
@@ -17114,6 +17249,7 @@ async function _loadSuministrosKeywords() {
       _sumNoTimeline = new Set(Array.isArray(ln) ? ln.map(_sumNormalize) : []);
       let lr = null; try { lr = JSON.parse(localStorage.getItem('ln_sum_reventa') || 'null'); } catch(_) {}
       _sumReventa = new Set(Array.isArray(lr) ? lr.map(_sumNormalize) : []);
+      try { _sumPrecios = JSON.parse(localStorage.getItem('ln_sum_precios') || '{}'); } catch(_) { _sumPrecios = {}; }
     }
   } catch(e) { _suministrosKeywords = []; }
   finally { _sumKeywordsLoading = false; }
@@ -17126,15 +17262,30 @@ function _saveSuministrosKeywords() {
     localStorage.setItem('ln_sum_keywords', JSON.stringify(_suministrosKeywords || []));
     localStorage.setItem('ln_sum_notimeline', JSON.stringify(noTimeline));
     localStorage.setItem('ln_sum_reventa', JSON.stringify(reventa));
+    localStorage.setItem('ln_sum_precios', JSON.stringify(_sumPrecios));
   } catch(_) {}
   if (USE_SHEETS) {
     fetch(SHEETS_API_URL, { method: 'POST',
-      body: JSON.stringify({ action: 'saveSuministrosItems', keywords: _suministrosKeywords || [], noTimeline, reventa })
+      body: JSON.stringify({ action: 'saveSuministrosItems', keywords: _suministrosKeywords || [], noTimeline, reventa, precios: _sumPrecios })
     }).catch(e => console.warn('save keywords', e));
   }
 }
 
 function _sumEsReventa(kw) { return _sumReventa.has(_sumNormalize(kw)); }
+function _sumPrecioVenta(kw) { return parseFloat(_sumPrecios[_sumNormalize(kw)]) || 0; }
+
+// Precio de venta editable desde la lista de la Tiendita: es donde se ve el
+// costo al lado, que es la referencia para ponerlo.
+function _tvSetPrecio(kw) {
+  const actual = _sumPrecioVenta(kw);
+  const v = prompt('Precio de venta de «' + kw + '» ($):', actual > 0 ? actual.toFixed(2) : '');
+  if (v === null) return;
+  const n = parseFloat(String(v).replace(/[^0-9.]/g, ''));
+  const n2 = _sumNormalize(kw);
+  if (!n || n <= 0) delete _sumPrecios[n2]; else _sumPrecios[n2] = +n.toFixed(2);
+  _saveSuministrosKeywords();
+  renderTiendita();
+}
 
 // Alterna si los insumos de esta keyword se revenden en la tiendita.
 function toggleSumReventa(kw) {
