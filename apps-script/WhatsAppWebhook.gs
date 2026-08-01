@@ -101,7 +101,10 @@ function _yaProcesado(msgId) {
   try { tengoLock = lock.tryLock(5000); } catch(_) {}
   try {
     if (cache.get(key)) return true;
-    cache.put(key, '1', 900);   // 15 min cubre de sobra la ventana de reintentos
+    // 6 h (el máximo de CacheService) en vez de 15 min: Meta no reintenta solo
+    // en los primeros minutos — ante fallas repetidas espacia los reintentos
+    // durante horas, y esos caían fuera de la ventana y se contestaban de nuevo.
+    cache.put(key, '1', 21600);
     return false;
   } finally {
     if (tengoLock) { try { lock.releaseLock(); } catch(_) {} }

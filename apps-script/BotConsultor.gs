@@ -88,18 +88,66 @@ function _getConv(phone) {
   return null;
 }
 
+// El appendRow final es una condición de carrera: dos ejecuciones concurrentes
+// leen la hoja, ninguna encuentra el teléfono, y las DOS agregan la fila. Así
+// nacieron las filas repetidas de 50761246512, 50762962863 y 50767765620 —
+// creadas con menos de un segundo de diferencia entre sí.
+//
+// Con la fila duplicada, _getConv devuelve siempre la PRIMERA, así que la
+// segunda queda como estado fantasma: si una escritura cayó en una y la lectura
+// toma la otra, la conversación parece retroceder de paso.
+//
+// El lock envuelve leer-buscar-escribir, que es lo que tiene que ser atómico.
 function _saveConv(phone, step, context, name) {
+  const lock = LockService.getScriptLock();
+  let tengoLock = false;
+  try { tengoLock = lock.tryLock(10000); } catch(_) {}
+  try {
+    const sheet = _convSheet();
+    const data  = sheet.getDataRange().getValues();
+    const now   = Utilities.formatDate(new Date(), BOT_TZ, 'yyyy-MM-dd HH:mm:ss');
+    const ctx   = JSON.stringify(context || {});
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] && data[i][0].toString() === phone) {
+        sheet.getRange(i + 1, 1, 1, 5).setValues([[phone, step, now, ctx, name || data[i][4] || '']]);
+        return;
+      }
+    }
+    sheet.appendRow([phone, step, now, ctx, name || '']);
+  } finally {
+    if (tengoLock) { try { lock.releaseLock(); } catch(_) {} }
+  }
+}
+
+// Limpia las filas repetidas que dejó la carrera de arriba. Conserva la MÁS
+// RECIENTE por teléfono —es la que refleja el estado real— y borra el resto.
+// Preview por default; borra con limpiarConversacionesDuplicadas(true).
+function limpiarConversacionesDuplicadas(aplicar) {
   const sheet = _convSheet();
   const data  = sheet.getDataRange().getValues();
-  const now   = Utilities.formatDate(new Date(), BOT_TZ, 'yyyy-MM-dd HH:mm:ss');
-  const ctx   = JSON.stringify(context || {});
+  const porTel = {};
   for (let i = 1; i < data.length; i++) {
-    if (data[i][0] && data[i][0].toString() === phone) {
-      sheet.getRange(i + 1, 1, 1, 5).setValues([[phone, step, now, ctx, name || data[i][4] || '']]);
-      return;
-    }
+    const tel = data[i][0] ? data[i][0].toString() : '';
+    if (!tel) continue;
+    (porTel[tel] = porTel[tel] || []).push({ fila: i + 1, ts: String(data[i][2] || ''), step: data[i][1] });
   }
-  sheet.appendRow([phone, step, now, ctx, name || '']);
+  const aBorrar = [];
+  Object.keys(porTel).forEach(tel => {
+    const fs = porTel[tel];
+    if (fs.length < 2) return;
+    // Ordena por timestamp; ante empate gana la de más abajo (la más nueva).
+    fs.sort((a, b) => a.ts === b.ts ? a.fila - b.fila : (a.ts < b.ts ? -1 : 1));
+    const queda = fs[fs.length - 1];
+    fs.slice(0, -1).forEach(f => aBorrar.push({ tel: tel, fila: f.fila, step: f.step, ts: f.ts }));
+    Logger.log(tel + ': ' + fs.length + ' filas → conservo fila ' + queda.fila + ' (' + queda.step + ' ' + queda.ts + ')');
+  });
+  if (!aBorrar.length) { Logger.log('✓ Sin duplicados.'); return; }
+  Logger.log('Filas a borrar: ' + aBorrar.length);
+  aBorrar.forEach(f => Logger.log('  fila ' + f.fila + ' · ' + f.tel + ' · ' + f.step + ' · ' + f.ts));
+  if (aplicar !== true) { Logger.log('(preview) Llamar limpiarConversacionesDuplicadas(true) para borrar.'); return; }
+  // De abajo hacia arriba: borrar de arriba corre los índices de las demás.
+  aBorrar.sort((a, b) => b.fila - a.fila).forEach(f => sheet.deleteRow(f.fila));
+  Logger.log('✓ ' + aBorrar.length + ' fila(s) borrada(s).');
 }
 
 // Util admin: corrige el estado de una conversación (preserva contexto/nombre).
