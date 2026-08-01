@@ -2106,6 +2106,19 @@
     color: inherit; cursor: pointer;
   }
 
+  .contab-tabs {
+    display: flex; gap: 4px; margin-bottom: 20px;
+    border-bottom: 2px solid var(--border);
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;               /* Firefox */
+  }
+  .contab-tabs::-webkit-scrollbar { display: none; }
+  /* Sin esto los botones se encogen y "Por Cobrar" se parte en dos líneas. */
+  .contab-tabs > button { flex: 0 0 auto; white-space: nowrap; }
+  @media (max-width: 600px) {
+    .contab-tabs > button { padding-left: 14px; padding-right: 14px; }
+  }
+
   /* Filas clickeables de Préstamos (pagos detectados y abonos registrados) */
   .pr-row {
     display: flex; justify-content: space-between; gap: 10px; align-items: center;
@@ -2946,7 +2959,11 @@
     </div>
 
     <!-- Tabs -->
-    <div style="display:flex;gap:4px;margin-bottom:20px;border-bottom:2px solid var(--border);padding-bottom:0;">
+    <!-- Scroll horizontal propio: con 6 sub-tabs la barra ya no entra en un
+         celular y, al no poder achicarse, estiraba TODA la página. El síntoma
+         no era la barra sino el header, que quedaba cortado a la mitad porque
+         el body se había vuelto más ancho que la ventana. -->
+    <div class="contab-tabs">
       <button id="contabTabResumen"   onclick="setContabTab('resumen')"   style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid var(--azul-dark);margin-bottom:-2px;color:var(--azul-dark);">Resumen</button>
       <button id="contabTabIngresos"  onclick="setContabTab('ingresos')"  style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Ingresos</button>
       <button id="contabTabEgresos"   onclick="setContabTab('egresos')"   style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Egresos</button>
@@ -15954,6 +15971,11 @@ function setContabTab(tab) {
   // —el panel entero lo dibuja renderContabilidad— así que solo se repintan las
   // gráficas, que es lo único que depende del ancho visible.
   if (tab === 'resumen') _repintarGraficasResumen();
+  // Con la barra scrolleada, tocar un tab del borde lo dejaba medio tapado.
+  const btnActivo = document.getElementById(btns[tab]);
+  if (btnActivo && btnActivo.scrollIntoView) {
+    btnActivo.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }
   _renderActiveContabTab();
 }
 
