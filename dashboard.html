@@ -2142,6 +2142,45 @@
     .contab-tabs > button { padding-left: 14px; padding-right: 14px; }
   }
 
+  /* Filas de la Tiendita (items y ventas).
+     Antes iban con estilos inline y `padding: 7px 0`: sin padding horizontal
+     las filas corrían de borde a borde del panel y el botón PVP quedaba
+     recortado por el `overflow: hidden` de .contab-panel. Los 20px de costado
+     son los mismos del header, para que todo quede alineado. */
+  .tv-row {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 12px; padding: 9px 20px; border-top: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .tv-row-main { min-width: 0; }
+  .tv-row-sub  { font-size: 11.5px; color: var(--text-muted); }
+  /* El lado derecho no se encoge ni se parte; si no entra, la fila envuelve. */
+  .tv-row-side {
+    display: flex; align-items: center; gap: 8px;
+    flex-shrink: 0; white-space: nowrap;
+  }
+  /* Verde solo cuando hubo venta: en $0.00 el verde sugiere un ingreso que no
+     existe, y con la mayoría de los items en cero la lista se lee toda "ok". */
+  .tv-vendido { color: var(--verde-dark); }
+  .tv-vendido.cero { color: var(--text-muted); }
+  .tv-pvp {
+    background: none; border: 1px dashed var(--border); border-radius: 6px;
+    padding: 3px 9px; font-family: inherit; font-size: 12px; cursor: pointer;
+    color: var(--text-muted); transition: all .15s;
+  }
+  .tv-pvp.puesto { color: var(--text); border-style: solid; }
+  .tv-pvp:hover  { border-color: var(--text-muted); color: var(--text); }
+  .tv-edit { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 2px 4px; font-size: 14px; }
+  .tv-edit:hover { color: var(--text); }
+  @media (max-width: 600px) {
+    /* En un celular los dos lados no entran juntos: el derecho baja completo
+       en vez de partirse. */
+    /* Se mantienen los 20px del header: bajarlos a 16 desalineaba el nombre
+       del item respecto al título del panel. */
+    .tv-row { flex-wrap: wrap; }
+    .tv-row-side { margin-left: auto; }
+  }
+
   /* Filas clickeables de Préstamos (pagos detectados y abonos registrados) */
   .pr-row {
     display: flex; justify-content: space-between; gap: 10px; align-items: center;
@@ -16155,18 +16194,18 @@ function renderTiendita() {
       // para poner el precio de venta y para ver el margen.
       const uds = ventasPeriodo.filter(v => _sumNormalize(v.item) === _sumNormalize(kw))
                                .reduce((t, v) => t + (parseFloat(v.cantidad) || 1), 0);
-      html += '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid var(--border);font-size:13px;align-items:center;flex-wrap:wrap;">'
-        + '<span>' + escapeHtml(kw) + ' <span style="color:var(--text-muted);font-size:11.5px;">· '
-        + c.compras + ' compra' + (c.compras === 1 ? '' : 's')
-        + (uds ? ' · ' + uds + ' vendida' + (uds === 1 ? '' : 's') : '') + '</span></span>'
-        + '<span style="color:var(--text-muted);white-space:nowrap;">costo $' + c.costo.toFixed(2)
-        + ' · <span style="color:#2c5e22;">vendido $' + vendidoItem.toFixed(2) + '</span>'
-        + ' · <button onclick="_tvSetPrecio(' + JSON.stringify(kw).replace(/"/g, '&quot;') + ')" '
-        +   'title="Precio al que se vende. Se usa para prellenar la venta." '
-        +   'style="background:none;border:1px dashed var(--border);border-radius:6px;padding:2px 8px;'
-        +   'font-family:inherit;font-size:12px;cursor:pointer;color:' + (pv > 0 ? 'var(--text)' : 'var(--text-muted)') + ';">'
-        +   (pv > 0 ? 'PVP $' + pv.toFixed(2) : '+ precio') + '</button>'
-        + '</span></div>';
+      html += '<div class="tv-row">'
+        + '<div class="tv-row-main">' + escapeHtml(kw)
+        +   '<div class="tv-row-sub">' + c.compras + ' compra' + (c.compras === 1 ? '' : 's')
+        +     (uds ? ' · ' + uds + ' vendida' + (uds === 1 ? '' : 's') : '') + '</div></div>'
+        + '<div class="tv-row-side">'
+        +   '<span class="tv-row-sub">costo $' + c.costo.toFixed(2) + '</span>'
+        +   '<span class="tv-vendido' + (vendidoItem > 0 ? '' : ' cero') + '">vendido $' + vendidoItem.toFixed(2) + '</span>'
+        +   '<button class="tv-pvp' + (pv > 0 ? ' puesto' : '') + '" '
+        +     'onclick="_tvSetPrecio(' + JSON.stringify(kw).replace(/"/g, '&quot;') + ')" '
+        +     'title="Precio al que se vende. Se usa para prellenar la venta.">'
+        +     (pv > 0 ? 'PVP $' + pv.toFixed(2) : '+ precio') + '</button>'
+        + '</div></div>';
     });
     html += '</div>';
   }
@@ -16177,15 +16216,14 @@ function renderTiendita() {
     html += '<div style="text-align:center;padding:20px 10px;color:var(--text-muted);font-size:13px;">Sin ventas en este período.</div>';
   } else {
     html += ventasPeriodo.map(v =>
-      '<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--border);font-size:13px;align-items:center;">'
-      + '<div style="min-width:0;"><div>' + escapeHtml(v.item || '—')
-      +   (v.cantidad > 1 ? ' <span style="color:var(--text-muted);">×' + v.cantidad + '</span>' : '') + '</div>'
-      +   '<div style="font-size:11.5px;color:var(--text-muted);">' + v.fecha
-      +     (v.huesped ? ' · ' + escapeHtml(v.huesped) : '') + '</div></div>'
-      + '<div style="text-align:right;flex-shrink:0;white-space:nowrap;">'
+      '<div class="tv-row">'
+      + '<div class="tv-row-main">' + escapeHtml(v.item || '—')
+      +   (v.cantidad > 1 ? ' <span class="tv-row-sub">×' + v.cantidad + '</span>' : '')
+      +   '<div class="tv-row-sub">' + v.fecha + (v.huesped ? ' · ' + escapeHtml(v.huesped) : '') + '</div></div>'
+      + '<div class="tv-row-side">'
       +   '<span style="font-weight:600;">$' + (parseFloat(v.monto) || 0).toFixed(2) + '</span>'
-      +   (v.voucherURL ? ' <a href="' + v.voucherURL + '" target="_blank" rel="noopener" title="Ver voucher">📷</a>' : '')
-      +   ' <button onclick="openVentaModal(\'' + v.id + '\')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;">✎</button>'
+      +   (v.voucherURL ? '<a href="' + v.voucherURL + '" target="_blank" rel="noopener" title="Ver voucher">📷</a>' : '')
+      +   '<button class="tv-edit" onclick="openVentaModal(\'' + v.id + '\')" title="Editar">✎</button>'
       + '</div></div>').join('');
   }
   html += '</div>';
