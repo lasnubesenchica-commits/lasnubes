@@ -4058,7 +4058,8 @@
       <div class="footer-row footer-row-secondary">
         <button class="btn btn-ghost rsv-only" id="detailVoucherBtn" style="font-size:13px;display:none;" title="Abrir voucher en Drive">🧾 Voucher</button>
         <button class="btn btn-ghost rsv-only" id="detailLinkBtn" style="font-size:13px;" title="Copiar link publico para cliente">🔗 Link</button>
-        <button class="btn btn-ghost rsv-only" id="detailResendBtn" style="font-size:13px;" title="Reenviar email al huésped">📧 Reenviar</button>
+        <button class="btn btn-ghost rsv-only" id="detailResendBtn" style="font-size:13px;" title="Reenviar la confirmación por email">📧 Email</button>
+        <button class="btn btn-ghost rsv-only" id="detailResendWaBtn" style="font-size:13px;display:none;" title="Reenviar la confirmación por WhatsApp">💬 WhatsApp</button>
         <button class="btn btn-ghost rsv-only" id="detailAddSiblingBtn" style="font-size:13px;display:none;border-color:#f59e0b;color:#b45309;" title="Registrar reserva complementaria en la misma cabaña y día"></button>
         <button class="btn btn-ghost avl-only" id="avlCopyBtn" style="display:none;font-size:13px;border-color:#0f7a4e;color:#0f7a4e;" title="Copiar cotización al portapapeles">📋 Copiar cotización</button>
       </div>
@@ -7314,19 +7315,51 @@ function showDispDetail(id) {
       voucherBtn.onclick = () => urls.forEach(u => window.open(u, '_blank'));
     }
   }
+  // Reenviar la confirmación. Antes había un solo botón que mandaba SOLO el
+  // email; el envío por WhatsApp ya existía (sendWAConfirmacion, el mismo que
+  // corre al guardar) pero no estaba expuesto acá. Van separados en vez de uno
+  // que mande a los dos: reenviar es algo que se hace porque al huésped no le
+  // llegó por UN canal, y mandarle los dos de nuevo es ruido.
+  //
+  // El de WhatsApp usa una plantilla HSM, así que llega aunque la ventana de
+  // 24 h esté cerrada.
+  const _reenviar = (btn, accion, etiqueta) => {
+    if (!btn) return;
+    // El botón es el MISMO nodo entre reservas: sin resetearlo, abrir otra
+    // dentro de los 3 s del "✓ Enviado" la mostraba ya enviada y deshabilitada,
+    // y el click no hacía nada.
+    btn.disabled = false;
+    btn.textContent = etiqueta;
+    btn.onclick = async () => {
+      btn.disabled = true;
+      btn.textContent = '⏳ Enviando…';
+      let ok = false, detalle = '';
+      try {
+        const res  = await fetch(SHEETS_API_URL, { method:'POST', body: JSON.stringify({ action: accion, reservation: r }) });
+        const data = await res.json();
+        ok = !!(data && data.ok);
+        detalle = (data && data.error) || '';
+      } catch(e) { detalle = e.message; }
+      btn.textContent = ok ? '✓ Enviado' : '⚠ Error';
+      // El motivo del fallo importa —número inválido, plantilla no aprobada—
+      // y en el botón no entra.
+      if (!ok && detalle) showToast('✗ ' + etiqueta + ': ' + detalle);
+      setTimeout(() => { btn.disabled = false; btn.textContent = etiqueta; }, 3000);
+    };
+  };
+
   const resendBtn = document.getElementById('detailResendBtn');
   if (resendBtn) {
     resendBtn.style.display = r.email ? '' : 'none';
-    resendBtn.onclick = async () => {
-      resendBtn.disabled = true;
-      resendBtn.textContent = '⏳ Enviando…';
-      try {
-        const res  = await fetch(SHEETS_API_URL, { method:'POST', body: JSON.stringify({ action:'sendConfirmationEmail', reservation: r }) });
-        const data = await res.json();
-        resendBtn.textContent = data.ok ? '✓ Enviado' : '⚠ Error';
-      } catch(e) { resendBtn.textContent = '⚠ Error'; }
-      setTimeout(() => { resendBtn.disabled=false; resendBtn.textContent='📧 Reenviar'; }, 3000);
-    };
+    _reenviar(resendBtn, 'sendConfirmationEmail', '📧 Email');
+  }
+  const resendWaBtn = document.getElementById('detailResendWaBtn');
+  if (resendWaBtn) {
+    const _tel = (r.telefono || '').toString().replace(/\D/g, '');
+    // Sin teléfono no hay a dónde mandarlo; una reserva Abierta no tiene qué
+    // confirmar todavía.
+    resendWaBtn.style.display = (_tel.length >= 7 && r.origin !== 'Abierta') ? '' : 'none';
+    _reenviar(resendWaBtn, 'sendWAConfirmacion', '💬 WhatsApp');
   }
   const linkBtn = document.getElementById('detailLinkBtn');
   if (linkBtn) {
