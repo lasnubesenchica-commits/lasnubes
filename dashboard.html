@@ -2322,12 +2322,24 @@
   .egreso-modal input,
   .egreso-modal select { margin-bottom: 0; }
 
+  /* Una sola fila que scrollea, igual que la barra de sub-tabs. Antes envolvía
+     (`flex-wrap: wrap`) y en un celular los 14 chips ocupaban CINCO renglones,
+     empujando el contenido real muy abajo. */
   .month-filter {
     display: flex;
     gap: 8px;
     margin-bottom: 20px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;               /* Firefox */
+    /* Aire abajo: sin esto el borde del chip activo toca el filo del área que
+       scrollea y se ve recortado en algunos navegadores. */
+    padding-bottom: 2px;
   }
+  .month-filter::-webkit-scrollbar { display: none; }
+  /* Sin esto los chips se comprimen y los nombres largos se parten. */
+  .month-filter > .month-chip { flex: 0 0 auto; white-space: nowrap; }
 
   .month-chip {
     padding: 6px 14px;
@@ -5266,6 +5278,10 @@ function showSection(id) {
   if(id === 'programa')       renderProgramaMetrics();
   if(id === 'bot')            { loadBotData(); startBotLive(); }
   else                        stopBotLive();
+  // Los chips de período se pintan aunque la sección esté oculta, y ahí
+  // clientWidth es 0: el cálculo para centrar el chip activo da cualquier cosa.
+  // Se rehace ahora que la sección es visible y tiene ancho real.
+  document.querySelectorAll('#' + id + ' .month-filter').forEach(_centrarChipActivo);
 }
 
 // ─── BOT CRM ──────────────────────────────────────────────────────
@@ -12397,6 +12413,22 @@ function _renderChipsPeriodo(containerId, opts) {
   chipsHtml += _chip(customLabel, _rangeKey === 'custom' || _abierto, `${_fn}('customToggle')`,
                      { preset: true, title: _rangeKey === 'custom' ? 'Click para cambiar el rango' : 'Elegir rango personalizado' });
   mf.innerHTML = chipsHtml;
+  _centrarChipActivo(mf);
+}
+
+// Deja el chip seleccionado a la vista dentro de la fila que scrollea. Sin
+// esto, con el default "Este mes" —que cae a mitad de la lista— se abría la
+// sección mostrando "YTD · Enero · Febrero" y no se veía cuál estaba activo.
+//
+// Se mueve `scrollLeft` a mano en vez de usar scrollIntoView: ése también
+// scrollea los ancestros, así que al cargar la página (con el filtro debajo
+// del fold) arrastraba TODA la vista hacia abajo.
+function _centrarChipActivo(mf) {
+  if (!mf) return;
+  const act = mf.querySelector('.month-chip.active');
+  if (!act) { mf.scrollLeft = 0; return; }
+  const centro = act.offsetLeft - (mf.clientWidth / 2) + (act.offsetWidth / 2);
+  mf.scrollLeft = Math.max(0, centro);
 }
 
 function renderContabilidad() {
