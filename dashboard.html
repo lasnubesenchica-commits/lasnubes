@@ -2868,6 +2868,13 @@
         <button onclick="showSection('contabilidad');closeNavMenu()">Contabilidad</button>
         <button onclick="showSection('programa');closeNavMenu()">Programa</button>
         <button id="btnBotNavMobile" onclick="showSection('bot');closeNavMenu()" style="display:none;">💬 Agente</button>
+        <!-- El manual va acá y no en la barra: no es una sección del dashboard,
+             pero tiene que poder encontrarse sin conocer la URL — justamente
+             quien lo necesita es quien no montó esto. Se abre en otra pestaña
+             para no perder lo que se estaba haciendo. -->
+        <a href="manual.html" target="_blank" rel="noopener" onclick="closeNavMenu()"
+           style="display:block;padding:10px 16px;text-decoration:none;color:var(--text-muted);
+                  font-size:14px;border-top:1px solid var(--border);">📖 Manual de operación</a>
       </div>
     </div>
   </div>
