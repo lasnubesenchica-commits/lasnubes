@@ -1027,6 +1027,117 @@ function crearPlantillaReferidoEnMetaAHORA() { return crearPlantillaReferidoEnMe
 // Estado de las plantillas en Meta, sin entrar a WhatsApp Manager.
 // Útil sobre todo después de crear una: queda en PENDING y hay que saber
 // cuándo pasó a APPROVED para dejar de depender del fallback.
+
+// ─── Corregir el texto de instruccion_checkout ──────────────────────
+//
+// La plantilla decía «llévate la basura», que contradice la política actual:
+// la basura SE QUEDA y la recoge el personal. Todo lo demás del sistema ya lo
+// dice bien —la guía de la cabaña, el FAQ del bot, la web y el manual—, pero el
+// cuerpo de una plantilla HSM vive en Meta, no en este código, así que no se
+// podía arreglar desde acá con un texto nuevo: hay que EDITAR la plantilla.
+//
+// Meta permite editar una plantilla aprobada (POST /{template_id}). Vuelve a
+// revisión, que en UTILITY suele durar minutos. Hay un tope de ediciones al
+// mes por plantilla, así que conviene dejarlo bien de una.
+//
+// Se conservan las 3 variables y el botón: sendWhatsAppTemplate manda
+// [nombre, cabaña, hora] + el payload del quick-reply, y cambiar la cantidad
+// rompería el envío.
+function _plantillaCheckoutBody() {
+  return '¡Hola {{1}}! 🌿 Esperamos que hayas disfrutado tu estadía en *{{2}}*.\n\n' +
+         '⏰ El check-out es hoy a las *{{3}}*.\n' +
+         'Antes de salir de la cabaña: deja la cocina ordenada y la llave y el control ' +
+         'dentro del key box. 🔑\n' +
+         'La basura la puedes dejar, el personal se encarga. 🗑️\n\n' +
+         'Cuando llegues al portón de salida, toca "Abrir el Portón" aquí abajo y lo ' +
+         'abrimos al instante. 🚪';
+}
+
+function _buscarPlantillaWA(nombre, idioma) {
+  const cfg = _waProps();
+  const url = 'https://graph.facebook.com/v21.0/' + cfg.businessId +
+              '/message_templates?fields=name,language,status,components&limit=200';
+  const res = UrlFetchApp.fetch(url, {
+    headers: { Authorization: 'Bearer ' + cfg.token }, muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) {
+    Logger.log('HTTP ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 400));
+    return null;
+  }
+  const data = JSON.parse(res.getContentText()).data || [];
+  return data.filter(function (t) {
+    return t.name === nombre && (!idioma || t.language === idioma);
+  })[0] || null;
+}
+
+function corregirPlantillaCheckoutEnMeta(dryRun) {
+  if (dryRun !== false) dryRun = true;
+  const cfg = _waProps();
+  if (!cfg.token)      { Logger.log('⚠ Falta WA_ACCESS_TOKEN en Script Properties.'); return; }
+  if (!cfg.businessId) { Logger.log('⚠ Falta WA_BUSINESS_ACCOUNT_ID en Script Properties.'); return; }
+
+  const t = _buscarPlantillaWA('instruccion_checkout', 'es_ES');
+  if (!t) {
+    Logger.log('✗ No encontré instruccion_checkout en es_ES.');
+    Logger.log('  Revisá el nombre y el idioma con verEstadoPlantillasWA().');
+    return;
+  }
+  Logger.log('═══ ' + (dryRun ? 'DRY-RUN · ' : '') + "instruccion_checkout ═══");
+  Logger.log('id: ' + t.id + '  ·  estado: ' + t.status);
+  Logger.log('');
+
+  const bodyActual = (t.components || []).filter(function (c) { return c.type === 'BODY'; })[0];
+  Logger.log('── TEXTO ACTUAL ──');
+  String((bodyActual && bodyActual.text) || '(sin body)').split('\n').forEach(function (l) {
+    Logger.log('   ' + (l || ' '));
+  });
+  Logger.log('');
+  Logger.log('── TEXTO NUEVO ──');
+  _plantillaCheckoutBody().split('\n').forEach(function (l) { Logger.log('   ' + (l || ' ')); });
+  Logger.log('');
+
+  // Se reusan los componentes que ya tiene (botones, header, footer) y solo se
+  // reemplaza el BODY: tocar los botones obligaría a volver a validar el
+  // payload del quick-reply, que ya funciona.
+  const componentes = (t.components || []).map(function (c) {
+    if (c.type !== 'BODY') return c;
+    return {
+      type: 'BODY',
+      text: _plantillaCheckoutBody(),
+      example: { body_text: [['Kevin', 'Paseo por Las Nubes', '11:00 am']] }
+    };
+  });
+
+  if (dryRun) {
+    Logger.log('Nada se envió. Para aplicarlo: corregirPlantillaCheckoutEnMetaAHORA()');
+    return;
+  }
+
+  const res = UrlFetchApp.fetch(
+    'https://graph.facebook.com/v21.0/' + t.id,
+    { method: 'post', contentType: 'application/json',
+      payload: JSON.stringify({ components: componentes }),
+      headers: { Authorization: 'Bearer ' + cfg.token },
+      muteHttpExceptions: true });
+  const code = res.getResponseCode();
+  Logger.log('HTTP ' + code);
+  Logger.log(res.getContentText());
+  if (code >= 200 && code < 300) {
+    Logger.log('');
+    Logger.log('✓ Edición enviada. La plantilla vuelve a revisión (UTILITY suele tardar minutos).');
+    Logger.log('  Mientras esté PENDING se sigue mandando la versión anterior.');
+    Logger.log('  Seguí el estado con verEstadoPlantillasWA().');
+  } else {
+    Logger.log('');
+    Logger.log('✗ No se pudo editar. Motivos habituales:');
+    Logger.log('   · se agotaron las ediciones permitidas del mes para esa plantilla;');
+    Logger.log('   · está en PENDING (solo se edita si está APPROVED o REJECTED);');
+    Logger.log('   · el token no tiene permiso whatsapp_business_management.');
+    Logger.log('  Alternativa: editarla a mano en Meta Business Manager → Plantillas.');
+  }
+}
+
+function corregirPlantillaCheckoutEnMetaAHORA() { return corregirPlantillaCheckoutEnMeta(false); }
+
 function verEstadoPlantillasWA() {
   const cfg = _waProps();
   if (!cfg.token || !cfg.businessId) {
