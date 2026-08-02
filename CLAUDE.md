@@ -12,6 +12,9 @@
 - **No lleva secretos**: ni claves, ni llaves de API, ni el código del key box, ni teléfonos del equipo. La sección "Contactos" es una tabla vacía a propósito, para llenar en privado o impresa.
 - Tiene estilos de impresión (`@media print`) — la idea es que se pueda dejar una copia en papel.
 - Si cambia el comportamiento del sistema, hay que actualizarlo: describe procedimientos, no código.
+- **Sección "Contactos y accesos" editable**: los campos se guardan en `localStorage` (`ln_manual_contactos`), NO en el repo, con exportar/importar a JSON. Piden **dónde está** cada clave, no la clave — `localStorage` no está cifrado y el repo es público.
+- **Sección "Acceso de emergencia"**: el mecanismo real para que la familia recupere las cuentas es gestor de contraseñas con *Emergency Access* + Contacto de legado de Apple + Administrador de cuentas inactivas de Google, más un "sobre de emergencia" en papel. **Nunca meter credenciales en el repo**: es público, permite forks, y lo commiteado queda en el historial aunque se borre.
+- El gate del manual es **cosmético** (esconde un `<div>` con JS). No protege el archivo: `view-source` o un `fetch` directo lo devuelven entero. Lo que protege los DATOS es `ADMIN_KEY` en el backend.
 
 ## Arquitectura
 
