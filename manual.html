@@ -1,0 +1,639 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manual de operación · Las Nubes</title>
+
+<!--
+  MANUAL DE OPERACIÓN
+  ===================
+  Para que alguien que no montó el sistema pueda operarlo solo.
+
+  Va protegido con la MISMA clave del dashboard: el repositorio es público, y
+  acá se explican comisiones, sueldos y procedimientos internos. La clave se
+  recuerda por navegador, así que quien ya entró al dashboard entra directo.
+
+  NO se escriben acá contraseñas, llaves de API ni el código del key box. El
+  manual dice DÓNDE está cada cosa, no cuál es.
+-->
+
+<style>
+  :root{
+    --bg:#faf9f7; --surface:#fff; --text:#2d2a26; --muted:#7a736b;
+    --border:#e6e1da; --verde:#6a9e62; --verde-dark:#2c5e22;
+    --azul-dark:#5a85b0; --ambar:#7a5a1f; --rojo:#b85c4a;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#1c1a18; --surface:#252220; --text:#ece7e0; --muted:#a49b90;
+           --border:#3a3532; --verde-dark:#8fc285; --azul-dark:#8fb3d4; --ambar:#d4b483; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+       line-height:1.65;font-size:16px}
+  .wrap{max-width:820px;margin:0 auto;padding:24px 20px 80px}
+  h1,h2,h3{font-family:'Cormorant Garamond',Georgia,serif;font-weight:500;line-height:1.15;margin:0}
+  h1{font-size:40px;margin-bottom:6px}
+  h2{font-size:28px;margin:44px 0 4px;padding-top:20px;border-top:2px solid var(--border)}
+  h3{font-size:21px;margin:26px 0 4px}
+  h4{font-size:15px;margin:20px 0 4px;font-weight:600}
+  p,ul,ol{margin:10px 0}
+  ul,ol{padding-left:22px}
+  li{margin:5px 0}
+  a{color:var(--azul-dark)}
+  code{background:var(--bg);border:1px solid var(--border);border-radius:5px;
+       padding:1px 5px;font-size:13.5px;font-family:ui-monospace,Menlo,monospace}
+  .sub{color:var(--muted);font-size:15px;margin-top:0}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+        padding:16px 18px;margin:16px 0}
+  .nota{border-left:4px solid var(--azul-dark);background:var(--surface);
+        border-radius:0 10px 10px 0;padding:12px 16px;margin:16px 0;font-size:15px}
+  .ojo{border-left-color:var(--ambar)}
+  .peligro{border-left-color:var(--rojo)}
+  .ok{border-left-color:var(--verde)}
+  .nota b{display:block;margin-bottom:2px}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14.5px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+  .tabla-wrap{overflow-x:auto}
+  .toc{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 20px}
+  .toc ol{margin:6px 0;padding-left:20px}
+  .toc a{text-decoration:none}
+  .toc a:hover{text-decoration:underline}
+  .paso{counter-reset:none;margin:14px 0}
+  .paso li{margin:9px 0}
+  .pill{display:inline-block;background:var(--bg);border:1px solid var(--border);
+        border-radius:20px;padding:2px 10px;font-size:13px;margin:2px 3px 2px 0}
+  .rellenar{background:repeating-linear-gradient(45deg,transparent,transparent 6px,var(--border) 6px,var(--border) 7px);
+            border:1px dashed var(--ambar);border-radius:8px;padding:10px 14px;margin:10px 0;font-size:14.5px}
+  #gate{max-width:420px;margin:18vh auto;padding:0 20px;text-align:center}
+  #gate input{width:100%;padding:12px;font-size:16px;border:1px solid var(--border);
+              border-radius:10px;background:var(--surface);color:var(--text);margin-top:12px}
+  #gate button{margin-top:10px;width:100%;padding:12px;font-size:15px;border:none;
+               border-radius:10px;background:var(--verde);color:#fff;cursor:pointer;font-family:inherit}
+  #manual{display:none}
+  @media print{
+    body{background:#fff;font-size:11.5pt}
+    .wrap{max-width:none;padding:0}
+    h2{page-break-after:avoid;break-after:avoid}
+    .card,.nota,table{page-break-inside:avoid;break-inside:avoid}
+    #gate,.noprint{display:none !important}
+    #manual{display:block !important}
+  }
+</style>
+
+<div id="gate">
+  <h1 style="font-size:30px">Manual de operación</h1>
+  <p class="sub">Las Nubes · Chame, Panamá</p>
+  <p style="font-size:14.5px;color:var(--muted)">Escribe la clave de administración (la misma del dashboard).</p>
+  <input type="password" id="gateKey" placeholder="Clave" autocomplete="current-password">
+  <button onclick="entrar()">Entrar</button>
+  <p id="gateMsg" style="color:var(--rojo);font-size:14px;min-height:20px"></p>
+</div>
+
+<div id="manual"><div class="wrap">
+
+<h1>Manual de operación</h1>
+<p class="sub">Las Nubes · Chame, Panamá — cómo funciona todo y qué hay que hacer.</p>
+
+<div class="nota ok">
+  <b>Para qué sirve este manual</b>
+  Para que alguien que no montó el sistema pueda administrar las cabañas de punta a punta:
+  tomar reservas, cobrar, recibir al huésped, coordinar la limpieza y llevar las cuentas.
+  Está escrito para leerse de corrido la primera vez y después consultarse por partes.
+</div>
+
+<div class="toc noprint">
+  <strong>Contenido</strong>
+  <ol>
+    <li><a href="#panorama">Qué es Las Nubes</a></li>
+    <li><a href="#accesos">Accesos: dónde entra uno</a></li>
+    <li><a href="#rutina">La rutina diaria</a></li>
+    <li><a href="#reserva">Tomar una reserva</a></li>
+    <li><a href="#agente">El Agente de WhatsApp</a></li>
+    <li><a href="#llegada">Día de llegada</a></li>
+    <li><a href="#estadia">Durante la estadía</a></li>
+    <li><a href="#checkout">Check-out y limpieza</a></li>
+    <li><a href="#postventa">Post-venta</a></li>
+    <li><a href="#dinero">El dinero</a></li>
+    <li><a href="#malaya">Malaya Lodge</a></li>
+    <li><a href="#airbnb">Airbnb</a></li>
+    <li><a href="#falla">Cuando algo falla</a></li>
+    <li><a href="#contactos">Contactos y datos a mano</a></li>
+  </ol>
+</div>
+
+
+<h2 id="panorama">1 · Qué es Las Nubes</h2>
+
+<p>Tres cabañas independientes en Chame, cada una para uso exclusivo de un grupo.
+No se comparten con desconocidos.</p>
+
+<div class="tabla-wrap"><table>
+  <tr><th>Cabaña</th><th>Camas</th><th>Persona extra</th></tr>
+  <tr><td><b>Paseo por Las Nubes</b><br><span class="sub">verde</span></td>
+      <td>Matrimonial king + auxiliar twin</td><td>$20 por noche</td></tr>
+  <tr><td><b>Portal hacia Las Nubes</b><br><span class="sub">azul</span></td>
+      <td>Matrimonial full · sin cama auxiliar</td><td>$10 por noche</td></tr>
+  <tr><td><b>Puente entre Las Nubes</b><br><span class="sub">lila</span></td>
+      <td>Matrimonial queen + auxiliar full</td><td>$20 por noche</td></tr>
+</table></div>
+
+<div class="nota ojo">
+  <b>Portal no tiene cama auxiliar</b>
+  Si una reserva de Portal es de 3 personas o más, es porque el cliente acordó traer colchón
+  inflable. No hay que preparar cama auxiliar ahí.
+</div>
+
+<h3>Los colores mandan</h3>
+<p>Verde, azul y lila identifican a cada cabaña en <em>todo</em> el sistema: calendario,
+tablas, gráficas. Cuando veas un bloque lila, es Puente.</p>
+
+<h3>Qué se vende, además de la noche</h3>
+<div class="tabla-wrap"><table>
+  <tr><th>Producto</th><th>Horario</th><th>Notas</th></tr>
+  <tr><td><b>Noche</b></td><td>2:00 pm → 11:00 am</td><td>Lo normal.</td></tr>
+  <tr><td><b>Pasadía</b></td><td>9:00 am → 5:00 pm</td><td>Sin dormir. Igual usan la recámara.</td></tr>
+  <tr><td><b>Pasatarde</b></td><td>12:30 pm → 7:00 pm</td><td></td></tr>
+  <tr><td><b>Pasanoche</b></td><td>8:00 pm → 12:30 pm del día siguiente</td><td>Compatible con un pasatarde el mismo día.</td></tr>
+  <tr><td><b>Early check-in</b></td><td>Entra 9:00 am</td><td>Recargo una sola vez, no por noche.</td></tr>
+  <tr><td><b>Late check-out</b></td><td>Sale 4:00 pm</td><td>Recargo una sola vez.</td></tr>
+</table></div>
+
+<p>Además está la <b>Tiendita</b>: kit de fogata, carbón, repelente, kit de pasta y cepillo,
+toallas sanitarias. Se pide por WhatsApp, se paga por Yappy y se lleva a la cabaña.</p>
+
+<h3>Por dónde entran las reservas</h3>
+<ul>
+  <li><b>Directa</b> — WhatsApp o Instagram. Es la mayoría y la más rentable: sin comisión.</li>
+  <li><b>Airbnb</b> — entran solas al sistema leyendo los correos de Airbnb.</li>
+  <li><b>Referido</b> — un huésped anterior pasó su código y el nuevo tiene descuento.</li>
+</ul>
+
+
+<h2 id="accesos">2 · Accesos: dónde entra uno</h2>
+
+<div class="tabla-wrap"><table>
+  <tr><th>Herramienta</th><th>Para qué</th><th>Cómo se entra</th></tr>
+  <tr><td><b>Dashboard</b><br><code>lasnubes.cloud/dashboard.html</code></td>
+      <td>El centro de todo: reservas, calendario, dinero.</td>
+      <td>Con la clave en la URL: <code>?k=LA_CLAVE</code>. Se guarda sola en ese navegador.</td></tr>
+  <tr><td><b>Calendario público</b><br><code>lasnubes.cloud</code></td>
+      <td>Lo que ve el cliente. Con la clave se habilita cotizar y copiar textos.</td>
+      <td>Igual: <code>?k=LA_CLAVE</code>.</td></tr>
+  <tr><td><b>WhatsApp Business</b></td>
+      <td>Hablar con los huéspedes. El Agente contesta solo.</td>
+      <td>La app en el celular.</td></tr>
+  <tr><td><b>Google Sheets</b></td>
+      <td>Donde vive TODO el dato. Rara vez hay que tocarlo a mano.</td>
+      <td>Con la cuenta de Google del negocio.</td></tr>
+</table></div>
+
+<div class="nota peligro">
+  <b>La clave es una sola y abre todo</b>
+  No la mandes por chat ni la escribas en papeles que queden a la vista. Si se filtra,
+  cualquiera puede ver y borrar reservas. Se cambia desde Apps Script → Configuración del
+  proyecto → Propiedades del script → <code>ADMIN_KEY</code>.
+</div>
+
+<h4>En el celular</h4>
+<p>Conviene abrir el dashboard una vez con la clave y después guardarlo en la pantalla de
+inicio (Compartir → Añadir a inicio). Queda como una app. <b>Ojo:</b> cada atajo guarda la
+clave por separado, así que hay que entrar con <code>?k=</code> una vez en cada uno.</p>
+
+
+<h2 id="rutina">3 · La rutina diaria</h2>
+
+<p>El sistema manda solo varios avisos por WhatsApp. La rutina es <em>reaccionar</em> a esos
+avisos, no revisar todo a mano.</p>
+
+<div class="tabla-wrap"><table>
+  <tr><th>Hora</th><th>Qué llega solo</th><th>Qué hacer</th></tr>
+  <tr><td>8:00 am</td><td>Parte de limpieza a la persona de limpieza: quién sale, quién entra, con horarios y cuántas camas.</td><td>Nada. Solo si ella pregunta algo.</td></tr>
+  <tr><td>8:00 am</td><td>Seguimiento diario al administrador.</td><td>Leerlo.</td></tr>
+  <tr><td>9:00 am</td><td>Recordatorio de check-out a los que se van.<br>Aviso de servicios especiales del día.</td><td>Si hay servicio especial (menú, decoración), prepararlo.</td></tr>
+  <tr><td>10:00 am</td><td>Recordatorio de check-in a los que llegan mañana, con indicaciones.</td><td>Nada.</td></tr>
+  <tr><td>11:00 am</td><td>«Estamos listos para recibirte» a los que llegan hoy.<br>Resumen de movimientos del día al administrador.</td><td>Estar pendiente del WhatsApp: cuando toquen «He llegado» hay que <b>abrir el portón</b>.</td></tr>
+</table></div>
+
+<h3>Lo primero que hay que mirar</h3>
+<p>Abrir el dashboard en <b>Disponibilidad</b>. Arriba está <b>«Reservas de hoy»</b> con las
+entradas y salidas del día, con horas y botón directo al WhatsApp de cada huésped.
+Ese panel se guarda en el teléfono, así que aparece al instante aunque la conexión esté lenta;
+mientras carga dice «actualizando…».</p>
+
+
+<h2 id="reserva">4 · Tomar una reserva</h2>
+
+<p>El camino completo, desde que alguien escribe hasta que la reserva queda confirmada.</p>
+
+<h3>Paso 1 · Cotizar</h3>
+<ol class="paso">
+  <li>Abrir el <b>calendario público</b> con la clave.</li>
+  <li>Tocar el día que pide el cliente. Se abre el detalle con el precio.</li>
+  <li>Ajustar noches y personas con los <code>+</code> / <code>−</code>.</li>
+  <li>Tocar el botón <b>📋</b> de la cabaña. Copia el texto de cotización listo.</li>
+  <li>Pegarlo en WhatsApp o Instagram.</li>
+</ol>
+<p>El texto sale armado con precio, horarios, qué incluye y cómo pagar. <b>No hay que
+escribirlo a mano</b> ni calcular el precio: el sistema ya aplica promociones, feriados y
+recargo por persona extra.</p>
+
+<div class="nota">
+  <b>También se cotiza desde el modal de reserva</b>
+  Si ya estás cargando la reserva en el dashboard, el botón <b>📋 Cotización</b> del modal
+  copia lo mismo, con el total que realmente vas a cobrar (con descuentos aplicados).
+</div>
+
+<h3>Paso 2 · Cobrar</h3>
+<p>Se cobra por <b>Yappy</b> o <b>ACH</b>. Se acepta el 50% de abono o el pago completo.
+El cliente manda la captura del comprobante.</p>
+
+<h3>Paso 3 · Registrar</h3>
+<ol class="paso">
+  <li>Dashboard → <b>Disponibilidad</b> → tocar el día libre en la cabaña, o el botón <b>+ Nueva reserva</b>.</li>
+  <li><b>Subir el voucher primero.</b> La IA lo lee y llena solo el nombre, el monto,
+      la fecha y el código de la transferencia.</li>
+  <li>Completar lo que falte: email, teléfono, personas.</li>
+  <li>Revisar el <b>desglose de precio</b> que aparece abajo: dice cuántas noches, cuánto
+      vale cada una y por qué (entre semana, feriado, etc.).</li>
+  <li>Guardar.</li>
+</ol>
+
+<div class="nota ojo">
+  <b>Avisos que aparecen mientras cargas</b>
+  <ul style="margin:6px 0 0">
+    <li><b>Choque de fechas</b> — ya hay una reserva que se pisa en esa cabaña. Se ve <em>antes</em> de guardar.</li>
+    <li><b>El voucher no cubre la tarifa</b> — «el voucher suma $150 pero la estadía cotiza $310, faltan $160».</li>
+    <li><b>Ventanas libres</b> — si la noche está tomada pero el día tiene un pasatarde o pasanoche libre, te lo ofrece.</li>
+  </ul>
+</div>
+
+<h3>Paso 4 · Confirmar al cliente</h3>
+<p>Al guardar, el sistema manda solo el <b>email de confirmación</b> (con el recibo en PDF si
+hay voucher) y, en reservas directas con teléfono, el <b>WhatsApp de confirmación</b>.</p>
+<p>Si querés revisar cómo le va a llegar antes de mandarlo, el botón <b>👁 Vista previa</b>
+te lo manda a vos, no al cliente.</p>
+
+<h3>Casos especiales</h3>
+<div class="tabla-wrap"><table>
+  <tr><th>Situación</th><th>Qué hacer</th></tr>
+  <tr><td><b>Pagó pero no sabe cuándo venir</b></td>
+      <td>Origen <span class="pill">Abierta</span>. Queda como crédito sin fecha y no bloquea noches. Cuando defina, se edita y se pone Directa.</td></tr>
+  <tr><td><b>Es un regalo</b></td>
+      <td>Marcar <span class="pill">🎁 Certificado de regalo</span>. Quien paga y quien disfruta son distintos: el beneficiario recibe todo y <b>nunca ve montos</b>.</td></tr>
+  <tr><td><b>Quiere varias cabañas</b></td>
+      <td>Marcar <span class="pill">🏡 Multi-cabaña</span> y asignar cada noche. Un solo pago, un solo voucher.</td></tr>
+  <tr><td><b>Cortesía / colaboración</b></td>
+      <td>Elegir ese origen. El monto se pone en $0 y no cuenta como ingreso.</td></tr>
+  <tr><td><b>Bloquear por mantenimiento</b></td>
+      <td>Origen <span class="pill">Mantenimiento</span>. Sale 🔧 en el calendario.</td></tr>
+</table></div>
+
+
+<h2 id="agente">5 · El Agente de WhatsApp</h2>
+
+<p>Un bot contesta el WhatsApp solo. No es un chat libre: es un menú.</p>
+
+<h3>Qué resuelve sin ayuda</h3>
+<ul>
+  <li>Disponibilidad y precios («del 5 al 8 de junio, 2 personas»).</li>
+  <li>Cómo llegar, actividades, restaurantes, dónde comprar hielo y carbón.</li>
+  <li>Preguntas frecuentes.</li>
+  <li>Todo el proceso de llegada (ver sección 6).</li>
+</ul>
+
+<h3>Cuándo hay que meterse</h3>
+<div class="nota ojo">
+  <b>Cuando el huésped pide hablar con una persona</b>
+  Escribe <code>3</code> o elige «Hablar con un agente». La conversación pasa a
+  <b>HUMAN_HANDOFF</b> y <b>el bot deja de contestar</b>. Desde ahí contesta un humano.
+  Si nadie responde, el cliente queda esperando.
+</div>
+<p>Para ver las conversaciones: dashboard → <b>💬 Agente</b>.</p>
+
+<h3>Cosas que el bot hace y conviene saber</h3>
+<ul>
+  <li><b>Junta mensajes seguidos.</b> Si el cliente manda tres líneas en dos segundos, las lee como una sola.</li>
+  <li><b>Ignora el doble toque.</b> Si tocan un botón dos veces, actúa una sola.</li>
+  <li><b>Valida la cédula.</b> Antes de dar el código del key box pide foto del documento y verifica que sea un documento de verdad.</li>
+</ul>
+
+
+<h2 id="llegada">6 · Día de llegada</h2>
+
+<p>Es el momento con más automatización, y también donde hay una tarea humana obligatoria.</p>
+
+<ol class="paso">
+  <li><b>11:00 am — automático.</b> Le llega «Estamos listos para recibirte» con un botón
+      <b>He llegado</b>.</li>
+  <li><b>El huésped llega y toca el botón.</b></li>
+  <li><b>Automático.</b> El bot le manda la bienvenida, la foto de su cabaña y las
+      indicaciones para llegar hasta ella. Y <b>te manda una alerta a vos</b>.</li>
+  <li><b>👉 Tarea humana: abrir el portón.</b> El portón solo acepta llamadas desde el
+      teléfono del administrador. El bot le dice al huésped que ya avisó al equipo, pero
+      <b>alguien tiene que llamar para abrir</b>.</li>
+  <li><b>El huésped pide el código del key box.</b> El bot le pide foto de la cédula, la
+      valida y le da el código. Después le manda el manual de la cabaña.</li>
+</ol>
+
+<div class="nota peligro">
+  <b>Esto es lo único que no puede esperar</b>
+  Si nadie abre el portón, el huésped se queda afuera. La alerta llega por WhatsApp al
+  administrador. Si vas a estar sin señal, avisale a quien cubra.
+</div>
+
+<div class="nota">
+  <b>El control del portón</b>
+  En el llavero del key box hay un control para el portón verde. Es para <b>salir y entrar
+  durante la estadía</b>. Al hacer check-out <b>no se lo llevan</b>: lo dejan en el key box
+  con la llave, y el equipo les abre cuando lleguen al portón.
+</div>
+
+
+<h2 id="estadia">7 · Durante la estadía</h2>
+
+<h3>La Tiendita</h3>
+<p>El huésped pide por WhatsApp, paga por Yappy y se le lleva a la cabaña.</p>
+<p><b>Registrar la venta:</b> Contabilidad → <b>Tiendita</b> → <b>+ Registrar venta</b>.
+Subí el voucher del cliente y la IA llena el monto, la fecha, el producto (lo saca del
+mensaje del Yappy) y el huésped. Elegí el item de la lista y el precio se pone solo.</p>
+
+<h3>Servicios especiales</h3>
+<p>Si la reserva tiene un pedido especial (menú, decoración), va en <b>Comentarios</b> al
+cargarla. El sistema avisa a las 9 am del día correspondiente.</p>
+
+<h3>Cambios de último momento</h3>
+<p>Se edita la reserva desde <b>Reservas</b> o tocando el bloque en el calendario. Si marcás
+📧 o 💬 al guardar, se le avisa al huésped del cambio.</p>
+
+
+<h2 id="checkout">8 · Check-out y limpieza</h2>
+
+<ol class="paso">
+  <li><b>9:00 am — automático.</b> Recordatorio de check-out al huésped, con la hora y qué
+      dejar hecho: cocina limpia, la basura se queda (la recoge el personal), llave y control
+      dentro del key box.</li>
+  <li><b>El huésped toca «Ya me retiré».</b> Llega el aviso al administrador y a la persona
+      de limpieza, para que sepa que la cabaña está libre.</li>
+  <li><b>Limpieza.</b> Ya recibió el parte a las 8 am con todos los movimientos del día.</li>
+</ol>
+
+<div class="nota ojo">
+  <b>Reglas de camas que conviene recordar</b>
+  <ul style="margin:6px 0 0">
+    <li>Los <b>pasadías también</b> requieren cambio de sábanas: usan la recámara.</li>
+    <li>En pasadía y pasatarde <b>no</b> se prepara cama auxiliar.</li>
+    <li>En <b>Portal</b> nunca hay cama auxiliar que preparar.</li>
+  </ul>
+</div>
+
+<h3>Check-out extendido</h3>
+<p>Hay una cortesía de salida hasta las 12:30 pm. Se marca en la reserva
+(<span class="pill">Check-out extendido</span>) y aparece en el parte de limpieza como
+🤝, para que la limpieza sepa que esa cabaña se libera más tarde.</p>
+
+
+<h2 id="postventa">9 · Post-venta</h2>
+
+<p>Tres cosas corren solas después de la estadía. No hay que hacer nada, pero conviene
+saber que existen porque los huéspedes preguntan.</p>
+
+<div class="tabla-wrap"><table>
+  <tr><th>Qué</th><th>Cuándo</th><th>Qué recibe el huésped</th></tr>
+  <tr><td><b>Programa Amigos</b><br>(referidos)</td>
+      <td>1 a 3 días después del check-out</td>
+      <td>Su código personal <code>LN-XXXXXX</code>. Quien lo use tiene <b>$20 de descuento</b>.</td></tr>
+  <tr><td><b>Cliente Fiel</b></td>
+      <td>Al alcanzar las visitas requeridas</td>
+      <td>Un crédito de <b>una noche de cortesía</b>.</td></tr>
+  <tr><td><b>Cumpleaños</b></td>
+      <td>En su cumpleaños</td>
+      <td>Saludo con una promoción.</td></tr>
+</table></div>
+
+<h4>Cómo se aplican los descuentos</h4>
+<p>En el modal de reserva:</p>
+<ul>
+  <li><b>Referido:</b> «+ Agregar código de referido», escribir el código y tocar «Aplicar −$20».</li>
+  <li><b>Cliente Fiel:</b> si el huésped tiene crédito, aparece solo un aviso 🎟 con el botón
+      «Aplicar noche de cortesía». Se descuenta la noche <em>más económica</em> de la estadía.</li>
+</ul>
+<p>Los dos aparecen como una línea en el desglose de precio, así que se ve exactamente
+cuánto se descontó.</p>
+
+
+<h2 id="dinero">10 · El dinero</h2>
+
+<p>Todo está en <b>Contabilidad</b>. Arriba hay un filtro de período (por defecto «Este mes»)
+que aplica a todos los sub-tabs.</p>
+
+<div class="tabla-wrap"><table>
+  <tr><th>Sub-tab</th><th>Responde a</th></tr>
+  <tr><td><b>Resumen</b></td><td>¿Cuánto entró, cuánto salió, cómo quedó el balance?</td></tr>
+  <tr><td><b>Ingresos</b></td><td>¿De dónde vino la plata? Airbnb vs directas.</td></tr>
+  <tr><td><b>Egresos</b></td><td>¿En qué se gastó?</td></tr>
+  <tr><td><b>Préstamos</b></td><td>Adelantos a colaboradores que se descuentan de pagos futuros.</td></tr>
+  <tr><td><b>Tiendita</b></td><td>Ventas de insumos y su margen.</td></tr>
+  <tr><td><b>Por Cobrar</b></td><td>¿Qué reservas tienen saldo pendiente?</td></tr>
+</table></div>
+
+<h3>Cargar un gasto</h3>
+<p><b>+ Nuevo egreso</b> → subir la foto de la factura. La IA la lee y llena proveedor,
+fecha, monto y los ítems. Revisar y guardar.</p>
+<p>El sistema <b>rechaza duplicados</b>: si esa factura ya se cargó, avisa antes de guardarla
+de nuevo.</p>
+
+<h3>Préstamos a colaboradores</h3>
+<p>Ejemplo real: se compró un centro de lavado y se descuenta del pago semanal de limpieza.</p>
+<ol class="paso">
+  <li><b>+ Nuevo préstamo</b> → subir la factura (la IA la lee), poner el monto y cuánto se
+      descuenta por cobro.</li>
+  <li>En <b>«Palabras para ubicar los pagos»</b> escribir palabras que aparezcan en esos
+      egresos, separadas por coma. Por ejemplo el nombre de la persona y «limpieza».</li>
+  <li>La tarjeta lista sola los pagos que coinciden, cada uno con un botón para abonar de un toque.</li>
+</ol>
+
+<div class="nota ojo">
+  <b>Cómo entra en las cuentas</b>
+  El pago semanal se registra <b>completo</b> como egreso aunque se entregue menos. Por eso
+  los abonos <b>se restan de los egresos</b> del período: si no, el gasto quedaría inflado
+  justo por lo que se recuperó. No son un ingreso — es plata que nunca salió.
+</div>
+
+<h3>Tiendita</h3>
+<p>El <b>costo</b> sale de las compras ya cargadas en Egresos, cruzadas con los productos
+marcados 🛒 en Suministros. Las <b>ventas</b> se cargan en el sub-tab Tiendita.</p>
+<p>El botón <b>⬇ Importar de la web</b> trae la lista de productos y precios desde la página
+pública, así no hay dos listas que se desincronicen.</p>
+
+<div class="nota ojo">
+  <b>El margen hay que leerlo con cuidado</b>
+  Compara lo vendido contra lo <em>comprado</em> en el período, no contra el costo de lo que
+  se vendió. Si comprás una caja de carbón en enero y la vendés en marzo, enero da negativo y
+  marzo altísimo. <b>Solo es confiable en rangos largos</b> (usá YTD o un rango custom).
+</div>
+
+<h3>Suministros</h3>
+<p>Sección aparte (no está dentro de Contabilidad). Responde «¿cuándo hay que recomprar el
+gas?». Muestra una línea de tiempo por producto y colorea la última compra:
+verde = normal, ocre = se acerca, rojo = ya se pasó del promedio.</p>
+
+
+<h2 id="malaya">11 · Malaya Lodge</h2>
+
+<div class="nota">
+  <b>No es nuestra</b>
+  Es una cabaña de un cliente (Celestino). Nosotros cerramos la reserva como referidos y
+  cobramos <b>comisión: $10 domingo a jueves, $20 viernes y sábado, por noche</b>.
+  No hay que limpiarla, recibir al huésped ni ocuparse de la estadía.
+</div>
+
+<h3>Cómo se opera</h3>
+<ol class="paso">
+  <li>Las reservas se toman <b>solo por WhatsApp</b>. No hay calendario público de Malaya.</li>
+  <li>Dashboard → <b>Disponibilidad</b> → chip <b>Malaya</b>.</li>
+  <li>Tocar la fecha libre, cargar el voucher y el WhatsApp del huésped, y bloquear.</li>
+  <li>Avisar por WhatsApp a Celestino y al huésped.</li>
+  <li>Celestino bloquea esas fechas en su Airbnb.</li>
+</ol>
+
+<h3>La verificación automática</h3>
+<p>Cada 30 minutos el sistema lee el calendario de Airbnb de Malaya y comprueba que las
+fechas estén bloqueadas. Si pasan <b>6 horas</b> sin que aparezcan (o <b>2 horas</b> si el
+check-in es en menos de dos días), llega una alerta.</p>
+<p>El botón <b>🔄 Sync Airbnb</b> del tab hace la verificación al instante y te dice, reserva
+por reserva, si está bloqueada o no.</p>
+
+<div class="nota peligro">
+  <b>Si aparece 🚨 «posible doble booking»</b>
+  Significa que Airbnb tiene una <b>reserva</b> sobre esas mismas noches — no un bloqueo.
+  Alguien más las tomó. Hay que hablar con Celestino <b>ya</b> para ver cuál de las dos queda.
+</div>
+
+<p>Las ganancias acumuladas están al fondo del tab, en <b>Ganancias de Malaya</b>.</p>
+
+
+<h2 id="airbnb">12 · Airbnb</h2>
+
+<p>Casi todo es automático. Cada 15 minutos el sistema lee el correo de Airbnb y:</p>
+<ul>
+  <li>Carga las reservas nuevas.</li>
+  <li>Aplica cambios y cancelaciones.</li>
+  <li>Registra los pagos recibidos.</li>
+</ul>
+
+<div class="nota ojo">
+  <b>Qué NO hace el sistema con Airbnb</b>
+  <ul style="margin:6px 0 0">
+    <li>No bloquea fechas en Airbnb. Si entra una reserva directa, <b>hay que bloquear esas
+        noches en Airbnb a mano</b> o se corre riesgo de doble booking.</li>
+    <li>No responde mensajes de Airbnb.</li>
+  </ul>
+</div>
+
+<p>Los lunes a las 8 am llega un chequeo de salud del sync. Si algo dejó de entrar, ahí se ve.</p>
+
+
+<h2 id="falla">13 · Cuando algo falla</h2>
+
+<div class="tabla-wrap"><table>
+  <tr><th>Síntoma</th><th>Qué significa</th><th>Qué hacer</th></tr>
+  <tr><td>El dashboard pide clave o no muestra nada</td>
+      <td>El navegador perdió la clave.</td>
+      <td>Entrar de nuevo con <code>?k=LA_CLAVE</code>.</td></tr>
+  <tr><td>«Falta el deploy de Apps Script»</td>
+      <td>El servidor está en una versión vieja.</td>
+      <td>Ver abajo, <em>Tope de versiones</em>.</td></tr>
+  <tr><td>El bot no contesta a alguien</td>
+      <td>Esa conversación está en <b>HUMAN_HANDOFF</b>: alguien pidió hablar con una persona.</td>
+      <td>Contestar a mano. Es el comportamiento esperado.</td></tr>
+  <tr><td>No llegan las alertas por WhatsApp</td>
+      <td>La ventana de 24 h de WhatsApp con el administrador se cerró.</td>
+      <td>Mandarle cualquier mensaje al número del negocio desde el celular del administrador. Se reabre.</td></tr>
+  <tr><td>Una reserva de Airbnb no aparece</td>
+      <td>El correo quedó fuera de la ventana de búsqueda.</td>
+      <td>Avisar a quien mantiene el sistema: hay una función de reconciliación.</td></tr>
+  <tr><td>El calendario tarda mucho</td>
+      <td>Suele ser un proceso automático mal configurado corriendo de más.</td>
+      <td>Avisar a quien mantiene el sistema.</td></tr>
+</table></div>
+
+<h4>Tope de versiones de Apps Script</h4>
+<p>El servidor admite 200 versiones. Cuando se llena, los cambios dejan de publicarse y el
+dashboard muestra errores del tipo «acción desconocida».</p>
+<ol class="paso">
+  <li>Entrar al editor de Apps Script.</li>
+  <li>Abrir <b>Historial del proyecto</b> (ícono de reloj a la izquierda).</li>
+  <li>Seleccionar versiones viejas y borrarlas. Se pueden varias a la vez.</li>
+  <li>Volver a lanzar el despliegue desde GitHub → Actions → <em>Deploy Google Apps Script</em> → Run workflow.</li>
+</ol>
+<p class="sub">Las versiones que estén en uso por un despliegue activo no se pueden borrar.</p>
+
+
+<h2 id="contactos">14 · Contactos y datos a mano</h2>
+
+<div class="rellenar">
+  <b>⚠ Esta sección hay que completarla a mano.</b><br>
+  No está llena a propósito: este manual vive en un repositorio público y no deben quedar
+  acá teléfonos, claves ni códigos. Completala en una nota privada o imprimila y guardala.
+</div>
+
+<div class="tabla-wrap"><table>
+  <tr><th>Qué</th><th>Dato</th></tr>
+  <tr><td>Clave del dashboard</td><td>_______________________</td></tr>
+  <tr><td>Persona de limpieza · nombre y WhatsApp</td><td>_______________________</td></tr>
+  <tr><td>Mantenimiento / jardinería</td><td>_______________________</td></tr>
+  <tr><td>Celestino (Malaya)</td><td>_______________________</td></tr>
+  <tr><td>Vecino o contacto en el sitio</td><td>_______________________</td></tr>
+  <tr><td>Cuenta de Google del negocio</td><td>_______________________</td></tr>
+  <tr><td>Quién mantiene el sistema</td><td>_______________________</td></tr>
+  <tr><td>Dónde está el key box de cada cabaña</td><td>_______________________</td></tr>
+</table></div>
+
+<h3>Lo mínimo indispensable</h3>
+<p>Si solo se pueden recordar cinco cosas:</p>
+<ol class="paso">
+  <li><b>Abrir el portón cuando avisen que llegaron.</b> Es lo único que rompe la experiencia si falla.</li>
+  <li><b>Contestar cuando el bot pasa a humano.</b> Ahí el bot se calla y el cliente espera.</li>
+  <li><b>Bloquear en Airbnb</b> las fechas que se venden directo.</li>
+  <li><b>Subir siempre el voucher</b> al cargar una reserva o un gasto: la IA hace el resto.</li>
+  <li><b>Revisar «Reservas de hoy»</b> cada mañana.</li>
+</ol>
+
+<p class="sub" style="margin-top:36px;padding-top:14px;border-top:1px solid var(--border)">
+Este manual describe el sistema tal como funciona hoy. Si algo cambia en el dashboard y acá
+no está, gana lo que hace el sistema — y conviene actualizar esta página.
+</p>
+
+</div></div>
+
+<script>
+  // Misma clave y mismo almacenamiento que el dashboard: quien ya entró ahí,
+  // entra acá sin escribir nada. La verificación es local (solo esconde el
+  // contenido); lo que de verdad protege los DATOS es la clave del backend.
+  function _leerClave() {
+    var enUrl = new URLSearchParams(location.search).get('k') || '';
+    try {
+      if (enUrl) { localStorage.setItem('lnAdminKey', enUrl); return enUrl; }
+      return localStorage.getItem('lnAdminKey') || '';
+    } catch (_) { return enUrl; }
+  }
+  function _mostrar() {
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('manual').style.display = 'block';
+    // Si la URL traía la clave, se saca de la barra: en una captura de
+    // pantalla o al compartir el link se iría con ella.
+    if (new URLSearchParams(location.search).get('k')) {
+      history.replaceState(null, '', location.pathname + location.hash);
+    }
+  }
+  function entrar() {
+    var v = document.getElementById('gateKey').value.trim();
+    if (!v) { document.getElementById('gateMsg').textContent = 'Escribe la clave.'; return; }
+    try { localStorage.setItem('lnAdminKey', v); } catch (_) {}
+    _mostrar();
+  }
+  document.getElementById('gateKey').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') entrar();
+  });
+  if (_leerClave()) _mostrar();
+</script>

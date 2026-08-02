@@ -5,6 +5,14 @@
 - **Auto-merge de PRs**: cuando completes un PR (after push + create), mergéalo directamente sin pedir confirmación. El usuario quiere flujo continuo. Para cambios destructivos o riesgosos (force push, drop tablas, etc.) sigue confirmando.
 - **Español neutral latinoamericano** en todos los textos visibles al cliente final (Agente de WhatsApp, plantillas, emails, dashboard). NADA de voseo rioplatense: usar `tú`/`tienes`/`puedes`/`dime`/`toca`/`escríbeme` — NO `vos`/`tenés`/`podés`/`decime`/`tocá`/`escribime`. Aplica a código nuevo y a strings que se reescriban; código viejo con voseo se va migrando a medida que se toque.
 
+## Manual de operación
+
+- **`manual.html`** — manual operativo para que alguien que no montó el sistema pueda administrar las cabañas (el caso de uso: si el admin se enferma o viaja). Servido por GitHub Pages, enlazado desde el menú del dashboard.
+- **Va protegido con la MISMA clave del dashboard** (`lnAdminKey` en localStorage, o `?k=`): el repo es público y el manual explica comisiones, sueldos y procedimientos internos. Quien ya entró al dashboard lo abre sin volver a escribirla; la clave se borra de la URL al entrar.
+- **No lleva secretos**: ni claves, ni llaves de API, ni el código del key box, ni teléfonos del equipo. La sección "Contactos" es una tabla vacía a propósito, para llenar en privado o impresa.
+- Tiene estilos de impresión (`@media print`) — la idea es que se pueda dejar una copia en papel.
+- Si cambia el comportamiento del sistema, hay que actualizarlo: describe procedimientos, no código.
+
 ## Arquitectura
 
 - **Frontend**: `dashboard.html` (single-file SPA), servido vía GitHub Pages desde `main`.
