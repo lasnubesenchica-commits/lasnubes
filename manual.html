@@ -64,6 +64,30 @@
         border-radius:20px;padding:2px 10px;font-size:13px;margin:2px 3px 2px 0}
   .rellenar{background:repeating-linear-gradient(45deg,transparent,transparent 6px,var(--border) 6px,var(--border) 7px);
             border:1px dashed var(--ambar);border-radius:8px;padding:10px 14px;margin:10px 0;font-size:14.5px}
+  /* Campos editables de la sección Contactos. Se guardan en el navegador. */
+  .fm-fila{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin:8px 0;align-items:start}
+  .fm-fila input,textarea,.fm-full{width:100%;padding:9px 11px;border:1px solid var(--border);
+    border-radius:9px;background:var(--surface);color:var(--text);font-family:inherit;font-size:14.5px}
+  textarea{resize:vertical}
+  .fm-del{background:none;border:1px solid var(--border);border-radius:8px;color:var(--muted);
+    cursor:pointer;padding:8px 11px;font-family:inherit}
+  .fm-del:hover{color:var(--rojo);border-color:var(--rojo)}
+  .fm-acc{margin:10px 0}
+  .fm-acc label{display:block;font-size:13px;color:var(--muted);margin-bottom:3px;font-weight:600}
+  .btn-add,.btn-sec{background:none;border:1px solid var(--border);border-radius:9px;
+    padding:8px 14px;font-family:inherit;font-size:14px;color:var(--text);cursor:pointer}
+  .btn-add:hover,.btn-sec:hover{border-color:var(--muted)}
+  .fm-barra{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:18px 0 0;
+    padding-top:14px;border-top:1px solid var(--border)}
+  /* Sobre de emergencia: pensado para imprimirse y llenarse a mano. */
+  .sobre{border:2px dashed var(--ambar);border-radius:12px;padding:16px 18px;margin:16px 0}
+  .sobre-t{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--ambar);margin-bottom:10px}
+  .sobre td{padding:11px 8px;font-size:14px}
+  .sobre .linea{border-bottom:1px solid var(--muted)}
+  .sobre-f{margin-top:12px;font-size:13.5px;color:var(--muted)}
+  @media (max-width:600px){ .fm-fila{grid-template-columns:1fr;} }
+
   #gate{max-width:420px;margin:18vh auto;padding:0 20px;text-align:center}
   #gate input{width:100%;padding:12px;font-size:16px;border:1px solid var(--border);
               border-radius:10px;background:var(--surface);color:var(--text);margin-top:12px}
@@ -117,7 +141,8 @@
     <li><a href="#malaya">Malaya Lodge</a></li>
     <li><a href="#airbnb">Airbnb</a></li>
     <li><a href="#falla">Cuando algo falla</a></li>
-    <li><a href="#contactos">Contactos y datos a mano</a></li>
+    <li><a href="#contactos">Contactos y accesos</a></li>
+    <li><a href="#emergencia">Acceso de emergencia</a></li>
   </ol>
 </div>
 
@@ -569,25 +594,142 @@ dashboard muestra errores del tipo «acción desconocida».</p>
 <p class="sub">Las versiones que estén en uso por un despliegue activo no se pueden borrar.</p>
 
 
-<h2 id="contactos">14 · Contactos y datos a mano</h2>
+<h2 id="contactos">14 · Contactos y accesos</h2>
 
-<div class="rellenar">
-  <b>⚠ Esta sección hay que completarla a mano.</b><br>
-  No está llena a propósito: este manual vive en un repositorio público y no deben quedar
-  acá teléfonos, claves ni códigos. Completala en una nota privada o imprimila y guardala.
+<div class="nota peligro">
+  <b>Nada de esto se guarda en internet</b>
+  Lo que escribas acá abajo queda <b>solo en este teléfono o computadora</b>, en el
+  almacenamiento del navegador. No se sube al repositorio ni a ningún servidor.
+  Si borrás los datos del navegador, se pierde: por eso está el botón de
+  <b>Exportar</b>, para guardar una copia.
 </div>
 
+<div class="nota peligro">
+  <b>Las contraseñas de verdad NO van acá</b>
+  Ni acá ni en ningún archivo del sistema. El código de Las Nubes vive en un repositorio
+  <b>público</b>: cualquiera en internet puede leerlo, y aunque se borre después, queda en el
+  historial para siempre. Acá se escribe <b>dónde están</b> las claves, no cuáles son.
+  Cómo dejarlas accesibles a la familia está en la sección de al lado, <em>Acceso de
+  emergencia</em>.
+</div>
+
+<h3>Contactos operativos</h3>
+<div id="fmContactos"></div>
+<button class="btn-add noprint" onclick="fmAgregar()">+ Agregar contacto</button>
+
+<h3>Dónde está cada acceso</h3>
+<p class="sub">Anotá <em>dónde</em> se consigue cada clave, no la clave. Ejemplo:
+«Google: en Bitwarden, bóveda Las Nubes — mi hermano tiene acceso de emergencia».</p>
+<div id="fmAccesos"></div>
+
+<h3>Notas</h3>
+<textarea id="fmNotas" rows="5" placeholder="Cualquier cosa que convenga recordar: dónde está el key box de cada cabaña, el medidor del agua, quién tiene copia de las llaves…"></textarea>
+
+<div class="fm-barra noprint">
+  <span id="fmEstado" class="sub"></span>
+  <span style="margin-left:auto"></span>
+  <button class="btn-sec" onclick="fmExportar()">⬇ Exportar copia</button>
+  <label class="btn-sec" style="cursor:pointer">⬆ Importar
+    <input type="file" accept=".json,application/json" onchange="fmImportar(event)" style="display:none">
+  </label>
+</div>
+
+
+<h2 id="emergencia">15 · Acceso de emergencia</h2>
+
+<p>Esta es la parte que de verdad resuelve «si me pasa algo, que mi familia pueda seguir».
+No se resuelve escribiendo contraseñas en un archivo: se resuelve dejando configurado que
+otra persona <b>pueda recuperarlas</b>.</p>
+
+<h3>Por qué la cuenta de Google es la llave maestra</h3>
+<p>La cuenta <code>lasnubesenchica@gmail.com</code> no es «un correo más». De ella cuelga:</p>
+<ul>
+  <li><b>Gmail</b> — por ahí entran las reservas y los pagos de Airbnb, que el sistema lee solo.</li>
+  <li><b>Google Sheets</b> — TODOS los datos: reservas, huéspedes, contabilidad, conversaciones.</li>
+  <li><b>Google Drive</b> — los vouchers y las cédulas de los huéspedes.</li>
+  <li><b>Apps Script</b> — el programa que hace funcionar todo. Es parte de la misma cuenta.</li>
+</ul>
+
+<div class="nota ojo">
+  <b>Sobre GitHub y Claude</b>
+  No es exactamente que «se logueen con Google». Apps Script <b>sí</b> es la cuenta de Google.
+  Claude admite entrar con Google, así que probablemente sí. <b>GitHub casi seguro que no</b>
+  —usa su propio usuario y contraseña—, pero eso no cambia nada en la práctica:
+  <b>quien controla el Gmail puede pedir el restablecimiento de contraseña de casi cualquier
+  servicio</b>, porque el correo de recuperación llega ahí. Por eso el Gmail es la llave
+  maestra aunque no sea el login directo.
+  <br><br>
+  Conviene verificarlo y anotarlo: entrá a cada servicio y fijate si dice «Continuar con
+  Google» o si pide contraseña propia.
+</div>
+
+<h3>Qué hay que dejar configurado</h3>
+<p>Tres cosas, una sola vez. Con esto la familia recupera todo sin que haya una contraseña
+escrita en ningún lado.</p>
+
 <div class="tabla-wrap"><table>
-  <tr><th>Qué</th><th>Dato</th></tr>
-  <tr><td>Clave del dashboard</td><td>_______________________</td></tr>
-  <tr><td>Persona de limpieza · nombre y WhatsApp</td><td>_______________________</td></tr>
-  <tr><td>Mantenimiento / jardinería</td><td>_______________________</td></tr>
-  <tr><td>Celestino (Malaya)</td><td>_______________________</td></tr>
-  <tr><td>Vecino o contacto en el sitio</td><td>_______________________</td></tr>
-  <tr><td>Cuenta de Google del negocio</td><td>_______________________</td></tr>
-  <tr><td>Quién mantiene el sistema</td><td>_______________________</td></tr>
-  <tr><td>Dónde está el key box de cada cabaña</td><td>_______________________</td></tr>
+  <tr><th>#</th><th>Qué</th><th>Cómo</th></tr>
+  <tr><td>1</td>
+      <td><b>Gestor de contraseñas con acceso de emergencia</b><br>
+          <span class="sub">Bitwarden (gratis) o 1Password</span></td>
+      <td>Guardá ahí todas las claves. Activá <b>Emergency Access</b> y designá a tu hermano o
+          tu mamá. Ellos piden acceso; si no respondés en X días, se les concede solo.
+          Es el mecanismo hecho exactamente para este caso.</td></tr>
+  <tr><td>2</td>
+      <td><b>Contacto de legado de Apple</b><br>
+          <span class="sub">para el iPhone y iCloud</span></td>
+      <td>Ajustes → tu nombre → Contraseña y seguridad → <b>Contacto de legado</b>.
+          Genera una clave de acceso que hay que darle a esa persona (o imprimirla).</td></tr>
+  <tr><td>3</td>
+      <td><b>Administrador de cuentas inactivas de Google</b></td>
+      <td>En <code>myaccount.google.com</code> → Datos y privacidad → <b>Administrador de
+          cuentas inactivas</b>. Definís cuánto tiempo de inactividad y a quién se le avisa
+          y se le da acceso.</td></tr>
 </table></div>
+
+<div class="nota ok">
+  <b>Por qué esto es mejor que una lista de contraseñas</b>
+  Una lista se desactualiza en cuanto cambiás una clave, y si se filtra no hay vuelta atrás.
+  Los tres mecanismos de arriba siempre entregan la versión vigente, dejan registro de quién
+  pidió acceso, y se pueden revocar.
+</div>
+
+<h3>El sobre de emergencia (respaldo en papel)</h3>
+<p>Los mecanismos digitales fallan si la persona no tiene el celular a mano o no recuerda su
+propia cuenta. Un respaldo físico cubre eso.</p>
+<ol class="paso">
+  <li>Imprimí esta página (o solo esta sección).</li>
+  <li>Completá <b>a mano</b> el recuadro de abajo.</li>
+  <li>Metelo en un sobre cerrado y firmá la solapa.</li>
+  <li>Guardalo donde guardarías un documento importante — no en la cabaña.</li>
+  <li>Decile a dos personas dónde está.</li>
+</ol>
+
+<div class="sobre">
+  <div class="sobre-t">SOBRE DE EMERGENCIA · completar a mano · no fotografiar</div>
+  <table>
+    <tr><td style="width:44%">Clave maestra del gestor de contraseñas</td><td class="linea"></td></tr>
+    <tr><td>Contraseña de <code>lasnubesenchica@gmail.com</code></td><td class="linea"></td></tr>
+    <tr><td>Dónde está el segundo factor de Google<br><span class="sub">(app, SMS, llave física)</span></td><td class="linea"></td></tr>
+    <tr><td>Códigos de respaldo de Google</td><td class="linea"></td></tr>
+    <tr><td>Apple ID y contraseña</td><td class="linea"></td></tr>
+    <tr><td>Código del iPhone</td><td class="linea"></td></tr>
+    <tr><td>Clave del dashboard</td><td class="linea"></td></tr>
+    <tr><td>Usuario y contraseña de GitHub</td><td class="linea"></td></tr>
+    <tr><td>PIN / acceso del banco o Yappy</td><td class="linea"></td></tr>
+    <tr><td>Otros</td><td class="linea"></td></tr>
+  </table>
+  <div class="sobre-f">Fecha: ____ / ____ / ______ &nbsp;&nbsp;·&nbsp;&nbsp; Firma: ______________________</div>
+</div>
+
+<div class="nota peligro">
+  <b>Tres cosas que NO hay que hacer</b>
+  <ul style="margin:6px 0 0">
+    <li>No mandar estas claves por WhatsApp, correo ni foto: quedan en el historial del chat y en la nube del teléfono.</li>
+    <li>No escribirlas en el manual, en el código ni en una hoja de cálculo del negocio.</li>
+    <li>No usar la misma contraseña del Gmail en otro servicio.</li>
+  </ul>
+</div>
 
 <h3>Lo mínimo indispensable</h3>
 <p>Si solo se pueden recordar cinco cosas:</p>
@@ -626,6 +768,136 @@ no está, gana lo que hace el sistema — y conviene actualizar esta página.
       history.replaceState(null, '', location.pathname + location.hash);
     }
   }
+
+  // ─── Contactos y accesos: SOLO en este dispositivo ───────────────
+  //
+  // Se guarda en localStorage, no en el repositorio ni en ningún servidor. El
+  // repo es PÚBLICO: cualquier dato que se commitee queda visible para siempre,
+  // incluso si después se borra (queda en el historial de git y en los forks).
+  //
+  // Por eso el campo de accesos pide DÓNDE está cada clave, no la clave. Aun
+  // así localStorage no está cifrado: quien tenga el teléfono desbloqueado
+  // puede leerlo. Es adecuado para "está en Bitwarden", no para la contraseña.
+  var FM_KEY = 'ln_manual_contactos';
+  var FM_ACCESOS = [
+    ['google',   'Cuenta de Google (Gmail, Drive, Sheets, Apps Script)'],
+    ['apple',    'Apple ID / iCloud'],
+    ['github',   'GitHub'],
+    ['claude',   'Claude'],
+    ['dashboard','Clave del dashboard'],
+    ['banco',    'Banco / Yappy'],
+    ['whatsapp', 'WhatsApp Business'],
+    ['otros',    'Otros']
+  ];
+
+  function fmLeer() {
+    try { return JSON.parse(localStorage.getItem(FM_KEY) || '{}'); } catch (_) { return {}; }
+  }
+  function fmGuardar(d) {
+    try {
+      localStorage.setItem(FM_KEY, JSON.stringify(d));
+      fmEstadoTxt('Guardado en este dispositivo · ' + new Date().toLocaleString('es-PA'));
+    } catch (e) {
+      fmEstadoTxt('⚠ No se pudo guardar: ' + e.message);
+    }
+  }
+  function fmEstadoTxt(t) {
+    var el = document.getElementById('fmEstado');
+    if (el) el.textContent = t;
+  }
+
+  function fmRecolectar() {
+    var d = { contactos: [], accesos: {}, notas: '' };
+    document.querySelectorAll('#fmContactos .fm-fila').forEach(function (f) {
+      var i = f.querySelectorAll('input');
+      if (i[0].value.trim() || i[1].value.trim()) {
+        d.contactos.push({ quien: i[0].value.trim(), dato: i[1].value.trim() });
+      }
+    });
+    FM_ACCESOS.forEach(function (a) {
+      var el = document.getElementById('fmAcc_' + a[0]);
+      if (el && el.value.trim()) d.accesos[a[0]] = el.value.trim();
+    });
+    var n = document.getElementById('fmNotas');
+    d.notas = n ? n.value : '';
+    return d;
+  }
+  function fmSync() { fmGuardar(fmRecolectar()); }
+
+  function fmFilaHtml(quien, dato) {
+    var div = document.createElement('div');
+    div.className = 'fm-fila';
+    div.innerHTML =
+      '<input placeholder="Quién / qué" value="' + fmEsc(quien) + '">' +
+      '<input placeholder="Teléfono, nombre, detalle" value="' + fmEsc(dato) + '">' +
+      '<button class="fm-del noprint" title="Quitar">✕</button>';
+    div.querySelectorAll('input').forEach(function (i) { i.addEventListener('input', fmSync); });
+    div.querySelector('.fm-del').onclick = function () { div.remove(); fmSync(); };
+    return div;
+  }
+  function fmEsc(v) {
+    return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function fmAgregar(quien, dato) {
+    document.getElementById('fmContactos').appendChild(fmFilaHtml(quien || '', dato || ''));
+  }
+
+  function fmPintar() {
+    var d = fmLeer();
+    var cont = document.getElementById('fmContactos');
+    cont.innerHTML = '';
+    // Arranca con las filas típicas para que no haya que inventarlas.
+    var base = (d.contactos && d.contactos.length) ? d.contactos : [
+      { quien: 'Limpieza', dato: '' },
+      { quien: 'Mantenimiento / jardinería', dato: '' },
+      { quien: 'Celestino (Malaya)', dato: '' },
+      { quien: 'Vecino / contacto en el sitio', dato: '' },
+      { quien: 'Quién mantiene el sistema', dato: '' }
+    ];
+    base.forEach(function (c) { cont.appendChild(fmFilaHtml(c.quien, c.dato)); });
+
+    var acc = document.getElementById('fmAccesos');
+    acc.innerHTML = FM_ACCESOS.map(function (a) {
+      return '<div class="fm-acc"><label>' + a[1] + '</label>' +
+             '<input class="fm-full" id="fmAcc_' + a[0] + '" placeholder="Dónde está la clave" value="' +
+             fmEsc((d.accesos || {})[a[0]]) + '"></div>';
+    }).join('');
+    acc.querySelectorAll('input').forEach(function (i) { i.addEventListener('input', fmSync); });
+
+    var n = document.getElementById('fmNotas');
+    n.value = d.notas || '';
+    n.addEventListener('input', fmSync);
+
+    fmEstadoTxt(localStorage.getItem(FM_KEY) ? 'Guardado en este dispositivo' : 'Todavía sin guardar');
+  }
+
+  // Exportar/importar: localStorage se borra al limpiar el navegador, y no viaja
+  // entre dispositivos. La copia es un archivo que el usuario guarda donde quiera.
+  function fmExportar() {
+    var blob = new Blob([JSON.stringify(fmRecolectar(), null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'las-nubes-contactos.json';
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  }
+  function fmImportar(ev) {
+    var f = ev.target.files[0];
+    if (!f) return;
+    var fr = new FileReader();
+    fr.onload = function () {
+      try {
+        var d = JSON.parse(fr.result);
+        if (!confirm('Esto reemplaza lo que hay cargado en este dispositivo. ¿Continuar?')) return;
+        fmGuardar(d);
+        fmPintar();
+      } catch (e) { alert('El archivo no se pudo leer: ' + e.message); }
+    };
+    fr.readAsText(f);
+    ev.target.value = '';
+  }
+
   function entrar() {
     var v = document.getElementById('gateKey').value.trim();
     if (!v) { document.getElementById('gateMsg').textContent = 'Escribe la clave.'; return; }
@@ -636,4 +908,5 @@ no está, gana lo que hace el sistema — y conviene actualizar esta página.
     if (e.key === 'Enter') entrar();
   });
   if (_leerClave()) _mostrar();
+  fmPintar();
 </script>
