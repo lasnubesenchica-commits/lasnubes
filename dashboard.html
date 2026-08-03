@@ -17742,15 +17742,31 @@ function _recPintar() {
     }).join('');
   }
 
-  // Candidatos: cualquier keyword trackeada menos el propio item y los ya
-  // puestos. Se excluye el propio para que no se pueda armar consigo mismo.
+  // Candidatos: las palabras clave de Suministros (todas, no solo las 🛒 — la
+  // leña de un kit no se vende suelta y nunca tendría el 🛒), menos el propio
+  // item y los ya puestos. Se excluye el propio para que no se arme consigo mismo.
+  // Van ALFABÉTICOS y con su costo unitario al lado: el orden de la hoja ofrecía
+  // "Papel" para una bolsa de carbón, y sin el costo no se puede elegir bien.
   const usados = new Set(_recCtx.partes.map(p => p.nkw));
-  const opts = (_suministrosKeywords || [])
+  const cands = (_suministrosKeywords || [])
     .filter(k => _sumNormalize(k) !== propio && !usados.has(_sumNormalize(k)))
-    .map(k => '<option value="' + _sumNormalize(k) + '">' + escapeHtml(k) + '</option>');
+    .map(k => ({ kw: k, nkw: _sumNormalize(k), cu: _sumCostoUnitario(k, new Set([propio])) }))
+    .sort((a, b) => a.kw.localeCompare(b.kw, 'es'));
+  // Los que ya tienen costo primero: son los que sirven para armar una receta
+  // completa. Los otros igual se pueden elegir, avisando que falta el dato.
+  const conCosto = cands.filter(c => c.cu != null);
+  const sinCosto = cands.filter(c => c.cu == null);
+  const opt = c => '<option value="' + c.nkw + '">' + escapeHtml(c.kw)
+    + (c.cu != null ? '  —  $' + c.cu.toFixed(2) + ' c/u' : '  —  sin costo') + '</option>';
+  let opts = '';
+  if (conCosto.length) opts += '<optgroup label="Con costo conocido">' + conCosto.map(opt).join('') + '</optgroup>';
+  if (sinCosto.length) opts += '<optgroup label="Sin compras registradas">' + sinCosto.map(opt).join('') + '</optgroup>';
+  // Un componente que todavía no es palabra clave (los malvaviscos la primera
+  // vez) no estaría en la lista y obligaría a salir a Suministros a crearlo.
+  opts += '<option value="__nuevo__">➕ Otro insumo…</option>';
   const sel = document.getElementById('recNuevo');
-  sel.innerHTML = opts.length ? opts.join('') : '<option value="">(no quedan insumos)</option>';
-  sel.disabled = !opts.length;
+  sel.innerHTML = opts;
+  sel.disabled = false;
 
   const det = _recCtx.partes.reduce((acc, p) => {
     const cu = _sumCostoUnitario(p.nkw, new Set([propio]));
@@ -17758,15 +17774,25 @@ function _recPintar() {
     return acc;
   }, { total: 0, faltan: 0 });
   const pv = _sumPrecioVenta(_recCtx.kw);
-  let txt = '<strong>Costo de armar 1: $' + det.total.toFixed(2) + '</strong>';
-  if (det.faltan) txt += ' <span style="color:#b8860b;">(faltan ' + det.faltan + ' componente'
-    + (det.faltan === 1 ? '' : 's') + ' sin costo — el total está incompleto)</span>';
-  if (pv > 0 && !det.faltan) {
-    const mg = ((pv - det.total) / pv) * 100;
-    txt += '<div style="margin-top:5px;color:var(--text-muted);">Se vende a $' + pv.toFixed(2)
-      + ' → margen ' + mg.toFixed(0) + '% ($' + (pv - det.total).toFixed(2) + ' por unidad)</div>';
-  } else if (!(pv > 0)) {
-    txt += '<div style="margin-top:5px;color:var(--text-muted);">Sin precio de venta cargado todavía.</div>';
+  let txt;
+  if (!_recCtx.partes.length) {
+    // Sin componentes el costo es 0, y con eso el margen daría 100% — un número
+    // inventado. Se dice de dónde sale hoy el costo en vez de mostrarlo.
+    const propioCu = _sumCostoUnitarioPropio(_recCtx.kw);
+    txt = '<span style="color:var(--text-muted);">Sin receta, el costo de este item sale de sus propias compras'
+      + (propioCu != null ? ' (<strong>$' + propioCu.toFixed(2) + ' c/u</strong>).' : ', y todavía no tiene ninguna.')
+      + '</span>';
+  } else {
+    txt = '<strong>Costo de armar 1: $' + det.total.toFixed(2) + '</strong>';
+    if (det.faltan) txt += ' <span style="color:#b8860b;">(faltan ' + det.faltan + ' componente'
+      + (det.faltan === 1 ? '' : 's') + ' sin costo — el total está incompleto)</span>';
+    if (pv > 0 && !det.faltan) {
+      const mg = ((pv - det.total) / pv) * 100;
+      txt += '<div style="margin-top:5px;color:var(--text-muted);">Se vende a $' + pv.toFixed(2)
+        + ' → margen ' + mg.toFixed(0) + '% ($' + (pv - det.total).toFixed(2) + ' por unidad)</div>';
+    } else if (!(pv > 0)) {
+      txt += '<div style="margin-top:5px;color:var(--text-muted);">Sin precio de venta cargado todavía.</div>';
+    }
   }
   document.getElementById('recTotal').innerHTML = txt;
   document.getElementById('recDelBtn').style.display = _sumTieneReceta(_recCtx.kw) ? '' : 'none';
@@ -17797,8 +17823,20 @@ function _recQty(el) {
 
 function _recAgregar() {
   const sel = document.getElementById('recNuevo');
-  const nkw = sel.value;
+  let nkw = sel.value;
   if (!_recCtx || !nkw) return;
+  if (nkw === '__nuevo__') {
+    const v = (prompt('Nombre del insumo (así como aparece en las facturas):') || '').trim();
+    if (!v) return;
+    nkw = _sumNormalize(v);
+    if (nkw === _sumNormalize(_recCtx.kw)) return showToast('Un item no se puede armar consigo mismo');
+    if (_recCtx.partes.some(p => p.nkw === nkw)) return showToast('Ese insumo ya está en la receta');
+    _suministrosKeywords = _suministrosKeywords || [];
+    if (!_suministrosKeywords.some(k => _sumNormalize(k) === nkw)) {
+      _suministrosKeywords.push(v);
+      _saveSuministrosKeywords();   // queda trackeado en Suministros, como cualquier otro
+    }
+  }
   _recCtx.partes.push({ nkw, qty: 1 });
   _recPintar();
 }
