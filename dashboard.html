@@ -4791,6 +4791,33 @@
   </div>
 </div>
 
+<!-- Receta de un item de la tiendita: de qué se compone lo que se ARMA. -->
+<div class="modal-overlay" id="recetaModal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-body">
+      <div class="modal-title">Receta de <span id="recTitulo"></span></div>
+      <div class="modal-aviso" style="margin-bottom:14px;">
+        Para lo que <strong>armas</strong> en vez de comprar hecho. Un kit no aparece nunca en una factura,
+        así que su costo son sus componentes. Los insumos se siguen comprando y contando igual —
+        esto solo dice cuánto vale <em>una</em> unidad armada.
+      </div>
+      <div id="recPartes"></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:12px;">
+        <select id="recNuevo" style="flex:1;font-size:13px;"></select>
+        <button class="btn btn-ghost" style="font-size:12px;padding:5px 12px;white-space:nowrap;" onclick="_recAgregar()">+ Agregar</button>
+      </div>
+      <div id="recTotal" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);font-size:13px;"></div>
+    </div>
+    <div class="modal-footer" style="justify-content:space-between;">
+      <button class="btn btn-ghost" id="recDelBtn" onclick="_recBorrarReceta()" style="color:#c0392b;">Quitar receta</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost" onclick="closeRecetaModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="saveRecetaModal()">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -16224,6 +16251,23 @@ async function cargarTiendita() {
 
 // Costo de la mercadería comprada en el período: la porción de cada egreso que
 // corresponde a una keyword de reventa.
+// Keywords cuyas compras son inventario de la tiendita: las marcadas 🛒 MÁS los
+// componentes de sus recetas. Los malvaviscos que solo existen para armar el
+// kit son mercadería aunque nunca se vendan sueltos, así que dejarlos fuera
+// subestimaba lo comprado.
+function _tienditaKeywordsCompradas() {
+  const out = new Set();
+  const visitar = (kw, prof) => {
+    const n = _sumNormalize(kw);
+    if (out.has(n) || prof > 8) return;
+    out.add(n);
+    const rec = _sumReceta(kw);
+    if (rec) Object.keys(rec).forEach(c => visitar(c, prof + 1));
+  };
+  (_suministrosKeywords || []).filter(_sumEsReventa).forEach(kw => visitar(kw, 0));
+  return out;
+}
+
 function _tienditaCosto() {
   const porItem = {};
   const kws = (_suministrosKeywords || []).filter(_sumEsReventa);
@@ -16255,28 +16299,70 @@ function renderTiendita() {
   }
   const kwsReventa = (_suministrosKeywords || []).filter(_sumEsReventa);
   const costos = _tienditaCosto();
-  const costoTotal = Object.keys(costos).reduce((t, k) => t + costos[k].costo, 0);
+  // Lo comprado incluye los componentes de las recetas, no solo lo marcado 🛒.
+  const nkwsCompra = _tienditaKeywordsCompradas();
+  let costoTotal = 0;
+  egresos.forEach(e => {
+    if (!_sumCatOk(e) || !_matchesSelectedPeriod(e.date)) return;
+    nkwsCompra.forEach(nkw => {
+      if (!_sumMatchesKw(e, nkw)) return;
+      const m = _sumItemAmount(e, nkw);
+      costoTotal += (m == null ? (parseFloat(e.amount) || 0) : m);
+    });
+  });
+  costoTotal = +costoTotal.toFixed(2);
   const ventasPeriodo = tienditaVentas.filter(v => _matchesSelectedPeriod(v.fecha));
   const ventaTotal = ventasPeriodo.reduce((t, v) => t + (parseFloat(v.monto) || 0), 0);
-  const ganancia = +(ventaTotal - costoTotal).toFixed(2);
-  const margen = ventaTotal > 0 ? (ganancia / ventaTotal) * 100 : 0;
+
+  // COSTO DE LO VENDIDO (COGS): unidad por unidad, resolviendo la receta cuando
+  // el item se arma. Es la única forma de que el margen de un mes suelto
+  // signifique algo — "comprado" y "vendido" son dos cosas distintas y una
+  // compra grande descuadra la comparación.
+  let cogs = 0, sinCosto = 0;
+  const sinCostoItems = new Set();
+  ventasPeriodo.forEach(v => {
+    const q  = parseFloat(v.cantidad) || 1;
+    const cu = v.item ? _sumCostoUnitario(v.item) : null;
+    if (cu == null) { sinCosto += q; sinCostoItems.add(v.item || '—'); return; }
+    cogs += q * cu;
+  });
+  cogs = +cogs.toFixed(2);
+  const gananciaReal = +(ventaTotal - cogs).toFixed(2);
+  const margenReal   = ventaTotal > 0 ? (gananciaReal / ventaTotal) * 100 : 0;
 
   let html = '<div class="stats-grid">'
     + '<div class="stat-card"><div class="stat-label">Vendido</div>'
     +   '<div class="stat-value positive">$' + ventaTotal.toFixed(2) + '</div>'
     +   '<div class="stat-sub">' + ventasPeriodo.length + ' venta' + (ventasPeriodo.length === 1 ? '' : 's') + '</div></div>'
-    + '<div class="stat-card"><div class="stat-label">Costo comprado</div>'
-    +   '<div class="stat-value negative">$' + costoTotal.toFixed(2) + '</div>'
-    +   '<div class="stat-sub">' + kwsReventa.length + ' item' + (kwsReventa.length === 1 ? '' : 's') + ' de reventa</div></div>'
-    + '<div class="stat-card"><div class="stat-label">Diferencia</div>'
-    +   '<div class="stat-value ' + (ganancia >= 0 ? 'positive' : 'negative') + '">$' + ganancia.toFixed(2) + '</div>'
-    +   '<div class="stat-sub">' + (ventaTotal > 0 ? 'margen ' + margen.toFixed(0) + '%' : 'sin ventas') + '</div></div>'
-    + '</div>'
-    // La advertencia no es decorativa: en un mes suelto se compara una compra
-    // grande contra las ventas de ese mes, y el margen sale absurdo.
-    + '<div class="modal-aviso modal-aviso--ambar" style="margin-bottom:18px;">'
-    + 'La <strong>diferencia</strong> compara lo vendido contra lo <em>comprado</em> en el período, no contra el costo de lo que se vendió. '
-    + 'En un mes suelto una compra grande la distorsiona; el margen recién es confiable en rangos largos.'
+    + '<div class="stat-card"><div class="stat-label">Costo de lo vendido</div>'
+    +   '<div class="stat-value negative">$' + cogs.toFixed(2) + '</div>'
+    +   '<div class="stat-sub"' + (sinCosto ? ' title="' + escapeHtml([...sinCostoItems].join(', ')) + '"' : '') + '>'
+    +     (sinCosto ? '⚠ ' + sinCosto + ' unidad' + (sinCosto === 1 ? '' : 'es') + ' sin costo conocido'
+                    : 'unidad por unidad') + '</div></div>'
+    + '<div class="stat-card"><div class="stat-label">Ganancia</div>'
+    +   '<div class="stat-value ' + (gananciaReal >= 0 ? 'positive' : 'negative') + '">$' + gananciaReal.toFixed(2) + '</div>'
+    +   '<div class="stat-sub">' + (ventaTotal > 0 ? 'margen ' + margenReal.toFixed(0) + '%' : 'sin ventas') + '</div></div>'
+    + '<div class="stat-card"><div class="stat-label">Comprado en el período</div>'
+    +   '<div class="stat-value">$' + costoTotal.toFixed(2) + '</div>'
+    +   '<div class="stat-sub">' + kwsReventa.length + ' item' + (kwsReventa.length === 1 ? '' : 's') + ' de reventa'
+    +     (nkwsCompra.size > kwsReventa.length
+            ? ' + ' + (nkwsCompra.size - kwsReventa.length) + ' insumo' + (nkwsCompra.size - kwsReventa.length === 1 ? '' : 's')
+            : '') + '</div></div>'
+    + '</div>';
+
+  // El aviso solo tiene sentido si de verdad falta costo: con todo resuelto, el
+  // margen ya es real y repetir la advertencia vieja lo haría dudar de un
+  // número correcto.
+  if (sinCosto) {
+    html += '<div class="modal-aviso modal-aviso--ambar" style="margin-bottom:18px;">'
+      + 'Hay ventas cuyo costo unitario no se puede calcular (' + escapeHtml([...sinCostoItems].join(', ')) + '). '
+      + 'Un item que <strong>se compra tal cual se vende</strong> necesita al menos una factura con su cantidad; '
+      + 'uno que <strong>se arma</strong> (un kit) necesita su receta — tócalo en la lista de abajo con el botón 🧩.'
+      + '</div>';
+  }
+  html += '<div class="modal-aviso" style="margin-bottom:18px;">'
+    + '<strong>Comprado</strong> es lo que gastaste en el período; <strong>costo de lo vendido</strong> es lo que costó '
+    + 'lo que efectivamente saliste a vender. La ganancia usa el segundo, así que una compra grande de stock ya no descuadra el margen.'
     + '</div>';
 
   if (!kwsReventa.length) {
@@ -16297,17 +16383,38 @@ function renderTiendita() {
       // para poner el precio de venta y para ver el margen.
       const uds = ventasPeriodo.filter(v => _sumNormalize(v.item) === _sumNormalize(kw))
                                .reduce((t, v) => t + (parseFloat(v.cantidad) || 1), 0);
+      // Costo UNITARIO: por receta si el item se arma, si no por sus compras.
+      const cu   = _sumCostoUnitario(kw);
+      const det  = _sumRecetaDetalle(kw);
+      const arg  = JSON.stringify(kw).replace(/"/g, '&quot;');
+      // El subtítulo dice de DÓNDE sale el costo. Sin eso, un kit con receta y
+      // uno sin compras se ven igual ("$0.00") por motivos opuestos.
+      let sub;
+      if (det) {
+        sub = '🧩 ' + det.partes.map(p => escapeHtml(p.kw) + (p.qty !== 1 ? ' ×' + p.qty : '')).join(' + ')
+            + (det.faltan ? ' · ⚠ ' + det.faltan + ' sin costo' : '');
+      } else {
+        sub = c.compras + ' compra' + (c.compras === 1 ? '' : 's')
+            + (uds ? ' · ' + uds + ' vendida' + (uds === 1 ? '' : 's') : '')
+            + (c.compras ? '' : ' · sin costo todavía');
+      }
+      // Margen unitario: el dato que decide si el precio de lista tiene sentido.
+      const mg = (cu != null && pv > 0) ? ((pv - cu) / pv) * 100 : null;
       html += '<div class="tv-row">'
         + '<div class="tv-row-main">' + escapeHtml(kw)
-        +   '<div class="tv-row-sub">' + c.compras + ' compra' + (c.compras === 1 ? '' : 's')
-        +     (uds ? ' · ' + uds + ' vendida' + (uds === 1 ? '' : 's') : '') + '</div></div>'
+        +   '<div class="tv-row-sub">' + sub + '</div></div>'
         + '<div class="tv-row-side">'
-        +   '<span class="tv-row-sub">costo $' + c.costo.toFixed(2) + '</span>'
+        +   '<span class="tv-row-sub"' + (det ? ' title="' + escapeHtml(det.partes.map(p =>
+                p.kw + ' ×' + p.qty + ' = ' + (p.sub == null ? 'sin costo' : '$' + p.sub.toFixed(2))).join('\n')) + '"' : '')
+        +     '>' + (cu != null ? 'c/u $' + cu.toFixed(2) : 'c/u —') + '</span>'
         +   '<span class="tv-vendido' + (vendidoItem > 0 ? '' : ' cero') + '">vendido $' + vendidoItem.toFixed(2) + '</span>'
         +   '<button class="tv-pvp' + (pv > 0 ? ' puesto' : '') + '" '
-        +     'onclick="_tvSetPrecio(' + JSON.stringify(kw).replace(/"/g, '&quot;') + ')" '
-        +     'title="Precio al que se vende. Se usa para prellenar la venta.">'
+        +     'onclick="_tvSetPrecio(' + arg + ')" '
+        +     'title="Precio al que se vende. Se usa para prellenar la venta.'
+        +     (mg != null ? ' — margen ' + mg.toFixed(0) + '%' : '') + '">'
         +     (pv > 0 ? 'PVP $' + pv.toFixed(2) : '+ precio') + '</button>'
+        +   '<button class="tv-pvp' + (det ? ' puesto' : '') + '" onclick="openRecetaModal(' + arg + ')" '
+        +     'title="' + (det ? 'Este item se arma — editar su receta' : 'Este item se arma con varios insumos: definir su receta') + '">🧩</button>'
         + '</div></div>';
     });
     html += '</div>';
@@ -17200,6 +17307,9 @@ let _sumReventa = new Set();
 // Precio de VENTA por keyword normalizada. El costo sale de los egresos; el
 // precio de venta no vivía en ningún lado y había que teclearlo en cada venta.
 let _sumPrecios = {};
+// RECETAS: keyword normalizada → { componente_normalizado: cantidad }. Solo para
+// lo que se arma (un kit) en vez de comprarse hecho; el resto no lleva receta.
+let _sumRecetas = {};
 let _sumKeywordsLoading = false;
 let _sumBarMeta = {};              // barKey → { egresoId, kw, nkw, autoEnd, isLast, avg, effEnd } (poblado al renderizar)
 let _sumView = 'timeline';        // 'timeline' | 'detalle'
@@ -17462,6 +17572,8 @@ async function _loadSuministrosKeywords() {
       _sumReventa    = new Set((j && Array.isArray(j.reventa)    ? j.reventa    : []).map(_sumNormalize));
       _sumPrecios = {};
       Object.keys((j && j.precios) || {}).forEach(k => { _sumPrecios[_sumNormalize(k)] = j.precios[k]; });
+      _sumRecetas = {};
+      Object.keys((j && j.recetas) || {}).forEach(k => { _sumRecetas[_sumNormalize(k)] = j.recetas[k]; });
     } else {
       let ls = null; try { ls = JSON.parse(localStorage.getItem('ln_sum_keywords') || 'null'); } catch(_) {}
       _suministrosKeywords = Array.isArray(ls) ? ls : ['Papel higiénico','Café','Agua','Gas','Hielo','Cloro','Desinfectante','Detergente','Jabón','Kerosene'];
@@ -17470,6 +17582,7 @@ async function _loadSuministrosKeywords() {
       let lr = null; try { lr = JSON.parse(localStorage.getItem('ln_sum_reventa') || 'null'); } catch(_) {}
       _sumReventa = new Set(Array.isArray(lr) ? lr.map(_sumNormalize) : []);
       try { _sumPrecios = JSON.parse(localStorage.getItem('ln_sum_precios') || '{}'); } catch(_) { _sumPrecios = {}; }
+      try { _sumRecetas = JSON.parse(localStorage.getItem('ln_sum_recetas') || '{}'); } catch(_) { _sumRecetas = {}; }
     }
   } catch(e) { _suministrosKeywords = []; }
   finally { _sumKeywordsLoading = false; }
@@ -17483,16 +17596,93 @@ function _saveSuministrosKeywords() {
     localStorage.setItem('ln_sum_notimeline', JSON.stringify(noTimeline));
     localStorage.setItem('ln_sum_reventa', JSON.stringify(reventa));
     localStorage.setItem('ln_sum_precios', JSON.stringify(_sumPrecios));
+    localStorage.setItem('ln_sum_recetas', JSON.stringify(_sumRecetas));
   } catch(_) {}
   if (USE_SHEETS) {
     fetch(SHEETS_API_URL, { method: 'POST',
-      body: JSON.stringify({ action: 'saveSuministrosItems', keywords: _suministrosKeywords || [], noTimeline, reventa, precios: _sumPrecios })
+      body: JSON.stringify({ action: 'saveSuministrosItems', keywords: _suministrosKeywords || [], noTimeline, reventa, precios: _sumPrecios, recetas: _sumRecetas })
     }).catch(e => console.warn('save keywords', e));
   }
 }
 
 function _sumEsReventa(kw) { return _sumReventa.has(_sumNormalize(kw)); }
 function _sumPrecioVenta(kw) { return parseFloat(_sumPrecios[_sumNormalize(kw)]) || 0; }
+
+// ── Recetas: items que se ARMAN en vez de comprarse hechos ────────
+// El modelo de costo original asume que lo que se vende es lo que se compra:
+// "Bolsa de Carbón" matchea una factura de carbón y listo. Pero un "Kit de
+// Fogata" no aparece en ninguna factura —se arma con leña, malvaviscos y
+// cerillos—, así que su costo quedaba en $0 para siempre. La receta dice de
+// qué se compone y cuánto de cada cosa.
+function _sumReceta(kw) { return _sumRecetas[_sumNormalize(kw)] || null; }
+function _sumTieneReceta(kw) {
+  const r = _sumReceta(kw);
+  return !!(r && Object.keys(r).length);
+}
+
+// Costo unitario a partir de las compras PROPIAS del item: lo gastado dividido
+// las unidades compradas. Se calcula sobre TODO el histórico, no sobre el
+// período seleccionado: el costo de un cerillo no cambia porque estés mirando
+// agosto. Si se filtrara por período, un componente comprado en julio daría
+// costo $0 en agosto y el kit valdría $0 sin avisar.
+// Una compra sin cantidad cuenta como 1 unidad (misma regla que el repartidor).
+function _sumCostoUnitarioPropio(kw) {
+  const nkw = _sumNormalize(kw);
+  let total = 0, uds = 0;
+  egresos.forEach(e => {
+    if (!_sumCatOk(e) || !_sumMatchesKw(e, nkw)) return;
+    const m = _sumItemAmount(e, nkw);
+    total += (m == null ? (parseFloat(e.amount) || 0) : m);
+    const q = _sumItemQty(e, nkw);
+    uds += (q && q > 0) ? q : 1;
+  });
+  if (!uds || !total) return null;
+  return total / uds;
+}
+
+// Costo de armar UNA unidad. Con receta, es la suma de sus componentes; sin
+// receta, el costo unitario de sus propias compras. `_vistos` corta los ciclos
+// (A lleva B y B lleva A) — sin eso la recursión se cuelga y tumba el panel.
+function _sumCostoUnitario(kw, _vistos) {
+  const nkw = _sumNormalize(kw);
+  const vistos = _vistos || new Set();
+  if (vistos.has(nkw)) return null;
+  const rec = _sumReceta(kw);
+  if (!rec || !Object.keys(rec).length) return _sumCostoUnitarioPropio(kw);
+  vistos.add(nkw);
+  let total = 0, conocidos = 0, faltan = 0;
+  Object.keys(rec).forEach(comp => {
+    const q = parseFloat(rec[comp]) || 0;
+    const cu = _sumCostoUnitario(comp, vistos);
+    if (cu == null) { faltan++; return; }
+    total += q * cu; conocidos++;
+  });
+  vistos.delete(nkw);
+  // Con algún componente sin costo el número es incompleto, pero devolver null
+  // perdería lo que sí se sabe. Se devuelve el parcial y quien lo muestra avisa
+  // con _sumRecetaDetalle().
+  if (!conocidos) return null;
+  return total;
+}
+
+// Desglose para mostrar: cada componente con su cantidad, su costo unitario y
+// su aporte, más cuántos quedaron sin costo conocido.
+function _sumRecetaDetalle(kw) {
+  const rec = _sumReceta(kw);
+  if (!rec) return null;
+  const partes = Object.keys(rec).map(comp => {
+    const q  = parseFloat(rec[comp]) || 0;
+    const cu = _sumCostoUnitario(comp, new Set([_sumNormalize(kw)]));
+    // Se guarda normalizado; se muestra con la grafía real del keyword.
+    const real = (_suministrosKeywords || []).find(k => _sumNormalize(k) === _sumNormalize(comp)) || comp;
+    return { kw: real, nkw: _sumNormalize(comp), qty: q, unit: cu, sub: cu == null ? null : q * cu };
+  });
+  return {
+    partes,
+    total:  partes.reduce((t, p) => t + (p.sub || 0), 0),
+    faltan: partes.filter(p => p.sub == null).length
+  };
+}
 
 // Precio de venta editable desde la lista de la Tiendita: es donde se ve el
 // costo al lado, que es la referencia para ponerlo.
@@ -17505,6 +17695,140 @@ function _tvSetPrecio(kw) {
   if (!n || n <= 0) delete _sumPrecios[n2]; else _sumPrecios[n2] = +n.toFixed(2);
   _saveSuministrosKeywords();
   renderTiendita();
+}
+
+// ── Editor de recetas ────────────────────────────────────────────
+let _recCtx = null;   // { kw, partes: [{nkw, qty}] }
+
+function openRecetaModal(kw) {
+  const rec = _sumReceta(kw) || {};
+  _recCtx = { kw, partes: Object.keys(rec).map(c => ({ nkw: _sumNormalize(c), qty: parseFloat(rec[c]) || 1 })) };
+  document.getElementById('recTitulo').textContent = kw;
+  _recPintar();
+  document.getElementById('recetaModal').classList.add('open');
+}
+
+function closeRecetaModal() {
+  document.getElementById('recetaModal').classList.remove('open');
+  _recCtx = null;
+}
+
+function _recNombre(nkw) {
+  return (_suministrosKeywords || []).find(k => _sumNormalize(k) === nkw) || nkw;
+}
+
+function _recPintar() {
+  if (!_recCtx) return;
+  const propio = _sumNormalize(_recCtx.kw);
+  const cont = document.getElementById('recPartes');
+  if (!_recCtx.partes.length) {
+    cont.innerHTML = '<div style="text-align:center;padding:14px;color:var(--text-muted);font-size:13px;font-style:italic;">'
+      + 'Sin componentes todavía — agrega abajo de qué se arma.</div>';
+  } else {
+    cont.innerHTML = _recCtx.partes.map((p, i) => {
+      const cu = _sumCostoUnitario(p.nkw, new Set([propio]));
+      const sub = cu == null ? null : cu * (parseFloat(p.qty) || 0);
+      return '<div class="tv-row" style="cursor:default;">'
+        + '<div class="tv-row-main">' + escapeHtml(_recNombre(p.nkw))
+        +   '<div class="tv-row-sub">' + (cu == null ? '⚠ sin costo unitario conocido' : '$' + cu.toFixed(2) + ' c/u') + '</div></div>'
+        + '<div class="tv-row-side">'
+        +   '<input type="number" step="0.01" min="0" value="' + p.qty + '" data-idx="' + i + '" '
+        +     'oninput="_recQty(this)" style="width:64px;font-size:12px;padding:3px 6px;text-align:right;'
+        +     'border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">'
+        +   '<span class="tv-row-sub" style="min-width:56px;text-align:right;">'
+        +     (sub == null ? '—' : '$' + sub.toFixed(2)) + '</span>'
+        +   '<button class="tv-edit" onclick="_recQuitar(' + i + ')" title="Quitar">✕</button>'
+        + '</div></div>';
+    }).join('');
+  }
+
+  // Candidatos: cualquier keyword trackeada menos el propio item y los ya
+  // puestos. Se excluye el propio para que no se pueda armar consigo mismo.
+  const usados = new Set(_recCtx.partes.map(p => p.nkw));
+  const opts = (_suministrosKeywords || [])
+    .filter(k => _sumNormalize(k) !== propio && !usados.has(_sumNormalize(k)))
+    .map(k => '<option value="' + _sumNormalize(k) + '">' + escapeHtml(k) + '</option>');
+  const sel = document.getElementById('recNuevo');
+  sel.innerHTML = opts.length ? opts.join('') : '<option value="">(no quedan insumos)</option>';
+  sel.disabled = !opts.length;
+
+  const det = _recCtx.partes.reduce((acc, p) => {
+    const cu = _sumCostoUnitario(p.nkw, new Set([propio]));
+    if (cu == null) acc.faltan++; else acc.total += cu * (parseFloat(p.qty) || 0);
+    return acc;
+  }, { total: 0, faltan: 0 });
+  const pv = _sumPrecioVenta(_recCtx.kw);
+  let txt = '<strong>Costo de armar 1: $' + det.total.toFixed(2) + '</strong>';
+  if (det.faltan) txt += ' <span style="color:#b8860b;">(faltan ' + det.faltan + ' componente'
+    + (det.faltan === 1 ? '' : 's') + ' sin costo — el total está incompleto)</span>';
+  if (pv > 0 && !det.faltan) {
+    const mg = ((pv - det.total) / pv) * 100;
+    txt += '<div style="margin-top:5px;color:var(--text-muted);">Se vende a $' + pv.toFixed(2)
+      + ' → margen ' + mg.toFixed(0) + '% ($' + (pv - det.total).toFixed(2) + ' por unidad)</div>';
+  } else if (!(pv > 0)) {
+    txt += '<div style="margin-top:5px;color:var(--text-muted);">Sin precio de venta cargado todavía.</div>';
+  }
+  document.getElementById('recTotal').innerHTML = txt;
+  document.getElementById('recDelBtn').style.display = _sumTieneReceta(_recCtx.kw) ? '' : 'none';
+}
+
+function _recQty(el) {
+  const i = parseInt(el.dataset.idx);
+  if (!_recCtx || !_recCtx.partes[i]) return;
+  _recCtx.partes[i].qty = parseFloat(el.value) || 0;
+  // Solo el total se repinta: re-renderizar todo sacaría el foco del input.
+  const propio = _sumNormalize(_recCtx.kw);
+  const fila = el.closest('.tv-row');
+  const cu = _sumCostoUnitario(_recCtx.partes[i].nkw, new Set([propio]));
+  const span = fila && fila.querySelectorAll('.tv-row-side span')[0];
+  if (span) span.textContent = cu == null ? '—' : '$' + (cu * _recCtx.partes[i].qty).toFixed(2);
+  const det = _recCtx.partes.reduce((acc, p) => {
+    const c = _sumCostoUnitario(p.nkw, new Set([propio]));
+    if (c == null) acc.faltan++; else acc.total += c * (parseFloat(p.qty) || 0);
+    return acc;
+  }, { total: 0, faltan: 0 });
+  const pv = _sumPrecioVenta(_recCtx.kw);
+  let txt = '<strong>Costo de armar 1: $' + det.total.toFixed(2) + '</strong>';
+  if (det.faltan) txt += ' <span style="color:#b8860b;">(faltan ' + det.faltan + ' sin costo)</span>';
+  if (pv > 0 && !det.faltan) txt += '<div style="margin-top:5px;color:var(--text-muted);">Se vende a $'
+    + pv.toFixed(2) + ' → margen ' + (((pv - det.total) / pv) * 100).toFixed(0) + '%</div>';
+  document.getElementById('recTotal').innerHTML = txt;
+}
+
+function _recAgregar() {
+  const sel = document.getElementById('recNuevo');
+  const nkw = sel.value;
+  if (!_recCtx || !nkw) return;
+  _recCtx.partes.push({ nkw, qty: 1 });
+  _recPintar();
+}
+
+function _recQuitar(i) {
+  if (!_recCtx) return;
+  _recCtx.partes.splice(i, 1);
+  _recPintar();
+}
+
+function _recBorrarReceta() {
+  if (!_recCtx) return;
+  if (!confirm('¿Quitar la receta de «' + _recCtx.kw + '»? Su costo volverá a salir de sus propias compras.')) return;
+  delete _sumRecetas[_sumNormalize(_recCtx.kw)];
+  _saveSuministrosKeywords();
+  closeRecetaModal();
+  renderTiendita();
+  showToast('Receta eliminada');
+}
+
+function saveRecetaModal() {
+  if (!_recCtx) return;
+  const n = _sumNormalize(_recCtx.kw);
+  const rec = {};
+  _recCtx.partes.forEach(p => { const q = parseFloat(p.qty) || 0; if (q > 0) rec[p.nkw] = q; });
+  if (Object.keys(rec).length) _sumRecetas[n] = rec; else delete _sumRecetas[n];
+  _saveSuministrosKeywords();
+  closeRecetaModal();
+  renderTiendita();
+  showToast('Receta guardada');
 }
 
 // Alterna si los insumos de esta keyword se revenden en la tiendita.
