@@ -1788,7 +1788,7 @@ function _getSuministrosItemsSheet(ss) {
   let sh = ss.getSheetByName('SuministrosItems');
   if (!sh) {
     sh = ss.insertSheet('SuministrosItems');
-    sh.getRange(1,1,1,6).setValues([['Keyword','NoTimeline','Reventa','PrecioVenta','Receta','Venta']]).setFontWeight('bold');
+    sh.getRange(1,1,1,7).setValues([['Keyword','NoTimeline','Reventa','PrecioVenta','Receta','Venta','CostoUnitario']]).setFontWeight('bold');
     sh.setFrozenRows(1);
     // Semilla inicial de keywords sugeridos.
     const seed = ['Papel','Café','Agua','Gas','Hielo','Cloro','Desinfectante','Detergente','Jabón','Kerosene'];
@@ -1797,7 +1797,7 @@ function _getSuministrosItemsSheet(ss) {
   }
   // Auto-migración: asegurar la columna 2 NoTimeline (keywords que NO van en el
   // timeline, ej. Delivery — no es un insumo consumible, solo se ve en Detalle).
-  const hdr = sh.getRange(1,1,1,Math.max(sh.getLastColumn(),6)).getValues()[0];
+  const hdr = sh.getRange(1,1,1,Math.max(sh.getLastColumn(),7)).getValues()[0];
   if ((hdr[1]||'').toString().toLowerCase().trim() !== 'notimeline') {
     sh.getRange(1,2).setValue('NoTimeline').setFontWeight('bold');
   }
@@ -1828,6 +1828,14 @@ function _getSuministrosItemsSheet(ss) {
   // componentes ofreciera kits y que la lista de venta mostrara insumos.
   if ((hdr[5]||'').toString().toLowerCase().trim() !== 'venta') {
     sh.getRange(1,6).setValue('Venta').setFontWeight('bold');
+  }
+  // Columna 7: COSTO UNITARIO FIJO, puesto a mano. Manda sobre el derivado de
+  // las compras. Existe para lo que no llega como factura con su keyword: la
+  // mano de obra de recolectar la leña es un costo real del kit, pero no hay
+  // ningún egreso que diga "leña" y del que se pueda deducir un precio por
+  // unidad. Vacío = se deriva de las compras, como siempre.
+  if ((hdr[6]||'').toString().toLowerCase().trim() !== 'costounitario') {
+    sh.getRange(1,7).setValue('CostoUnitario').setFontWeight('bold');
   }
   return sh;
 }
@@ -2117,13 +2125,14 @@ function doGet(e) {
     if (action === 'getSuministrosItems') {
       const ss = SpreadsheetApp.openById(SHEET_ID);
       const sh = _getSuministrosItemsSheet(ss);
-      const rows = sh.getLastRow() > 1 ? sh.getRange(2,1,sh.getLastRow()-1,6).getValues() : [];
+      const rows = sh.getLastRow() > 1 ? sh.getRange(2,1,sh.getLastRow()-1,7).getValues() : [];
       const keywords = [];
       const noTimeline = [];
       const reventa = [];
       const venta = [];
       const precios = {};
       const recetas = {};
+      const costos = {};
       const esFlag = f => (f === true || f === 'TRUE' || f === 'true' || f === 1 || f === '1');
       rows.forEach(r => {
         const kw = (r[0]||'').toString().trim();
@@ -2134,6 +2143,8 @@ function doGet(e) {
         if (esFlag(r[5])) venta.push(kw);
         const pv = parseFloat(r[3]);
         if (!isNaN(pv) && pv > 0) precios[kw] = pv;
+        const cu = parseFloat(r[6]);
+        if (!isNaN(cu) && cu > 0) costos[kw] = cu;
         // Receta corrupta = item sin receta, no un error que tumbe la carga
         // entera de keywords (sin ellas el timeline queda vacío).
         const rec = (r[4]||'').toString().trim();
@@ -2143,7 +2154,7 @@ function doGet(e) {
         }
       });
       return ContentService
-        .createTextOutput(JSON.stringify({ ok: true, keywords, noTimeline, reventa, venta, precios, recetas }))
+        .createTextOutput(JSON.stringify({ ok: true, keywords, noTimeline, reventa, venta, precios, recetas, costos }))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -2779,7 +2790,7 @@ function doPost(e) {
       const ss = SpreadsheetApp.openById(SHEET_ID);
       const sh = _getSuministrosItemsSheet(ss);
       // Limpiar filas de datos y reescribir la lista completa que manda el front.
-      if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,6).clearContent();
+      if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,7).clearContent();
       const kws = (payload.keywords || []).map(k => (k||'').toString().trim()).filter(Boolean);
       const norm = k => (k||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
       // Keywords marcadas "solo detalle / no timeline" (ej. Delivery), sin acentos.
@@ -2791,6 +2802,12 @@ function doPost(e) {
       // Productos de la tiendita (los que llegan del import de la web).
       const ventaSet = {};
       (payload.venta || []).forEach(k => { ventaSet[norm(k)] = 1; });
+      // Costo unitario fijo por keyword (mano de obra, insumos sin factura).
+      const costos = {};
+      Object.keys(payload.costos || {}).forEach(k => {
+        const v = parseFloat(payload.costos[k]);
+        if (!isNaN(v) && v > 0) costos[norm(k)] = v;
+      });
       // Precio de venta por keyword (normalizada, para que no dependa de acentos).
       const precios = {};
       Object.keys(payload.precios || {}).forEach(k => {
@@ -2811,11 +2828,12 @@ function doPost(e) {
         if (Object.keys(limpia).length) recetas[norm(k)] = limpia;
       });
       if (kws.length) {
-        sh.getRange(2,1,kws.length,6).setValues(
+        sh.getRange(2,1,kws.length,7).setValues(
           kws.map(k => [k, noSet[norm(k)] ? true : false, revSet[norm(k)] ? true : false,
                         precios[norm(k)] || '',
                         recetas[norm(k)] ? JSON.stringify(recetas[norm(k)]) : '',
-                        ventaSet[norm(k)] ? true : false]));
+                        ventaSet[norm(k)] ? true : false,
+                        costos[norm(k)] || '']));
       }
       return ContentService
         .createTextOutput(JSON.stringify({ ok: true, count: kws.length }))
