@@ -2210,6 +2210,10 @@
   .rec-qty input::-webkit-outer-spin-button,
   .rec-qty input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
+  /* El costo de un componente se edita tocándolo — que se note que es un control */
+  .rec-costo { cursor: pointer; border-bottom: 1px dashed var(--border); display: inline-block; }
+  .rec-costo:hover { color: var(--azul-dark); border-bottom-color: var(--azul-dark); }
+
   .egr-row { cursor: pointer; transition: background .12s; }
   .egr-row:hover { background: var(--bg); }
   .egr-row:active { background: var(--border); }
@@ -16462,9 +16466,18 @@ function renderTiendita() {
         + '<div class="tv-row-main">' + escapeHtml(kw)
         +   '<div class="tv-row-sub">' + sub + '</div></div>'
         + '<div class="tv-row-side">'
-        +   '<span class="tv-row-sub"' + (det ? ' title="' + escapeHtml(det.partes.map(p =>
-                p.kw + ' ×' + p.qty + ' = ' + (p.sub == null ? 'sin costo' : '$' + p.sub.toFixed(2))).join('\n')) + '"' : '')
-        +     '>' + (cu != null ? 'c/u $' + cu.toFixed(2) : 'c/u —') + '</span>'
+        // Con receta el costo lo mandan los componentes; sin receta se puede
+        // fijar a mano tocándolo (un producto que se compra a un precio que
+        // ninguna factura refleja).
+        +   (det
+              ? '<span class="tv-row-sub" title="' + escapeHtml(det.partes.map(p =>
+                  p.kw + ' ×' + p.qty + ' = ' + (p.sub == null ? 'sin costo' : '$' + p.sub.toFixed(2))).join('\n'))
+                + '">' + (cu != null ? 'c/u $' + cu.toFixed(2) : 'c/u —') + '</span>'
+              : '<span class="tv-row-sub rec-costo" onclick="_tvSetCosto(' + arg + ')" '
+                + 'title="' + (_sumCostoManual(kw) > 0 ? 'Costo fijo puesto a mano — tocar para cambiarlo'
+                                                       : 'Fijar el costo de una unidad a mano') + '">'
+                + (cu != null ? 'c/u $' + cu.toFixed(2) : 'c/u —')
+                + (_sumCostoManual(kw) > 0 ? ' ✎' : '') + '</span>')
         +   '<span class="tv-vendido' + (vendidoItem > 0 ? '' : ' cero') + '">vendido $' + vendidoItem.toFixed(2) + '</span>'
         +   '<button class="tv-pvp' + (pv > 0 ? ' puesto' : '') + '" '
         +     'onclick="_tvSetPrecio(' + arg + ')" '
@@ -17393,6 +17406,11 @@ let _sumRecetas = {};
 // entrar en un combo. Son roles disjuntos a propósito: el carbón a granel es
 // insumo, la "Bolsa de Carbón" de $5 es producto.
 let _sumVenta = new Set();
+// COSTO UNITARIO FIJO por keyword normalizada, puesto a mano. Manda sobre el
+// derivado de las compras. Existe para lo que no llega como factura con su
+// keyword: la mano de obra de recolectar la leña es un costo real del kit,
+// pero no hay ningún egreso del que se pueda deducir un precio por unidad.
+let _sumCostos = {};
 let _sumKeywordsLoading = false;
 let _sumBarMeta = {};              // barKey → { egresoId, kw, nkw, autoEnd, isLast, avg, effEnd } (poblado al renderizar)
 let _sumView = 'timeline';        // 'timeline' | 'detalle'
@@ -17658,6 +17676,8 @@ async function _loadSuministrosKeywords() {
       _sumRecetas = {};
       Object.keys((j && j.recetas) || {}).forEach(k => { _sumRecetas[_sumNormalize(k)] = j.recetas[k]; });
       _sumVenta = new Set((j && Array.isArray(j.venta) ? j.venta : []).map(_sumNormalize));
+      _sumCostos = {};
+      Object.keys((j && j.costos) || {}).forEach(k => { _sumCostos[_sumNormalize(k)] = j.costos[k]; });
     } else {
       let ls = null; try { ls = JSON.parse(localStorage.getItem('ln_sum_keywords') || 'null'); } catch(_) {}
       _suministrosKeywords = Array.isArray(ls) ? ls : ['Papel higiénico','Café','Agua','Gas','Hielo','Cloro','Desinfectante','Detergente','Jabón','Kerosene'];
@@ -17669,6 +17689,7 @@ async function _loadSuministrosKeywords() {
       try { _sumRecetas = JSON.parse(localStorage.getItem('ln_sum_recetas') || '{}'); } catch(_) { _sumRecetas = {}; }
       let lv = null; try { lv = JSON.parse(localStorage.getItem('ln_sum_venta') || 'null'); } catch(_) {}
       _sumVenta = new Set(Array.isArray(lv) ? lv.map(_sumNormalize) : []);
+      try { _sumCostos = JSON.parse(localStorage.getItem('ln_sum_costos') || '{}'); } catch(_) { _sumCostos = {}; }
     }
   } catch(e) { _suministrosKeywords = []; }
   finally { _sumKeywordsLoading = false; }
@@ -17680,6 +17701,7 @@ function _saveSuministrosKeywords() {
   const venta      = (_suministrosKeywords || []).filter(k => _sumVenta.has(_sumNormalize(k)));
   try {
     localStorage.setItem('ln_sum_venta', JSON.stringify(venta));
+    localStorage.setItem('ln_sum_costos', JSON.stringify(_sumCostos));
     localStorage.setItem('ln_sum_keywords', JSON.stringify(_suministrosKeywords || []));
     localStorage.setItem('ln_sum_notimeline', JSON.stringify(noTimeline));
     localStorage.setItem('ln_sum_reventa', JSON.stringify(reventa));
@@ -17688,7 +17710,7 @@ function _saveSuministrosKeywords() {
   } catch(_) {}
   if (USE_SHEETS) {
     fetch(SHEETS_API_URL, { method: 'POST',
-      body: JSON.stringify({ action: 'saveSuministrosItems', keywords: _suministrosKeywords || [], noTimeline, reventa, venta, precios: _sumPrecios, recetas: _sumRecetas })
+      body: JSON.stringify({ action: 'saveSuministrosItems', keywords: _suministrosKeywords || [], noTimeline, reventa, venta, precios: _sumPrecios, recetas: _sumRecetas, costos: _sumCostos })
     }).catch(e => console.warn('save keywords', e));
   }
 }
@@ -17737,9 +17759,41 @@ function _sumCostoUnitarioInfo(kw) {
   return { unit: ult.unit, fecha: ult.fecha, qty: ult.qty, compras: compras.length };
 }
 
+// Costo fijo puesto a mano. Manda sobre lo derivado de las compras: si se
+// tomó el trabajo de escribirlo, es porque las facturas no lo cuentan bien
+// (mano de obra, un insumo que llega mezclado en otra compra, un regalo).
+function _sumCostoManual(kw) { return parseFloat(_sumCostos[_sumNormalize(kw)]) || 0; }
+
 function _sumCostoUnitarioPropio(kw) {
+  const fijo = _sumCostoManual(kw);
+  if (fijo > 0) return fijo;
   const info = _sumCostoUnitarioInfo(kw);
   return info ? info.unit : null;
+}
+
+// Origen del costo unitario, para poder decirlo en pantalla en vez de mostrar
+// un número sin explicación: 'fijo' | 'compra' | null.
+function _sumCostoOrigen(kw) {
+  if (_sumCostoManual(kw) > 0) return 'fijo';
+  return _sumCostoUnitarioInfo(kw) ? 'compra' : null;
+}
+
+// Fija (o borra, con el campo vacío) el costo unitario de un insumo.
+function _sumSetCostoManual(kw, alGuardar) {
+  const actual = _sumCostoManual(kw);
+  const info   = _sumCostoUnitarioInfo(kw);
+  let ayuda = 'Costo de UNA unidad de «' + kw + '» ($):';
+  if (info) ayuda += '\n\nSus compras dan $' + info.unit.toFixed(2)
+                  + ' (última: ' + (info.fecha || 's/f') + ').\nLo que escribas acá manda sobre eso.';
+  else      ayuda += '\n\nNo tiene compras que matcheen, así que sin esto queda sin costo.';
+  ayuda += '\nDéjalo vacío para volver a calcularlo desde las compras.';
+  const v = prompt(ayuda, actual > 0 ? actual.toFixed(2) : '');
+  if (v === null) return false;
+  const n = parseFloat(String(v).replace(/[^0-9.]/g, ''));
+  const nk = _sumNormalize(kw);
+  if (!n || n <= 0) delete _sumCostos[nk]; else _sumCostos[nk] = +n.toFixed(4);
+  if (alGuardar !== false) _saveSuministrosKeywords();
+  return true;
 }
 
 // Costo de armar UNA unidad. Con receta, es la suma de sus componentes; sin
@@ -17833,9 +17887,20 @@ function _recPintar() {
       // La cantidad va con rótulo y botones −/+: sin eso el "1" se leía como
       // una etiqueta y no como un campo, y no se notaba que un combo puede
       // llevar 2 cerillos o 3 bolsitas.
+      // De dónde sale el costo, y cómo cambiarlo. Un número sin origen no se
+      // puede auditar, y sin forma de fijarlo la mano de obra no entra nunca.
+      const org = _sumCostoOrigen(p.nkw);
+      const inf = org === 'compra' ? _sumCostoUnitarioInfo(p.nkw) : null;
+      const subTxt = org === 'fijo'
+        ? '✎ $' + cu.toFixed(2) + ' c/u · costo fijo'
+        : (org === 'compra'
+            ? '$' + cu.toFixed(2) + ' c/u · última compra ' + (inf.fecha || 's/f')
+            : '⚠ sin costo — toca para fijarlo');
       return '<div class="tv-row" style="cursor:default;">'
         + '<div class="tv-row-main">' + escapeHtml(_recNombre(p.nkw))
-        +   '<div class="tv-row-sub">' + (cu == null ? '⚠ sin costo unitario conocido' : '$' + cu.toFixed(2) + ' c/u') + '</div></div>'
+        +   '<div class="tv-row-sub rec-costo" onclick="_recEditarCosto(' + i + ')" '
+        +     'title="Fijar el costo de una unidad a mano (mano de obra, insumos sin factura)">'
+        +     subTxt + '</div></div>'
         + '<div class="tv-row-side">'
         +   '<div class="rec-qty">'
         +     '<span class="rec-qty-lbl">cant.</span>'
@@ -17936,7 +18001,9 @@ function _recAgregar() {
   let nkw = sel.value;
   if (!_recCtx || !nkw) return;
   if (nkw === '__nuevo__') {
-    const v = (prompt('Nombre del insumo (así como aparece en las facturas):') || '').trim();
+    const v = (prompt('Nombre del insumo o del trabajo:\n\n'
+      + 'Si se compra, escríbelo como aparece en las facturas para que tome el costo solo.\n'
+      + 'Si es mano de obra (recolectar la leña, armar el kit), el costo se lo pones a mano en el paso siguiente.') || '').trim();
     if (!v) return;
     nkw = _sumNormalize(v);
     if (nkw === _sumNormalize(_recCtx.kw)) return showToast('Un item no se puede armar consigo mismo');
@@ -17946,10 +18013,20 @@ function _recAgregar() {
     // Nace marcado 🛒: se creó desde acá justamente para ser componente de un
     // combo, y sin la marca no volvería a aparecer en esta misma lista.
     _sumReventa.add(nkw);
+    // Se pregunta el costo en el momento: un insumo creado a mano suele ser
+    // justamente el que NO tiene factura de dónde deducirlo —la mano de obra de
+    // recolectar la leña— y sin costo entraría al combo valiendo $0, bajando el
+    // costo del kit sin que se note. Se puede saltear y fijarlo después.
+    _sumSetCostoManual(v, false);
     _saveSuministrosKeywords();
   }
   _recCtx.partes.push({ nkw, qty: 1 });
   _recPintar();
+}
+
+function _recEditarCosto(i) {
+  if (!_recCtx || !_recCtx.partes[i]) return;
+  if (_sumSetCostoManual(_recNombre(_recCtx.partes[i].nkw))) _recPintar();
 }
 
 function _recPaso(i, delta) {
@@ -17985,6 +18062,11 @@ function saveRecetaModal() {
   closeRecetaModal();
   renderTiendita();
   showToast('Receta guardada');
+}
+
+// Costo unitario fijo de un PRODUCTO sin receta, editable desde su fila.
+function _tvSetCosto(kw) {
+  if (_sumSetCostoManual(kw)) renderTiendita();
 }
 
 // Alterna si los insumos de esta keyword se revenden en la tiendita.
