@@ -16355,8 +16355,19 @@ function renderTiendita() {
   // directo a Tiendita mostraba costo $0 y "no marcaste ninguna keyword",
   // cuando en realidad sí estaban marcadas pero no se habían pedido todavía.
   if (_suministrosKeywords === null) {
-    _loadSuministrosKeywords().then(() => renderTiendita());
     box.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px;">Cargando…</div>';
+    _loadSuministrosKeywords().then(() => {
+      // Si la carga terminó y siguen en null, algo salió mal: se muestra el
+      // error en vez de volver a llamar. Reintentar en el `.then` es lo que
+      // convertía una falla en un bucle infinito.
+      if (_suministrosKeywords === null) {
+        box.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px;">'
+          + 'No se pudieron cargar los items. '
+          + '<a href="#" onclick="renderTiendita();return false;" style="color:var(--azul-dark);">Reintentar</a></div>';
+        return;
+      }
+      renderTiendita();
+    });
     return;
   }
   const kwsVenta = (_suministrosKeywords || []).filter(_sumEsVenta);
@@ -17411,7 +17422,13 @@ let _sumVenta = new Set();
 // keyword: la mano de obra de recolectar la leña es un costo real del kit,
 // pero no hay ningún egreso del que se pueda deducir un precio por unidad.
 let _sumCostos = {};
-let _sumKeywordsLoading = false;
+// Carga en vuelo. Es una PROMESA, no un booleano: con un booleano, un segundo
+// llamado mientras la primera carga está en curso salía por el early-return
+// resolviendo de inmediato y con las keywords todavía en null — y el
+// `.then(() => render())` de quien lo llamó volvía a pedir la carga, otra vez
+// inmediata, en un bucle que colgaba la pestaña ("Page Unresponsive").
+// Devolviendo la misma promesa, el segundo llamado ESPERA a la primera.
+let _sumKeywordsPromise = null;
 let _sumBarMeta = {};              // barKey → { egresoId, kw, nkw, autoEnd, isLast, avg, effEnd } (poblado al renderizar)
 let _sumView = 'timeline';        // 'timeline' | 'detalle'
 let _sumSharedState = {};         // egresoId → { egresoId, total, items:[{nkw,kw,touched,_init}] } (panel de facturas compartidas en Detalle)
@@ -17661,9 +17678,15 @@ function _sumSuggestUntracked(desc) {
   return out;
 }
 
-async function _loadSuministrosKeywords() {
-  if (_suministrosKeywords !== null || _sumKeywordsLoading) return;
-  _sumKeywordsLoading = true;
+function _loadSuministrosKeywords() {
+  if (_suministrosKeywords !== null) return Promise.resolve();
+  if (_sumKeywordsPromise) return _sumKeywordsPromise;
+  _sumKeywordsPromise = _loadSuministrosKeywordsAhora()
+    .finally(() => { _sumKeywordsPromise = null; });
+  return _sumKeywordsPromise;
+}
+
+async function _loadSuministrosKeywordsAhora() {
   try {
     if (USE_SHEETS) {
       const r = await fetch(SHEETS_API_URL + '?action=getSuministrosItems&_=' + Date.now());
@@ -17691,8 +17714,11 @@ async function _loadSuministrosKeywords() {
       _sumVenta = new Set(Array.isArray(lv) ? lv.map(_sumNormalize) : []);
       try { _sumCostos = JSON.parse(localStorage.getItem('ln_sum_costos') || '{}'); } catch(_) { _sumCostos = {}; }
     }
-  } catch(e) { _suministrosKeywords = []; }
-  finally { _sumKeywordsLoading = false; }
+  } catch(e) {
+    // Queda como lista vacía, NO null: null significa "sin cargar" y haría que
+    // quien reintente vuelva a entrar al mismo camino para siempre.
+    _suministrosKeywords = [];
+  }
 }
 
 function _saveSuministrosKeywords() {
