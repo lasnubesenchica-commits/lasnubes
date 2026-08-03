@@ -2929,6 +2929,11 @@ function doPost(e) {
         if (data[i][0].toString() === eg.id) {
           if (eg.cat       !== undefined) sheet.getRange(i+1, 5).setValue(eg.cat);
           if (eg.desc      !== undefined) sheet.getRange(i+1, 3).setValue(eg.desc);
+          // Fecha y monto faltaban: eran los dos campos que más se corrigen
+          // (una factura cargada con la fecha de hoy, un OCR que leyó de más)
+          // y no había forma de arreglarlos sin borrar y volver a cargar.
+          if (eg.fecha     !== undefined) sheet.getRange(i+1, 2).setValue(eg.fecha);
+          if (eg.monto     !== undefined) sheet.getRange(i+1, 4).setValue(parseFloat(eg.monto) || 0);
           if (eg.proveedor !== undefined) sheet.getRange(i+1, 7).setValue(eg.proveedor);
           if (eg.cabin     !== undefined) sheet.getRange(i+1, 6).setValue(eg.cabin);
           if (eg.item      !== undefined && itemCol > 0)       sheet.getRange(i+1, itemCol).setValue(eg.item);

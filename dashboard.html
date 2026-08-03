@@ -2190,6 +2190,12 @@
   .pr-row:hover { background: var(--bg); }
   .pr-row:active { background: var(--border); }
   .pr-row-sub { font-size: 11px; color: var(--text-muted); }
+
+  /* Filas de "Todos los egresos": toda la fila abre el editor. El <select>
+     de categoría y los botones de la última columna siguen siendo suyos. */
+  .egr-row { cursor: pointer; transition: background .12s; }
+  .egr-row:hover { background: var(--bg); }
+  .egr-row:active { background: var(--border); }
   /* El botón inline es el atajo; el resto de la fila abre el detalle. */
   .pr-row .pr-quick { flex-shrink: 0; white-space: nowrap; }
 
@@ -4727,6 +4733,60 @@
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeEgresoModal()">Cancelar</button>
       <button class="btn btn-primary" id="eSaveBtn" onclick="saveEgreso()">Guardar egreso</button>
+    </div>
+  </div>
+</div>
+
+<!-- Editar un egreso ya cargado. El modal de "Nuevo egreso" es multi-item
+     (una factura → N filas); acá se edita UNA fila puntual, que es lo que
+     hace falta cuando el OCR leyó de más o la factura entró con la fecha
+     de hoy en vez de la real. -->
+<div class="modal-overlay" id="egresoEditModal">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-body">
+      <div class="modal-title">Editar egreso</div>
+      <div class="form-group">
+        <label>Descripción</label>
+        <input type="text" id="eeDesc" placeholder="Descripción del gasto">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Fecha</label>
+          <input type="date" id="eeDate">
+        </div>
+        <div class="form-group">
+          <label>Monto</label>
+          <input type="number" id="eeMonto" step="0.01" min="0" placeholder="0.00">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Proveedor</label>
+          <input type="text" id="eeProveedor" placeholder="Opcional">
+        </div>
+        <div class="form-group">
+          <label>Categoría</label>
+          <select id="eeCat"></select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Cabaña (si aplica)</label>
+        <select id="eeCabin">
+          <option value="General">General (todas)</option>
+          <option value="verde">Paseo por Las Nubes</option>
+          <option value="azul">Portal hacia Las Nubes</option>
+          <option value="lila">Puente entre Las Nubes</option>
+        </select>
+      </div>
+      <div id="eeVoucher" style="display:none;font-size:12px;margin-top:2px;"></div>
+      <div id="eeAviso" style="display:none;font-size:12px;margin-top:10px;padding:8px 12px;border-radius:8px;background:#fff3cd;color:#7a5b00;"></div>
+    </div>
+    <div class="modal-footer" style="justify-content:space-between;">
+      <button class="btn btn-ghost" id="eeDelBtn" onclick="borrarEgresoDesdeEdit()" style="color:#c0392b;">🗑️ Eliminar</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost" onclick="closeEgresoEdit()">Cancelar</button>
+        <button class="btn btn-primary" id="eeSaveBtn" onclick="saveEgresoEdit()">Guardar</button>
+      </div>
     </div>
   </div>
 </div>
@@ -12840,7 +12900,7 @@ function renderContabilidad() {
     egList.innerHTML = '<div class="empty-state">Sin egresos en este período</div>';
   } else {
     egList.innerHTML = [...filteredEgr].sort((a,b)=>b.date.localeCompare(a.date)).map(e => `
-      <li class="contab-item">
+      <li class="contab-item egr-row" onclick="if(!event.target.closest('button')) openEgresoEdit('${e.id}')" title="Editar egreso">
         <div class="item-info">
           <div class="item-desc">${escapeHtml(e.desc)}</div>
           <div class="item-meta">${formatDate(e.date)} · ${escapeHtml(e.cat)}${e.cabin!=='General'?' · '+escapeHtml(CABINS[e.cabin]||e.cabin):''}</div>
@@ -14029,6 +14089,9 @@ async function deleteEgreso(id) {
   egresos = egresos.filter(e => e.id !== id);
   save();
   renderContabilidad();
+  // La sub-tab visible (ej. "Todos los egresos") no la repinta renderContabilidad:
+  // sin esto la fila borrada quedaba en pantalla hasta cambiar de filtro.
+  if (typeof _renderActiveContabTab === 'function') _renderActiveContabTab();
   if (USE_SHEETS) {
     try {
       await fetch(SHEETS_API_URL, { method: 'POST',
@@ -18723,7 +18786,10 @@ function renderEgresosTab() {
       style="font-size:12px !important;padding:3px 8px;border-radius:20px;border:1px solid ${color};background:${color}22;color:${color};font-weight:600;cursor:pointer;outline:none;line-height:1.2;">
       ${opts}
     </select>`;
-    return `<tr style="border-bottom:1px solid var(--border);">
+    // La fila entera abre el editor, salvo los controles propios de la última
+    // columna y el <select> de categoría (que ya guarda solo).
+    return `<tr class="egr-row" style="border-bottom:1px solid var(--border);"
+      onclick="if(!event.target.closest('select,a,button')) openEgresoEdit('${e.id}')" title="Editar egreso">
       <td style="padding:8px 12px;white-space:nowrap;color:var(--text-muted);font-size:12px;">${formatDate(e.date)}</td>
       <td style="padding:8px 12px;">${e.desc||'—'}</td>
       <td style="padding:8px 12px;font-size:12px;color:var(--text-muted);">${e.proveedor||'—'}</td>
@@ -18731,7 +18797,8 @@ function renderEgresosTab() {
       <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;font-weight:500;">$${parseFloat(e.amount||0).toFixed(2)}</td>
       <td style="padding:8px 12px;text-align:center;white-space:nowrap;">
         ${fotoIcon}
-        <button class="icon-btn" onclick="deleteEgreso('${e.id}')" style="margin-left:4px;font-size:13px;" title="Eliminar">🗑️</button>
+        <button class="icon-btn" onclick="openEgresoEdit('${e.id}')" style="margin-left:4px;font-size:13px;" title="Editar">✏️</button>
+        <button class="icon-btn" onclick="deleteEgreso('${e.id}')" style="margin-left:2px;font-size:13px;" title="Eliminar">🗑️</button>
       </td>
     </tr>`;
   }).join('');
@@ -18757,6 +18824,120 @@ function recategorizarEgreso(id, newCat) {
       body: JSON.stringify({ action: 'updateEgreso', egreso: { id: e.id, cat: newCat } })
     }).catch(err => console.warn('recategorizar sync error:', err));
   }
+}
+
+// ── Editar un egreso ya cargado ──────────────────────────────
+// Hasta acá lo único editable era la categoría (el <select> de la tabla). Para
+// corregir una fecha o un monto había que borrar la fila y volver a cargarla,
+// lo que perdía el voucher de Drive y el reparto de Suministros.
+let _egresoEditId = null;
+
+function openEgresoEdit(id) {
+  const e = egresos.find(x => x.id === id);
+  if (!e) return;
+  _egresoEditId = id;
+
+  // Misma lista maestra que la tabla: las categorías reales que ya existen
+  // más EGRESO_CATS, para no perder una categoría vieja al editar.
+  const curCat = e.cat || 'Otro';
+  const cats   = [...new Set([...egresos.map(x => x.cat).filter(Boolean), ...EGRESO_CATS, curCat])].sort();
+  document.getElementById('eeCat').innerHTML = cats.map(c =>
+    `<option value="${c}"${c === curCat ? ' selected' : ''}>${c}</option>`).join('');
+
+  document.getElementById('eeDesc').value      = e.desc || '';
+  document.getElementById('eeDate').value      = e.date || '';
+  document.getElementById('eeMonto').value     = parseFloat(e.amount || 0).toFixed(2);
+  document.getElementById('eeProveedor').value = e.proveedor || '';
+  document.getElementById('eeCabin').value     = e.cabin || 'General';
+
+  // Voucher: solo un link. Reemplazar la imagen es otro flujo (📷 del detalle).
+  const vEl = document.getElementById('eeVoucher');
+  const urls = (e.urlFoto || '').split('|').map(u => u.trim()).filter(Boolean);
+  vEl.style.display = urls.length ? '' : 'none';
+  vEl.innerHTML = urls.map((u, i) =>
+    `<a href="${u}" target="_blank" style="color:var(--azul-dark);text-decoration:none;">🧾 Ver comprobante${urls.length > 1 ? ' #' + (i+1) : ''} ↗</a>`
+  ).join(' · ');
+
+  // Si la factura está repartida entre items de Suministros, cambiar el monto
+  // descuadra el reparto — se avisa en vivo en vez de romperlo en silencio.
+  const aviso = document.getElementById('eeAviso');
+  const repartida = !!(e.montosItem && e.montosItem !== '{}');
+  aviso.style.display = 'none';
+  aviso.dataset.repartida = repartida ? '1' : '';
+  document.getElementById('eeMonto').oninput = _egresoEditChequearReparto;
+  if (repartida) _egresoEditChequearReparto();
+
+  document.getElementById('egresoEditModal').classList.add('open');
+  setTimeout(() => document.getElementById('eeDesc').focus(), 50);
+}
+
+function _egresoEditChequearReparto() {
+  const aviso = document.getElementById('eeAviso');
+  if (!aviso.dataset.repartida) return;
+  const e = egresos.find(x => x.id === _egresoEditId);
+  const nuevo = parseFloat(document.getElementById('eeMonto').value) || 0;
+  const previo = parseFloat(e?.amount || 0);
+  if (Math.abs(nuevo - previo) < 0.01) { aviso.style.display = 'none'; return; }
+  aviso.style.display = '';
+  aviso.textContent = '⚠ Esta factura está repartida entre varios items de Suministros. Al cambiar el monto el reparto queda descuadrado — revísalo en Suministros después de guardar.';
+}
+
+function closeEgresoEdit() {
+  document.getElementById('egresoEditModal').classList.remove('open');
+  _egresoEditId = null;
+}
+
+async function saveEgresoEdit() {
+  const e = egresos.find(x => x.id === _egresoEditId);
+  if (!e) return closeEgresoEdit();
+
+  const desc  = document.getElementById('eeDesc').value.trim();
+  const date  = document.getElementById('eeDate').value;
+  const monto = parseFloat(document.getElementById('eeMonto').value);
+  if (!desc)             return showToast('Falta la descripción');
+  if (!date)             return showToast('Falta la fecha');
+  if (!(monto >= 0))     return showToast('Monto inválido');
+
+  const cambios = {
+    id:        e.id,
+    desc,
+    fecha:     date,
+    monto,
+    cat:       document.getElementById('eeCat').value,
+    proveedor: document.getElementById('eeProveedor').value.trim(),
+    cabin:     document.getElementById('eeCabin').value
+  };
+
+  const btn = document.getElementById('eeSaveBtn');
+  btn.disabled = true; btn.textContent = 'Guardando...';
+  try {
+    if (USE_SHEETS && e.fromSheets !== false) {
+      const res  = await fetch(SHEETS_API_URL, { method: 'POST',
+        body: JSON.stringify({ action: 'updateEgreso', egreso: cambios }) });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || data.status || 'no se pudo guardar');
+    }
+    // Recién acá se toca el array local: si la hoja rechaza el cambio, la
+    // pantalla no queda mostrando algo que no se guardó.
+    e.desc = desc; e.date = date; e.amount = monto;
+    e.cat = cambios.cat; e.proveedor = cambios.proveedor; e.cabin = cambios.cabin;
+    save();
+    closeEgresoEdit();
+    renderContabilidad();
+    _renderActiveContabTab();
+    showToast('Egreso actualizado');
+  } catch (err) {
+    showToast('Error: ' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Guardar';
+  }
+}
+
+function borrarEgresoDesdeEdit() {
+  const id = _egresoEditId;
+  if (!id) return;
+  closeEgresoEdit();
+  deleteEgreso(id);
 }
 
 function getContabDateRange() {
