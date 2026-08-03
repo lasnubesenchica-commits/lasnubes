@@ -17422,6 +17422,12 @@ let _sumVenta = new Set();
 // keyword: la mano de obra de recolectar la leña es un costo real del kit,
 // pero no hay ningún egreso del que se pueda deducir un precio por unidad.
 let _sumCostos = {};
+// Qué campos vinieron REALMENTE en la última respuesta del backend. Si el
+// Apps Script todavía no se desplegó (el frontend de GitHub Pages se actualiza
+// al instante, el backend tarda minutos), un campo nuevo llega como undefined:
+// se lee vacío y, al guardar, se escribiría de vuelta vacío borrando la
+// columna entera. Lo que no se pudo leer, no se manda.
+let _sumCamposLeidos = null;
 // Carga en vuelo. Es una PROMESA, no un booleano: con un booleano, un segundo
 // llamado mientras la primera carga está en curso salía por el early-return
 // resolviendo de inmediato y con las keywords todavía en null — y el
@@ -17701,6 +17707,8 @@ async function _loadSuministrosKeywordsAhora() {
       _sumVenta = new Set((j && Array.isArray(j.venta) ? j.venta : []).map(_sumNormalize));
       _sumCostos = {};
       Object.keys((j && j.costos) || {}).forEach(k => { _sumCostos[_sumNormalize(k)] = j.costos[k]; });
+      _sumCamposLeidos = new Set(
+        ['noTimeline','reventa','venta','precios','recetas','costos'].filter(c => j && j[c] !== undefined));
     } else {
       let ls = null; try { ls = JSON.parse(localStorage.getItem('ln_sum_keywords') || 'null'); } catch(_) {}
       _suministrosKeywords = Array.isArray(ls) ? ls : ['Papel higiénico','Café','Agua','Gas','Hielo','Cloro','Desinfectante','Detergente','Jabón','Kerosene'];
@@ -17713,6 +17721,7 @@ async function _loadSuministrosKeywordsAhora() {
       let lv = null; try { lv = JSON.parse(localStorage.getItem('ln_sum_venta') || 'null'); } catch(_) {}
       _sumVenta = new Set(Array.isArray(lv) ? lv.map(_sumNormalize) : []);
       try { _sumCostos = JSON.parse(localStorage.getItem('ln_sum_costos') || '{}'); } catch(_) { _sumCostos = {}; }
+      _sumCamposLeidos = new Set(['noTimeline','reventa','venta','precios','recetas','costos']);
     }
   } catch(e) {
     // Queda como lista vacía, NO null: null significa "sin cargar" y haría que
@@ -17722,6 +17731,13 @@ async function _loadSuministrosKeywordsAhora() {
 }
 
 function _saveSuministrosKeywords() {
+  // Guardar con la lista sin cargar mandaría `keywords: []`, y este guardado
+  // reescribe la hoja entera: seria borrar todo. El backend también lo rechaza,
+  // pero conviene no llegar a mandarlo.
+  if (_suministrosKeywords === null) {
+    console.warn('save keywords: se ignoró, los items todavía no cargaron');
+    return;
+  }
   const noTimeline = (_suministrosKeywords || []).filter(k => _sumNoTimeline.has(_sumNormalize(k)));
   const reventa    = (_suministrosKeywords || []).filter(k => _sumReventa.has(_sumNormalize(k)));
   const venta      = (_suministrosKeywords || []).filter(k => _sumVenta.has(_sumNormalize(k)));
@@ -17735,9 +17751,22 @@ function _saveSuministrosKeywords() {
     localStorage.setItem('ln_sum_recetas', JSON.stringify(_sumRecetas));
   } catch(_) {}
   if (USE_SHEETS) {
-    fetch(SHEETS_API_URL, { method: 'POST',
-      body: JSON.stringify({ action: 'saveSuministrosItems', keywords: _suministrosKeywords || [], noTimeline, reventa, venta, precios: _sumPrecios, recetas: _sumRecetas, costos: _sumCostos })
-    }).catch(e => console.warn('save keywords', e));
+    // Solo se mandan los campos que el backend SÍ devolvió al cargar. Un campo
+    // que llegó como undefined (Apps Script todavía sin desplegar) se omite, y
+    // el backend preserva lo que ya tenía en vez de recibir un vacío y borrarlo.
+    const leidos = _sumCamposLeidos;
+    const body = { action: 'saveSuministrosItems', keywords: _suministrosKeywords };
+    const campo = (nombre, valor) => { if (!leidos || leidos.has(nombre)) body[nombre] = valor; };
+    campo('noTimeline', noTimeline);
+    campo('reventa',    reventa);
+    campo('venta',      venta);
+    campo('precios',    _sumPrecios);
+    campo('recetas',    _sumRecetas);
+    campo('costos',     _sumCostos);
+    fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify(body) })
+      .then(r => r.json())
+      .then(j => { if (j && j.ok === false) showToast('⚠ No se guardó: ' + (j.error || j.status)); })
+      .catch(e => console.warn('save keywords', e));
   }
 }
 

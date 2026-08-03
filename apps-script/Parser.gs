@@ -2789,10 +2789,38 @@ function doPost(e) {
     if (action === 'saveSuministrosItems') {
       const ss = SpreadsheetApp.openById(SHEET_ID);
       const sh = _getSuministrosItemsSheet(ss);
-      // Limpiar filas de datos y reescribir la lista completa que manda el front.
-      if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,7).clearContent();
       const kws = (payload.keywords || []).map(k => (k||'').toString().trim()).filter(Boolean);
       const norm = k => (k||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+
+      // Lo que YA hay, indexado por keyword. Este guardado reescribe la hoja
+      // entera, así que sin esto cualquier campo que el cliente no mande se
+      // pierde para TODAS las filas. Y eso pasa de verdad: el frontend vive en
+      // GitHub Pages (se actualiza al instante) y el backend en Apps Script (se
+      // despliega minutos después). En esa ventana el front pide un campo que
+      // el backend viejo todavía no devuelve, lo recibe vacío... y lo escribe
+      // de vuelta vacío. Así se borraron los productos de la tiendita: la
+      // columna Venta no existía cuando la página la leyó.
+      const prev = {};
+      if (sh.getLastRow() > 1) {
+        sh.getRange(2,1,sh.getLastRow()-1,7).getValues().forEach(r => {
+          const k = norm(r[0]);
+          if (k) prev[k] = r;
+        });
+      }
+      // Nunca vaciar la hoja entera. Un cliente a medio cargar manda
+      // `keywords: []`, y sin este guard eso borraba todo.
+      if (!kws.length && Object.keys(prev).length) {
+        return ContentService
+          .createTextOutput(JSON.stringify({ ok: false, status: 'refused_empty',
+            error: 'Se ignoró un guardado con la lista vacía para no borrar ' + Object.keys(prev).length + ' items.' }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+      // Un campo AUSENTE (undefined) se preserva; uno presente aunque vacío es
+      // una orden explícita de desmarcar todo. Es justo lo que distingue a un
+      // cliente viejo (no manda la clave) de uno al día (manda []).
+      const tiene = c => payload[c] !== undefined && payload[c] !== null;
+      const previo = (k, col) => { const r = prev[norm(k)]; return r ? r[col] : ''; };
+      if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,7).clearContent();
       // Keywords marcadas "solo detalle / no timeline" (ej. Delivery), sin acentos.
       const noSet = {};
       (payload.noTimeline || []).forEach(k => { noSet[norm(k)] = 1; });
@@ -2828,12 +2856,18 @@ function doPost(e) {
         if (Object.keys(limpia).length) recetas[norm(k)] = limpia;
       });
       if (kws.length) {
-        sh.getRange(2,1,kws.length,7).setValues(
-          kws.map(k => [k, noSet[norm(k)] ? true : false, revSet[norm(k)] ? true : false,
-                        precios[norm(k)] || '',
-                        recetas[norm(k)] ? JSON.stringify(recetas[norm(k)]) : '',
-                        ventaSet[norm(k)] ? true : false,
-                        costos[norm(k)] || '']));
+        sh.getRange(2,1,kws.length,7).setValues(kws.map(k => {
+          const n = norm(k);
+          return [
+            k,
+            tiene('noTimeline') ? !!noSet[n]  : previo(k, 1),
+            tiene('reventa')    ? !!revSet[n] : previo(k, 2),
+            tiene('precios')    ? (precios[n] || '') : previo(k, 3),
+            tiene('recetas')    ? (recetas[n] ? JSON.stringify(recetas[n]) : '') : previo(k, 4),
+            tiene('venta')      ? !!ventaSet[n] : previo(k, 5),
+            tiene('costos')     ? (costos[n] || '')  : previo(k, 6)
+          ];
+        }));
       }
       return ContentService
         .createTextOutput(JSON.stringify({ ok: true, count: kws.length }))
