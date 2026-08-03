@@ -16534,18 +16534,25 @@ async function _tvImportarDeWeb() {
     }
 
     _suministrosKeywords = _suministrosKeywords || [];
-    const nuevos = [], actualizados = [], iguales = [];
+    const nuevos = [], actualizados = [], porMarcar = [], iguales = [];
     encontrados.forEach(p => {
       const n = _sumNormalize(p.nombre);
       const yaEsta = _suministrosKeywords.find(k => _sumNormalize(k) === n);
       const precioPrevio = _sumPrecioVenta(p.nombre);
+      // Que exista con el precio correcto NO alcanza: puede faltarle la marca de
+      // producto, o arrastrar el 🛒 de cuando producto e insumo eran lo mismo.
+      // Sin este caso la importación no tenía nada "nuevo" que hacer y salía
+      // antes de marcar nada — la lista de venta quedaba vacía y el toast decía
+      // "ya está todo al día", que es justo lo contrario de lo que pasaba.
+      const faltaMarca = !_sumEsVenta(p.nombre) || _sumEsReventa(p.nombre);
       if (!yaEsta) nuevos.push(p);
       else if (Math.abs(precioPrevio - p.precio) >= 0.005) actualizados.push({ ...p, antes: precioPrevio });
+      else if (faltaMarca) porMarcar.push(p);
       else iguales.push(p);
     });
 
-    if (!nuevos.length && !actualizados.length) {
-      showToast('✓ Ya está todo al día · ' + iguales.length + ' item' + (iguales.length === 1 ? '' : 's'));
+    if (!nuevos.length && !actualizados.length && !porMarcar.length) {
+      showToast('✓ Ya está todo al día · ' + iguales.length + ' producto' + (iguales.length === 1 ? '' : 's'));
       return;
     }
 
@@ -16554,8 +16561,11 @@ async function _tvImportarDeWeb() {
       + nuevos.map(p => '  + ' + p.nombre + ' — $' + p.precio.toFixed(2)).join('\n') + '\n\n';
     if (actualizados.length) msg += 'CAMBIA EL PRECIO (' + actualizados.length + ')\n'
       + actualizados.map(p => '  · ' + p.nombre + ': $' + p.antes.toFixed(2) + ' → $' + p.precio.toFixed(2)).join('\n') + '\n\n';
+    if (porMarcar.length) msg += 'SE MARCAN COMO PRODUCTO (' + porMarcar.length + ')\n'
+      + porMarcar.map(p => '  · ' + p.nombre + ' — $' + p.precio.toFixed(2)).join('\n') + '\n\n';
     if (iguales.length) msg += 'Sin cambios: ' + iguales.length + '\n\n';
-    msg += 'Quedan como PRODUCTOS de la tiendita, con su precio de venta.';
+    msg += 'Quedan como PRODUCTOS de la tiendita, con su precio de venta.\n'
+         + 'Si alguno tenía el 🛒 de insumo, se le quita: un producto no es componente de otro.';
     if (!confirm(msg)) return;
 
     encontrados.forEach(p => {
@@ -16569,8 +16579,13 @@ async function _tvImportarDeWeb() {
     });
     _saveSuministrosKeywords();
     renderTiendita();
-    showToast('✓ ' + nuevos.length + ' nuevo' + (nuevos.length === 1 ? '' : 's')
-      + (actualizados.length ? ' · ' + actualizados.length + ' con precio actualizado' : ''));
+    // El resumen dice lo que REALMENTE pasó. El anterior solo contaba "nuevos",
+    // así que una corrida que marcó 6 productos existentes reportaba "0 nuevos".
+    const partes = [];
+    if (nuevos.length)      partes.push(nuevos.length + ' nuevo' + (nuevos.length === 1 ? '' : 's'));
+    if (actualizados.length) partes.push(actualizados.length + ' con precio nuevo');
+    if (porMarcar.length)   partes.push(porMarcar.length + ' marcado' + (porMarcar.length === 1 ? '' : 's') + ' como producto');
+    showToast('✓ ' + (partes.length ? partes.join(' · ') : 'sin cambios'));
   } catch (e) {
     showToast('✗ No se pudo leer index.html: ' + e.message);
   } finally {
