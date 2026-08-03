@@ -2193,6 +2193,23 @@
 
   /* Filas de "Todos los egresos": toda la fila abre el editor. El <select>
      de categoría y los botones de la última columna siguen siendo suyos. */
+  /* Cantidad de un componente en el armado de un combo */
+  .rec-qty { display: inline-flex; align-items: center; gap: 2px; }
+  .rec-qty-lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase;
+                 letter-spacing: .04em; margin-right: 4px; }
+  .rec-qty button {
+    width: 22px; height: 24px; border: 1px solid var(--border); background: var(--surface);
+    color: var(--text-muted); cursor: pointer; font-size: 14px; line-height: 1; border-radius: 6px;
+  }
+  .rec-qty button:hover { background: var(--bg); color: var(--text); }
+  .rec-qty input {
+    width: 46px; height: 24px; font-size: 13px; font-weight: 600; text-align: center;
+    border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text);
+    -moz-appearance: textfield; padding: 0;
+  }
+  .rec-qty input::-webkit-outer-spin-button,
+  .rec-qty input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
   .egr-row { cursor: pointer; transition: background .12s; }
   .egr-row:hover { background: var(--bg); }
   .egr-row:active { background: var(--border); }
@@ -2859,6 +2876,7 @@
       <button onclick="showSection('reservas')">Reservas</button>
       <button onclick="showSection('ocupacion')">Ocupación</button>
       <button onclick="showSection('suministros')">Suministros</button>
+      <button onclick="showSection('tiendita')">Tiendita</button>
       <button onclick="showSection('contabilidad')">Contabilidad</button>
       <button onclick="showSection('programa')">Programa</button>
       <button id="btnBotNav" onclick="showSection('bot')" style="display:none;">💬 Agente</button>
@@ -2871,6 +2889,7 @@
         <button onclick="showSection('reservas');closeNavMenu()">Reservas</button>
         <button onclick="showSection('ocupacion');closeNavMenu()">Ocupación</button>
         <button onclick="showSection('suministros');closeNavMenu()">Suministros</button>
+        <button onclick="showSection('tiendita');closeNavMenu()">Tiendita</button>
         <button onclick="showSection('contabilidad');closeNavMenu()">Contabilidad</button>
         <button onclick="showSection('programa');closeNavMenu()">Programa</button>
         <button id="btnBotNavMobile" onclick="showSection('bot');closeNavMenu()" style="display:none;">💬 Agente</button>
@@ -3065,7 +3084,6 @@
       <button id="contabTabIngresos"  onclick="setContabTab('ingresos')"  style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Ingresos</button>
       <button id="contabTabEgresos"   onclick="setContabTab('egresos')"   style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Egresos</button>
       <button id="contabTabPrestamos" onclick="setContabTab('prestamos')" style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Préstamos</button>
-      <button id="contabTabTiendita"  onclick="setContabTab('tiendita')" style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Tiendita</button>
       <button id="contabTabCxC"       onclick="setContabTab('cxc')"       style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);">Por Cobrar</button>
     </div>
 
@@ -3413,26 +3431,6 @@
       <div id="prestamosList"></div>
     </div>
 
-    <!-- TIENDITA -->
-    <div id="contabPanelTiendita" style="display:none;">
-      <div style="background:#eef3f8;border-radius:10px;padding:12px 16px;margin-bottom:18px;display:flex;gap:10px;align-items:flex-start;">
-        <div style="font-size:15px;flex-shrink:0;margin-top:1px;">ℹ️</div>
-        <div>
-          <div style="font-size:11px;font-weight:600;color:var(--azul-dark);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Costo desde Suministros, ventas acá</div>
-          <div style="font-size:13px;color:var(--text-muted);line-height:1.5;">
-            El costo sale de las compras de las palabras clave marcadas con 🛒 en
-            <a href="#" onclick="showSection('suministros');return false;" style="color:var(--azul-dark);">Suministros</a>
-            — incluido el reparto de facturas compartidas. Acá solo se cargan las ventas.
-          </div>
-        </div>
-      </div>
-      <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
-        <button class="btn btn-ghost" id="tvImportarBtn" onclick="_tvImportarDeWeb()" style="font-size:13px;margin-right:8px;"
-                title="Lee los productos y precios de la sección Insumos de index.html">⬇ Importar de la web</button>
-        <button class="btn btn-primary" onclick="openVentaModal()" style="font-size:13px;">+ Registrar venta</button>
-      </div>
-      <div id="tienditaBody"></div>
-    </div>
 
     <div id="contabPanelCxC" style="display:none;">
 
@@ -3702,6 +3700,46 @@
       <div id="sumTimelineWrap" style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);"></div>
       <!-- Detalle (facturas por item) -->
       <div id="sumDetalleWrap" style="display:none;"></div>
+  </section>
+
+  <section id="tiendita" class="section">
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">Tiendita</h1>
+        <p class="page-subtitle">Insumos que se le venden al huésped</p>
+      </div>
+      <div class="page-head-actions">
+        <button class="btn btn-ghost" id="tvImportarBtn" onclick="_tvImportarDeWeb()" style="font-size:13px;"
+                title="Lee los productos y precios de la sección Insumos de index.html">⬇ Importar de la web</button>
+        <button class="btn btn-primary" onclick="openVentaModal()" style="font-size:13px;">+ Registrar venta</button>
+      </div>
+    </div>
+
+    <!-- Mismo selector de período que Contabilidad, con estado compartido -->
+    <div class="month-filter" id="tvMonthFilter"></div>
+    <div id="tvCustomRangePopover" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding:10px 12px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;">
+      <label style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Desde</label>
+      <input type="date" id="tvCustomRangeFrom" style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+      <label style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Hasta</label>
+      <input type="date" id="tvCustomRangeTo"   style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+      <button onclick="_applyCustomRange('tvCustomRange')" style="padding:6px 14px;font-size:12px;font-weight:600;border:none;border-radius:6px;background:var(--verde-dark);color:#fff;cursor:pointer;">Aplicar</button>
+      <button onclick="_cancelCustomRange('tvCustomRange')" style="padding:6px 12px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-muted);cursor:pointer;">Cancelar</button>
+    </div>
+
+    <div style="background:#eef3f8;border-radius:10px;padding:12px 16px;margin-bottom:18px;display:flex;gap:10px;align-items:flex-start;">
+      <div style="font-size:15px;flex-shrink:0;margin-top:1px;">ℹ️</div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--azul-dark);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Productos de la web, insumos de Suministros</div>
+        <div style="font-size:13px;color:var(--text-muted);line-height:1.5;">
+          Los <strong>productos</strong> que se venden salen de la página pública con “Importar de la web”, con su precio.
+          Su <strong>costo</strong> sale de los insumos marcados 🛒 en
+          <a href="#" onclick="showSection('suministros');return false;" style="color:var(--azul-dark);">Suministros</a>:
+          directo si el producto se compra tal cual se vende, o por <strong>receta</strong> (🧩) si se arma.
+        </div>
+      </div>
+    </div>
+
+    <div id="tienditaBody"></div>
   </section>
 
   <section id="ocupacion" class="section">
@@ -5429,8 +5467,8 @@ document.addEventListener('click', function(e) {
 function showSection(id) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  const sections = ['reservas','contabilidad','disponibilidad','ocupacion','suministros','programa','bot'];
-  const labels   = { reservas:'Reservas', contabilidad:'Contabilidad', disponibilidad:'Disponibilidad', ocupacion:'Ocupación', suministros:'Suministros', programa:'Programa Amigos', bot:'💬 Agente' };
+  const sections = ['reservas','contabilidad','disponibilidad','ocupacion','suministros','tiendita','programa','bot'];
+  const labels   = { reservas:'Reservas', contabilidad:'Contabilidad', disponibilidad:'Disponibilidad', ocupacion:'Ocupación', suministros:'Suministros', tiendita:'Tiendita', programa:'Programa Amigos', bot:'💬 Agente' };
   document.querySelectorAll('nav button').forEach(b => {
     const sec = b.getAttribute('onclick')?.match(/showSection\('(\w+)'/)?.[1];
     b.classList.toggle('active', sec === id);
@@ -5444,6 +5482,7 @@ function showSection(id) {
   }
   if(id === 'ocupacion')      renderOcupacion();
   if(id === 'suministros')    renderSuministrosTab();
+  if(id === 'tiendita')       renderTiendita();
   if(id === 'programa')       renderProgramaMetrics();
   if(id === 'bot')            { loadBotData(); startBotLive(); }
   else                        stopBotLive();
@@ -12412,7 +12451,15 @@ function _ocuScrollHints() {
   });
 }
 
+// ¿Está visible esta sección? Se usa para no repintar paneles ocultos (donde
+// clientWidth es 0 y los cálculos de ancho dan cualquier cosa).
+function _seccionActiva(id) {
+  const el = document.getElementById(id);
+  return !!(el && el.classList.contains('active'));
+}
+
 function _rerenderPorPeriodo() {
+  if (_seccionActiva('tiendita'))  { renderTiendita();  return; }
   const ocu = document.getElementById('ocupacion');
   if (ocu && ocu.classList.contains('active')) { renderOcupacion(); return; }
   const res = document.getElementById('reservas');
@@ -12449,8 +12496,14 @@ function _ensurePeriodDefault() {
   }
 }
 
-function _cancelCustomRange() {
+function _cancelCustomRange(prefijo) {
   _customRangeOpen = false;
+  // Cada sección tiene su propio popover; el suyo se cierra en el re-render,
+  // pero el de Tiendita vive fuera de lo que repinta _rerenderPorPeriodo.
+  if (prefijo) {
+    const el = document.getElementById(prefijo + 'Popover');
+    if (el) el.style.display = 'none';
+  }
   _rerenderPorPeriodo();
 }
 
@@ -16166,7 +16219,6 @@ function _renderActiveContabTab() {
   if (_contabTab === 'ingresos')    renderWidgets7d();
   if (_contabTab === 'cxc')         renderCxC();
   if (_contabTab === 'prestamos')   renderPrestamos();
-  if (_contabTab === 'tiendita')    renderTiendita();
 }
 
 function setContabTab(tab) {
@@ -16174,22 +16226,20 @@ function setContabTab(tab) {
   // Suministros salió de acá: es sección propia (`#suministros`) con su propio
   // período. No es contabilidad — Contabilidad responde "¿cuánto gasté?",
   // Suministros "¿cuándo recompro el gas?".
-  const tabs   = ['resumen', 'ingresos', 'egresos', 'cxc', 'prestamos', 'tiendita'];
+  const tabs   = ['resumen', 'ingresos', 'egresos', 'cxc', 'prestamos'];
   const panels = {
     resumen:  'contabPanelResumen',
     ingresos: 'contabPanelIngresos',
     egresos:  'contabPanelEgresos',
     cxc:      'contabPanelCxC',
-    prestamos:'contabPanelPrestamos',
-    tiendita: 'contabPanelTiendita'
+    prestamos:'contabPanelPrestamos'
   };
   const btns = {
     resumen:  'contabTabResumen',
     ingresos: 'contabTabIngresos',
     egresos:  'contabTabEgresos',
     cxc:      'contabTabCxC',
-    prestamos:'contabTabPrestamos',
-    tiendita: 'contabTabTiendita'
+    prestamos:'contabTabPrestamos'
   };
   tabs.forEach(t => {
     const panelEl = document.getElementById(panels[t]);
@@ -16245,7 +16295,7 @@ async function cargarTiendita() {
   try {
     const r = await (await fetch(SHEETS_API_URL + '?action=getTienditaVentas&_=' + Date.now())).json();
     if (r && r.ok) tienditaVentas = r.ventas || [];
-    if (_contabTab === 'tiendita') renderTiendita();
+    if (_seccionActiva('tiendita')) renderTiendita();
   } catch (_) { /* sin conexión: se queda con lo que haya */ }
 }
 
@@ -16264,13 +16314,15 @@ function _tienditaKeywordsCompradas() {
     const rec = _sumReceta(kw);
     if (rec) Object.keys(rec).forEach(c => visitar(c, prof + 1));
   };
-  (_suministrosKeywords || []).filter(_sumEsReventa).forEach(kw => visitar(kw, 0));
+  // Los insumos 🛒 son mercadería por sí solos (se compran para la tiendita),
+  // y los productos aportan además lo que consuman sus recetas.
+  (_suministrosKeywords || []).filter(k => _sumEsReventa(k) || _sumEsVenta(k)).forEach(kw => visitar(kw, 0));
   return out;
 }
 
 function _tienditaCosto() {
   const porItem = {};
-  const kws = (_suministrosKeywords || []).filter(_sumEsReventa);
+  const kws = (_suministrosKeywords || []).filter(_sumEsVenta);
   kws.forEach(kw => {
     const nkw = _sumNormalize(kw);
     let total = 0, compras = 0;
@@ -16289,6 +16341,12 @@ function _tienditaCosto() {
 function renderTiendita() {
   const box = document.getElementById('tienditaBody');
   if (!box) return;
+  // Ahora es sección propia, así que pinta su propia barra de período. El
+  // estado (selectedMonth/selectedRange) es el MISMO de Contabilidad: elegir
+  // un mes acá vale allá, que es lo que uno espera.
+  _renderChipsPeriodo('tvMonthFilter');
+  const pop = document.getElementById('tvCustomRangePopover');
+  if (pop) pop.style.display = _customRangeOpen ? 'flex' : 'none';
   // Las keywords se cargan perezosamente al abrir Suministros. Sin esto, entrar
   // directo a Tiendita mostraba costo $0 y "no marcaste ninguna keyword",
   // cuando en realidad sí estaban marcadas pero no se habían pedido todavía.
@@ -16297,7 +16355,7 @@ function renderTiendita() {
     box.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px;">Cargando…</div>';
     return;
   }
-  const kwsReventa = (_suministrosKeywords || []).filter(_sumEsReventa);
+  const kwsVenta = (_suministrosKeywords || []).filter(_sumEsVenta);
   const costos = _tienditaCosto();
   // Lo comprado incluye los componentes de las recetas, no solo lo marcado 🛒.
   const nkwsCompra = _tienditaKeywordsCompradas();
@@ -16344,9 +16402,9 @@ function renderTiendita() {
     +   '<div class="stat-sub">' + (ventaTotal > 0 ? 'margen ' + margenReal.toFixed(0) + '%' : 'sin ventas') + '</div></div>'
     + '<div class="stat-card"><div class="stat-label">Comprado en el período</div>'
     +   '<div class="stat-value">$' + costoTotal.toFixed(2) + '</div>'
-    +   '<div class="stat-sub">' + kwsReventa.length + ' item' + (kwsReventa.length === 1 ? '' : 's') + ' de reventa'
-    +     (nkwsCompra.size > kwsReventa.length
-            ? ' + ' + (nkwsCompra.size - kwsReventa.length) + ' insumo' + (nkwsCompra.size - kwsReventa.length === 1 ? '' : 's')
+    +   '<div class="stat-sub">' + kwsVenta.length + ' producto' + (kwsVenta.length === 1 ? '' : 's')
+    +     (nkwsCompra.size > kwsVenta.length
+            ? ' + ' + (nkwsCompra.size - kwsVenta.length) + ' insumo' + (nkwsCompra.size - kwsVenta.length === 1 ? '' : 's')
             : '') + '</div></div>'
     + '</div>';
 
@@ -16365,15 +16423,15 @@ function renderTiendita() {
     + 'lo que efectivamente saliste a vender. La ganancia usa el segundo, así que una compra grande de stock ya no descuadra el margen.'
     + '</div>';
 
-  if (!kwsReventa.length) {
+  if (!kwsVenta.length) {
     html += '<div style="text-align:center;padding:24px 10px;color:var(--text-muted);font-size:13px;line-height:1.6;">'
-      + 'Todavía no marcaste ninguna palabra clave como de reventa.<br>'
-      + 'Ve a <a href="#" onclick="showSection(\'suministros\');return false;" style="color:var(--azul-dark);">Suministros</a> '
-      + 'y toca el 🛒 de los items que vendes en la tiendita.</div>';
+      + 'Todavía no hay productos cargados.<br>'
+      + 'Toca <strong>⬇ Importar de la web</strong> arriba: la lista con nombres y precios ya vive en la página pública.</div>';
   } else {
     html += '<div class="contab-panel" style="margin-bottom:18px;">'
-      + '<div class="contab-panel-header"><div class="contab-panel-title">📦 Costo por item</div></div>';
-    kwsReventa.forEach(kw => {
+      + '<div class="contab-panel-header"><div class="contab-panel-title">🏪 Productos</div>'
+      + '<div style="font-size:11.5px;color:var(--text-muted);">precio de la web · costo por receta o compra</div></div>';
+    kwsVenta.forEach(kw => {
       const c = costos[kw] || { costo: 0, compras: 0 };
       const vendidoItem = ventasPeriodo
         .filter(v => _sumNormalize(v.item) === _sumNormalize(kw))
@@ -16497,13 +16555,16 @@ async function _tvImportarDeWeb() {
     if (actualizados.length) msg += 'CAMBIA EL PRECIO (' + actualizados.length + ')\n'
       + actualizados.map(p => '  · ' + p.nombre + ': $' + p.antes.toFixed(2) + ' → $' + p.precio.toFixed(2)).join('\n') + '\n\n';
     if (iguales.length) msg += 'Sin cambios: ' + iguales.length + '\n\n';
-    msg += 'Todos quedan marcados como de reventa 🛒.';
+    msg += 'Quedan como PRODUCTOS de la tiendita, con su precio de venta.';
     if (!confirm(msg)) return;
 
     encontrados.forEach(p => {
       const n = _sumNormalize(p.nombre);
       if (!_suministrosKeywords.some(k => _sumNormalize(k) === n)) _suministrosKeywords.push(p.nombre);
-      _sumReventa.add(n);
+      _sumVenta.add(n);
+      // Un producto NO es insumo: si además quedara 🛒 volvería a aparecer en el
+      // desplegable de componentes y se podría armar un kit con otro kit.
+      _sumReventa.delete(n);
       _sumPrecios[n] = p.precio;
     });
     _saveSuministrosKeywords();
@@ -16541,7 +16602,9 @@ function openVentaModal(id) {
 // cruce por item del panel funciona sin depender de cómo se tipeó.
 function _tvLlenarItems(seleccion) {
   const sel = document.getElementById('tvItem');
-  const kws = (_suministrosKeywords || []).filter(_sumEsReventa);
+  // PRODUCTOS, no insumos: lo que se le cobra al huésped. Los 🛒 son la materia
+  // prima de los combos y no se venden sueltos.
+  const kws = (_suministrosKeywords || []).filter(_sumEsVenta);
   let html = '<option value="">— Elegir item —</option>';
   kws.forEach(k => {
     const pv = _sumPrecioVenta(k);
@@ -16707,7 +16770,7 @@ async function _tvSubirVoucher(ev) {
         // El campo "Mensaje" del Yappy suele decir qué se compró.
         if (d.mensaje && !_tvItemActual()) {
           const msg = _sumNormalize(d.mensaje);
-          const kw = (_suministrosKeywords || []).filter(_sumEsReventa)
+          const kw = (_suministrosKeywords || []).filter(_sumEsVenta)
                        .find(k => msg.indexOf(_sumNormalize(k)) !== -1);
           if (kw) { document.getElementById('tvItem').value = kw; _tvItemElegido(); llenados++; }
         }
@@ -17310,6 +17373,11 @@ let _sumPrecios = {};
 // RECETAS: keyword normalizada → { componente_normalizado: cantidad }. Solo para
 // lo que se arma (un kit) en vez de comprarse hecho; el resto no lleva receta.
 let _sumRecetas = {};
+// PRODUCTOS de la tiendita (lo que se le cobra al huésped). Llegan del import
+// de la web. Es el otro lado de _sumReventa(🛒), que son los INSUMOS que pueden
+// entrar en un combo. Son roles disjuntos a propósito: el carbón a granel es
+// insumo, la "Bolsa de Carbón" de $5 es producto.
+let _sumVenta = new Set();
 let _sumKeywordsLoading = false;
 let _sumBarMeta = {};              // barKey → { egresoId, kw, nkw, autoEnd, isLast, avg, effEnd } (poblado al renderizar)
 let _sumView = 'timeline';        // 'timeline' | 'detalle'
@@ -17574,6 +17642,7 @@ async function _loadSuministrosKeywords() {
       Object.keys((j && j.precios) || {}).forEach(k => { _sumPrecios[_sumNormalize(k)] = j.precios[k]; });
       _sumRecetas = {};
       Object.keys((j && j.recetas) || {}).forEach(k => { _sumRecetas[_sumNormalize(k)] = j.recetas[k]; });
+      _sumVenta = new Set((j && Array.isArray(j.venta) ? j.venta : []).map(_sumNormalize));
     } else {
       let ls = null; try { ls = JSON.parse(localStorage.getItem('ln_sum_keywords') || 'null'); } catch(_) {}
       _suministrosKeywords = Array.isArray(ls) ? ls : ['Papel higiénico','Café','Agua','Gas','Hielo','Cloro','Desinfectante','Detergente','Jabón','Kerosene'];
@@ -17583,6 +17652,8 @@ async function _loadSuministrosKeywords() {
       _sumReventa = new Set(Array.isArray(lr) ? lr.map(_sumNormalize) : []);
       try { _sumPrecios = JSON.parse(localStorage.getItem('ln_sum_precios') || '{}'); } catch(_) { _sumPrecios = {}; }
       try { _sumRecetas = JSON.parse(localStorage.getItem('ln_sum_recetas') || '{}'); } catch(_) { _sumRecetas = {}; }
+      let lv = null; try { lv = JSON.parse(localStorage.getItem('ln_sum_venta') || 'null'); } catch(_) {}
+      _sumVenta = new Set(Array.isArray(lv) ? lv.map(_sumNormalize) : []);
     }
   } catch(e) { _suministrosKeywords = []; }
   finally { _sumKeywordsLoading = false; }
@@ -17591,7 +17662,9 @@ async function _loadSuministrosKeywords() {
 function _saveSuministrosKeywords() {
   const noTimeline = (_suministrosKeywords || []).filter(k => _sumNoTimeline.has(_sumNormalize(k)));
   const reventa    = (_suministrosKeywords || []).filter(k => _sumReventa.has(_sumNormalize(k)));
+  const venta      = (_suministrosKeywords || []).filter(k => _sumVenta.has(_sumNormalize(k)));
   try {
+    localStorage.setItem('ln_sum_venta', JSON.stringify(venta));
     localStorage.setItem('ln_sum_keywords', JSON.stringify(_suministrosKeywords || []));
     localStorage.setItem('ln_sum_notimeline', JSON.stringify(noTimeline));
     localStorage.setItem('ln_sum_reventa', JSON.stringify(reventa));
@@ -17600,12 +17673,13 @@ function _saveSuministrosKeywords() {
   } catch(_) {}
   if (USE_SHEETS) {
     fetch(SHEETS_API_URL, { method: 'POST',
-      body: JSON.stringify({ action: 'saveSuministrosItems', keywords: _suministrosKeywords || [], noTimeline, reventa, precios: _sumPrecios, recetas: _sumRecetas })
+      body: JSON.stringify({ action: 'saveSuministrosItems', keywords: _suministrosKeywords || [], noTimeline, reventa, venta, precios: _sumPrecios, recetas: _sumRecetas })
     }).catch(e => console.warn('save keywords', e));
   }
 }
 
 function _sumEsReventa(kw) { return _sumReventa.has(_sumNormalize(kw)); }
+function _sumEsVenta(kw)   { return _sumVenta.has(_sumNormalize(kw)); }
 function _sumPrecioVenta(kw) { return parseFloat(_sumPrecios[_sumNormalize(kw)]) || 0; }
 
 // ── Recetas: items que se ARMAN en vez de comprarse hechos ────────
@@ -17620,24 +17694,37 @@ function _sumTieneReceta(kw) {
   return !!(r && Object.keys(r).length);
 }
 
-// Costo unitario a partir de las compras PROPIAS del item: lo gastado dividido
-// las unidades compradas. Se calcula sobre TODO el histórico, no sobre el
-// período seleccionado: el costo de un cerillo no cambia porque estés mirando
-// agosto. Si se filtrara por período, un componente comprado en julio daría
-// costo $0 en agosto y el kit valdría $0 sin avisar.
-// Una compra sin cantidad cuenta como 1 unidad (misma regla que el repartidor).
-function _sumCostoUnitarioPropio(kw) {
+// Costo unitario de un insumo = el precio unitario de su COMPRA MÁS RECIENTE,
+// que es exactamente el que se edita en Suministros (monto ÷ cantidad en el
+// repartidor). Se eligió así, y no un promedio de todo el histórico, porque el
+// promedio no responde a lo que uno acaba de corregir: al segregar una compra
+// de 5 bolsas grandes en 15 unidades de venta, el costo debe pasar a $1.66 —
+// con promedio quedaba mezclado con compras viejas sin cantidad, que cuentan
+// como 1 unidad, y daba el precio de la bolsa entera.
+// No se filtra por período: el costo de un cerillo no cambia porque estés
+// mirando agosto, y filtrando, un insumo comprado en julio valdría $0 en
+// agosto sin avisar.
+// Devuelve además la fecha y cuántas compras hay, para poder explicarlo.
+function _sumCostoUnitarioInfo(kw) {
   const nkw = _sumNormalize(kw);
-  let total = 0, uds = 0;
+  const compras = [];
   egresos.forEach(e => {
     if (!_sumCatOk(e) || !_sumMatchesKw(e, nkw)) return;
     const m = _sumItemAmount(e, nkw);
-    total += (m == null ? (parseFloat(e.amount) || 0) : m);
+    const monto = (m == null ? (parseFloat(e.amount) || 0) : m);
+    if (!monto) return;
     const q = _sumItemQty(e, nkw);
-    uds += (q && q > 0) ? q : 1;
+    compras.push({ fecha: e.date || '', unit: monto / ((q && q > 0) ? q : 1), qty: (q && q > 0) ? q : 1 });
   });
-  if (!uds || !total) return null;
-  return total / uds;
+  if (!compras.length) return null;
+  compras.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+  const ult = compras[compras.length - 1];
+  return { unit: ult.unit, fecha: ult.fecha, qty: ult.qty, compras: compras.length };
+}
+
+function _sumCostoUnitarioPropio(kw) {
+  const info = _sumCostoUnitarioInfo(kw);
+  return info ? info.unit : null;
 }
 
 // Costo de armar UNA unidad. Con receta, es la suma de sus componentes; sin
@@ -17728,27 +17815,34 @@ function _recPintar() {
     cont.innerHTML = _recCtx.partes.map((p, i) => {
       const cu = _sumCostoUnitario(p.nkw, new Set([propio]));
       const sub = cu == null ? null : cu * (parseFloat(p.qty) || 0);
+      // La cantidad va con rótulo y botones −/+: sin eso el "1" se leía como
+      // una etiqueta y no como un campo, y no se notaba que un combo puede
+      // llevar 2 cerillos o 3 bolsitas.
       return '<div class="tv-row" style="cursor:default;">'
         + '<div class="tv-row-main">' + escapeHtml(_recNombre(p.nkw))
         +   '<div class="tv-row-sub">' + (cu == null ? '⚠ sin costo unitario conocido' : '$' + cu.toFixed(2) + ' c/u') + '</div></div>'
         + '<div class="tv-row-side">'
-        +   '<input type="number" step="0.01" min="0" value="' + p.qty + '" data-idx="' + i + '" '
-        +     'oninput="_recQty(this)" style="width:64px;font-size:12px;padding:3px 6px;text-align:right;'
-        +     'border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">'
+        +   '<div class="rec-qty">'
+        +     '<span class="rec-qty-lbl">cant.</span>'
+        +     '<button type="button" onclick="_recPaso(' + i + ',-1)" title="Quitar uno">−</button>'
+        +     '<input type="number" step="1" min="0" value="' + p.qty + '" data-idx="' + i + '" oninput="_recQty(this)">'
+        +     '<button type="button" onclick="_recPaso(' + i + ',1)" title="Agregar uno">+</button>'
+        +   '</div>'
         +   '<span class="tv-row-sub" style="min-width:56px;text-align:right;">'
         +     (sub == null ? '—' : '$' + sub.toFixed(2)) + '</span>'
-        +   '<button class="tv-edit" onclick="_recQuitar(' + i + ')" title="Quitar">✕</button>'
+        +   '<button class="tv-edit" onclick="_recQuitar(' + i + ')" title="Quitar de la receta">✕</button>'
         + '</div></div>';
     }).join('');
   }
 
-  // Candidatos: las palabras clave de Suministros (todas, no solo las 🛒 — la
-  // leña de un kit no se vende suelta y nunca tendría el 🛒), menos el propio
-  // item y los ya puestos. Se excluye el propio para que no se arme consigo mismo.
-  // Van ALFABÉTICOS y con su costo unitario al lado: el orden de la hoja ofrecía
-  // "Papel" para una bolsa de carbón, y sin el costo no se puede elegir bien.
+  // Candidatos: SOLO los insumos marcados 🛒 en Suministros. Un combo se arma
+  // con materia prima, no con otros productos de la tiendita — ofrecer todas
+  // las palabras clave hacía que apareciera "Papel" para una bolsa de carbón.
+  // Van alfabéticos y con su costo unitario al lado, que es lo que permite
+  // elegir bien (y notar cuando se está tomando el insumo equivocado).
   const usados = new Set(_recCtx.partes.map(p => p.nkw));
   const cands = (_suministrosKeywords || [])
+    .filter(_sumEsReventa)
     .filter(k => _sumNormalize(k) !== propio && !usados.has(_sumNormalize(k)))
     .map(k => ({ kw: k, nkw: _sumNormalize(k), cu: _sumCostoUnitario(k, new Set([propio])) }))
     .sort((a, b) => a.kw.localeCompare(b.kw, 'es'));
@@ -17761,6 +17855,7 @@ function _recPintar() {
   let opts = '';
   if (conCosto.length) opts += '<optgroup label="Con costo conocido">' + conCosto.map(opt).join('') + '</optgroup>';
   if (sinCosto.length) opts += '<optgroup label="Sin compras registradas">' + sinCosto.map(opt).join('') + '</optgroup>';
+  if (!cands.length) opts += '<option value="" disabled>(no hay insumos 🛒 disponibles)</option>';
   // Un componente que todavía no es palabra clave (los malvaviscos la primera
   // vez) no estaría en la lista y obligaría a salir a Suministros a crearlo.
   opts += '<option value="__nuevo__">➕ Otro insumo…</option>';
@@ -17832,12 +17927,20 @@ function _recAgregar() {
     if (nkw === _sumNormalize(_recCtx.kw)) return showToast('Un item no se puede armar consigo mismo');
     if (_recCtx.partes.some(p => p.nkw === nkw)) return showToast('Ese insumo ya está en la receta');
     _suministrosKeywords = _suministrosKeywords || [];
-    if (!_suministrosKeywords.some(k => _sumNormalize(k) === nkw)) {
-      _suministrosKeywords.push(v);
-      _saveSuministrosKeywords();   // queda trackeado en Suministros, como cualquier otro
-    }
+    if (!_suministrosKeywords.some(k => _sumNormalize(k) === nkw)) _suministrosKeywords.push(v);
+    // Nace marcado 🛒: se creó desde acá justamente para ser componente de un
+    // combo, y sin la marca no volvería a aparecer en esta misma lista.
+    _sumReventa.add(nkw);
+    _saveSuministrosKeywords();
   }
   _recCtx.partes.push({ nkw, qty: 1 });
+  _recPintar();
+}
+
+function _recPaso(i, delta) {
+  if (!_recCtx || !_recCtx.partes[i]) return;
+  const q = Math.max(0, (parseFloat(_recCtx.partes[i].qty) || 0) + delta);
+  _recCtx.partes[i].qty = +q.toFixed(2);
   _recPintar();
 }
 
@@ -17875,7 +17978,7 @@ function toggleSumReventa(kw) {
   if (_sumReventa.has(n)) _sumReventa.delete(n); else _sumReventa.add(n);
   _saveSuministrosKeywords();
   renderSuministrosTab();
-  if (_contabTab === 'tiendita') renderTiendita();
+  if (_seccionActiva('tiendita')) renderTiendita();
 }
 
 // Alterna si una keyword va en el timeline o es "solo detalle" (ej. Delivery).
@@ -17931,7 +18034,7 @@ async function renderSuministrosTab() {
     return `<span style="display:inline-flex;align-items:center;gap:5px;background:${noTl?'#f3ede0':'var(--card-bg)'};border:1px ${noTl?'dashed':'solid'} var(--border);border-radius:999px;padding:5px 6px 5px 12px;font-size:13px;color:var(--text);">
       ${escapeHtml(kw)}${noTl?'<span style="font-size:10px;color:var(--text-muted);">· solo detalle</span>':''}
       <button onclick="toggleSumNoTimeline('${esc}')" title="${tglTitle}" style="border:none;background:transparent;cursor:pointer;font-size:12px;line-height:1;padding:0 1px;">${tglIcon}</button>
-      <button onclick="toggleSumReventa('${esc}')" title="${_sumEsReventa(kw) ? 'Se revende en la tiendita — quitar' : 'Marcar: se revende en la tiendita'}" style="border:none;background:transparent;cursor:pointer;font-size:12px;line-height:1;padding:0 1px;opacity:${_sumEsReventa(kw) ? '1' : '.35'};">🛒</button>
+      <button onclick="toggleSumReventa('${esc}')" title="${_sumEsReventa(kw) ? 'Insumo de la tiendita: puede entrar en un combo — quitar' : 'Marcar como insumo de la tiendita (queda disponible para armar combos)'}" style="border:none;background:transparent;cursor:pointer;font-size:12px;line-height:1;padding:0 1px;opacity:${_sumEsReventa(kw) ? '1' : '.35'};">🛒</button>
       <button onclick="removeSuministroKeyword('${esc}')" title="Quitar" style="border:none;background:var(--border);color:var(--text-muted);width:18px;height:18px;border-radius:50%;cursor:pointer;font-size:12px;line-height:1;">&times;</button>
     </span>`;
   }).join('') +

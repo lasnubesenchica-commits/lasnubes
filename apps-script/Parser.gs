@@ -1788,7 +1788,7 @@ function _getSuministrosItemsSheet(ss) {
   let sh = ss.getSheetByName('SuministrosItems');
   if (!sh) {
     sh = ss.insertSheet('SuministrosItems');
-    sh.getRange(1,1,1,5).setValues([['Keyword','NoTimeline','Reventa','PrecioVenta','Receta']]).setFontWeight('bold');
+    sh.getRange(1,1,1,6).setValues([['Keyword','NoTimeline','Reventa','PrecioVenta','Receta','Venta']]).setFontWeight('bold');
     sh.setFrozenRows(1);
     // Semilla inicial de keywords sugeridos.
     const seed = ['Papel','Café','Agua','Gas','Hielo','Cloro','Desinfectante','Detergente','Jabón','Kerosene'];
@@ -1797,7 +1797,7 @@ function _getSuministrosItemsSheet(ss) {
   }
   // Auto-migración: asegurar la columna 2 NoTimeline (keywords que NO van en el
   // timeline, ej. Delivery — no es un insumo consumible, solo se ve en Detalle).
-  const hdr = sh.getRange(1,1,1,Math.max(sh.getLastColumn(),5)).getValues()[0];
+  const hdr = sh.getRange(1,1,1,Math.max(sh.getLastColumn(),6)).getValues()[0];
   if ((hdr[1]||'').toString().toLowerCase().trim() !== 'notimeline') {
     sh.getRange(1,2).setValue('NoTimeline').setFontWeight('bold');
   }
@@ -1819,6 +1819,15 @@ function _getSuministrosItemsSheet(ss) {
   // directo de los egresos que matchean su keyword.
   if ((hdr[4]||'').toString().toLowerCase().trim() !== 'receta') {
     sh.getRange(1,5).setValue('Receta').setFontWeight('bold');
+  }
+  // Columna 6: VENTA — es un PRODUCTO de la tiendita (lo que se le cobra al
+  // huésped), no un insumo. Se marca sola al importar de la web. Es el otro
+  // lado de Reventa(🛒), que ahora significa "insumo que puede entrar en un
+  // combo". Son roles distintos: el carbón a granel es insumo, la "Bolsa de
+  // Carbón" de $5 es producto. Mezclarlos hacía que el desplegable de
+  // componentes ofreciera kits y que la lista de venta mostrara insumos.
+  if ((hdr[5]||'').toString().toLowerCase().trim() !== 'venta') {
+    sh.getRange(1,6).setValue('Venta').setFontWeight('bold');
   }
   return sh;
 }
@@ -2108,10 +2117,11 @@ function doGet(e) {
     if (action === 'getSuministrosItems') {
       const ss = SpreadsheetApp.openById(SHEET_ID);
       const sh = _getSuministrosItemsSheet(ss);
-      const rows = sh.getLastRow() > 1 ? sh.getRange(2,1,sh.getLastRow()-1,5).getValues() : [];
+      const rows = sh.getLastRow() > 1 ? sh.getRange(2,1,sh.getLastRow()-1,6).getValues() : [];
       const keywords = [];
       const noTimeline = [];
       const reventa = [];
+      const venta = [];
       const precios = {};
       const recetas = {};
       const esFlag = f => (f === true || f === 'TRUE' || f === 'true' || f === 1 || f === '1');
@@ -2121,6 +2131,7 @@ function doGet(e) {
         keywords.push(kw);
         if (esFlag(r[1])) noTimeline.push(kw);
         if (esFlag(r[2])) reventa.push(kw);
+        if (esFlag(r[5])) venta.push(kw);
         const pv = parseFloat(r[3]);
         if (!isNaN(pv) && pv > 0) precios[kw] = pv;
         // Receta corrupta = item sin receta, no un error que tumbe la carga
@@ -2132,7 +2143,7 @@ function doGet(e) {
         }
       });
       return ContentService
-        .createTextOutput(JSON.stringify({ ok: true, keywords, noTimeline, reventa, precios, recetas }))
+        .createTextOutput(JSON.stringify({ ok: true, keywords, noTimeline, reventa, venta, precios, recetas }))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -2768,7 +2779,7 @@ function doPost(e) {
       const ss = SpreadsheetApp.openById(SHEET_ID);
       const sh = _getSuministrosItemsSheet(ss);
       // Limpiar filas de datos y reescribir la lista completa que manda el front.
-      if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,5).clearContent();
+      if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,6).clearContent();
       const kws = (payload.keywords || []).map(k => (k||'').toString().trim()).filter(Boolean);
       const norm = k => (k||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
       // Keywords marcadas "solo detalle / no timeline" (ej. Delivery), sin acentos.
@@ -2777,6 +2788,9 @@ function doPost(e) {
       // Keywords de REVENTA: sus compras son el costo de la tiendita.
       const revSet = {};
       (payload.reventa || []).forEach(k => { revSet[norm(k)] = 1; });
+      // Productos de la tiendita (los que llegan del import de la web).
+      const ventaSet = {};
+      (payload.venta || []).forEach(k => { ventaSet[norm(k)] = 1; });
       // Precio de venta por keyword (normalizada, para que no dependa de acentos).
       const precios = {};
       Object.keys(payload.precios || {}).forEach(k => {
@@ -2797,10 +2811,11 @@ function doPost(e) {
         if (Object.keys(limpia).length) recetas[norm(k)] = limpia;
       });
       if (kws.length) {
-        sh.getRange(2,1,kws.length,5).setValues(
+        sh.getRange(2,1,kws.length,6).setValues(
           kws.map(k => [k, noSet[norm(k)] ? true : false, revSet[norm(k)] ? true : false,
                         precios[norm(k)] || '',
-                        recetas[norm(k)] ? JSON.stringify(recetas[norm(k)]) : '']));
+                        recetas[norm(k)] ? JSON.stringify(recetas[norm(k)]) : '',
+                        ventaSet[norm(k)] ? true : false]));
       }
       return ContentService
         .createTextOutput(JSON.stringify({ ok: true, count: kws.length }))
