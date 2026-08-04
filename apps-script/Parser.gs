@@ -1784,6 +1784,90 @@ function _egresoBatchDuplicate(egresoSheet, items) {
 
 // Hoja con la lista de keywords a trackear en el seguimiento de Suministros.
 // Una columna 'Keyword' — el frontend maneja la lista y la reescribe entera.
+// ── Respaldo de SuministrosItems ─────────────────────────────────
+// La configuración de la tiendita (recetas, precios, costos, marcas) es trabajo
+// manual de varias horas y vive en UNA hoja que el guardado reescribe entera.
+// Un bug ya la borró una vez. Cada escritura deja antes una copia acá, así que
+// lo peor que puede pasar es tener que restaurar, no rehacerlo todo.
+const SUM_BACKUP_SHEET = 'SuministrosItems_Backup';
+const SUM_BACKUP_MAX   = 30;
+
+function _getSumBackupSheet(ss) {
+  let sh = ss.getSheetByName(SUM_BACKUP_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(SUM_BACKUP_SHEET);
+    sh.getRange(1,1,1,3).setValues([['Fecha','Items','Contenido (JSON)']]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+    sh.hideSheet();   // no es para mirar todos los días, pero está ahí
+  }
+  return sh;
+}
+
+// Guarda una copia del estado ACTUAL antes de pisarlo. Devuelve true si grabó.
+// No graba si el contenido es idéntico al último respaldo: cada toggle dispara
+// un guardado y si no, la hoja se llenaría de copias iguales.
+function _snapshotSuministros(ss, filas) {
+  try {
+    if (!filas || !filas.length) return false;   // nada que respaldar
+    const sh   = _getSumBackupSheet(ss);
+    const json = JSON.stringify(filas);
+    const last = sh.getLastRow();
+    if (last > 1 && sh.getRange(last, 3).getValue() === json) return false;
+    sh.appendRow([new Date(), filas.length, json]);
+    // Rotación: se conservan las últimas SUM_BACKUP_MAX.
+    const total = sh.getLastRow() - 1;
+    if (total > SUM_BACKUP_MAX) sh.deleteRows(2, total - SUM_BACKUP_MAX);
+    return true;
+  } catch (e) {
+    // Un fallo del respaldo NO debe impedir guardar; solo se registra.
+    try { Logger.log('snapshot suministros: ' + e.message); } catch(_) {}
+    return false;
+  }
+}
+
+// ── Para correr A MANO desde el editor de Apps Script ──────────────
+// Lista los respaldos disponibles, del más nuevo al más viejo.
+function verSuministrosBackups() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sh = ss.getSheetByName(SUM_BACKUP_SHEET);
+  if (!sh || sh.getLastRow() < 2) { Logger.log('No hay respaldos todavía.'); return []; }
+  const filas = sh.getRange(2,1,sh.getLastRow()-1,3).getValues();
+  const out = [];
+  for (let i = filas.length - 1, n = 1; i >= 0; i--, n++) {
+    let detalle = '';
+    try {
+      const d = JSON.parse(filas[i][2]);
+      const prod = d.filter(r => r[5] === true || r[5] === 'TRUE').length;
+      const rec  = d.filter(r => (r[4] || '').toString().trim()).length;
+      detalle = prod + ' productos, ' + rec + ' con receta';
+    } catch(_) { detalle = '(json ilegible)'; }
+    out.push(n + ') ' + Utilities.formatDate(new Date(filas[i][0]), 'America/Panama', 'dd/MM/yyyy HH:mm')
+             + ' — ' + filas[i][1] + ' items · ' + detalle);
+  }
+  Logger.log('RESPALDOS (usar el número con restaurarSuministrosBackup):\n' + out.join('\n'));
+  return out;
+}
+
+// Restaura el respaldo N (1 = el más reciente). Antes de restaurar deja un
+// respaldo de lo que hay ahora, así restaurar tampoco es irreversible.
+function restaurarSuministrosBackup(n) {
+  n = n || 1;
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const bk = ss.getSheetByName(SUM_BACKUP_SHEET);
+  if (!bk || bk.getLastRow() < 2) { Logger.log('No hay respaldos.'); return; }
+  const filas = bk.getRange(2,1,bk.getLastRow()-1,3).getValues();
+  const idx = filas.length - n;
+  if (idx < 0) { Logger.log('No existe el respaldo ' + n + '. Hay ' + filas.length + '.'); return; }
+  const datos = JSON.parse(filas[idx][2]);
+  const sh = _getSuministrosItemsSheet(ss);
+  const actual = sh.getLastRow() > 1 ? sh.getRange(2,1,sh.getLastRow()-1,7).getValues() : [];
+  _snapshotSuministros(ss, actual);
+  if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,7).clearContent();
+  if (datos.length) sh.getRange(2,1,datos.length,7).setValues(datos);
+  Logger.log('Restaurado el respaldo ' + n + ' (' + datos.length + ' items) del '
+             + Utilities.formatDate(new Date(filas[idx][0]), 'America/Panama', 'dd/MM/yyyy HH:mm'));
+}
+
 function _getSuministrosItemsSheet(ss) {
   let sh = ss.getSheetByName('SuministrosItems');
   if (!sh) {
@@ -2807,6 +2891,9 @@ function doPost(e) {
           if (k) prev[k] = r;
         });
       }
+      // Copia de seguridad ANTES de tocar nada.
+      _snapshotSuministros(ss, Object.keys(prev).length
+        ? sh.getRange(2,1,sh.getLastRow()-1,7).getValues() : []);
       // Nunca vaciar la hoja entera. Un cliente a medio cargar manda
       // `keywords: []`, y sin este guard eso borraba todo.
       if (!kws.length && Object.keys(prev).length) {
