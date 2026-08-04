@@ -17765,9 +17765,45 @@ function _saveSuministrosKeywords() {
     campo('costos',     _sumCostos);
     fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify(body) })
       .then(r => r.json())
-      .then(j => { if (j && j.ok === false) showToast('⚠ No se guardó: ' + (j.error || j.status)); })
-      .catch(e => console.warn('save keywords', e));
+      .then(j => {
+        if (j && j.ok === false) { showToast('⚠ No se guardó: ' + (j.error || j.status)); return; }
+        _verificarGuardadoSuministros(body);
+      })
+      .catch(e => { console.warn('save keywords', e); showToast('⚠ No se pudo guardar — revisa la conexión'); });
   }
+}
+
+// Relee la hoja y compara con lo que se acaba de mandar. Un guardado que se
+// pierde en silencio es lo que hizo que se borrara la configuración de la
+// tiendita sin que nadie se enterara hasta días después; que avise en el
+// momento es la diferencia entre un susto y perder el trabajo.
+let _sumVerificando = false;
+async function _verificarGuardadoSuministros(enviado) {
+  if (_sumVerificando) return;
+  _sumVerificando = true;
+  try {
+    const r = await fetch(SHEETS_API_URL + '?action=getSuministrosItems&_=' + Date.now());
+    const j = await r.json();
+    if (!j || !j.ok) return;
+    const problemas = [];
+    const cuenta = (a, b, etiqueta) => {
+      if (a === undefined) return;
+      const na = Array.isArray(a) ? a.length : Object.keys(a || {}).length;
+      const nb = Array.isArray(b) ? b.length : Object.keys(b || {}).length;
+      if (na !== nb) problemas.push(etiqueta + ' (mandé ' + na + ', quedaron ' + nb + ')');
+    };
+    cuenta(enviado.keywords, j.keywords, 'items');
+    cuenta(enviado.venta,    j.venta,    'productos');
+    cuenta(enviado.reventa,  j.reventa,  'insumos');
+    cuenta(enviado.recetas,  j.recetas,  'recetas');
+    cuenta(enviado.precios,  j.precios,  'precios');
+    cuenta(enviado.costos,   j.costos,   'costos');
+    if (problemas.length) {
+      showToast('⚠ El guardado no quedó completo: ' + problemas.join(', '));
+      console.warn('verificación suministros', { enviado, recibido: j });
+    }
+  } catch (_) { /* la verificación es cortesía: nunca debe romper el guardado */ }
+  finally { _sumVerificando = false; }
 }
 
 function _sumEsReventa(kw) { return _sumReventa.has(_sumNormalize(kw)); }
