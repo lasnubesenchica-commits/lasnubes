@@ -31,6 +31,23 @@ const CABINS = {
 // recupera lo perdido — conviene correrla de vez en cuando.
 const SYNC_VENTANA = 'newer_than:30d';
 
+// ── Caché del calendario público ─────────────────────────────────
+// El payload de `getReservations&scope=public` es idéntico para todo el mundo
+// y es la llamada más frecuente del sistema. El TTL corto es la RED DE
+// SEGURIDAD, no la fuente de frescura: cada escritura de reservas invalida la
+// entrada, así que en la práctica el calendario refleja el cambio al instante.
+// Se eligió corto igual porque una disponibilidad vencida cuesta caro (dos
+// huéspedes sobre la misma noche) y regenerarla es barato.
+const CACHE_RESERVAS_PUB     = 'pub_reservas_v1';
+const CACHE_RESERVAS_PUB_SEG = 90;
+
+// Se llama desde CUALQUIER camino que escriba en la hoja Reservas. Si alguno
+// se olvida, lo peor que pasa es que el calendario tarde hasta 90s en
+// reflejarlo — nunca que se quede viejo para siempre.
+function _invalidarCacheReservasPublicas() {
+  try { CacheService.getScriptCache().remove(CACHE_RESERVAS_PUB); } catch(_) {}
+}
+
 // ─── FUNCIÓN PRINCIPAL ──────────────────────────────────────
 function syncAirbnbReservations() {
   const sheet = getOrCreateSheet();
@@ -1274,6 +1291,11 @@ function appendReservation(sheet, r) {
     r.comentarios      || '',
     r.telefono         || ''
   ]);
+  // Punto único por el que pasan TODAS las altas de los syncs (Airbnb, Drive).
+  // Sin esto, una reserva importada por trigger tardaba hasta el TTL en
+  // aparecer en el calendario público — justo la ventana en la que se puede
+  // vender dos veces la misma noche.
+  _invalidarCacheReservasPublicas();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2317,10 +2339,26 @@ function doGet(e) {
         .setMimeType(ContentService.MimeType.JSON);
 
     // ── GET RESERVATIONS (default) ────────────────────────────
+    const scopePublic = e && e.parameter && e.parameter.scope === 'public';
+
+    // Caché del payload público. Va ANTES de abrir la hoja: un acierto se
+    // resuelve sin `getDataRange()` sobre cientos de filas de 33 columnas, que
+    // es el grueso del trabajo de esta llamada. El calendario público es lo
+    // que más se pide y siempre devuelve lo mismo a todo el mundo.
+    // La escritura de reservas invalida la entrada (_invalidarCacheReservasPublicas),
+    // así que el TTL es solo la red de seguridad por si algún camino de
+    // escritura se olvida de avisar — nunca la fuente de la frescura.
+    if (scopePublic) {
+      const _cachePub = CacheService.getScriptCache().get(CACHE_RESERVAS_PUB);
+      if (_cachePub) {
+        return ContentService.createTextOutput(_cachePub)
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
     const sheet = getOrCreateSheet();
     const data  = sheet.getDataRange().getValues();
     const rows  = data.slice(1);
-    const scopePublic = e && e.parameter && e.parameter.scope === 'public';
 
     // Modo publico: solo campos necesarios para mostrar disponibilidad en el
     // calendario. Evita exponer datos sensibles (email, telefono, montos, etc.)
@@ -2343,8 +2381,10 @@ function doGet(e) {
           horaEntrada:       _normalizeHora(r[29]),
           horaSalida:        _normalizeHora(r[30])
         }));
+      const _json = JSON.stringify({ ok: true, reservations });
+      try { CacheService.getScriptCache().put(CACHE_RESERVAS_PUB, _json, CACHE_RESERVAS_PUB_SEG); } catch(_) {}
       return ContentService
-        .createTextOutput(JSON.stringify({ ok: true, reservations }))
+        .createTextOutput(_json)
         .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -2618,6 +2658,7 @@ function doPost(e) {
       Logger.log('  appendRow length=' + rowToAppend.length + ' id=' + rowToAppend[0] + ' name=' + rowToAppend[1]);
       try {
         sheet.appendRow(rowToAppend);
+        _invalidarCacheReservasPublicas();   // el calendario público debe verla ya
         Logger.log('  ✓ appendRow OK · newLastRow=' + sheet.getLastRow());
         logDebugEntry('saveReservation-OK', { id: r.id, row: sheet.getLastRow(), name: r.name, cabin: r.cabin, checkin: r.checkin });
         // Col 29 (CheckoutExtendido) — persistir el flag de cortesia si aplica
@@ -2753,6 +2794,7 @@ function doPost(e) {
             alertaCell.setValue(prev ? prev + ' | ' + nota : nota);
           }
 
+          _invalidarCacheReservasPublicas();   // fechas/cabaña pudieron cambiar
           return ContentService
             .createTextOutput(JSON.stringify({ ok: true, status: 'updated' }))
             .setMimeType(ContentService.MimeType.JSON);
@@ -2819,6 +2861,7 @@ function doPost(e) {
             }
           }
           sheet.deleteRow(i + 1);
+          _invalidarCacheReservasPublicas();   // la noche vuelve a estar libre
           return ContentService
             .createTextOutput(JSON.stringify({ ok: true, status: 'deleted' }))
             .setMimeType(ContentService.MimeType.JSON);

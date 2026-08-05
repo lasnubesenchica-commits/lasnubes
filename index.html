@@ -2914,6 +2914,85 @@ function precioMotivo(dateStr) {
   return '$' + getPrecio(dateStr) + ' · ' + LBL[gana] + (fer ? ' (' + fer + ')' : '');
 }
 
+// ── Caché local del calendario ───────────────────────────────────
+// El costo real de abrir el calendario no es leer la hoja: es el viaje a Apps
+// Script, que con los triggers corriendo puede quedar encolado. Así que la red
+// sale del camino crítico: se pinta al instante con lo último que se vio y se
+// revalida por detrás. Si algo cambió, se repinta solo.
+const PUB_CACHE_KEY = 'ln_pub_cache_v1';
+
+function _leerCachePublico() {
+  try {
+    const c = JSON.parse(localStorage.getItem(PUB_CACHE_KEY) || 'null');
+    if (!c || !Array.isArray(c.reservations)) return null;
+    return c;
+  } catch(_) { return null; }
+}
+
+function _guardarCachePublico(reservations, tarifas) {
+  try {
+    localStorage.setItem(PUB_CACHE_KEY, JSON.stringify({
+      ts: Date.now(), reservations: reservations, tarifas: tarifas || null
+    }));
+  } catch(_) { /* modo privado o cuota llena: seguir sin caché */ }
+}
+
+// Aplica el bloque de tarifas a los globales. Estaba embebido en loadData;
+// se extrae porque ahora corre dos veces (caché y datos frescos) y tenerlo
+// duplicado garantizaba que se separaran.
+function _aplicarTarifas(t) {
+  if (!t) return;
+  if (t.weekday !== undefined)     RATE_WEEKDAY = t.weekday;
+  if (t.weekend !== undefined)     RATE_WEEKEND = t.weekend;
+  if (t.promo   !== undefined)     RATE_PROMO   = t.promo;
+  if (t.promoActive !== undefined) PROMO_ACTIVE = t.promoActive;
+  if (t.pasatarde !== undefined)              PASATARDE_RATE            = t.pasatarde;
+  if (t.pasanoche !== undefined)              PASANOCHE_RATE            = t.pasanoche;
+  if (t.pasadia   !== undefined)              PASADIA_RATE              = t.pasadia;
+  if (t.ventanasPublicas !== undefined)       VENTANAS_PUBLICAS         = !!t.ventanasPublicas;
+  if (t.viernes      !== undefined)           RATE_VIERNES  = t.viernes;
+  if (t.sabado       !== undefined)           RATE_SABADO   = t.sabado;
+  if (t.vispera      !== undefined)           RATE_VISPERA  = t.vispera;
+  if (t.feriado      !== undefined)           RATE_FERIADO  = t.feriado;
+  if (t.promoViernes !== undefined)           PROMO_VIERNES = t.promoViernes;
+  if (t.promoSabado  !== undefined)           PROMO_SABADO  = t.promoSabado;
+  if (t.promoVispera !== undefined)           PROMO_VISPERA = t.promoVispera;
+  if (t.promoFeriado !== undefined)           PROMO_FERIADO = t.promoFeriado;
+  if (t.escolar      !== undefined)           RATE_ESCOLAR  = t.escolar;
+  if (t.promoEscolar !== undefined)           PROMO_ESCOLAR = t.promoEscolar;
+  if (t.promoMeses   !== undefined)           PROMO_MESES   = t.promoMeses;
+  if (t.feriados     !== undefined)           FERIADOS      = t.feriados  || {};
+  if (t.escolares    !== undefined)           ESCOLARES     = t.escolares || {};
+  if (t.recargoPersonaGrande   !== undefined) RECARGO_PERSONA_GRANDE    = t.recargoPersonaGrande;
+  if (t.recargoPersonaPortal   !== undefined) RECARGO_PERSONA_PORTAL    = t.recargoPersonaPortal;
+  if (t.comboDescuento         !== undefined) COMBO_DESCUENTO           = t.comboDescuento;
+  if (t.recargoEarly           !== undefined) RECARGO_EARLY             = t.recargoEarly;
+  if (t.recargoLate            !== undefined) RECARGO_LATE              = t.recargoLate;
+  if (t.recargoPasatardePersona!== undefined) RECARGO_PASATARDE_PERSONA = t.recargoPasatardePersona;
+  if (t.recargoPasanochePersona!== undefined) RECARGO_PASANOCHE_PERSONA = t.recargoPasanochePersona;
+  if (t.recargoPasadiaPersona  !== undefined) RECARGO_PASADIA_PERSONA   = t.recargoPasadiaPersona;
+}
+
+function _mapReservasPublicas(arr) {
+  return (arr || []).map(r => ({
+    cabin: r.cabin, checkin: r.checkin, checkout: r.checkout,
+    origin: r.origin, estadoPago: r.estadoPago, tipo: r.tipo || 'noche',
+    // Horas reales: sin ellas el cálculo de ventanas cae al default del tipo.
+    checkoutExtendido: !!r.checkoutExtendido,
+    horaEntrada: r.horaEntrada || '', horaSalida: r.horaSalida || ''
+  }));
+}
+
+// Pinta de inmediato con lo cacheado. Devuelve true si pintó algo.
+function pintarDesdeCache() {
+  const c = _leerCachePublico();
+  if (!c) return false;
+  reservations = _mapReservasPublicas(c.reservations);
+  _aplicarTarifas(c.tarifas);
+  render();
+  return true;
+}
+
 async function loadData() {
   try {
     const [resRes, tarifasRes] = await Promise.all([
@@ -2923,50 +3002,16 @@ async function loadData() {
 
     const resData = await resRes.json();
     if (resData && resData.reservations) {
-      reservations = resData.reservations.map(r => ({
-        cabin: r.cabin, checkin: r.checkin, checkout: r.checkout,
-        origin: r.origin, estadoPago: r.estadoPago, tipo: r.tipo || 'noche',
-        // Horas reales: sin ellas el cálculo de ventanas cae al default del tipo.
-        checkoutExtendido: !!r.checkoutExtendido,
-        horaEntrada: r.horaEntrada || '', horaSalida: r.horaSalida || ''
-      }));
+      reservations = _mapReservasPublicas(resData.reservations);
     }
 
     const tarifasData = await tarifasRes.json();
-    if (tarifasData && tarifasData.ok && tarifasData.tarifas) {
-      const t = tarifasData.tarifas;
-      if (t.weekday !== undefined)     RATE_WEEKDAY = t.weekday;
-      if (t.weekend !== undefined)     RATE_WEEKEND = t.weekend;
-      if (t.promo   !== undefined)     RATE_PROMO   = t.promo;
-      if (t.promoActive !== undefined) PROMO_ACTIVE = t.promoActive;
-      // Tarifas planas y recargos vienen del backend cuando existen en Config.
-      // Si no vienen, se conservan los defaults hardcodeados arriba.
-      if (t.pasatarde !== undefined)              PASATARDE_RATE            = t.pasatarde;
-      if (t.pasanoche !== undefined)              PASANOCHE_RATE            = t.pasanoche;
-      if (t.pasadia   !== undefined)              PASADIA_RATE              = t.pasadia;
-      if (t.ventanasPublicas !== undefined)       VENTANAS_PUBLICAS         = !!t.ventanasPublicas;
-      if (t.viernes      !== undefined)           RATE_VIERNES  = t.viernes;
-      if (t.sabado       !== undefined)           RATE_SABADO   = t.sabado;
-      if (t.vispera      !== undefined)           RATE_VISPERA  = t.vispera;
-      if (t.feriado      !== undefined)           RATE_FERIADO  = t.feriado;
-      if (t.promoViernes !== undefined)           PROMO_VIERNES = t.promoViernes;
-      if (t.promoSabado  !== undefined)           PROMO_SABADO  = t.promoSabado;
-      if (t.promoVispera !== undefined)           PROMO_VISPERA = t.promoVispera;
-      if (t.promoFeriado !== undefined)           PROMO_FERIADO = t.promoFeriado;
-      if (t.escolar      !== undefined)           RATE_ESCOLAR  = t.escolar;
-      if (t.promoEscolar !== undefined)           PROMO_ESCOLAR = t.promoEscolar;
-      if (t.promoMeses   !== undefined)           PROMO_MESES   = t.promoMeses;
-      if (t.feriados     !== undefined)           FERIADOS      = t.feriados  || {};
-      if (t.escolares    !== undefined)           ESCOLARES     = t.escolares || {};
-      if (t.recargoPersonaGrande   !== undefined) RECARGO_PERSONA_GRANDE    = t.recargoPersonaGrande;
-      if (t.recargoPersonaPortal   !== undefined) RECARGO_PERSONA_PORTAL    = t.recargoPersonaPortal;
-      if (t.comboDescuento         !== undefined) COMBO_DESCUENTO           = t.comboDescuento;
-      if (t.recargoEarly           !== undefined) RECARGO_EARLY             = t.recargoEarly;
-      if (t.recargoLate            !== undefined) RECARGO_LATE              = t.recargoLate;
-      if (t.recargoPasatardePersona!== undefined) RECARGO_PASATARDE_PERSONA = t.recargoPasatardePersona;
-      if (t.recargoPasanochePersona!== undefined) RECARGO_PASANOCHE_PERSONA = t.recargoPasanochePersona;
-      if (t.recargoPasadiaPersona  !== undefined) RECARGO_PASADIA_PERSONA   = t.recargoPasadiaPersona;
-    }
+    const tarifas = (tarifasData && tarifasData.ok && tarifasData.tarifas) ? tarifasData.tarifas : null;
+    _aplicarTarifas(tarifas);
+
+    // Se guarda lo que se acaba de recibir para que la próxima visita pinte
+    // sin esperar la red.
+    _guardarCachePublico(resData && resData.reservations ? resData.reservations : [], tarifas);
   } catch(e) {
     console.warn('Sin conexión a Sheets, usando tarifas por defecto.');
   }
@@ -4930,6 +4975,9 @@ function closeMobileNav() {
 // Update active state in both navs
 const _origShowSection = showSection;
 
+// Primero lo cacheado (instantáneo, sin red), después la revalidación. Si no
+// hay caché —primera visita— loadData pinta igual al terminar.
+pintarDesdeCache();
 loadData();
 
 // Activa la galería de una cabaña específica (selecciona su tab).
