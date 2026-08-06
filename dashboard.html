@@ -9763,6 +9763,16 @@ function _mcRedistribuir() {
 }
 
 function _mcOnPersonas() {
+  // El campo Personas de arriba pasa a ser la SUMA de lo repartido. Sin esto
+  // quedaban dos números contradictorios en pantalla —el formulario decía 2 y
+  // las cabañas sumaban 6— y había que avisar del descuadre en vez de no
+  // tenerlo. Se escribe el valor sin disparar el evento: `oninput` llama a
+  // _mcRedistribuir, que borraría justo lo que el admin acaba de teclear.
+  const seleccion = _mcLeerSeleccion();
+  const total = seleccion.reduce((mx, cabs) => Math.max(mx,
+    (cabs || []).reduce((t, c) => t + (parseInt(c.personas, 10) || 0), 0)), 0);
+  const pEl = document.getElementById('fPersons');
+  if (pEl && total > 0 && String(total) !== pEl.value) pEl.value = total;
   calcPrice();
   _updateMultiCabinSplitInfo();   // va después: el split se calcula sobre el monto
 }
@@ -9823,13 +9833,17 @@ function _updateMultiCabinSplitInfo() {
   // Si el admin edita las personas por cabaña y la suma no da el total del
   // formulario, se dice: es la clase de descuadre que después aparece como un
   // cobro mal calculado sin que nadie sepa de dónde salió.
+  // El total del formulario se sincroniza con lo repartido (_mcOnPersonas), así
+  // que ya no puede contradecirlo. Lo que sí queda por avisar es que dos noches
+  // tengan distinta cantidad de gente: es válido —alguien se suma el segundo
+  // día— pero conviene que sea a propósito y no un dedazo.
   let aviso = '';
   if (simultaneo) {
-    const personasTot = parseInt((document.getElementById('fPersons') || {}).value, 10) || 0;
-    const maxNoche = seleccion.reduce((mx, cabs) => Math.max(mx,
-      (cabs || []).reduce((t, c) => t + (parseInt(c.personas, 10) || 0), 0)), 0);
-    if (personasTot && maxNoche !== personasTot) {
-      aviso = '  ⚠ repartiste ' + maxNoche + ' de ' + personasTot + ' personas';
+    const totales = seleccion.filter(c => c && c.length)
+      .map(cabs => cabs.reduce((t, c) => t + (parseInt(c.personas, 10) || 0), 0));
+    const min = Math.min(...totales), max = Math.max(...totales);
+    if (totales.length > 1 && min !== max) {
+      aviso = '  · ojo: ' + min + '–' + max + ' personas según la noche';
     }
   }
   infoEl.textContent = (simultaneo ? 'Simultáneo · ' : 'Itinerario · ')
@@ -11135,6 +11149,15 @@ async function _saveMultiCabinReservation() {
     groups.map((g, i) => totalAmount > 0 ? +(montoVoucherNum * groupAmounts[i] / totalAmount).toFixed(2) : 0),
     montoVoucherNum
   );
+  // El ABONO se reparte igual que el voucher. Antes iba entero en la primera
+  // hermana: con $95 sobre un tramo de $75 esa fila quedaba "excede $20" y la
+  // otra "debe $115" — así "Por cobrar" reportaba $115 cuando lo que falta de
+  // verdad son $95, porque suma faltantes reserva por reserva sin netear los
+  // sobrepagos de las hermanas.
+  const groupDeposits = _fix(
+    groups.map((g, i) => totalAmount > 0 ? +(deposit * groupAmounts[i] / totalAmount).toFixed(2) : 0),
+    deposit
+  );
   const sinPago = SIN_PAGO_ORIGINS;
   let estadoBase = '';
   if (origin === 'Airbnb') estadoBase = 'PAGA';
@@ -11151,7 +11174,7 @@ async function _saveMultiCabinReservation() {
     const lastNight     = g.nights[g.nights.length - 1];
     const groupCheckout = _addDaysISO(lastNight, 1);
     const groupAmount   = groupAmounts[idx];
-    const groupDeposit  = idx === 0 ? deposit : 0;
+    const groupDeposit  = groupDeposits[idx];
     const id = groupId + '-' + (idx+1);
     const cabinsList = groups.map(x => CABIN_NAMES[x.cabin] || x.cabin).join(' + ');
     const nota = '[Multi-cabaña ' + (idx+1) + '/' + groups.length + ' · ' + cabinsList
@@ -11209,8 +11232,19 @@ async function _saveMultiCabinReservation() {
     for (let attempt = 1; attempt <= 3 && !ok; attempt++) {
       try {
         const data = await _postSave(r);
-        if (data && data.ok && data.status !== 'duplicate') {
+        // `duplicate` significa que YA HAY una fila con este id — que es
+        // exactamente lo que queríamos lograr. Pasa cuando el POST escribió
+        // pero la respuesta se perdió (señal móvil) y el reintento encuentra
+        // la fila creada. Tratarlo como fallo hacía que una reserva guardada
+        // correctamente se reportara como perdida, y mandaba al admin a
+        // crearla a mano — duplicándola de verdad.
+        // Es seguro: los ids son `MC-<timestamp>-<n>`, generados en el momento,
+        // así que un duplicado solo puede venir de un intento nuestro.
+        if (data && data.ok) {
           ok = true;
+          if (data.status === 'duplicate') {
+            console.info('multi-cabin hermana ' + (i+1) + ': ya existía (reintento tras respuesta perdida)');
+          }
         } else {
           lastError = data && data.error ? data.error : (data && data.status) || 'unknown';
           console.warn('multi-cabin save attempt ' + attempt + '/' + 3 + ' hermana ' + (i+1) + ':', data);
