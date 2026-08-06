@@ -3873,10 +3873,48 @@ function toGCalDateTime(dateStr, hour, minute) {
   return toCalDate(dateStr) + 'T' + hour + minute + '00';
 }
 
+// ¿Las estadías hermanas se SOLAPAN? Distingue "dos cabañas a la vez" de
+// "cambio de cabaña". Se deduce de las fechas, no de un flag aparte.
+function _mcSimultaneas(mc) {
+  const ord = mc.slice().sort(function(a, b) {
+    return String(a.checkin).localeCompare(String(b.checkin));
+  });
+  for (let k = 1; k < ord.length; k++) {
+    if (String(ord[k].checkin) < String(ord[k-1].checkout)) return true;
+  }
+  return false;
+}
+
+// Cabaña y personas a MOSTRAR. En una reserva multi-cabaña el objeto que arma
+// el email es la PRIMERA hermana con el monto total, así que sin esto el correo
+// decía "Cabaña: Portal · Personas: 2 · Total $190" justo debajo del banner que
+// anuncia dos cabañas — el mismo dato contado de dos formas distintas.
+// El nombre va corto ("Portal + Puente"): el banner de arriba ya da los nombres
+// completos, las fechas y el monto de cada una.
+// Las personas SUMAN solo si las cabañas se ocupan a la vez; en un itinerario
+// es el mismo grupo cambiando de cabaña, y sumarlo lo duplicaría.
+function _emailCabinaPersonas(r) {
+  const mc = (r && Array.isArray(r.multiCabin)) ? r.multiCabin : null;
+  if (!mc || mc.length < 2) {
+    return { cabin: CABIN_NAMES_EMAIL[r.cabin] || r.cabin, personas: r.persons, multi: false };
+  }
+  const cortos = mc.map(function(x) {
+    const n = x.cabinName || CABIN_NAMES_EMAIL[x.cabin] || x.cabin || '';
+    return String(n).split(' ')[0];
+  });
+  const nums = mc.map(function(x) { return parseInt(x.persons, 10) || 0; });
+  const simult = _mcSimultaneas(mc);
+  const personas = simult
+    ? nums.reduce(function(t, n) { return t + n; }, 0)
+    : Math.max.apply(null, nums);
+  return { cabin: cortos.join(' + '), personas: personas || r.persons, multi: true };
+}
+
 function googleCalLink(reservation) {
-  const cabin   = CABIN_NAMES_EMAIL[reservation.cabin] || reservation.cabin;
+  const _cp     = _emailCabinaPersonas(reservation);
+  const cabin   = _cp.cabin;
   const title   = encodeURIComponent('Las Nubes — ' + cabin);
-  const details = encodeURIComponent('Reserva en Las Nubes\nCabaña: ' + cabin + '\nPersonas: ' + reservation.persons + '\nCheck-in: 2:00 pm | Check-out: 11:00 am\nWhatsApp: +507 6981-2266');
+  const details = encodeURIComponent('Reserva en Las Nubes\nCabaña: ' + cabin + '\nPersonas: ' + _cp.personas + '\nCheck-in: 2:00 pm | Check-out: 11:00 am\nWhatsApp: +507 6981-2266');
   const loc     = encodeURIComponent('Buenos Aires, Chame, Panamá Oeste');
   const start   = toGCalDateTime(reservation.checkin,  '14', '00');
   const end     = toGCalDateTime(reservation.checkout, '11', '00');
@@ -3884,7 +3922,8 @@ function googleCalLink(reservation) {
 }
 
 function icsContent(reservation) {
-  const cabin = CABIN_NAMES_EMAIL[reservation.cabin] || reservation.cabin;
+  const _cpIcs = _emailCabinaPersonas(reservation);
+  const cabin = _cpIcs.cabin;
   const start = toCalDateTime(reservation.checkin,  '14', '00');
   const end   = toCalDateTime(reservation.checkout, '11', '00');
   const now   = Utilities.formatDate(new Date(), 'UTC', "yyyyMMdd'T'HHmmss'Z'");
@@ -3896,7 +3935,7 @@ function icsContent(reservation) {
     'DTSTART:' + start,
     'DTEND:' + end,
     'SUMMARY:Las Nubes — ' + cabin,
-    'DESCRIPTION:Cabaña: ' + cabin + '\\nPersonas: ' + reservation.persons + '\\nCheck-in: 2:00 pm | Check-out: 11:00 am\\nContacto: +507 6981-2266',
+    'DESCRIPTION:Cabaña: ' + cabin + '\\nPersonas: ' + _cpIcs.personas + '\\nCheck-in: 2:00 pm | Check-out: 11:00 am\\nContacto: +507 6981-2266',
     'LOCATION:Buenos Aires\\, Chame\\, Panamá Oeste',
     'DTSTAMP:' + now,
     'UID:lasnubes-' + reservation.id + '@lasnubes',
@@ -4103,13 +4142,7 @@ function _multiCabinBannerHTML(r) {
   // de un flag aparte, que es un dato más que se puede quedar mal puesto.
   // El texto de itinerario ("cambiarás de cabaña") es directamente falso en el
   // caso simultáneo, así que la distinción no es cosmética.
-  const _ord = r.multiCabin.slice().sort(function(a, b) {
-    return String(a.checkin).localeCompare(String(b.checkin));
-  });
-  let simultaneo = false;
-  for (let k = 1; k < _ord.length; k++) {
-    if (String(_ord[k].checkin) < String(_ord[k-1].checkout)) { simultaneo = true; break; }
-  }
+  const simultaneo = _mcSimultaneas(r.multiCabin);
   let rows = '';
   r.multiCabin.forEach(function(s, i) {
     const color = CABIN_COLORS_EMAIL[s.cabin] || '#6a9e62';
@@ -4149,7 +4182,10 @@ function buildEmailHTML(r) {
   // certificado, no el email genérico de reserva abierta.
   if (esReservaRegalo(r)) return buildEmailHTMLRegalo(r);
   if (r.origin === 'Abierta') return buildEmailHTMLAbierta(r);
-  const cabin       = CABIN_NAMES_EMAIL[r.cabin] || r.cabin;
+  // Con multi-cabaña, `r` es la primera hermana con el monto total: la etiqueta
+  // y las personas se derivan de todas (ver _emailCabinaPersonas).
+  const _cp         = _emailCabinaPersonas(r);
+  const cabin       = _cp.cabin;
   const color       = CABIN_COLORS_EMAIL[r.cabin] || '#6a9e62';
   const meta        = tipoEmailMeta(r);
   const checkinFmt  = meta.checkinFmt;
@@ -4162,7 +4198,8 @@ function buildEmailHTML(r) {
   const ics         = icsContent(r);
   const icsB64      = Utilities.base64Encode(ics);
   const icsUri      = 'data:text/calendar;base64,' + icsB64;
-  const pagarUrl    = 'https://wa.me/50769812266?text=' + encodeURIComponent('Deseo cancelar el saldo restante de mi reserva del día ' + meta.checkinFmt + ' en la cabaña ' + cabin + '. ¿Me comparte los métodos de pago?');
+  // Con dos cabañas, "en la cabaña Portal + Puente" se lee raro: se omite.
+  const pagarUrl    = 'https://wa.me/50769812266?text=' + encodeURIComponent('Deseo cancelar el saldo restante de mi reserva del día ' + meta.checkinFmt + (_cp.multi ? '' : ' en la cabaña ' + cabin) + '. ¿Me comparte los métodos de pago?');
   const publicLink = getPublicReservaUrlSafe(r.id);
 
   return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>' +
@@ -4182,7 +4219,7 @@ _multiCabinBannerHTML(r) +
 '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f8f6;border-radius:12px;border:1px solid #e8e4de;margin-bottom:24px;">' +
 '<tr>' +
 '<td style="padding:20px 24px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Cabaña</p><p style="margin:0;font-size:17px;font-weight:600;color:' + color + ';">' + cabin + '</p></td>' +
-'<td style="padding:20px 24px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Personas</p><p style="margin:0;font-size:17px;font-weight:600;color:#3a3530;">' + r.persons + '</p></td>' +
+'<td style="padding:20px 24px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Personas</p><p style="margin:0;font-size:17px;font-weight:600;color:#3a3530;">' + _cp.personas + '</p></td>' +
 '</tr><tr>' +
 '<td style="padding:20px 24px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Check-in</p><p style="margin:0;font-size:15px;color:#3a3530;font-weight:500;">' + checkinFmt + '</p><p style="margin:4px 0 0;font-size:12px;color:#8a8078;">' + meta.checkinHora + '</p></td>' +
 '<td style="padding:20px 24px;border-bottom:1px solid #e8e4de;"><p style="margin:0 0 4px;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:1px;">Check-out</p><p style="margin:0;font-size:15px;color:#3a3530;font-weight:500;">' + checkoutFmt + '</p><p style="margin:4px 0 0;font-size:12px;color:#8a8078;">' + meta.checkoutHora + '</p></td>' +
@@ -4244,7 +4281,7 @@ function sendConfirmationEmail(reservation, voucherBase64, voucherMimeType, subj
   try {
     const email = reservation.email;
     if (!email) return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'No hay email de huésped' })).setMimeType(ContentService.MimeType.JSON);
-    const cabin   = CABIN_NAMES_EMAIL[reservation.cabin] || reservation.cabin;
+    const cabin   = _emailCabinaPersonas(reservation).cabin;
     const isAbierta = reservation.origin === 'Abierta';
     const isRegalo  = esReservaRegalo(reservation);
     const subject = (subjectPrefix || '') + (isRegalo
