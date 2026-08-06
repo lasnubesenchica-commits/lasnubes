@@ -16953,7 +16953,12 @@ function _tvLlenarHuespedes(seleccion) {
       // todavía puede comprar la mañana que se va.
       (d.displayCheckin <= hoy && hoy <= d.displayCheckout ? activas : otras).push({ r, d });
     });
-  otras.sort((a, b) => b.d.displayCheckin.localeCompare(a.d.displayCheckin));
+  // Por CERCANÍA a hoy, no por fecha descendente. Ordenar descendente ponía
+  // primero las reservas más futuras, así que con cientos de reservas cargadas
+  // el huésped que se fue anteayer —justo el que compra en la tiendita— quedaba
+  // fuera del corte de 60 y no se podía asociar la venta.
+  const _difDias = iso => Math.abs((new Date(iso + 'T12:00:00') - new Date(hoy + 'T12:00:00')) / 86400000);
+  otras.sort((a, b) => _difDias(a.d.displayCheckin) - _difDias(b.d.displayCheckin));
   activas.sort((a, b) => a.r.cabin.localeCompare(b.r.cabin));
 
   const CAB = { verde: 'Paseo', azul: 'Portal', lila: 'Puente' };
@@ -16972,6 +16977,32 @@ function _tvLlenarHuespedes(seleccion) {
     else { sel.value = '__otro'; document.getElementById('tvHuespedOtro').value = seleccion; }
   }
   _tvToggleOtroHuesped();
+}
+
+// Busca la reserva de un nombre venido del voucher. La igualdad exacta era muy
+// frágil: Yappy muestra el nombre de la cuenta, que rara vez coincide palabra
+// por palabra con cómo se cargó la reserva ("Alan Solis" vs "Alan Solís
+// Rodríguez"). Se acepta que todas las palabras del nombre más corto estén en
+// el más largo, y ante varias candidatas gana la estadía más cercana a hoy.
+function _tvBuscarReservaPorNombre(nombre) {
+  const n = _sumNormalize(nombre);
+  if (!n) return null;
+  const palabras = n.split(/\s+/).filter(w => w.length > 2);
+  const hoy = new Date().toISOString().slice(0,10);
+  const dif = iso => Math.abs((new Date(iso + 'T12:00:00') - new Date(hoy + 'T12:00:00')) / 86400000);
+  const cands = reservations.filter(r => {
+    if (r.origin === 'Abierta' || r.estadoPago === 'CANCELADA' || !r.name || !r.checkin) return false;
+    const rn = _sumNormalize(r.name);
+    if (rn === n) return true;
+    if (!palabras.length) return false;
+    const rp = rn.split(/\s+/).filter(w => w.length > 2);
+    if (!rp.length) return false;
+    const [corto, largo] = palabras.length <= rp.length ? [palabras, rp] : [rp, palabras];
+    return corto.every(w => largo.indexOf(w) !== -1);
+  });
+  if (!cands.length) return null;
+  cands.sort((a, b) => dif(reservaDisplayDates(a).displayCheckin) - dif(reservaDisplayDates(b).displayCheckin));
+  return cands[0];
 }
 
 function _tvToggleOtroHuesped() {
@@ -17051,24 +17082,47 @@ async function _tvSubirVoucher(ev) {
         // El remitente del voucher puede ser el huésped: si coincide con alguna
         // reserva se selecciona ésa; si no, va como nombre libre.
         if (d.remitente && !_tvHuespedActual().huesped) {
-          const r = reservations.find(x => _sumNormalize(x.name || '') === _sumNormalize(d.remitente));
+          const rres = _tvBuscarReservaPorNombre(d.remitente);
           const selH = document.getElementById('tvHuesped');
-          if (r && [...selH.options].some(o => o.value === r.id)) { selH.value = r.id; }
-          else { selH.value = '__otro'; document.getElementById('tvHuespedOtro').value = d.remitente; }
+          if (rres) {
+            // Si la reserva existe pero quedó fuera del corte de la lista, se
+            // agrega como opción en vez de caer a texto libre: perder el vínculo
+            // con la reserva es justo lo que hace que después no se sepa quién
+            // compró qué.
+            if (![...selH.options].some(o => o.value === rres.id)) {
+              const d2 = reservaDisplayDates(rres);
+              const CAB = { verde: 'Paseo', azul: 'Portal', lila: 'Puente' };
+              const op = document.createElement('option');
+              op.value = rres.id;
+              op.textContent = rres.name + ' · ' + (CAB[rres.cabin] || rres.cabin) + ' · ' + d2.displayCheckin;
+              selH.insertBefore(op, selH.querySelector('option[value="__otro"]'));
+            }
+            selH.value = rres.id;
+          } else {
+            selH.value = '__otro'; document.getElementById('tvHuespedOtro').value = d.remitente;
+          }
           _tvToggleOtroHuesped(); llenados++;
         }
         // El campo "Mensaje" del Yappy suele decir qué se compró.
+        let notaItem = '';
         if (d.mensaje && !_tvItemActual()) {
           const msg = _sumNormalize(d.mensaje);
-          const kw = (_suministrosKeywords || []).filter(_sumEsVenta)
-                       .find(k => msg.indexOf(_sumNormalize(k)) !== -1);
+          const productos = (_suministrosKeywords || []).filter(_sumEsVenta);
+          const kw = productos.find(k => msg.indexOf(_sumNormalize(k)) !== -1);
           if (kw) { document.getElementById('tvItem').value = kw; _tvItemElegido(); llenados++; }
+          // Sin productos cargados el cruce no puede funcionar y antes fallaba
+          // en silencio: parecía que el OCR no había leído el mensaje cuando en
+          // realidad no había contra qué compararlo.
+          else if (!productos.length) notaItem = ' · sin productos cargados: toca "⬇ Importar de la web"';
+          else notaItem = ' · «' + d.mensaje + '» no coincide con ningún producto';
         }
         _tvCalc();
+        showToast((llenados
+          ? '✓ Voucher leído · ' + llenados + ' campo' + (llenados === 1 ? '' : 's') + ' completado' + (llenados === 1 ? '' : 's')
+          : '✓ Voucher subido · no se pudieron leer los datos') + notaItem);
+      } else {
+        showToast('✓ Voucher subido · no se pudieron leer los datos');
       }
-      showToast(llenados
-        ? '✓ Voucher leído · ' + llenados + ' campo' + (llenados === 1 ? '' : 's') + ' completado' + (llenados === 1 ? '' : 's')
-        : '✓ Voucher subido · no se pudieron leer los datos');
     }
     else showToast('✗ No se pudo subir: ' + ((r && r.error) || 'error'));
   } catch (e) {
@@ -17701,7 +17755,9 @@ function toggleSumShared() {
 }
 
 function _sumNormalize(s) {
-  return (s || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  // El trim importa: el OCR devuelve nombres con espacios de sobra y la
+  // comparación exacta fallaba por eso.
+  return (s || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
 }
 
 // montosItem es un JSON { nkw: monto } que reparte una factura entre varios
