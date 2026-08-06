@@ -17057,14 +17057,15 @@ async function _tvSubirVoucher(ev) {
   drop.classList.add('loading');
   document.getElementById('tvVoucherTitle').textContent = 'Subiendo…';
   try {
-    const b64 = await new Promise((res, rej) => {
-      const fr = new FileReader();
-      fr.onload = () => res(fr.result.split(',')[1]);
-      fr.onerror = rej;
-      fr.readAsDataURL(file);
-    });
+    // MISMO tratamiento que el voucher de una reserva: pasar por canvas para
+    // que salga JPEG y quepa. Antes se mandaba el archivo crudo, y una foto del
+    // iPhone puede venir en HEIC —que la API de Claude no acepta— y pesar 4-5
+    // MB. El OCR fallaba y el error se perdía en un catch del backend, así que
+    // llegaba como "no se pudieron leer los datos" sin decir por qué.
+    const dataUrl = await compressImage(file, 1600, 0.80);
+    const b64 = dataUrl.split(',')[1];
     const r = await (await fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify({
-      action: 'saveTienditaVoucher', base64: b64, mimeType: file.type, ventaId: _tvEditId || 'nueva'
+      action: 'saveTienditaVoucher', base64: b64, mimeType: 'image/jpeg', ventaId: _tvEditId || 'nueva'
     })})).json();
     if (r && r.ok) {
       _tvVoucherURL = r.url;
@@ -17121,7 +17122,10 @@ async function _tvSubirVoucher(ev) {
           ? '✓ Voucher leído · ' + llenados + ' campo' + (llenados === 1 ? '' : 's') + ' completado' + (llenados === 1 ? '' : 's')
           : '✓ Voucher subido · no se pudieron leer los datos') + notaItem);
       } else {
-        showToast('✓ Voucher subido · no se pudieron leer los datos');
+        // El backend ahora dice POR QUÉ falló el OCR: sin eso, "no se pudieron
+        // leer los datos" es un callejón sin salida.
+        showToast('✓ Voucher subido · no se pudo leer'
+          + (r.ocrError ? ': ' + String(r.ocrError).slice(0, 90) : ' — llena los campos a mano'));
       }
     }
     else showToast('✗ No se pudo subir: ' + ((r && r.error) || 'error'));
