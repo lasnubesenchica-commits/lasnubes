@@ -11256,6 +11256,21 @@ async function _saveMultiCabinReservation() {
         if (attempt < 3) await new Promise(res => setTimeout(res, 500 * attempt));
       }
     }
+    // Última red antes de declarar el fallo: preguntarle a la hoja si la fila
+    // está. El guardado de una reserva normal ya hace esto (_verifyInSheet) y
+    // por eso no da falsas alarmas; multi-cabaña no lo tenía, así que un POST
+    // que escribió pero no pudo responder se reportaba como perdido. Decirle al
+    // admin que cree a mano una reserva que SÍ existe es lo que la duplica.
+    if (!ok) {
+      try {
+        const vres = await fetch(SHEETS_API_URL + '?action=debugFindReserva&id=' + encodeURIComponent(r.id));
+        const vdata = await vres.json();
+        if (vdata && vdata.ok && vdata.exactMatchCol0) {
+          ok = true;
+          console.warn('multi-cabin hermana ' + (i+1) + ': el POST falló (' + lastError + ') pero la fila SÍ está en la hoja.');
+        }
+      } catch(e) { console.warn('multi-cabin verify hermana ' + (i+1) + ':', e); }
+    }
     if (!ok) {
       failedHermanas.push({ index: i + 1, hermana: reservasHermanas[i], error: lastError });
     }
