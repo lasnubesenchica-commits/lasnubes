@@ -111,8 +111,10 @@ function saveTienditaVoucherToDrive(payload) {
     // Lee el voucher del cliente para prellenar monto y fecha. Es el mismo
     // parser de los vouchers de reserva, que ya entiende Yappy y ACH.
     let datos = null;
+    let ocrError = '';
     try {
       const v = parseVoucherWithClaude(payload.base64, payload.mimeType || 'image/jpeg');
+      if (v && v.error) ocrError = String(v.error);
       if (v && !v.error) {
         datos = {
           monto: parseFloat(String(v.monto || '').replace(/[^0-9.]/g, '')) || 0,
@@ -124,9 +126,15 @@ function saveTienditaVoucherToDrive(payload) {
           mensaje: v.mensaje || ''
         };
       }
-    } catch (_) { /* sin OCR: se llena a mano */ }
+    } catch (e) {
+      // El voucher YA quedó guardado en Drive: un fallo del OCR no debe tumbar
+      // la subida. Pero el motivo se devuelve, porque tragárselo dejaba al
+      // admin con "no se pudieron leer los datos" y nada que investigar.
+      ocrError = e.message || String(e);
+    }
+    if (ocrError) logDebugEntry('tiendita-voucher-OCR-FAIL', { error: ocrError.slice(0, 300) });
 
-    return { ok: true, url: file.getUrl(), datos: datos };
+    return { ok: true, url: file.getUrl(), datos: datos, ocrError: ocrError || null };
   } catch (e) {
     return { ok: false, error: e.message };
   }
