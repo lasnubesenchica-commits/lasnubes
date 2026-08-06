@@ -113,11 +113,18 @@ function saveTienditaVoucherToDrive(payload) {
     let datos = null;
     let ocrError = '';
     try {
-      const v = parseVoucherWithClaude(payload.base64, payload.mimeType || 'image/jpeg');
-      if (v && v.error) ocrError = String(v.error);
-      if (v && !v.error) {
+      // OJO: parseVoucherWithClaude devuelve un ContentService.TextOutput —está
+      // pensada para retornarse directo desde doPost—, NO un objeto. Sin el
+      // JSON.parse(getContent()) todas las propiedades salen undefined y el
+      // resultado del OCR se tiraba a la basura: `datos` quedaba con monto 0 y
+      // los textos vacíos, que es exactamente el "no se pudieron leer los
+      // datos" que veía el admin. La llamada del bot (BotConsultor) sí lo hace
+      // bien; esta era la única que faltaba.
+      const out = parseVoucherWithClaude(payload.base64, payload.mimeType || 'image/jpeg');
+      const v = JSON.parse(out.getContent());
+      if (v && v.ok) {
         datos = {
-          monto: parseFloat(String(v.monto || '').replace(/[^0-9.]/g, '')) || 0,
+          monto: parseFloat(v.monto) || 0,
           fecha: v.fechaPago || '',
           remitente: v.sender || '',
           // El campo "Mensaje" del Yappy suele traer qué se compró ("kit de
@@ -125,6 +132,8 @@ function saveTienditaVoucherToDrive(payload) {
           // preseleccionar el correcto.
           mensaje: v.mensaje || ''
         };
+      } else {
+        ocrError = (v && v.error) ? String(v.error) : 'el OCR no devolvió datos';
       }
     } catch (e) {
       // El voucher YA quedó guardado en Drive: un fallo del OCR no debe tumbar
