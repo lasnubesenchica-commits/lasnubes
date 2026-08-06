@@ -2193,6 +2193,28 @@
 
   /* Filas de "Todos los egresos": toda la fila abre el editor. El <select>
      de categoría y los botones de la última columna siguen siendo suyos. */
+  /* Multi-cabaña: una fila por noche con sus cabañas y su gente */
+  .mc-noche { display: grid; grid-template-columns: 92px 1fr; gap: 8px 10px;
+              align-items: center; margin-bottom: 8px; }
+  .mc-noche-lbl { font-size: 12px; color: var(--text); font-weight: 500; text-transform: capitalize; }
+  .mc-noche-lbl .mc-n { font-family: ui-monospace, monospace; font-size: 11px; color: var(--text-muted); }
+  .mc-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .mc-chip {
+    font-size: 12px; padding: 5px 12px; border-radius: 20px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text-muted);
+    transition: all .12s;
+  }
+  .mc-chip:hover { border-color: var(--verde-dark); color: var(--text); }
+  .mc-chip.on { background: var(--verde-dark); border-color: var(--verde-dark); color: #fff; font-weight: 600; }
+  .mc-pers { grid-column: 2; display: flex; gap: 12px; flex-wrap: wrap; }
+  .mc-pers:empty { display: none; }
+  .mc-pers-item { font-size: 11px; color: var(--text-muted); display: inline-flex;
+                  align-items: center; gap: 5px; }
+  .mc-pers-item input {
+    width: 48px; font-size: 12px; padding: 3px 6px; text-align: center;
+    border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text);
+  }
+
   /* Cantidad de un componente en el armado de un combo */
   .rec-qty { display: inline-flex; align-items: center; gap: 2px; }
   .rec-qty-lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase;
@@ -5357,6 +5379,22 @@ function _lnRecargoPersona(cabinKey) {
 // Devuelve { total, noches[], extras[], sinPromo } para una estadía del modal.
 // `noches` trae una entrada por noche con su fecha, precio y motivo; `extras`
 // los recargos que no son por noche (persona adicional, early/late).
+// Normaliza la asignación de una noche a [{cabin, personas}]. Acepta las tres
+// formas que puede tener `cabinPorNoche[fecha]`: ausente (usa la cabaña del
+// formulario), un string (itinerario: una cabaña por noche) o un array
+// (varias cabañas ocupadas esa misma noche, cada una con su gente).
+function _mcCabinasDeNoche(cabinPorNoche, fecha, cabinKey, personas) {
+  const v = cabinPorNoche && cabinPorNoche[fecha];
+  if (!v) return [{ cabin: cabinKey, personas: personas }];
+  if (typeof v === 'string') return [{ cabin: v, personas: personas }];
+  if (Array.isArray(v) && v.length) {
+    return v.map(x => (typeof x === 'string')
+      ? { cabin: x, personas: personas }
+      : { cabin: x.cabin, personas: (parseInt(x.personas, 10) || personas) });
+  }
+  return [{ cabin: cabinKey, personas: personas }];
+}
+
 function _lnCotizar(tipo, cabinKey, entradaISO, salidaISO, personas, sinPromo, cabinPorNoche) {
   personas = Math.max(1, parseInt(personas, 10) || 2);
   const out = { total: 0, noches: [], extras: [], nNoches: 0 };
@@ -5382,32 +5420,41 @@ function _lnCotizar(tipo, cabinKey, entradaISO, salidaISO, personas, sinPromo, c
   let cur = entradaISO;
   while (cur < salidaISO && out.noches.length < 400) {
     const p = _lnPrecioDia(cur, sinPromo);
-    out.noches.push({ fecha: cur, precio: p, motivo: _lnMotivoDia(cur, sinPromo) });
-    out.total += p;
+    // Una noche puede tener MÁS DE UNA cabaña ocupada a la vez (un grupo que
+    // se reparte). Ahí la noche vale una tarifa por cabaña, no una sola.
+    const cabs  = _mcCabinasDeNoche(cabinPorNoche, cur, cabinKey, personas);
+    const nCab  = cabs.length;
+    const suf   = nCab > 1 ? ' · ' + nCab + ' cabañas' : '';
+    out.noches.push({ fecha: cur, precio: p * nCab, motivo: _lnMotivoDia(cur, sinPromo) + suf });
+    out.total += p * nCab;
     cur = _addDaysISO(cur, 1);
   }
   out.nNoches = out.noches.length;
 
-  if (personas > 2 && out.nNoches) {
-    // Con multi-cabaña cada noche puede estar en una cabaña distinta, y el
-    // recargo por persona no es el mismo en todas (Portal $10, las otras $20).
-    // Sin esto el total del modal no coincidía con el split de abajo.
-    if (cabinPorNoche) {
-      let extra = 0;
-      const usadas = {};
-      out.noches.forEach(n => {
-        const c = cabinPorNoche[n.fecha] || cabinKey;
-        extra += _lnRecargoPersona(c) * (personas - 2);
-        usadas[c] = (usadas[c] || 0) + 1;
+  if (out.nNoches && cabinPorNoche) {
+    // Con multi-cabaña el recargo se calcula por CABAÑA: no es el mismo en
+    // todas (Portal $10, las otras $20) y cada una lleva su propia cantidad
+    // de personas cuando el grupo se reparte. Se evalúa siempre —no solo si
+    // `personas > 2`— porque el global puede ser 6 con 3 y 3 en cada cabaña,
+    // que no paga recargo.
+    let extra = 0;
+    const usadas = {};
+    out.noches.forEach(n => {
+      _mcCabinasDeNoche(cabinPorNoche, n.fecha, cabinKey, personas).forEach(c => {
+        const px = Math.max(0, (parseInt(c.personas, 10) || 0) - 2);
+        if (!px) return;
+        extra += _lnRecargoPersona(c.cabin) * px;
+        usadas[c.cabin] = (usadas[c.cabin] || 0) + px;
       });
+    });
+    if (extra > 0) {
       out.total += extra;
       const det = Object.keys(usadas)
         .map(c => '$' + _lnRecargoPersona(c) + '×' + usadas[c]).join(' + ');
-      out.extras.push({
-        label: (personas - 2) + ' persona' + (personas - 2 > 1 ? 's' : '') + ' extra (' + det + ')',
-        monto: extra
-      });
-    } else {
+      out.extras.push({ label: 'Personas extra (' + det + ')', monto: extra });
+    }
+  } else if (personas > 2 && out.nNoches) {
+    {
       const porPersona = _lnRecargoPersona(cabinKey);
       const extra = porPersona * (personas - 2) * out.nNoches;
       out.total += extra;
@@ -9547,7 +9594,10 @@ function _refreshMultiCabinAvailability() {
   const ci = document.getElementById('fCheckin').value;
   const co = document.getElementById('fCheckout').value;
   const nights = (ci && co) ? Math.round((new Date(co+'T12:00:00') - new Date(ci+'T12:00:00')) / 86400000) : 0;
-  const enable = (tipo === 'noche') && nights >= 2 && !editId;
+  // >= 1 noche: el caso "una sola noche en dos cabañas" (un grupo grande que
+  // se reparte) es tan válido como el itinerario de varias noches, y antes
+  // quedaba fuera porque el panel solo sabía repartir noches.
+  const enable = (tipo === 'noche') && nights >= 1 && !editId;
   row.style.display = enable ? '' : 'none';
   if (!enable) {
     const chk = document.getElementById('fMultiCabin');
@@ -9577,43 +9627,128 @@ function _regenerateMultiCabinNights() {
   const start = new Date(ci + 'T12:00:00');
   const end = new Date(co + 'T12:00:00');
   const nights = Math.round((end - start) / 86400000);
-  if (nights < 2) { wrap.innerHTML = ''; if (infoEl) infoEl.textContent = ''; return; }
-  // Default: primera mitad en la cabaña seleccionada arriba, segunda mitad en otra.
+  if (nights < 1) { wrap.innerHTML = ''; if (infoEl) infoEl.textContent = ''; return; }
+
   const primaryCabin = document.getElementById('fCabin').value || 'lila';
   const otherCabin = primaryCabin === 'lila' ? 'azul' : primaryCabin === 'azul' ? 'lila' : 'azul';
-  // Preservar selecciones existentes si el usuario ya las tocó.
-  const prevSelects = wrap.querySelectorAll('select[data-night-idx]');
-  const prev = {};
-  prevSelects.forEach(s => { prev[s.dataset.nightIdx] = s.value; });
+  const personasTot = parseInt((document.getElementById('fPersons') || {}).value, 10) || 2;
+
+  // Preservar lo que el usuario ya tocó (chips encendidos y personas).
+  const prev = _mcLeerSeleccion(true);
+  // Al encender una segunda cabaña, el grupo se REPARTE — no se duplica. Sin
+  // esto ambas heredaban el total (6 y 6 para un grupo de 6) y el recargo por
+  // persona se cobraba dos veces, inflando el precio sugerido en silencio.
+  // Lo que el admin ya fijó a mano se respeta; el resto se divide entre las
+  // cabañas que quedan.
+  prev.forEach(cabs => {
+    if (!cabs || cabs.length < 2) return;
+    const fijos  = cabs.filter(c => c.personas != null);
+    const libres = cabs.filter(c => c.personas == null);
+    if (!libres.length) return;
+    const usadas = fijos.reduce((t, c) => t + c.personas, 0);
+    let resto = Math.max(libres.length, personasTot - usadas);
+    libres.forEach((c, i) => {
+      const cuota = Math.floor(resto / (libres.length - i));
+      c.personas = Math.max(1, cuota);
+      resto -= c.personas;
+    });
+  });
 
   const DOW = ['dom','lun','mar','mié','jue','vie','sáb'];
   const MON = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const NOMBRE = { verde: 'Paseo', azul: 'Portal', lila: 'Puente' };
   let html = '';
   for (let i = 0; i < nights; i++) {
     const nightDate = new Date(start); nightDate.setDate(nightDate.getDate() + i);
     const nightISO = nightDate.toISOString().slice(0,10);
     const label = DOW[nightDate.getDay()] + ' ' + nightDate.getDate() + ' ' + MON[nightDate.getMonth()];
-    const defaultCabin = prev[i] || (i < Math.ceil(nights / 2) ? primaryCabin : otherCabin);
-    let opts = '';
+    // Default: con varias noches, itinerario (mitad y mitad) — el comportamiento
+    // de siempre. Con una sola noche, solo la cabaña del formulario: el segundo
+    // chip lo enciende el admin si de verdad son dos.
+    let sel = prev[i];
+    if (!sel || !sel.length) {
+      const def = nights >= 2 ? (i < Math.ceil(nights / 2) ? primaryCabin : otherCabin) : primaryCabin;
+      sel = [{ cabin: def, personas: personasTot }];
+    }
+    const activos = sel.map(x => x.cabin);
+    const persDe  = c => { const f = sel.filter(x => x.cabin === c)[0]; return f ? f.personas : personasTot; };
+
+    let chips = '';
     ['verde','azul','lila'].forEach(k => {
-      const name = k === 'verde' ? 'Paseo' : k === 'azul' ? 'Portal' : 'Puente';
-      opts += '<option value="' + k + '"' + (k === defaultCabin ? ' selected' : '') + '>' + name + '</option>';
+      const on = activos.indexOf(k) !== -1;
+      chips += '<button type="button" class="mc-chip' + (on ? ' on' : '') + '"'
+             + ' data-idx="' + i + '" data-cab="' + k + '" onclick="_mcToggleCabin(this)">'
+             + NOMBRE[k] + '</button>';
     });
-    html += ''
-      + '<div style="display:grid;grid-template-columns:80px 1fr;gap:10px;align-items:center;margin-bottom:6px;">'
-      +   '<div style="font-size:12px;color:var(--text);font-weight:500;text-transform:capitalize;" data-night-iso="' + nightISO + '">'
-      +     '<span style="font-family:ui-monospace,monospace;font-size:11px;color:var(--text-muted);">N' + (i+1) + '</span> ' + label
-      +   '</div>'
-      +   '<select data-night-idx="' + i + '" data-night-iso="' + nightISO + '" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;">' + opts + '</select>'
-      + '</div>';
+
+    // Las personas por cabaña solo aparecen cuando hay 2+ ocupadas esa noche:
+    // con una sola, el campo Personas de arriba ya dice todo y un input extra
+    // sería ruido en el flujo de siempre.
+    let pers = '';
+    if (activos.length > 1) {
+      pers = activos.map(c =>
+        '<label class="mc-pers-item">' + NOMBRE[c]
+        + '<input type="number" min="1" step="1" value="' + persDe(c) + '"'
+        + ' data-idx="' + i + '" data-cab="' + c + '" oninput="_mcOnPersonas()"> pers.</label>'
+      ).join('');
+    }
+
+    html += '<div class="mc-noche" data-night-idx="' + i + '" data-night-iso="' + nightISO + '">'
+         +   '<div class="mc-noche-lbl"><span class="mc-n">N' + (i+1) + '</span> ' + label + '</div>'
+         +   '<div class="mc-chips">' + chips + '</div>'
+         +   '<div class="mc-pers">' + pers + '</div>'
+         + '</div>';
   }
   wrap.innerHTML = html;
   _updateMultiCabinSplitInfo();
-  // Al cambiar cualquier select, recalcular info.
-  wrap.querySelectorAll('select[data-night-idx]').forEach(s => {
-    // Recalcula también el TOTAL: el recargo por persona depende de la cabaña.
-    s.onchange = () => { calcPrice(); _updateMultiCabinSplitInfo(); };
+}
+
+// Lee del DOM la asignación actual: [ [{cabin, personas}], ... ] por noche.
+// Con `raw` deja en null las personas que el admin todavía no fijó, para poder
+// distinguir "no lo tocó" de "puso ese número" — que es lo que permite
+// repartir el grupo en vez de heredar el total a cada cabaña.
+function _mcLeerSeleccion(raw) {
+  const wrap = document.getElementById('fMultiNights');
+  const out = [];
+  if (!wrap) return out;
+  wrap.querySelectorAll('.mc-noche').forEach(n => {
+    const idx = parseInt(n.dataset.nightIdx, 10);
+    const cabs = [];
+    n.querySelectorAll('.mc-chip.on').forEach(ch => {
+      const cab = ch.dataset.cab;
+      const inp = n.querySelector('input[data-cab="' + cab + '"]');
+      const per = inp ? (parseInt(inp.value, 10) || 1) : null;
+      cabs.push({ cabin: cab, personas: per });
+    });
+    out[idx] = cabs;
   });
+  if (raw) return out;
+  // Las noches de una sola cabaña no tienen input propio: heredan el global.
+  const personasTot = parseInt((document.getElementById('fPersons') || {}).value, 10) || 2;
+  out.forEach(cabs => (cabs || []).forEach(c => { if (c.personas == null) c.personas = personasTot; }));
+  return out;
+}
+
+function _mcToggleCabin(btn) {
+  const noche = btn.closest('.mc-noche');
+  if (!noche) return;
+  const encendidos = noche.querySelectorAll('.mc-chip.on').length;
+  // Una noche sin cabaña no significa nada: el último no se puede apagar.
+  if (btn.classList.contains('on') && encendidos <= 1) {
+    showToast('Cada noche necesita al menos una cabaña');
+    return;
+  }
+  btn.classList.toggle('on');
+  _regenerateMultiCabinNights();   // repinta los campos de personas de esa noche
+  calcPrice();
+  // Después de calcPrice: es quien actualiza el monto, y el split se calcula
+  // SOBRE ese monto. Al revés, la línea del reparto mostraba el total anterior.
+  _updateMultiCabinSplitInfo();
+}
+
+function _mcOnPersonas() {
+  calcPrice();
+  _updateMultiCabinSplitInfo();   // va después: el split se calcula sobre el monto
 }
 
 // Peso de cada cabaña en el reparto: lo que REALMENTE vale su tramo según el
@@ -9621,13 +9756,18 @@ function _regenerateMultiCabinNights() {
 // cosas: que un viernes vale más que un lunes, y que la persona extra cuesta
 // $10 en Portal contra $20 en las otras. Con noches de distinto valor, el
 // reparto parejo le cargaba de más a la cabaña barata.
-function _multiCabinPesos(selects, personas) {
-  const pesos = {};   // cabaña → valor de tarifa de su tramo
-  selects.forEach(s => {
-    const iso = s.dataset.nightIso, cab = s.value;
-    let v = _lnPrecioDia(iso, false);
-    if (personas > 2) v += _lnRecargoPersona(cab) * (personas - 2);
-    pesos[cab] = +((pesos[cab] || 0) + v).toFixed(2);
+// La unidad es CABAÑA-NOCHE, no noche: si una noche tiene dos cabañas ocupadas,
+// cada una pesa lo suyo.
+function _multiCabinPesos(seleccion, isos) {
+  const pesos = {};
+  (seleccion || []).forEach((cabs, i) => {
+    const iso = isos[i];
+    (cabs || []).forEach(c => {
+      let v = _lnPrecioDia(iso, false);
+      const px = Math.max(0, (parseInt(c.personas, 10) || 0) - 2);
+      if (px) v += _lnRecargoPersona(c.cabin) * px;
+      pesos[c.cabin] = +((pesos[c.cabin] || 0) + v).toFixed(2);
+    });
   });
   return pesos;
 }
@@ -9636,25 +9776,36 @@ function _updateMultiCabinSplitInfo() {
   const infoEl = document.getElementById('fMultiSplitInfo');
   if (!infoEl) return;
   const wrap = document.getElementById('fMultiNights');
-  const selects = wrap ? wrap.querySelectorAll('select[data-night-idx]') : [];
-  const nights = selects.length;
-  if (nights < 2) { infoEl.textContent = ''; return; }
-  const amount   = parseFloat(document.getElementById('fAmount').value) || 0;
-  const personas = parseInt((document.getElementById('fPersons') || {}).value, 10) || 2;
+  if (!wrap) { infoEl.textContent = ''; return; }
+  const isos = [];
+  wrap.querySelectorAll('.mc-noche').forEach(n => { isos[parseInt(n.dataset.nightIdx,10)] = n.dataset.nightIso; });
+  const seleccion = _mcLeerSeleccion();
+  if (!seleccion.length) { infoEl.textContent = ''; return; }
 
-  const counts = { verde: 0, azul: 0, lila: 0 };
-  selects.forEach(s => { counts[s.value] = (counts[s.value] || 0) + 1; });
-  const pesos = _multiCabinPesos(selects, personas);
-  const sumaPesos = Object.keys(pesos).reduce((t, k) => t + pesos[k], 0);
+  const amount = parseFloat(document.getElementById('fAmount').value) || 0;
+  const counts = {};
+  seleccion.forEach(cabs => (cabs || []).forEach(c => { counts[c.cabin] = (counts[c.cabin] || 0) + 1; }));
+  const usadas = Object.keys(counts);
+  if (usadas.length < 2) {
+    infoEl.textContent = 'Todas las noches en la misma cabaña — no hace falta multi-cabaña.';
+    return;
+  }
+  const pesos = _multiCabinPesos(seleccion, isos);
+  const sumaPesos = usadas.reduce((t, k) => t + (pesos[k] || 0), 0);
+  const totalCabNoches = usadas.reduce((t, k) => t + counts[k], 0);
 
   const names = { verde: 'Paseo', azul: 'Portal', lila: 'Puente' };
-  const partes = Object.keys(counts).filter(k => counts[k] > 0).map(k => {
+  const partes = usadas.map(k => {
     // El total cobrado puede estar negociado: se reparte en proporción al
     // valor de tarifa de cada tramo, no en partes iguales.
-    const share = sumaPesos > 0 ? amount * pesos[k] / sumaPesos : amount / nights;
+    const share = sumaPesos > 0 ? amount * pesos[k] / sumaPesos : amount / totalCabNoches * counts[k];
     return names[k] + ': ' + counts[k] + ' noche' + (counts[k] > 1 ? 's' : '') + ' = $' + share.toFixed(2);
   });
-  infoEl.textContent = 'Split por tarifa · ' + partes.join(' · ') + '  →  Total $' + amount.toFixed(2);
+  // Simultáneo vs itinerario: se deduce del dato (¿alguna noche tiene 2+?),
+  // no de un flag aparte que se pueda quedar mal puesto.
+  const simultaneo = seleccion.some(cabs => (cabs || []).length > 1);
+  infoEl.textContent = (simultaneo ? 'Simultáneo · ' : 'Itinerario · ')
+    + partes.join(' · ') + '  →  Total $' + amount.toFixed(2);
 }
 
 function autoCheckout() {
@@ -10114,10 +10265,15 @@ function usarTarifaCalculada() {
 function _mapaCabinPorNoche() {
   const chk = document.getElementById('fMultiCabin');
   if (!chk || !chk.checked) return null;
-  const sel = document.querySelectorAll('#fMultiNights select[data-night-idx]');
-  if (sel.length < 2) return null;
+  const wrap = document.getElementById('fMultiNights');
+  if (!wrap) return null;
+  const seleccion = _mcLeerSeleccion();
   const mapa = {};
-  sel.forEach(s => { if (s.dataset.nightIso) mapa[s.dataset.nightIso] = s.value; });
+  wrap.querySelectorAll('.mc-noche').forEach(n => {
+    const i = parseInt(n.dataset.nightIdx, 10);
+    const cabs = seleccion[i];
+    if (n.dataset.nightIso && cabs && cabs.length) mapa[n.dataset.nightIso] = cabs;
+  });
   return Object.keys(mapa).length ? mapa : null;
 }
 
@@ -10877,33 +11033,44 @@ async function _saveMultiCabinReservation() {
   }
 
   const wrap = document.getElementById('fMultiNights');
-  const nightSelects = wrap ? wrap.querySelectorAll('select[data-night-idx]') : [];
-  if (nightSelects.length < 2) {
-    showToast('Necesitas al menos 2 noches para multi-cabaña');
-    return;
-  }
+  const isos = [];
+  if (wrap) wrap.querySelectorAll('.mc-noche').forEach(n => { isos[parseInt(n.dataset.nightIdx,10)] = n.dataset.nightIso; });
+  const seleccion = _mcLeerSeleccion();
+  if (!seleccion.length) { showToast('No hay noches asignadas'); return; }
 
-  // Consolidar noches consecutivas de la misma cabaña.
-  const groups = [];
-  let cur = null;
-  nightSelects.forEach(s => {
-    const night = s.dataset.nightIso;
-    const cabin = s.value;
-    if (cur && cur.cabin === cabin) {
-      cur.nights.push(night);
-    } else {
-      if (cur) groups.push(cur);
-      cur = { cabin, nights: [night] };
-    }
+  // Agrupar POR CABAÑA y después partir en tramos consecutivos. Antes se
+  // recorrían las noches en orden asumiendo una sola cabaña por noche, así que
+  // "la misma noche en dos cabañas" no se podía expresar. Ahora cada cabaña
+  // junta sus noches y cada corrida contigua es una reserva hermana; con una
+  // sola noche en dos cabañas salen dos hermanas de una noche cada una.
+  const porCabin = {};
+  seleccion.forEach((cabs, i) => {
+    const iso = isos[i];
+    (cabs || []).forEach(c => {
+      if (!porCabin[c.cabin]) porCabin[c.cabin] = [];
+      porCabin[c.cabin].push({ iso, personas: parseInt(c.personas, 10) || persons });
+    });
   });
-  if (cur) groups.push(cur);
+  const groups = [];
+  Object.keys(porCabin).forEach(cab => {
+    const noches = porCabin[cab].slice().sort((a, b) => a.iso.localeCompare(b.iso));
+    let cur = null;
+    noches.forEach(n => {
+      // Contiguas = la siguiente es el día de después. Un hueco abre tramo nuevo.
+      if (cur && _addDaysISO(cur.nights[cur.nights.length - 1], 1) === n.iso) cur.nights.push(n.iso);
+      else { if (cur) groups.push(cur); cur = { cabin: cab, nights: [n.iso], personas: n.personas }; }
+    });
+    if (cur) groups.push(cur);
+  });
+  groups.sort((a, b) => a.nights[0].localeCompare(b.nights[0]) || a.cabin.localeCompare(b.cabin));
 
+  const totalCabNoches = groups.reduce((t, g) => t + g.nights.length, 0);
   if (groups.length < 2) {
-    showToast('Todas las noches quedaron en la misma cabaña — desactiva multi-cabaña');
+    showToast('Todo quedó en una sola cabaña — desactiva multi-cabaña');
     return;
   }
 
-  const perNight = totalAmount / nightSelects.length;
+  const perNight = totalAmount / (totalCabNoches || 1);
   const groupId  = 'MC-' + Date.now().toString();
 
   // Voucher: uno solo, compartido entre todas las reservas.
@@ -10920,7 +11087,9 @@ async function _saveMultiCabinReservation() {
   // tarifario no pudo valuar nada (todas las noches en $0).
   const _grpValor = groups.map(g => g.nights.reduce((t, iso) => {
     let v = _lnPrecioDia(iso, false);
-    if (persons > 2) v += _lnRecargoPersona(g.cabin) * (persons - 2);
+    // Personas del TRAMO: con el grupo repartido, cada cabaña tiene la suya.
+    const px = Math.max(0, (parseInt(g.personas, 10) || persons) - 2);
+    if (px) v += _lnRecargoPersona(g.cabin) * px;
     return t + v;
   }, 0));
   const _valorTotal = _grpValor.reduce((a, v) => a + v, 0);
@@ -10945,6 +11114,9 @@ async function _saveMultiCabinReservation() {
   if (pv && montoVoucherNum >= totalAmount * 0.99) estadoBase = 'PAGA';
 
   // Armar reservas por grupo.
+  // ¿Se solapan en el tiempo? Eso distingue "dos cabañas a la vez" de "cambio
+  // de cabaña". Se deduce de las fechas en vez de arrastrar un flag aparte.
+  const _mcSimultaneo = seleccion.some(cabs => (cabs || []).length > 1);
   const CABIN_NAMES = { verde: 'Paseo', azul: 'Portal', lila: 'Puente' };
   const reservasHermanas = groups.map((g, idx) => {
     const groupCheckin  = g.nights[0];
@@ -10954,13 +11126,14 @@ async function _saveMultiCabinReservation() {
     const groupDeposit  = idx === 0 ? deposit : 0;
     const id = groupId + '-' + (idx+1);
     const cabinsList = groups.map(x => CABIN_NAMES[x.cabin] || x.cabin).join(' + ');
-    const nota = '[Multi-cabaña ' + (idx+1) + '/' + groups.length + ' · ' + cabinsList + ' · pago único $' + totalAmount.toFixed(2) + ']';
+    const nota = '[Multi-cabaña ' + (idx+1) + '/' + groups.length + ' · ' + cabinsList
+               + (_mcSimultaneo ? ' · simultáneas' : '') + ' · pago único $' + totalAmount.toFixed(2) + ']';
     const comentarios = comentariosBase ? (comentariosBase + '\n' + nota) : nota;
     return {
       id, name, email, telefono, pagador,
       cabin: g.cabin,
       checkin: groupCheckin, checkout: groupCheckout,
-      persons,
+      persons: parseInt(g.personas, 10) || persons,
       origin, deposit: groupDeposit, amount: groupAmount,
       confirmCode: id, serviceFee: 0, neto: groupAmount,
       fechaReserva,
@@ -11090,7 +11263,8 @@ async function _saveMultiCabinReservation() {
       checkin: rr.checkin,
       checkout: rr.checkout,
       nights: Math.round((new Date(rr.checkout + 'T12:00:00') - new Date(rr.checkin + 'T12:00:00')) / 86400000),
-      amount: rr.amount
+      amount: rr.amount,
+      persons: rr.persons
     }))
   });
 
