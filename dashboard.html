@@ -7508,6 +7508,33 @@ function showDispDetail(id) {
   //
   // El de WhatsApp usa una plantilla HSM, así que llega aunque la ventana de
   // 24 h esté cerrada.
+  // Las hermanas de una multi-cabaña comparten el prefijo del id
+  // (MC-<timestamp>-1, -2, …). Al reenviar hay que mandar la reserva
+  // CONSOLIDADA: el objeto combinado solo existía en memoria al guardar, así
+  // que reenviar desde una fila mandaba el correo de esa cabaña sola —Portal,
+  // 2 personas, $75— cuando el huésped reservó dos por $190. Se reconstruye
+  // desde las filas hermanas, que es lo único que quedó persistido.
+  const _payloadReenvio = (base) => {
+    const m = /^(MC-\d+)-\d+$/.exec(String(base.id || ''));
+    if (!m) return base;
+    const hermanas = reservations
+      .filter(x => String(x.id || '').indexOf(m[1] + '-') === 0)
+      .sort((a, b) => String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
+    if (hermanas.length < 2) return base;
+    const NOMBRES = { verde: 'Paseo por Las Nubes', azul: 'Portal hacia Las Nubes', lila: 'Puente entre Las Nubes' };
+    const noches = x => Math.round((new Date(x.checkout + 'T12:00:00') - new Date(x.checkin + 'T12:00:00')) / 86400000);
+    return Object.assign({}, hermanas[0], {
+      amount:  +hermanas.reduce((t, x) => t + (parseFloat(x.amount)  || 0), 0).toFixed(2),
+      deposit: +hermanas.reduce((t, x) => t + (parseFloat(x.deposit) || 0), 0).toFixed(2),
+      checkout: hermanas.map(x => x.checkout).sort().slice(-1)[0],
+      multiCabin: hermanas.map(x => ({
+        id: x.id, cabin: x.cabin, cabinName: NOMBRES[x.cabin] || x.cabin,
+        checkin: x.checkin, checkout: x.checkout, nights: noches(x),
+        amount: parseFloat(x.amount) || 0, persons: parseInt(x.persons, 10) || 0
+      }))
+    });
+  };
+
   const _reenviar = (btn, accion, etiqueta) => {
     if (!btn) return;
     // El botón es el MISMO nodo entre reservas: sin resetearlo, abrir otra
@@ -7520,7 +7547,7 @@ function showDispDetail(id) {
       btn.textContent = '⏳ Enviando…';
       let ok = false, detalle = '';
       try {
-        const res  = await fetch(SHEETS_API_URL, { method:'POST', body: JSON.stringify({ action: accion, reservation: r }) });
+        const res  = await fetch(SHEETS_API_URL, { method:'POST', body: JSON.stringify({ action: accion, reservation: _payloadReenvio(r) }) });
         const data = await res.json();
         ok = !!(data && data.ok);
         detalle = (data && data.error) || '';

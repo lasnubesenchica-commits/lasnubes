@@ -239,11 +239,20 @@ function sendWAReservaConfirmada(reservation) {
   let cabin, fechas;
   if (isMulti) {
     const arr = reservation.multiCabin;
+    // Dos cabañas A LA VEZ no es un itinerario: la flecha y la suma de noches
+    // describen el caso contrario. 1 noche en 2 cabañas son 1 noche, no 2.
+    const simult = _mcSimultaneas(arr);
     const cabinTags = arr.map(function(s) { return CABIN_SHORT[s.cabin] || s.cabin; });
-    cabin = cabinTags.join(' → ') + ' (multi-cabaña)';
-    const totalNights = arr.reduce(function(sum, s) { return sum + (s.nights || 0); }, 0);
-    const firstIn = formatDateES(arr[0].checkin);
-    const lastOut = formatDateES(arr[arr.length - 1].checkout);
+    cabin = cabinTags.join(simult ? ' + ' : ' → ')
+          + (simult ? ' (' + arr.length + ' cabañas a la vez)' : ' (multi-cabaña)');
+    const totalNights = simult
+      ? Math.max.apply(null, arr.map(function(s) { return s.nights || 0; }))
+      : arr.reduce(function(sum, s) { return sum + (s.nights || 0); }, 0);
+    // El array no viene necesariamente ordenado.
+    const ins  = arr.map(function(s) { return String(s.checkin); }).sort();
+    const outs = arr.map(function(s) { return String(s.checkout); }).sort();
+    const firstIn = formatDateES(ins[0]);
+    const lastOut = formatDateES(outs[outs.length - 1]);
     fechas = firstIn + ' → ' + lastOut + ' · ' + totalNights + ' ' + (totalNights === 1 ? 'noche' : 'noches') + ' en ' + arr.length + ' cabañas';
   } else {
     cabin = CABIN_NAMES[reservation.cabin] || reservation.cabin || 'Las Nubes';
@@ -255,7 +264,10 @@ function sendWAReservaConfirmada(reservation) {
     else                           fechas = meta.checkinFmt + ' → ' + meta.checkoutFmt + ' · ' + meta.estanciaValue + (meta.estanciaValue === 1 ? ' noche' : ' noches');
   }
 
-  const persons      = parseInt(reservation.persons, 10) || 1;
+  // Con multi-cabaña, `reservation` es la primera hermana: sus `persons` son
+  // los de ESA cabaña. _emailCabinaPersonas suma cuando se ocupan a la vez y
+  // toma el máximo cuando es itinerario (el mismo grupo mudándose).
+  const persons      = parseInt(_emailCabinaPersonas(reservation).personas, 10) || 1;
   const personasStr  = persons + (persons === 1 ? ' persona' : ' personas');
   const nombre       = (reservation.name || 'amigo').toString().trim();
 
