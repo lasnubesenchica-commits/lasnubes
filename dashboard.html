@@ -4513,7 +4513,7 @@
       </div>
       <div class="form-group">
         <label>Personas</label>
-        <input type="number" id="fPersons" min="1" max="10" value="2" oninput="calcPrice();_updateMultiCabinSplitInfo();">
+        <input type="number" id="fPersons" min="1" max="10" value="2" oninput="_mcRedistribuir();calcPrice();_updateMultiCabinSplitInfo();">
       </div>
     </div>
 
@@ -9747,6 +9747,21 @@ function _mcToggleCabin(btn) {
   _updateMultiCabinSplitInfo();
 }
 
+// Al cambiar el total de personas hay que rehacer el reparto por cabaña. Sin
+// esto, armar 2 cabañas con 6 personas (3+3) y después subir el grupo a 8
+// dejaba los campos en 3+3, y el precio se seguía calculando sobre 6 — un
+// cobro de menos que no se ve en ninguna parte de la pantalla.
+// Se borran los inputs para que _regenerateMultiCabinNights los vea como "sin
+// fijar" y vuelva a distribuir con el total nuevo.
+function _mcRedistribuir() {
+  const chk = document.getElementById('fMultiCabin');
+  if (!chk || !chk.checked) return;
+  const wrap = document.getElementById('fMultiNights');
+  if (!wrap || !wrap.querySelector('.mc-pers-item')) return;
+  wrap.querySelectorAll('.mc-pers').forEach(el => { el.innerHTML = ''; });
+  _regenerateMultiCabinNights();
+}
+
 function _mcOnPersonas() {
   calcPrice();
   _updateMultiCabinSplitInfo();   // va después: el split se calcula sobre el monto
@@ -9805,8 +9820,20 @@ function _updateMultiCabinSplitInfo() {
   // Simultáneo vs itinerario: se deduce del dato (¿alguna noche tiene 2+?),
   // no de un flag aparte que se pueda quedar mal puesto.
   const simultaneo = seleccion.some(cabs => (cabs || []).length > 1);
+  // Si el admin edita las personas por cabaña y la suma no da el total del
+  // formulario, se dice: es la clase de descuadre que después aparece como un
+  // cobro mal calculado sin que nadie sepa de dónde salió.
+  let aviso = '';
+  if (simultaneo) {
+    const personasTot = parseInt((document.getElementById('fPersons') || {}).value, 10) || 0;
+    const maxNoche = seleccion.reduce((mx, cabs) => Math.max(mx,
+      (cabs || []).reduce((t, c) => t + (parseInt(c.personas, 10) || 0), 0)), 0);
+    if (personasTot && maxNoche !== personasTot) {
+      aviso = '  ⚠ repartiste ' + maxNoche + ' de ' + personasTot + ' personas';
+    }
+  }
   infoEl.textContent = (simultaneo ? 'Simultáneo · ' : 'Itinerario · ')
-    + partes.join(' · ') + '  →  Total $' + amount.toFixed(2);
+    + partes.join(' · ') + '  →  Total $' + amount.toFixed(2) + aviso;
 }
 
 function autoCheckout() {
