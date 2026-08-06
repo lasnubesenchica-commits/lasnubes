@@ -4098,29 +4098,48 @@ function buildEmailHTMLRegalo(r) {
 function _multiCabinBannerHTML(r) {
   if (!r || !r.multiCabin || !Array.isArray(r.multiCabin) || r.multiCabin.length < 2) return '';
   const total = parseFloat(r.amount) || 0;
+  // ¿Las estadías se SOLAPAN? Entonces son cabañas ocupadas a la vez por un
+  // mismo grupo, no un itinerario de cambios. Se deduce de las fechas en vez
+  // de un flag aparte, que es un dato más que se puede quedar mal puesto.
+  // El texto de itinerario ("cambiarás de cabaña") es directamente falso en el
+  // caso simultáneo, así que la distinción no es cosmética.
+  const _ord = r.multiCabin.slice().sort(function(a, b) {
+    return String(a.checkin).localeCompare(String(b.checkin));
+  });
+  let simultaneo = false;
+  for (let k = 1; k < _ord.length; k++) {
+    if (String(_ord[k].checkin) < String(_ord[k-1].checkout)) { simultaneo = true; break; }
+  }
   let rows = '';
   r.multiCabin.forEach(function(s, i) {
     const color = CABIN_COLORS_EMAIL[s.cabin] || '#6a9e62';
     const ciFmt = formatDateES(s.checkin);
     const coFmt = formatDateES(s.checkout);
     const nightsLbl = (s.nights === 1 ? '1 noche' : s.nights + ' noches');
+    // Con el grupo repartido, cuántos van a cada cabaña es lo primero que se
+    // busca en el correo.
+    const persLbl = (simultaneo && s.persons) ? ' · ' + s.persons + ' pers.' : '';
     const amtLbl = s.amount ? ' · $' + parseFloat(s.amount).toFixed(2) : '';
     rows += '<tr>'
          +  '<td style="padding:8px 0;font-size:11px;color:#8a8078;text-transform:uppercase;letter-spacing:0.06em;width:36px;vertical-align:top;">' + (i+1) + '</td>'
          +  '<td style="padding:8px 0;font-size:14px;color:#3a3530;vertical-align:top;">'
          +    '<span style="display:inline-block;width:8px;height:8px;background:' + color + ';border-radius:50%;margin-right:8px;vertical-align:middle;"></span>'
          +    '<strong style="color:' + color + ';">' + (s.cabinName || s.cabin) + '</strong>'
-         +    '<span style="color:#8a8078;font-size:12px;margin-left:8px;">' + nightsLbl + amtLbl + '</span>'
+         +    '<span style="color:#8a8078;font-size:12px;margin-left:8px;">' + nightsLbl + persLbl + amtLbl + '</span>'
          +    '<br><span style="font-size:12px;color:#6b6560;padding-left:18px;">' + ciFmt + ' → ' + coFmt + '</span>'
          +  '</td>'
          +  '</tr>';
   });
   return '<table width="100%" cellpadding="0" cellspacing="0" style="background:#fef9f0;border:1px solid #e8dfc9;border-left:4px solid #d97706;border-radius:10px;margin-bottom:20px;">'
        +   '<tr><td style="padding:18px 22px;">'
-       +     '<p style="margin:0 0 4px;font-size:12px;color:#8a6000;text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">Estadía multi-cabaña</p>'
-       +     '<p style="margin:0 0 12px;font-size:14px;color:#3a3530;line-height:1.5;">Reservaste <strong>' + r.multiCabin.length + ' cabañas</strong> consecutivas con un pago único de <strong>$' + total.toFixed(2) + '</strong>. Cambiarás de cabaña según este itinerario:</p>'
+       +     '<p style="margin:0 0 4px;font-size:12px;color:#8a6000;text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">' + (simultaneo ? 'Reserva de varias cabañas' : 'Estadía multi-cabaña') + '</p>'
+       +     '<p style="margin:0 0 12px;font-size:14px;color:#3a3530;line-height:1.5;">' + (simultaneo
+             ? 'Reservaste <strong>' + r.multiCabin.length + ' cabañas</strong> para el mismo grupo, con un pago único de <strong>$' + total.toFixed(2) + '</strong>:'
+             : 'Reservaste <strong>' + r.multiCabin.length + ' cabañas</strong> consecutivas con un pago único de <strong>$' + total.toFixed(2) + '</strong>. Cambiarás de cabaña según este itinerario:') + '</p>'
        +     '<table width="100%" cellpadding="0" cellspacing="0">' + rows + '</table>'
-       +     '<p style="margin:12px 0 0;font-size:12px;color:#6b6560;line-height:1.5;">El día del cambio te esperamos con la siguiente cabaña lista. Si tienes dudas, escríbenos al WhatsApp.</p>'
+       +     '<p style="margin:12px 0 0;font-size:12px;color:#6b6560;line-height:1.5;">' + (simultaneo
+             ? 'Las dos cabañas quedan listas para su llegada. Si tienes dudas, escríbenos al WhatsApp.'
+             : 'El día del cambio te esperamos con la siguiente cabaña lista. Si tienes dudas, escríbenos al WhatsApp.') + '</p>'
        +   '</td></tr>'
        + '</table>';
 }
