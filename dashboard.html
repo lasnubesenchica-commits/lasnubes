@@ -20495,6 +20495,22 @@ function renderEgresosTab() {
   // ── KPI Widgets ──────────────────────────────────────────────
   // Widgets clickables: toggle sobre `egrFilterCat`. Si la categoría ya está
   // seleccionada se limpia (vuelve a "todas"). Estado visible: borde de color
+  // Este total es BRUTO. El Resumen muestra el NETO (menos los abonos de
+  // préstamos), así que sin avisar acá los dos tabs muestran cifras distintas
+  // para el mismo mes y no hay forma de reconciliarlas sin preguntar.
+  const _egrNotaAbonos = (hayFiltro) => {
+    if (hayFiltro) return '';   // con filtro de categoría el neteo no aplica al subtotal
+    const ab = (typeof prestamoAbonos !== 'undefined' ? prestamoAbonos : [])
+      .filter(x => _matchesSelectedPeriod(x.fecha))
+      .reduce((t, x) => t + (parseFloat(x.monto) || 0), 0);
+    if (ab <= 0) return '';
+    return '<div style="font-size:10.5px;color:var(--text-muted);margin-top:6px;line-height:1.45;'
+      + 'border-top:1px dashed var(--border);padding-top:5px;" '
+      + 'title="Un abono es plata que nunca salió: el pago se registra completo aunque se entregue menos.">'
+      + 'Bruto. En Resumen aparece <strong>$' + (grandTotal - ab).toFixed(2) + '</strong>, '
+      + 'neto de $' + ab.toFixed(2) + ' en abonos de préstamos.</div>';
+  };
+
   // + fondo suave del color de la categoría cuando activa. "Total egresos"
   // también funciona como "limpiar filtro" cuando hay uno activo.
   const kpiGrid = document.getElementById('egrKpiGrid');
@@ -20511,6 +20527,7 @@ function renderEgresosTab() {
         <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;">Total egresos</div>
         <div style="font-size:22px;font-weight:700;color:var(--text);">$${grandTotal.toFixed(2)}</div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${filtered.length} registro${filtered.length!==1?'s':''}</div>
+        ${_egrNotaAbonos(validFilter)}
         ${totalHint}
       </div>` +
       catEntries.map(([cat, amt]) => {
