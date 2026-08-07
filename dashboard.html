@@ -15766,7 +15766,12 @@ const PROY_CATS = [
   { key: 'escolar', label: 'Vacaciones escolares' }
 ];
 let _proyAjustes = { semana: 0, viernes: 0, sabado: 0, vispera: 0, feriado: 0, escolar: 0 };
-let _proyModo    = 'pct';        // 'pct' | 'monto'
+let _proyModo    = 'pct';        // 'pct' | 'monto' | 'fijo' (precio absoluto)
+// Cambio esperado en la ocupación de las categorías que se tocaron. 0 = sin
+// pérdida (el cálculo puro del precio). Negativo = se caen noches al subir;
+// positivo = se llenan más al bajar. Es SU supuesto, no uno inventado por el
+// sistema: por eso arranca en 0 y se muestra aparte del cálculo duro.
+let _proyOcupCambio = 0;
 let _proyAirbnb  = false;        // ¿el cambio also aplica a las noches de Airbnb?
 let _proyMesObj  = null;         // mes a proyectar (YYYY-MM); null = el próximo
 
@@ -15781,8 +15786,27 @@ function _proyCatDelDia(iso) {
 function _proyPrecioNuevo(iso) {
   const base = _lnPrecioDia(iso, false);
   const aj   = _proyAjustes[_proyCatDelDia(iso)] || 0;
-  const nuevo = _proyModo === 'pct' ? base * (1 + aj / 100) : base + aj;
+  // En modo FIJO el valor ES el precio, no un delta. Un 0 se lee como "no lo
+  // toques" — un precio de $0 no significaría nada.
+  const nuevo = _proyModo === 'fijo' ? (aj > 0 ? aj : base)
+              : _proyModo === 'pct'  ? base * (1 + aj / 100)
+              :                        base + aj;
   return Math.max(0, Math.round(nuevo * 100) / 100);
+}
+
+// ¿Esta categoría fue tocada? Solo a esas se les aplica el cambio de ocupación:
+// suponer que se cae la demanda de un día cuyo precio no moviste no tiene
+// sentido.
+function _proyCatAjustada(cat) {
+  const aj = _proyAjustes[cat] || 0;
+  if (!aj) return false;
+  if (_proyModo !== 'fijo') return true;
+  // En fijo, solo cuenta si de verdad cambia respecto de la tarifa actual.
+  const ref = _lnPrecioCat(cat, new Date().toISOString().slice(0,10), false);
+  return Math.abs(aj - ref) > 0.001;
+}
+function _proyFactorOcup(cat) {
+  return _proyCatAjustada(cat) ? Math.max(0, 1 + _proyOcupCambio / 100) : 1;
 }
 
 function _proyHayAjuste() {
@@ -15848,12 +15872,17 @@ function _proyReprecio() {
   const nuevo  = PROY_CATS.reduce((t, c) => t + porCat[c.key].nuevo,  0);
   const noches = PROY_CATS.reduce((t, c) => t + porCat[c.key].noches, 0);
   const delta  = nuevo - actual;
+  // Escenario con el supuesto de ocupación del usuario. Va aparte del cálculo
+  // puro para que no se confunda un hecho con una suposición.
+  const conCambio = PROY_CATS.reduce((t, c) => t + porCat[c.key].nuevo * _proyFactorOcup(c.key), 0);
+  const nochesCambio = PROY_CATS.reduce((t, c) => t + porCat[c.key].noches * _proyFactorOcup(c.key), 0);
   // Punto de equilibrio: cuántas noches puede perder antes de volver al ingreso
   // de antes. Es LA pregunta útil — la elasticidad real no la sabe nadie, pero
   // esto sí es exacto y él sabe si perder esas noches es probable.
   const precioMedioNuevo = noches ? nuevo / noches : 0;
   const nochesEquilibrio = precioMedioNuevo > 0 ? delta / precioMedioNuevo : 0;
   return { from, to, porCat, actual, nuevo, delta, noches, planos, nochesAirbnbFuera,
+           conCambio, nochesCambio, deltaCambio: conCambio - actual,
            nochesEquilibrio, pctEquilibrio: noches ? (nochesEquilibrio / noches) * 100 : 0 };
 }
 
@@ -15916,7 +15945,9 @@ function _proyProyeccion() {
   }
   const actual = PROY_CATS.reduce((t, c) => t + porCat[c.key].actual, 0);
   const nuevo  = PROY_CATS.reduce((t, c) => t + porCat[c.key].nuevo,  0);
-  return { mes, porCat, actual, nuevo, delta: nuevo - actual, ocupacion };
+  const conCambio = PROY_CATS.reduce((t, c) => t + porCat[c.key].nuevo * _proyFactorOcup(c.key), 0);
+  return { mes, porCat, actual, nuevo, delta: nuevo - actual,
+           conCambio, deltaCambio: conCambio - actual, ocupacion };
 }
 
 // ── UI ───────────────────────────────────────────────────────────
@@ -15931,6 +15962,7 @@ function renderProyeccion() {
 function _proyRenderControles() {
   const box = document.getElementById('proyControles');
   if (!box) return;
+  const modos = [['pct','%'],['monto','$'],['fijo','Fijo']];
   const esPct = _proyModo === 'pct';
   const mesesObj = [];
   const hoy = new Date();
@@ -15944,21 +15976,25 @@ function _proyRenderControles() {
   box.innerHTML = '<div class="contab-panel-header">'
     + '<div class="contab-panel-title">🎚 Mover tarifas</div>'
     + '<div style="display:flex;gap:4px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:2px;">'
-    +   '<button onclick="_proySetModo(\'pct\')" style="font-size:12px;font-weight:600;padding:4px 12px;border-radius:6px;border:none;cursor:pointer;'
-    +     'background:' + (esPct ? 'var(--surface)' : 'transparent') + ';color:' + (esPct ? 'var(--text)' : 'var(--text-muted)') + ';">%</button>'
-    +   '<button onclick="_proySetModo(\'monto\')" style="font-size:12px;font-weight:600;padding:4px 12px;border-radius:6px;border:none;cursor:pointer;'
-    +     'background:' + (!esPct ? 'var(--surface)' : 'transparent') + ';color:' + (!esPct ? 'var(--text)' : 'var(--text-muted)') + ';">$</button>'
+    +   modos.map(function(m) {
+          const on = _proyModo === m[0];
+          return '<button onclick="_proySetModo(\'' + m[0] + '\')" style="font-size:12px;font-weight:600;padding:4px 12px;border-radius:6px;border:none;cursor:pointer;'
+            + 'background:' + (on ? 'var(--surface)' : 'transparent') + ';color:' + (on ? 'var(--text)' : 'var(--text-muted)') + ';">' + m[1] + '</button>';
+        }).join('')
     + '</div></div>'
     + '<div style="padding:12px 14px;">'
     + PROY_CATS.map(c => {
         const aj  = _proyAjustes[c.key] || 0;
         const ref = _lnPrecioCat(c.key, new Date().toISOString().slice(0,10), false);
-        const nue = Math.max(0, esPct ? ref * (1 + aj/100) : ref + aj);
-        const col = aj > 0 ? 'var(--verde-dark)' : aj < 0 ? '#c0392b' : 'var(--text-muted)';
+        const nue = Math.max(0, _proyModo === 'fijo' ? (aj > 0 ? aj : ref)
+                              : esPct ? ref * (1 + aj/100) : ref + aj);
+        const dif = nue - ref;
+        const col = dif > 0 ? 'var(--verde-dark)' : dif < 0 ? '#c0392b' : 'var(--text-muted)';
         return '<div style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);">'
           + '<div><div style="font-size:13px;font-weight:500;">' + c.label + '</div>'
           +   '<div style="font-size:11.5px;color:var(--text-muted);">$' + ref.toFixed(0)
-          +   (aj !== 0 ? ' <span style="color:' + col + ';">→ $' + nue.toFixed(2) + '</span>' : '') + '</div></div>'
+          +   (Math.abs(dif) > 0.001 ? ' <span style="color:' + col + ';">→ $' + nue.toFixed(2)
+                + ' (' + (dif > 0 ? '+' : '−') + '$' + Math.abs(dif).toFixed(2) + ')</span>' : '') + '</div></div>'
           + '<div class="rec-qty">'
           +   '<button type="button" onclick="_proyPaso(\'' + c.key + '\',-1)">−</button>'
           +   '<input type="number" step="1" value="' + aj + '" data-cat="' + c.key + '" oninput="_proyOnInput(this)" style="width:58px;">'
@@ -15967,6 +16003,24 @@ function _proyRenderControles() {
           + '<div style="font-size:12px;color:var(--text-muted);width:14px;">' + (esPct ? '%' : '$') + '</div>'
           + '</div>';
       }).join('')
+    // Supuesto de ocupación: la única perilla que le pone al modelo una opinión
+    // sobre la demanda. Arranca en 0 (sin pérdida) porque el cálculo honesto es
+    // el del precio puro; el resto lo pone él.
+    + '<div style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:10px 0 4px;border-top:1px dashed var(--border);margin-top:6px;">'
+    +   '<div><div style="font-size:13px;font-weight:500;">Cambio esperado en la ocupación</div>'
+    +     '<div style="font-size:11.5px;color:var(--text-muted);">'
+    +       (_proyOcupCambio === 0
+          ? 'En 0 el cálculo es solo del precio, sin suponer nada sobre la demanda.'
+          : (_proyOcupCambio < 0 ? 'Asumes que se caen noches en las categorías que tocaste.'
+                                 : 'Asumes que se llenan más noches en las categorías que tocaste.'))
+    +     '</div></div>'
+    +   '<div class="rec-qty">'
+    +     '<button type="button" onclick="_proyPasoOcup(-1)">−</button>'
+    +     '<input type="number" step="1" value="' + _proyOcupCambio + '" oninput="_proySetOcup(this.value)" style="width:58px;">'
+    +     '<button type="button" onclick="_proyPasoOcup(1)">+</button>'
+    +   '</div>'
+    +   '<div style="font-size:12px;color:var(--text-muted);width:14px;">%</div>'
+    + '</div>'
     + '<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:12px;font-size:12.5px;color:var(--text-muted);">'
     +   '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;">'
     +     '<input type="checkbox" ' + (_proyAirbnb ? 'checked' : '') + ' onchange="_proySetAirbnb(this.checked)"> '
@@ -15980,11 +16034,34 @@ function _proyRenderControles() {
     + '</div></div>';
 }
 
-function _proySetModo(m)      { _proyModo = m;  _proyAjustes = { semana:0,viernes:0,sabado:0,vispera:0,feriado:0,escolar:0 }; renderProyeccion(); }
+function _proySetModo(m) {
+  _proyModo = m;
+  if (m === 'fijo') {
+    // Se prellena con las tarifas de hoy: así el campo es el precio que va a
+    // quedar y se edita directo, en vez de partir de cero y no significar nada.
+    const hoy = new Date().toISOString().slice(0,10);
+    PROY_CATS.forEach(c => { _proyAjustes[c.key] = _lnPrecioCat(c.key, hoy, false); });
+  } else {
+    _proyAjustes = { semana:0, viernes:0, sabado:0, vispera:0, feriado:0, escolar:0 };
+  }
+  renderProyeccion();
+}
 function _proySetAirbnb(v)    { _proyAirbnb = !!v; _proyRenderResultados(); }
 function _proySetMes(m)       { _proyMesObj = m; _proyRenderResultados(); }
-function _proyReset()         { _proyAjustes = { semana:0,viernes:0,sabado:0,vispera:0,feriado:0,escolar:0 }; renderProyeccion(); }
-function _proyPaso(cat, d)    { _proyAjustes[cat] = (_proyAjustes[cat] || 0) + d; renderProyeccion(); }
+function _proyReset() {
+  _proyModo = 'pct';
+  _proyOcupCambio = 0;
+  _proyAjustes = { semana:0, viernes:0, sabado:0, vispera:0, feriado:0, escolar:0 };
+  renderProyeccion();
+}
+function _proySetOcup(v) { _proyOcupCambio = parseFloat(v) || 0; _proyRenderResultados(); }
+function _proyPasoOcup(d) { _proyOcupCambio = (_proyOcupCambio || 0) + d; renderProyeccion(); }
+function _proyPaso(cat, d) {
+  // En modo fijo el campo es un precio: moverse de $1 en $1 sería tedioso.
+  const paso = _proyModo === 'fijo' ? 5 : 1;
+  _proyAjustes[cat] = Math.max(0, (_proyAjustes[cat] || 0) + d * paso);
+  renderProyeccion();
+}
 function _proyOnInput(el) {
   _proyAjustes[el.dataset.cat] = parseFloat(el.value) || 0;
   // Solo los resultados: re-renderizar los controles sacaría el foco del campo.
@@ -16024,6 +16101,20 @@ function _proyRenderResultados() {
     +     '<div class="stat-value ' + signo(rep.delta) + '">' + money(rep.delta) + '</div>'
     +     '<div class="stat-sub">' + (rep.actual ? (rep.delta >= 0 ? '+' : '') + (rep.delta / rep.actual * 100).toFixed(1) + '%' : '—') + '</div></div>'
     + '</div>';
+
+  // El escenario del usuario: separado del cálculo duro, y rotulado como
+  // supuesto. Va ANTES del punto de equilibrio porque si él ya puso su número,
+  // eso es lo que quiere ver.
+  if (_proyOcupCambio !== 0 && _proyHayAjuste()) {
+    const buena = rep.deltaCambio >= 0;
+    html += '<div class="modal-aviso' + (buena ? '' : ' modal-aviso--ambar') + '" style="margin-bottom:12px;">'
+      + '<strong>Tu escenario:</strong> con ' + (_proyOcupCambio > 0 ? '+' : '') + _proyOcupCambio + '% de ocupación '
+      + 'en las categorías que tocaste, el período habría dado <strong>' + money(rep.conCambio) + '</strong> — '
+      + (buena ? 'son ' + money(rep.deltaCambio) + ' más que hoy.'
+               : 'son ' + money(-rep.deltaCambio) + ' MENOS que hoy: el aumento de precio no compensa las noches perdidas.')
+      + ' (' + rep.nochesCambio.toFixed(1) + ' noches en vez de ' + rep.noches + ')'
+      + '</div>';
+  }
 
   // Punto de equilibrio: el número que convierte esto en una decisión.
   if (_proyHayAjuste() && rep.delta > 0) {
@@ -16082,6 +16173,12 @@ function _proyRenderResultados() {
     +     '<div class="stat-value">' + money(pro.nuevo) + '</div></div>'
     +   '<div class="stat-card"><div class="stat-label">Diferencia</div>'
     +     '<div class="stat-value ' + signo(pro.delta) + '">' + money(pro.delta) + '</div></div>'
+    +   (_proyOcupCambio !== 0 && _proyHayAjuste()
+        ? '<div class="stat-card"><div class="stat-label">Tu escenario</div>'
+          + '<div class="stat-value ' + signo(pro.deltaCambio) + '">' + money(pro.conCambio) + '</div>'
+          + '<div class="stat-sub">con ' + (_proyOcupCambio > 0 ? '+' : '') + _proyOcupCambio + '% de ocupación · '
+          + (pro.deltaCambio >= 0 ? '+' : '−') + money(Math.abs(pro.deltaCambio)).replace('$','$') + '</div></div>'
+        : '')
     + '</div>'
     + '<table style="width:100%;border-collapse:collapse;font-size:12.5px;">'
     + '<thead><tr style="color:var(--text-muted);text-align:left;">'
