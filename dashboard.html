@@ -15830,9 +15830,12 @@ function _proyNochesDeReserva(r) {
 }
 
 function _proyRangoBase() {
+  // getOcuDateRange devuelve {fromStr, toStr} — NO {from, to}. Leerlo mal hacía
+  // que SIEMPRE cayera al respaldo del mes actual, así que cambiar de mes en el
+  // selector no movía ningún número.
   if (typeof getOcuDateRange === 'function') {
     const r = getOcuDateRange();
-    if (r && r.from && r.to) return r;
+    if (r && r.fromStr && r.toStr) return { from: r.fromStr, to: r.toStr };
   }
   const now = new Date();
   const from = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-01';
