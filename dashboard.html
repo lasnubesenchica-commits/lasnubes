@@ -2215,6 +2215,34 @@
     border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text);
   }
 
+  /* Comparación de tarifas: tabla en pantalla ancha, tarjetas en el celular.
+     Seis columnas con dos líneas por celda no entran en 390px — se veían tres
+     y las otras tres, que son la comparación que importa, quedaban fuera. */
+  .proy-cmp-mob { display: none; }
+  @media (max-width: 720px) {
+    .proy-cmp-desk { display: none; }
+    .proy-cmp-mob  { display: block; }
+  }
+  .proy-cmp-card {
+    border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px;
+    background: var(--surface);
+  }
+  .proy-cmp-card h4 {
+    margin: 0 0 8px; font-size: 13.5px; font-weight: 600; color: var(--text);
+    display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  }
+  .proy-cmp-card h4 span { font-size: 11.5px; font-weight: 400; color: var(--text-muted); }
+  .proy-cmp-row {
+    display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: baseline;
+    padding: 4px 0; border-top: 1px solid var(--border); font-size: 12.5px;
+  }
+  .proy-cmp-row:first-of-type { border-top: none; }
+  .proy-cmp-row .lbl { color: var(--text-muted); }
+  .proy-cmp-row .pn  { color: var(--text-muted); font-variant-numeric: tabular-nums; min-width: 58px; text-align: right; }
+  .proy-cmp-row .tot { font-weight: 600; font-variant-numeric: tabular-nums; min-width: 72px; text-align: right; }
+  .proy-cmp-row.destacada .lbl,
+  .proy-cmp-row.destacada .tot { color: var(--text); font-weight: 700; }
+
   /* Cantidad de un componente en el armado de un combo */
   .rec-qty { display: inline-flex; align-items: center; gap: 2px; }
   .rec-qty-lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase;
@@ -16288,7 +16316,7 @@ function _proyRenderResultados() {
        : '<span style="color:var(--text-muted);">$' + precio.toFixed(2) + '</span>'
          + '<br>' + money(total)) + '</td>';
 
-  html += '<div style="overflow-x:auto;margin-top:4px;">'
+  html += '<div class="proy-cmp-desk" style="overflow-x:auto;margin-top:4px;">'
     + '<table style="width:100%;min-width:620px;border-collapse:collapse;font-size:12.5px;">'
     + '<thead><tr style="color:var(--text-muted);text-align:left;border-bottom:1px solid var(--border);">'
     +   th('Categoría') + th('Noches', 'text-align:right;')
@@ -16300,6 +16328,7 @@ function _proyRenderResultados() {
     + '</tr></thead><tbody>';
 
   let totVend = 0, totEst = 0, totPro = 0, totProy = 0, hayPromo = false;
+  const tarjetas = [];   // versión móvil, armada en la misma pasada
   PROY_CATS.forEach(c => {
     const d = rep.porCat[c.key];
     if (!d.noches) return;
@@ -16321,6 +16350,21 @@ function _proyRenderResultados() {
       + celda(pro,  pro != null ? pro * d.noches : null)
       + celda(proy, d.nuevo, true)
       + '</tr>';
+
+    // Misma información, apilada: en el celular cada categoría es una tarjeta
+    // con sus cuatro tarifas una debajo de otra, sin scroll lateral.
+    const fila = (lbl, precio, total, dest) =>
+      '<div class="proy-cmp-row' + (dest ? ' destacada' : '') + '">'
+      + '<span class="lbl">' + lbl + '</span>'
+      + '<span class="pn">' + (precio == null ? '—' : '$' + precio.toFixed(2)) + '</span>'
+      + '<span class="tot">' + (precio == null ? '' : money(total)) + '</span></div>';
+    tarjetas.push('<div class="proy-cmp-card">'
+      + '<h4>' + c.label + '<span>' + d.noches + ' noche' + (d.noches === 1 ? '' : 's') + '</span></h4>'
+      + fila('Vendiste',   real, d.cobrado, true)
+      + fila('Estándar',   est,  est != null ? est * d.noches : 0)
+      + fila('Promo',      pro,  pro != null ? pro * d.noches : 0)
+      + fila('Proyectada', proy, d.nuevo, true)
+      + '</div>');
   });
   html += '<tr style="border-top:2px solid var(--border);font-weight:700;background:var(--bg);">'
     + '<td style="padding:8px;">Total</td>'
@@ -16330,6 +16374,15 @@ function _proyRenderResultados() {
     + '<td style="padding:8px;text-align:right;">' + (hayPromo ? money(totPro) : '<span style="opacity:.4;">—</span>') + '</td>'
     + '<td style="padding:8px;text-align:right;">' + money(totProy) + '</td>'
     + '</tr></tbody></table></div>';
+
+  html += '<div class="proy-cmp-mob" style="margin-top:6px;">' + tarjetas.join('')
+    + '<div class="proy-cmp-card" style="background:var(--bg);">'
+    +   '<h4>Total<span>' + rep.noches + ' noches</span></h4>'
+    +   '<div class="proy-cmp-row destacada"><span class="lbl">Vendiste</span><span class="pn"></span><span class="tot">' + money(totVend) + '</span></div>'
+    +   '<div class="proy-cmp-row"><span class="lbl">Estándar</span><span class="pn"></span><span class="tot">' + money(totEst) + '</span></div>'
+    +   '<div class="proy-cmp-row"><span class="lbl">Promo</span><span class="pn"></span><span class="tot">' + (hayPromo ? money(totPro) : '—') + '</span></div>'
+    +   '<div class="proy-cmp-row destacada"><span class="lbl">Proyectada</span><span class="pn"></span><span class="tot">' + money(totProy) + '</span></div>'
+    + '</div></div>';
 
   // Qué significa cada columna. Sin esto, "Estándar" y "Promo" se pueden leer
   // como lo que se cobró, cuando son hipótesis.
