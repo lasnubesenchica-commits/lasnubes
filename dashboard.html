@@ -15801,12 +15801,51 @@ function _proyCatAjustada(cat) {
   const aj = _proyAjustes[cat] || 0;
   if (!aj) return false;
   if (_proyModo !== 'fijo') return true;
-  // En fijo, solo cuenta si de verdad cambia respecto de la tarifa actual.
-  const ref = _lnPrecioCat(cat, new Date().toISOString().slice(0,10), false);
-  return Math.abs(aj - ref) > 0.001;
+  // En fijo, solo cuenta si de verdad cambia respecto de la tarifa del período.
+  return Math.abs(aj - _proyPrecioRef(cat)) > 0.001;
 }
 function _proyFactorOcup(cat) {
   return _proyCatAjustada(cat) ? Math.max(0, 1 + _proyOcupCambio / 100) : 1;
+}
+
+// Precio de referencia de una categoría EN EL PERÍODO BASE. Antes se mostraba
+// el precio de HOY, que no es el mismo: una promo vigente este mes no se aplica
+// a julio, así que el control decía "Viernes $90" mientras el cálculo usaba los
+// $110 reales de julio. Dos números distintos para lo mismo en la misma
+// pantalla. Si la categoría no tuvo noches en el período, se cae al de hoy.
+function _proyPrecioRef(cat) {
+  const { from, to } = _proyRangoBase();
+  let suma = 0, n = 0;
+  for (let d = from; d <= to; d = _addDaysISO(d, 1)) {
+    if (_proyCatDelDia(d) !== cat) continue;
+    suma += _lnPrecioDia(d, false); n++;
+  }
+  if (n) return Math.round((suma / n) * 100) / 100;
+  return _lnPrecioCat(cat, new Date().toISOString().slice(0,10), false);
+}
+
+// Línea de precio de una fila del control. Compartida entre el render y el
+// oninput: sin esto, la anotación "→ $231.00" no se actualizaba al teclear y
+// se perdía justo la señal que delata haber puesto un precio en modo %.
+function _proyRefHtml(cat) {
+  const aj  = _proyAjustes[cat] || 0;
+  const ref = _proyPrecioRef(cat);
+  const nue = Math.max(0, _proyModo === 'fijo' ? (aj > 0 ? aj : ref)
+                        : _proyModo === 'pct'  ? ref * (1 + aj/100) : ref + aj);
+  const dif = nue - ref;
+  const col = dif > 0 ? 'var(--verde-dark)' : dif < 0 ? '#c0392b' : 'var(--text-muted)';
+  let out = '$' + ref.toFixed(0);
+  if (Math.abs(dif) > 0.001) {
+    out += ' <span style="color:' + col + ';font-weight:600;">→ $' + nue.toFixed(2)
+        +  ' (' + (dif > 0 ? '+' : '−') + '$' + Math.abs(dif).toFixed(2) + ')</span>';
+    // Un +110% no es un ajuste, es un precio mal puesto. Avisar acá es lo que
+    // evita descubrirlo recién al mirar un total absurdo abajo.
+    if (_proyModo === 'pct' && Math.abs(aj) >= 60) {
+      out += '<br><span style="color:#b45309;">¿Querías <strong>fijar</strong> el precio en $' + aj
+          +  '? Cambia el modo a <strong>Fijo</strong> arriba.</span>';
+    }
+  }
+  return out;
 }
 
 function _proyHayAjuste() {
@@ -15995,17 +16034,11 @@ function _proyRenderControles() {
     +   'entre semana te sobra espacio, subirles lo mismo a los dos esconde justo la decisión que importa.'
     + '</div>'
     + PROY_CATS.map(c => {
-        const aj  = _proyAjustes[c.key] || 0;
-        const ref = _lnPrecioCat(c.key, new Date().toISOString().slice(0,10), false);
-        const nue = Math.max(0, _proyModo === 'fijo' ? (aj > 0 ? aj : ref)
-                              : esPct ? ref * (1 + aj/100) : ref + aj);
-        const dif = nue - ref;
-        const col = dif > 0 ? 'var(--verde-dark)' : dif < 0 ? '#c0392b' : 'var(--text-muted)';
+        const aj = _proyAjustes[c.key] || 0;
         return '<div style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);">'
           + '<div><div style="font-size:13px;font-weight:500;">' + c.label + '</div>'
-          +   '<div style="font-size:11.5px;color:var(--text-muted);">$' + ref.toFixed(0)
-          +   (Math.abs(dif) > 0.001 ? ' <span style="color:' + col + ';">→ $' + nue.toFixed(2)
-                + ' (' + (dif > 0 ? '+' : '−') + '$' + Math.abs(dif).toFixed(2) + ')</span>' : '') + '</div></div>'
+          +   '<div id="proyRef-' + c.key + '" style="font-size:11.5px;color:var(--text-muted);line-height:1.5;">'
+          +     _proyRefHtml(c.key) + '</div></div>'
           + '<div class="rec-qty">'
           +   '<button type="button" onclick="_proyPaso(\'' + c.key + '\',-1)">−</button>'
           +   '<input type="number" step="1" value="' + aj + '" data-cat="' + c.key + '" oninput="_proyOnInput(this)" style="width:58px;">'
@@ -16050,8 +16083,7 @@ function _proySetModo(m) {
   if (m === 'fijo') {
     // Se prellena con las tarifas de hoy: así el campo es el precio que va a
     // quedar y se edita directo, en vez de partir de cero y no significar nada.
-    const hoy = new Date().toISOString().slice(0,10);
-    PROY_CATS.forEach(c => { _proyAjustes[c.key] = _lnPrecioCat(c.key, hoy, false); });
+    PROY_CATS.forEach(c => { _proyAjustes[c.key] = _proyPrecioRef(c.key); });
   } else {
     _proyAjustes = { semana:0, viernes:0, sabado:0, vispera:0, feriado:0, escolar:0 };
   }
@@ -16074,8 +16106,12 @@ function _proyPaso(cat, d) {
   renderProyeccion();
 }
 function _proyOnInput(el) {
-  _proyAjustes[el.dataset.cat] = parseFloat(el.value) || 0;
-  // Solo los resultados: re-renderizar los controles sacaría el foco del campo.
+  const cat = el.dataset.cat;
+  _proyAjustes[cat] = parseFloat(el.value) || 0;
+  // Se actualiza SOLO la línea de precio de esa fila: re-renderizar los
+  // controles enteros sacaría el foco del campo a media escritura.
+  const ref = document.getElementById('proyRef-' + cat);
+  if (ref) ref.innerHTML = _proyRefHtml(cat);
   _proyRenderResultados();
 }
 
