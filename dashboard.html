@@ -15983,6 +15983,14 @@ function _proyRenderControles() {
         }).join('')
     + '</div></div>'
     + '<div style="padding:12px 14px;">'
+    // Lo primero que hay que despejar: esto no toca el tarifario de verdad.
+    + '<div style="font-size:12.5px;color:var(--text-muted);line-height:1.6;margin-bottom:12px;'
+    +   'padding:10px 12px;background:var(--bg);border-radius:8px;">'
+    +   '<strong style="color:var(--text);">Esto solo simula.</strong> Nada de lo que muevas acá cambia tus tarifas '
+    +   'reales — para eso está el tarifario del calendario. Aquí solo ves qué habría pasado.<br>'
+    +   'Se ajusta <strong>por tipo de día</strong> porque no todos se venden igual: si tus sábados están llenos y '
+    +   'entre semana te sobra espacio, subirles lo mismo a los dos esconde justo la decisión que importa.'
+    + '</div>'
     + PROY_CATS.map(c => {
         const aj  = _proyAjustes[c.key] || 0;
         const ref = _lnPrecioCat(c.key, new Date().toISOString().slice(0,10), false);
@@ -16090,6 +16098,15 @@ function _proyRenderResultados() {
     + '<div class="contab-panel-header"><div class="contab-panel-title">📆 Si el período base hubiera tenido estas tarifas</div>'
     + '<div style="font-size:11.5px;color:var(--text-muted);">' + rep.from + ' → ' + rep.to + '</div></div>'
     + '<div style="padding:14px;">'
+    + '<div style="font-size:12.5px;color:var(--text-muted);line-height:1.65;margin-bottom:14px;'
+    +   'padding:10px 12px;background:var(--bg);border-left:3px solid var(--verde-dark);border-radius:8px;">'
+    +   '<strong style="color:var(--text);">Cómo leer este cuadro.</strong> Toma las noches que <em>de verdad</em> '
+    +   'vendiste en el período de arriba y les pone las tarifas nuevas. Responde: '
+    +   '<em>«¿cuánto habría entrado si hubiera cobrado esto, vendiendo exactamente lo mismo?»</em><br>'
+    +   'Es el número más firme de esta pantalla: no supone nada sobre la demanda, solo recalcula hechos. '
+    +   'Por eso mismo <strong>no dice que vayas a ganar eso</strong> — al subir precios normalmente se vende algo menos, '
+    +   'y de cuánto se trata lo estimas tú con el control de ocupación.'
+    + '</div>'
     + '<div class="stats-grid" style="margin-bottom:14px;">'
     +   '<div class="stat-card"><div class="stat-label">Tarifa de lista hoy</div>'
     +     '<div class="stat-value">' + money(rep.actual) + '</div>'
@@ -16166,6 +16183,15 @@ function _proyRenderResultados() {
     + '<div class="contab-panel-header"><div class="contab-panel-title">🔮 Proyección de ' + mesLbl + '</div>'
     + '<div style="font-size:11.5px;color:var(--text-muted);">con la ocupación del período base</div></div>'
     + '<div style="padding:14px;">'
+    + '<div style="font-size:12.5px;color:var(--text-muted);line-height:1.65;margin-bottom:14px;'
+    +   'padding:10px 12px;background:var(--bg);border-left:3px solid #d97706;border-radius:8px;">'
+    +   '<strong style="color:var(--text);">Cómo leer este cuadro.</strong> Mira qué porcentaje de tus noches '
+    +   'llenaste en el período base —contando aparte los fines de semana y los días entre semana— y aplica '
+    +   'esos mismos porcentajes a ' + mesLbl + '. Responde: <em>«¿cuánto daría este mes si se parece al período base?»</em><br>'
+    +   '<strong>Es un escenario, no una promesa.</strong> Si ' + mesLbl + ' cae en temporada alta o baja, o tiene '
+    +   'feriados que el período base no tenía, la ocupación real va a ser otra. Úsalo para presupuestar, '
+    +   'no para dar por hecho.'
+    + '</div>'
     + '<div class="stats-grid" style="margin-bottom:14px;">'
     +   '<div class="stat-card"><div class="stat-label">Con tarifas de hoy</div>'
     +     '<div class="stat-value">' + money(pro.actual) + '</div></div>'
@@ -16184,7 +16210,7 @@ function _proyRenderResultados() {
     + '<thead><tr style="color:var(--text-muted);text-align:left;">'
     + '<th style="padding:6px 4px;font-weight:600;">Categoría</th><th style="padding:6px 4px;text-align:right;font-weight:600;">Ocupación'
     + (_proyAirbnb ? '' : ' directa') + '</th>'
-    + '<th style="padding:6px 4px;text-align:right;font-weight:600;">Noches esp.</th>'
+    + '<th style="padding:6px 4px;text-align:right;font-weight:600;" title="Noches que esperarías vender, según la ocupación del período base">Noches esperadas</th>'
     + '<th style="padding:6px 4px;text-align:right;font-weight:600;">Hoy</th><th style="padding:6px 4px;text-align:right;font-weight:600;">Nuevo</th></tr></thead><tbody>';
   PROY_CATS.forEach(c => {
     const d = pro.porCat[c.key];
