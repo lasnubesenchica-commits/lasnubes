@@ -336,7 +336,11 @@ function _buildPublicDTO(r) {
   const estadoUp   = (r.estadoPago || '').toString().toUpperCase();
   const isCancel   = estadoUp === 'CANCELADA';
 
-  const cabinNombre = CABIN_NAMES_EMAIL[r.cabin] || r.cabinName || r.cabin || '';
+  // Con multi-cabaña, la etiqueta las nombra a todas ("Portal + Puente"): poner
+  // solo la de la hermana del link diría que reservó una cabaña cuando reservó dos.
+  const cabinNombre = (r.multiCabin && r.multiCabin.length >= 2)
+    ? _emailCabinaPersonas(r).cabin
+    : (CABIN_NAMES_EMAIL[r.cabin] || r.cabinName || r.cabin || '');
 
   // Calendario: Google Calendar link + ICS para Apple/iCal
   let gcalUrl = '';
@@ -413,12 +417,44 @@ function _buildPublicDTO(r) {
     referralCode:    referralCode,
     referralAmount:  20,
     // Regalo: banner "de parte de X" + dedicatoria en la página pública.
-    regalo:          regalo.esRegalo ? { de: regalo.de, mensaje: regalo.mensaje } : null
+    regalo:          regalo.esRegalo ? { de: regalo.de, mensaje: regalo.mensaje } : null,
+    // Multi-cabaña: las hermanas, para que la página liste las dos cabañas con
+    // su gente en vez de mostrar solo aquella cuyo id trae el link.
+    multiCabin:      (r.multiCabin && r.multiCabin.length >= 2) ? r.multiCabin : null
   };
 }
 
 // Lee una fila de la hoja Reservas y la convierte al formato { name, cabin, ... }
 // que usa el resto del codigo (ej. getReservations en doGet).
+// Filas hermanas de una reserva multi-cabaña: comparten el prefijo del id
+// (MC-<timestamp>-1, -2, …). La página pública recibe el id de UNA hermana, así
+// que sin esto mostraba solo esa cabaña —Portal, 2 personas, $75— cuando el
+// huésped reservó dos por $190. Devuelve [] si el id no es de multi-cabaña, y
+// entonces todo sigue igual que siempre.
+function _readHermanasMultiCabin(id) {
+  const m = /^(MC-\d+)-\d+$/.exec((id || '').toString());
+  if (!m) return [];
+  const sheet = getOrCreateSheet();
+  const data  = sheet.getDataRange().getValues();
+  const fecha = v => v instanceof Date ? Utilities.formatDate(v, 'America/Panama', 'yyyy-MM-dd') : (v || '');
+  const out = [];
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    if (!r[0] || r[0].toString().indexOf(m[1] + '-') !== 0) continue;
+    // Una hermana cancelada no cuenta: dejó de ser parte de la estadía.
+    if ((r[20] || '').toString().toUpperCase() === 'CANCELADA') continue;
+    out.push({
+      id: r[0].toString(), cabin: r[3], cabinName: r[2],
+      checkin: fecha(r[4]), checkout: fecha(r[5]),
+      persons: parseInt(r[6], 10) || 0,
+      amount:  parseFloat(r[7]) || 0,
+      deposit: parseFloat(r[8]) || 0
+    });
+  }
+  out.sort(function(a, b) { return a.id.localeCompare(b.id, undefined, { numeric: true }); });
+  return out;
+}
+
 function _readReservaById(id) {
   const sheet = getOrCreateSheet();
   const data  = sheet.getDataRange().getValues();
@@ -493,6 +529,22 @@ function handleGetReservaPublic(e) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'NOT_FOUND' }))
       .setMimeType(ContentService.MimeType.JSON);
+  }
+  // Multi-cabaña: consolidar antes de armar el DTO, así la página muestra la
+  // estadía completa aunque el link apunte a una sola hermana.
+  const hermanas = _readHermanasMultiCabin(reservaId);
+  if (hermanas.length >= 2) {
+    const noches = x => Math.round((new Date(x.checkout + 'T12:00:00') - new Date(x.checkin + 'T12:00:00')) / 86400000);
+    r.multiCabin = hermanas.map(function(x) {
+      return { cabin: x.cabin, cabinName: x.cabinName, checkin: x.checkin,
+               checkout: x.checkout, nights: noches(x), amount: x.amount, persons: x.persons };
+    });
+    r.amount   = hermanas.reduce(function(t, x) { return t + x.amount;  }, 0);
+    r.deposit  = hermanas.reduce(function(t, x) { return t + x.deposit; }, 0);
+    r.checkin  = hermanas.map(function(x) { return x.checkin;  }).sort()[0];
+    r.checkout = hermanas.map(function(x) { return x.checkout; }).sort().slice(-1)[0];
+    // Suma solo si se ocupan a la vez; en un itinerario es el mismo grupo.
+    r.persons  = _emailCabinaPersonas(r).personas;
   }
   const dto = _buildPublicDTO(r);
   return ContentService

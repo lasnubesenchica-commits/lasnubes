@@ -323,6 +323,12 @@
         <div class="label">Cabaña</div>
         <div class="value"><span class="dot" id="cabinDot"></span><span id="cabinName"></span></div>
       </div>
+      <!-- Multi-cabaña: el desglose por cabaña. Sin esto la página mostraba
+           solo la cabaña de la hermana cuyo id trae el link. -->
+      <div id="multiCabinBox" style="display:none;margin:4px 0 12px;padding:12px 14px;background:#fef9f0;border:1px solid #e8dfc9;border-left:3px solid #d97706;border-radius:10px;">
+        <div id="multiCabinTitulo" style="font-size:11px;font-weight:700;color:#8a6000;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;"></div>
+        <div id="multiCabinLista" style="font-size:13.5px;color:#3a3530;line-height:1.7;"></div>
+      </div>
       <div class="row" id="rowEstancia">
         <div class="label">Estancia</div>
         <div class="value" id="estanciaVal"></div>
@@ -613,6 +619,39 @@ function esc(s) {
 // Certificado de regalo: banner "de parte de X" + dedicatoria. El backend
 // manda r.regalo = null en reservas normales (y ya anuló total/abono/saldo
 // cuando es regalo, así que la fila Total y la tarjeta de saldo no se pintan).
+// Desglose de una reserva de varias cabañas. Se distingue "a la vez" de
+// "itinerario" mirando si las estadías se solapan — el dato lo dice, no hace
+// falta un flag: decirle "cambiarás de cabaña" a quien ocupa las dos al mismo
+// tiempo seria falso.
+function renderMultiCabin(r) {
+  const arr = r.multiCabin;
+  const box = document.getElementById('multiCabinBox');
+  if (!box) return;
+  if (!arr || arr.length < 2) { box.style.display = 'none'; return; }
+
+  const ord = arr.slice().sort((a, b) => String(a.checkin).localeCompare(String(b.checkin)));
+  let simultaneo = false;
+  for (let k = 1; k < ord.length; k++) {
+    if (String(ord[k].checkin) < String(ord[k-1].checkout)) { simultaneo = true; break; }
+  }
+
+  document.getElementById('multiCabinTitulo').textContent =
+    simultaneo ? 'Tu reserva incluye ' + arr.length + ' cabañas' : 'Itinerario de cabañas';
+
+  document.getElementById('multiCabinLista').innerHTML = arr.map(s => {
+    const color = CABIN_COLORS[s.cabin] || '#888';
+    const noches = s.nights === 1 ? '1 noche' : s.nights + ' noches';
+    // Las personas por cabaña solo importan cuando el grupo se reparte.
+    const pers = (simultaneo && s.persons) ? ' · ' + s.persons + (s.persons === 1 ? ' persona' : ' personas') : '';
+    return '<div style="margin-bottom:4px;">'
+      + '<span class="dot" style="background:' + color + ';"></span>'
+      + '<strong>' + (s.cabinName || s.cabin) + '</strong>'
+      + '<span style="color:#8a8078;font-size:12.5px;"> · ' + noches + pers + '</span>'
+      + '</div>';
+  }).join('');
+  box.style.display = '';
+}
+
 function renderRegalo(r) {
   const card = $('regaloCard');
   if (!card) return;
@@ -672,6 +711,7 @@ function render(r) {
 
   $('cabinDot').style.background = CABIN_COLORS[r.cabin] || '#888';
   $('cabinName').textContent = r.cabinName;
+  renderMultiCabin(r);
 
   let estanciaText = '';
   if (r.tipo === 'pasatarde')    estanciaText = 'Pasatarde · 12:30 pm – 7:00 pm';
