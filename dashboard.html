@@ -15870,6 +15870,17 @@ function _proyRefHtml(cat) {
   return out;
 }
 
+// Tarifas CONFIGURADAS de una categoría, tal cual están en el tarifario: la
+// estándar y la promocional. Van sin la lógica de vigencia a propósito — la
+// pregunta es "cuánto daría esta tarifa", no "cuál aplicaba ese mes".
+function _proyTarifasCat(cat) {
+  const est = { semana: LN_TAR.weekday, viernes: LN_TAR.viernes, sabado: LN_TAR.sabado,
+                vispera: LN_TAR.vispera, feriado: LN_TAR.feriado, escolar: LN_TAR.escolar }[cat] || 0;
+  const pro = { semana: LN_TAR.promo, viernes: LN_TAR.promoViernes, sabado: LN_TAR.promoSabado,
+                vispera: LN_TAR.promoVispera, feriado: LN_TAR.promoFeriado, escolar: LN_TAR.promoEscolar }[cat] || 0;
+  return { estandar: parseFloat(est) || 0, promo: parseFloat(pro) || 0 };
+}
+
 function _proyHayAjuste() {
   return PROY_CATS.some(c => (_proyAjustes[c.key] || 0) !== 0);
 }
@@ -15907,7 +15918,7 @@ function _proyRangoBase() {
 function _proyReprecio() {
   const { from, to } = _proyRangoBase();
   const porCat = {};
-  PROY_CATS.forEach(c => { porCat[c.key] = { noches: 0, actual: 0, nuevo: 0 }; });
+  PROY_CATS.forEach(c => { porCat[c.key] = { noches: 0, actual: 0, nuevo: 0, cobrado: 0 }; });
   let planos = 0, nochesAirbnbFuera = 0;
   // Lo REALMENTE cobrado por esas mismas noches. La tarifa de lista no es lo
   // que entró: hay descuentos, referidos, redondeos y recargos por persona. El
@@ -15929,16 +15940,25 @@ function _proyReprecio() {
       return;
     }
     const nochesR = _proyNochesDeReserva(r);
-    let dentro = 0;
-    nochesR.forEach(d => {
-      if (d < from || d > to) return;
-      dentro++;
+    const dentroList = nochesR.filter(d => d >= from && d <= to);
+    // El monto se reparte entre las noches EN PROPORCIÓN a su tarifa de lista:
+    // si una estadía cubre un martes de $90 y un sábado de $110, lo cobrado se
+    // atribuye 90/200 y 110/200. Repartirlo en partes iguales le cargaría de
+    // más a la noche barata y falsearía el precio promedio por categoría.
+    const listaDentro = dentroList.reduce((t, d) => t + _lnPrecioDia(d, false), 0);
+    const montoPeriodo = nochesR.length
+      ? (parseFloat(r.amount) || 0) * (dentroList.length / nochesR.length) : 0;
+    dentroList.forEach(d => {
       const cat = _proyCatDelDia(d);
+      const pl  = _lnPrecioDia(d, false);
       porCat[cat].noches++;
-      porCat[cat].actual += _lnPrecioDia(d, false);
+      porCat[cat].actual += pl;
       porCat[cat].nuevo  += _proyPrecioNuevo(d);
+      porCat[cat].cobrado += listaDentro > 0
+        ? montoPeriodo * (pl / listaDentro)
+        : montoPeriodo / dentroList.length;
     });
-    if (dentro && nochesR.length) cobrado += (parseFloat(r.amount) || 0) * (dentro / nochesR.length);
+    cobrado += montoPeriodo;
   });
 
   const actual = PROY_CATS.reduce((t, c) => t + porCat[c.key].actual, 0);
@@ -16257,24 +16277,69 @@ function _proyRenderResultados() {
       + '</div>';
   }
 
-  // Desglose por categoría
-  html += '<table style="width:100%;border-collapse:collapse;font-size:12.5px;">'
-    + '<thead><tr style="color:var(--text-muted);text-align:left;">'
-    + '<th style="padding:6px 4px;font-weight:600;">Categoría</th><th style="padding:6px 4px;text-align:right;font-weight:600;">Noches</th>'
-    + '<th style="padding:6px 4px;text-align:right;font-weight:600;">Hoy</th><th style="padding:6px 4px;text-align:right;font-weight:600;">Nuevo</th>'
-    + '<th style="padding:6px 4px;text-align:right;font-weight:600;">Δ</th></tr></thead><tbody>';
+  // Comparación de las CUATRO tarifas lado a lado, por categoría. Es la
+  // pregunta de fondo: "a cuánto vendí de verdad los sábados, y cuánto daría
+  // cada una de mis tarifas". Cada columna muestra el precio por noche y lo que
+  // habría facturado ese grupo de noches.
+  const th = (t, extra) => '<th style="padding:6px 8px;font-weight:600;white-space:nowrap;' + (extra||'') + '">' + t + '</th>';
+  const celda = (precio, total, destacar) =>
+    '<td style="padding:6px 8px;text-align:right;white-space:nowrap;' + (destacar ? 'font-weight:600;' : '') + '">'
+    + (precio == null ? '<span style="opacity:.4;">—</span>'
+       : '<span style="color:var(--text-muted);">$' + precio.toFixed(2) + '</span>'
+         + '<br>' + money(total)) + '</td>';
+
+  html += '<div style="overflow-x:auto;margin-top:4px;">'
+    + '<table style="width:100%;min-width:620px;border-collapse:collapse;font-size:12.5px;">'
+    + '<thead><tr style="color:var(--text-muted);text-align:left;border-bottom:1px solid var(--border);">'
+    +   th('Categoría') + th('Noches', 'text-align:right;')
+    +   th('Vendiste', 'text-align:right;') + th('Estándar', 'text-align:right;')
+    +   th('Promo', 'text-align:right;')    + th('Proyectada', 'text-align:right;')
+    + '</tr><tr style="color:var(--text-muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;">'
+    +   '<td colspan="2"></td>'
+    +   '<td colspan="4" style="padding:0 8px 6px;text-align:right;">precio por noche · total del grupo</td>'
+    + '</tr></thead><tbody>';
+
+  let totVend = 0, totEst = 0, totPro = 0, totProy = 0, hayPromo = false;
   PROY_CATS.forEach(c => {
     const d = rep.porCat[c.key];
     if (!d.noches) return;
-    const dl = d.nuevo - d.actual;
+    const tf   = _proyTarifasCat(c.key);
+    const real = d.cobrado / d.noches;
+    const est  = tf.estandar > 0 ? tf.estandar : null;
+    const pro  = tf.promo    > 0 ? tf.promo    : null;
+    const proy = d.nuevo / d.noches;
+    if (pro != null) hayPromo = true;
+    totVend += d.cobrado;
+    totEst  += (est != null ? est * d.noches : d.cobrado);
+    totPro  += (pro != null ? pro * d.noches : d.cobrado);
+    totProy += d.nuevo;
     html += '<tr style="border-top:1px solid var(--border);">'
-      + '<td style="padding:6px 4px;">' + c.label + '</td>'
-      + '<td style="padding:6px 4px;text-align:right;">' + d.noches + '</td>'
-      + '<td style="padding:6px 4px;text-align:right;">' + money(d.actual) + '</td>'
-      + '<td style="padding:6px 4px;text-align:right;">' + money(d.nuevo) + '</td>'
-      + '<td style="padding:6px 4px;text-align:right;font-weight:600;" class="' + signo(dl) + '">' + (dl ? money(dl) : '—') + '</td></tr>';
+      + '<td style="padding:6px 8px;">' + c.label + '</td>'
+      + '<td style="padding:6px 8px;text-align:right;">' + d.noches + '</td>'
+      + celda(real, d.cobrado, true)
+      + celda(est,  est != null ? est * d.noches : null)
+      + celda(pro,  pro != null ? pro * d.noches : null)
+      + celda(proy, d.nuevo, true)
+      + '</tr>';
   });
-  html += '</tbody></table>';
+  html += '<tr style="border-top:2px solid var(--border);font-weight:700;background:var(--bg);">'
+    + '<td style="padding:8px;">Total</td>'
+    + '<td style="padding:8px;text-align:right;">' + rep.noches + '</td>'
+    + '<td style="padding:8px;text-align:right;">' + money(totVend) + '</td>'
+    + '<td style="padding:8px;text-align:right;">' + money(totEst)  + '</td>'
+    + '<td style="padding:8px;text-align:right;">' + (hayPromo ? money(totPro) : '<span style="opacity:.4;">—</span>') + '</td>'
+    + '<td style="padding:8px;text-align:right;">' + money(totProy) + '</td>'
+    + '</tr></tbody></table></div>';
+
+  // Qué significa cada columna. Sin esto, "Estándar" y "Promo" se pueden leer
+  // como lo que se cobró, cuando son hipótesis.
+  html += '<div style="margin-top:10px;font-size:11.5px;color:var(--text-muted);line-height:1.7;">'
+    + '<strong>Vendiste</strong>: lo que de verdad entró por esas noches, repartido entre categorías en proporción '
+    + 'a la tarifa de cada una. Es tu precio real, con descuentos y recargos.<br>'
+    + '<strong>Estándar</strong> y <strong>Promo</strong>: lo que habrían facturado esas mismas noches a cada tarifa '
+    + 'de tu tarifario. Son hipótesis, no lo cobrado.<br>'
+    + '<strong>Proyectada</strong>: lo que darían con el ajuste que pusiste arriba.'
+    + '</div>';
 
   // Lo que este cálculo NO cubre. Decirlo evita que el número se lea como el total.
   const fuera = [];
