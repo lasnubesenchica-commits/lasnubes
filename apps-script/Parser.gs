@@ -3320,7 +3320,7 @@ function doPost(e) {
       if (ch.email) {
         try {
           const clone = Object.assign({}, r, { email: REPLY_TO_EMAIL });
-          sendConfirmationEmail(clone, payload.voucherBase64, payload.voucherMimeType, '👁 Vista previa · ');
+          sendConfirmationEmail(clone, payload.voucherBase64, payload.voucherMimeType, '[Vista previa] ');
           result.email = { ok: true, to: REPLY_TO_EMAIL };
         } catch(e) { result.email = { ok: false, error: e.message }; }
       }
@@ -3910,6 +3910,33 @@ function _emailCabinaPersonas(r) {
   return { cabin: cortos.join(' + '), personas: personas || r.persons, multi: true };
 }
 
+// ── Asuntos de email a prueba de emoji ───────────────────────────
+// Gmail mangla en el ASUNTO los caracteres fuera del BMP: el 👁 de la vista
+// previa llegaba como "??????" mientras el ✅ del mismo asunto se veía bien
+// (U+2705 está en el BMP, U+1F441 no). En el CUERPO esto se resuelve con
+// entidades HTML (_emojiAEntidades), pero un asunto es texto plano y no las
+// interpreta — la única salida es no usar caracteres astrales.
+// Los conocidos se cambian por un equivalente del BMP para no perder la marca
+// visual; cualquier otro se elimina, que es mejor que mostrar signos de
+// pregunta.
+const ASUNTO_EMOJI_BMP = {
+  '\u{1F441}': '',          // 👁 ojo → el texto "Vista previa" ya se explica
+  '\u{1F381}': '\u2605',    // 🎁 regalo → ★
+  '\u{1F4CC}': '\u23F3',    // 📌 pin (reserva abierta, a coordinar) → ⏳
+  '\u{1F33F}': '\u273F',    // 🌿 hierba (Malaya) → ✿
+  '\u{1F6AA}': '\u26A0'     // 🚪 puerta (alerta de portón) → ⚠
+};
+function _asuntoEmailSeguro(s) {
+  let out = (s || '').toString();
+  Object.keys(ASUNTO_EMOJI_BMP).forEach(function(k) {
+    out = out.split(k).join(ASUNTO_EMOJI_BMP[k]);
+  });
+  // Red de seguridad: cualquier astral que se agregue en el futuro se cae solo
+  // en vez de llegar al cliente como "??????".
+  out = out.replace(/[\u{10000}-\u{10FFFF}]/gu, '');
+  return out.replace(/\s{2,}/g, ' ').trim();
+}
+
 function googleCalLink(reservation) {
   const _cp     = _emailCabinaPersonas(reservation);
   const cabin   = _cp.cabin;
@@ -4284,11 +4311,11 @@ function sendConfirmationEmail(reservation, voucherBase64, voucherMimeType, subj
     const cabin   = _emailCabinaPersonas(reservation).cabin;
     const isAbierta = reservation.origin === 'Abierta';
     const isRegalo  = esReservaRegalo(reservation);
-    const subject = (subjectPrefix || '') + (isRegalo
+    const subject = _asuntoEmailSeguro((subjectPrefix || '') + (isRegalo
       ? '🎁 Tienes un regalo en Las Nubes'
       : (isAbierta
         ? '📌 Reserva Abierta — Las Nubes'
-        : '✅ Confirmación de reserva — ' + cabin + ' · Las Nubes'));
+        : '✅ Confirmación de reserva — ' + cabin + ' · Las Nubes')));
 
     // Adjuntar recibo PDF si la reserva tiene voucher (codTransferencia o montoVoucher).
     // En un REGALO no se adjunta nada: ni recibo ni voucher — el beneficiario no
@@ -4610,7 +4637,7 @@ function sendCancellationEmail(reservation) {
     const email = reservation.email;
     if (!email) return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'No hay email de huésped' })).setMimeType(ContentService.MimeType.JSON);
     const cabin   = CABIN_NAMES_EMAIL[reservation.cabin] || reservation.cabin;
-    const subject = '❌ Cancelación de reserva — ' + cabin + ' · Las Nubes';
+    const subject = _asuntoEmailSeguro('❌ Cancelación de reserva — ' + cabin + ' · Las Nubes');
     GmailApp.sendEmail(email, subject, '', { htmlBody: buildCancellationEmailHTML(reservation), name: 'Las Nubes', replyTo: REPLY_TO_EMAIL });
     Logger.log('📧 Cancelación enviada a: ' + email);
     return ContentService.createTextOutput(JSON.stringify({ ok: true, status: 'cancellation_email_sent' })).setMimeType(ContentService.MimeType.JSON);
@@ -4682,9 +4709,9 @@ function sendUpdateEmail(reservation, voucherBase64, voucherMimeType) {
     // En un REGALO no se manda el email de actualización (habla de montos,
     // abonos y saldo): se reenvía el certificado, que no lleva plata.
     const isRegalo    = esReservaRegalo(reservation);
-    const subject     = isRegalo
+    const subject     = _asuntoEmailSeguro(isRegalo
       ? '🎁 Tu regalo en Las Nubes — actualizado'
-      : 'Actualización de reserva — ' + cabin + ' · Las Nubes';
+      : 'Actualización de reserva — ' + cabin + ' · Las Nubes');
     const html = isRegalo
       ? buildEmailHTMLRegalo(reservation)
       : buildUpdateEmailHTML(reservation, cabin, color, formatDateES(checkinStr), formatDateES(checkoutStr), nightCount(checkinStr, checkoutStr), amount, deposit, saldo, hasSaldo, reservation.comentarios || '', googleCalLink(reservation));
@@ -4848,7 +4875,7 @@ function sendCheckinReminderEmail(reservation) {
     const cabin   = CABIN_NAMES_EMAIL[reservation.cabin] || reservation.cabin;
     const meta    = tipoEmailMeta(reservation);
     const config  = getCheckinReminderConfig();
-    const subject = 'Te esperamos mañana — ' + cabin + ' · Las Nubes';
+    const subject = _asuntoEmailSeguro('Te esperamos mañana — ' + cabin + ' · Las Nubes');
     const html    = buildCheckinReminderHTML(reservation, meta, config);
     GmailApp.sendEmail(email, subject, '', { htmlBody: html, name: 'Las Nubes', replyTo: REPLY_TO_EMAIL });
     Logger.log('📧 Recordatorio check-in enviado a: ' + email);

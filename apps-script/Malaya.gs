@@ -1121,7 +1121,7 @@ function _emailCelestinoNuevaReserva(d) {
       '<p style="font-size:13px; color:#888; margin-top:24px;">El sistema verifica cada 30 min si la fecha aparece bloqueada en tu iCal de Airbnb. Si pasan más de 60 min sin bloqueo, recibo una alerta para coordinar contigo.</p>' +
     '</div>';
 
-  const subject = '🌿 Reserva Malaya: ' + ciFmt + ' → ' + coFmt + ' · ' + d.huesped;
+  const subject = _asuntoEmailSeguro('🌿 Reserva Malaya: ' + ciFmt + ' → ' + coFmt + ' · ' + d.huesped);
 
   try {
     GmailApp.sendEmail(to, subject, '', {

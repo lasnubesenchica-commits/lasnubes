@@ -3232,7 +3232,7 @@ function _botHandleCheckoutDone(from, contactName, reservaId) {
   try {
     const escape = (s) => String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const subject = '🚪 ABRE EL PORTÓN — ' + cabinName + ' (' + guestName + ')';
+    const subject = _asuntoEmailSeguro('🚪 ABRE EL PORTÓN — ' + cabinName + ' (' + guestName + ')');
     const htmlBody =
       '<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;font-size:15px;color:#222;line-height:1.5;">' +
         '<p style="margin:0 0 12px;">El huésped llegó al portón y pidió que le abran (botón de la plantilla de check-out).</p>' +
