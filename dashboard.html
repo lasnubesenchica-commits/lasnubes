@@ -15909,6 +15909,11 @@ function _proyReprecio() {
   const porCat = {};
   PROY_CATS.forEach(c => { porCat[c.key] = { noches: 0, actual: 0, nuevo: 0 }; });
   let planos = 0, nochesAirbnbFuera = 0;
+  // Lo REALMENTE cobrado por esas mismas noches. La tarifa de lista no es lo
+  // que entró: hay descuentos, referidos, redondeos y recargos por persona. El
+  // monto se prorratea por las noches que caen dentro del período, porque una
+  // estadía puede cruzar el borde del mes.
+  let cobrado = 0;
 
   reservations.forEach(r => {
     if (r.estadoPago === 'CANCELADA') return;
@@ -15923,13 +15928,17 @@ function _proyReprecio() {
       if (r.checkin >= from && r.checkin <= to) planos += parseFloat(r.amount) || 0;
       return;
     }
-    _proyNochesDeReserva(r).forEach(d => {
+    const nochesR = _proyNochesDeReserva(r);
+    let dentro = 0;
+    nochesR.forEach(d => {
       if (d < from || d > to) return;
+      dentro++;
       const cat = _proyCatDelDia(d);
       porCat[cat].noches++;
       porCat[cat].actual += _lnPrecioDia(d, false);
       porCat[cat].nuevo  += _proyPrecioNuevo(d);
     });
+    if (dentro && nochesR.length) cobrado += (parseFloat(r.amount) || 0) * (dentro / nochesR.length);
   });
 
   const actual = PROY_CATS.reduce((t, c) => t + porCat[c.key].actual, 0);
@@ -15943,9 +15952,21 @@ function _proyReprecio() {
   // Punto de equilibrio: cuántas noches puede perder antes de volver al ingreso
   // de antes. Es LA pregunta útil — la elasticidad real no la sabe nadie, pero
   // esto sí es exacto y él sabe si perder esas noches es probable.
-  const precioMedioNuevo = noches ? nuevo / noches : 0;
+  // El equilibrio se mide con lo que una noche perdida REALMENTE cuesta, no con
+  // su tarifa de lista: si vendes al 90% de lista, perder una noche duele 90%.
+  // Con precios de lista el umbral salía más estricto de lo que es.
+  const cobradoNuevoTmp = cobrado + delta;
+  const precioMedioNuevo = noches
+    ? (cobrado > 0 ? cobradoNuevoTmp / noches : nuevo / noches)
+    : 0;
   const nochesEquilibrio = precioMedioNuevo > 0 ? delta / precioMedioNuevo : 0;
+  // El aumento se traslada en DÓLARES sobre lo que cobraste, no sobre la lista:
+  // si vendes con descuento, subir la tarifa $25 sigue sumando $25 por noche.
+  // Es el supuesto más defendible sin inventar una regla de descuento.
   return { from, to, porCat, actual, nuevo, delta, noches, planos, nochesAirbnbFuera,
+           cobrado: Math.round(cobrado * 100) / 100,
+           cobradoNuevo: Math.round((cobrado + delta) * 100) / 100,
+           realizacion: actual > 0 ? cobrado / actual : 0,
            conCambio, nochesCambio, deltaCambio: conCambio - actual,
            nochesEquilibrio, pctEquilibrio: noches ? (nochesEquilibrio / noches) * 100 : 0 };
 }
@@ -16169,7 +16190,9 @@ function _proyRenderResultados() {
     +   '<em>«¿cuánto habría entrado si hubiera cobrado esto, vendiendo exactamente lo mismo?»</em><br>'
     +   'Es el número más firme de esta pantalla: no supone nada sobre la demanda, solo recalcula hechos. '
     +   'Por eso mismo <strong>no dice que vayas a ganar eso</strong> — al subir precios normalmente se vende algo menos, '
-    +   'y de cuánto se trata lo estimas tú con el control de ocupación.'
+    +   'y de cuánto se trata lo estimas tú con el control de ocupación.<br>'
+    +   'Las tres tarjetas van a <strong>tarifa de lista</strong>, que es lo que el ajuste mueve. Lo que '
+    +   '<em>realmente</em> cobraste —con descuentos y recargos— aparece justo abajo.'
     + '</div>'
     + '<div class="stats-grid" style="margin-bottom:14px;">'
     +   '<div class="stat-card"><div class="stat-label">Tarifa de lista hoy</div>'
@@ -16182,6 +16205,28 @@ function _proyRenderResultados() {
     +     '<div class="stat-value ' + signo(rep.delta) + '">' + money(rep.delta) + '</div>'
     +     '<div class="stat-sub">' + (rep.actual ? (rep.delta >= 0 ? '+' : '') + (rep.delta / rep.actual * 100).toFixed(1) + '%' : '—') + '</div></div>'
     + '</div>';
+
+  // Lo realmente cobrado. Va PRIMERO cuando hay un ajuste, porque es la cifra
+  // que le importa: la tarifa de lista es el instrumento, esto es el resultado.
+  if (rep.cobrado > 0) {
+    const pct = rep.realizacion * 100;
+    // Puede pasar de 100%: los recargos por persona SUMAN sobre la tarifa. Por
+    // debajo son descuentos, referidos o redondeos. Decir cuál es cuál evita
+    // que un 108% se lea como un error.
+    const explica = pct > 100.5
+      ? 'Cobras <strong>más</strong> que la tarifa de lista — son los recargos por persona extra.'
+      : pct < 99.5
+        ? 'Cobras <strong>menos</strong> que la tarifa de lista: descuentos, referidos o redondeos.'
+        : 'Cobras prácticamente la tarifa de lista.';
+    html += '<div class="modal-aviso" style="margin-bottom:12px;">'
+      + '<strong>Lo que cobraste de verdad:</strong> ' + money(rep.cobrado) + ' por esas ' + rep.noches + ' noches, '
+      + 'el <strong>' + pct.toFixed(1) + '%</strong> de la tarifa de lista. ' + explica
+      + (_proyHayAjuste()
+          ? '<br>Con este cambio y el mismo nivel de descuento, habrías cobrado <strong>' + money(rep.cobradoNuevo)
+            + '</strong> (' + (rep.delta >= 0 ? '+' : '−') + money(Math.abs(rep.delta)).replace('−','') + ').'
+          : '')
+      + '</div>';
+  }
 
   // El escenario del usuario: separado del cálculo duro, y rotulado como
   // supuesto. Va ANTES del punto de equilibrio porque si él ya puso su número,
