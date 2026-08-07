@@ -15813,28 +15813,50 @@ function _proyFactorOcup(cat) {
 // a julio, así que el control decía "Viernes $90" mientras el cálculo usaba los
 // $110 reales de julio. Dos números distintos para lo mismo en la misma
 // pantalla. Si la categoría no tuvo noches en el período, se cae al de hoy.
-function _proyPrecioRef(cat) {
+function _proyPrecioRefInfo(cat) {
   const { from, to } = _proyRangoBase();
-  let suma = 0, n = 0;
+  let suma = 0, n = 0, min = Infinity, max = -Infinity;
   for (let d = from; d <= to; d = _addDaysISO(d, 1)) {
     if (_proyCatDelDia(d) !== cat) continue;
-    suma += _lnPrecioDia(d, false); n++;
+    const p = _lnPrecioDia(d, false);
+    suma += p; n++;
+    if (p < min) min = p;
+    if (p > max) max = p;
   }
-  if (n) return Math.round((suma / n) * 100) / 100;
-  return _lnPrecioCat(cat, new Date().toISOString().slice(0,10), false);
+  // Tarifa CONFIGURADA en el tarifario, sin promo. Es la que el admin ve en el
+  // calendario público, y cuando no coincide con la del período hay que decir
+  // por qué en vez de dejar dos numeros distintos sin explicación.
+  const cfg = { semana: LN_TAR.weekday, viernes: LN_TAR.viernes, sabado: LN_TAR.sabado,
+                vispera: LN_TAR.vispera, feriado: LN_TAR.feriado, escolar: LN_TAR.escolar }[cat] || LN_TAR.weekday;
+  if (!n) {
+    return { precio: _lnPrecioCat(cat, new Date().toISOString().slice(0,10), false),
+             cfg, n: 0, mixto: false };
+  }
+  return { precio: Math.round((suma / n) * 100) / 100, cfg, n,
+           mixto: Math.abs(max - min) > 0.001, min, max };
 }
+function _proyPrecioRef(cat) { return _proyPrecioRefInfo(cat).precio; }
 
 // Línea de precio de una fila del control. Compartida entre el render y el
 // oninput: sin esto, la anotación "→ $231.00" no se actualizaba al teclear y
 // se perdía justo la señal que delata haber puesto un precio en modo %.
 function _proyRefHtml(cat) {
   const aj  = _proyAjustes[cat] || 0;
-  const ref = _proyPrecioRef(cat);
+  const inf = _proyPrecioRefInfo(cat);
+  const ref = inf.precio;
   const nue = Math.max(0, _proyModo === 'fijo' ? (aj > 0 ? aj : ref)
                         : _proyModo === 'pct'  ? ref * (1 + aj/100) : ref + aj);
   const dif = nue - ref;
   const col = dif > 0 ? 'var(--verde-dark)' : dif < 0 ? '#c0392b' : 'var(--text-muted)';
-  let out = '$' + ref.toFixed(0);
+  // De DÓNDE sale este precio. Sin decirlo, no cuadra con el tarifario del
+  // calendario y parece un error: es el precio EFECTIVO del período (con promo
+  // si aplicaba), no la tarifa configurada.
+  let out = '$' + (Number.isInteger(ref) ? ref.toFixed(0) : ref.toFixed(2));
+  const nota = [];
+  if (!inf.n) nota.push('sin noches en el período · tarifa de hoy');
+  else if (inf.mixto) nota.push('promedio del período · varió entre $' + inf.min.toFixed(0) + ' y $' + inf.max.toFixed(0));
+  if (Math.abs(ref - inf.cfg) > 0.001) nota.push('tarifario: $' + inf.cfg.toFixed(0));
+  if (nota.length) out += ' <span style="opacity:.75;">(' + nota.join(' · ') + ')</span>';
   if (Math.abs(dif) > 0.001) {
     out += ' <span style="color:' + col + ';font-weight:600;">→ $' + nue.toFixed(2)
         +  ' (' + (dif > 0 ? '+' : '−') + '$' + Math.abs(dif).toFixed(2) + ')</span>';
@@ -16031,7 +16053,10 @@ function _proyRenderControles() {
     +   '<strong style="color:var(--text);">Esto solo simula.</strong> Nada de lo que muevas acá cambia tus tarifas '
     +   'reales — para eso está el tarifario del calendario. Aquí solo ves qué habría pasado.<br>'
     +   'Se ajusta <strong>por tipo de día</strong> porque no todos se venden igual: si tus sábados están llenos y '
-    +   'entre semana te sobra espacio, subirles lo mismo a los dos esconde justo la decisión que importa.'
+    +   'entre semana te sobra espacio, subirles lo mismo a los dos esconde justo la decisión que importa.<br>'
+    +   'El precio que ves bajo cada categoría es el que <strong>se cobró en el período elegido</strong>, no la tarifa '
+    +   'que tienes configurada hoy. Pueden no coincidir: una promo vigente este mes no se aplicó a meses pasados. '
+    +   'Cuando difieren, se muestra la del tarifario entre paréntesis.'
     + '</div>'
     + PROY_CATS.map(c => {
         const aj = _proyAjustes[c.key] || 0;
