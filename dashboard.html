@@ -2233,13 +2233,14 @@
   }
   .proy-cmp-card h4 span { font-size: 11.5px; font-weight: 400; color: var(--text-muted); }
   .proy-cmp-row {
-    display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: baseline;
+    display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; align-items: baseline;
     padding: 4px 0; border-top: 1px solid var(--border); font-size: 12.5px;
   }
   .proy-cmp-row:first-of-type { border-top: none; }
   .proy-cmp-row .lbl { color: var(--text-muted); }
   .proy-cmp-row .pn  { color: var(--text-muted); font-variant-numeric: tabular-nums; min-width: 58px; text-align: right; }
   .proy-cmp-row .tot { font-weight: 600; font-variant-numeric: tabular-nums; min-width: 72px; text-align: right; }
+  .proy-cmp-row .dif { font-size: 11.5px; font-variant-numeric: tabular-nums; min-width: 66px; text-align: right; }
   .proy-cmp-row.destacada .lbl,
   .proy-cmp-row.destacada .tot { color: var(--text); font-weight: 700; }
 
@@ -15802,6 +15803,10 @@ let _proyModo    = 'pct';        // 'pct' | 'monto' | 'fijo' (precio absoluto)
 let _proyOcupCambio = 0;
 let _proyAirbnb  = false;        // ¿el cambio also aplica a las noches de Airbnb?
 let _proyMesObj  = null;         // mes a proyectar (YYYY-MM); null = el próximo
+let _proyCabin   = '';           // '' = todas | 'verde' | 'azul' | 'lila'
+// Contra qué columna se miden las diferencias. Por default contra lo que se
+// vendió de verdad, que es la referencia con la que uno decide.
+let _proyBase    = 'vendiste';   // 'vendiste' | 'estandar' | 'promo' | 'proyectada'
 
 // Categoría que DETERMINA el precio de un día: la de tarifa más alta, igual que
 // _lnPrecioDia. Es la que debe recibir el ajuste.
@@ -15957,6 +15962,7 @@ function _proyReprecio() {
   reservations.forEach(r => {
     if (r.estadoPago === 'CANCELADA') return;
     if (SIN_PAGO_ORIGINS.includes(r.origin)) return;
+    if (_proyCabin && r.cabin !== _proyCabin) return;
     const esAirbnb = r.origin === 'Airbnb';
     if (esAirbnb && !_proyAirbnb) {
       _proyNochesDeReserva(r).forEach(d => { if (d >= from && d <= to) nochesAirbnbFuera++; });
@@ -16036,9 +16042,12 @@ function _proyOcupacionPorCat() {
     if (r.estadoPago === 'CANCELADA' || !r.cabin) return;
     if (SIN_PAGO_ORIGINS.includes(r.origin)) return;
     if (r.origin === 'Airbnb' && !_proyAirbnb) return;
+    if (_proyCabin && r.cabin !== _proyCabin) return;
     _proyNochesDeReserva(r).forEach(d => { ocupadas[d + '|' + r.cabin] = 1; });
   });
-  const cabinas = Object.keys(CABINS);
+  // Con una cabaña seleccionada la capacidad es 1 por noche, no 3: si no, la
+  // ocupación saldría dividida entre tres y el mes proyectado, por el suelo.
+  const cabinas = _proyCabin ? [_proyCabin] : Object.keys(CABINS);
   const hoy = new Date().toISOString().slice(0,10);
   const hasta = to < hoy ? to : hoy;   // no contar noches futuras como "vacías"
   for (let d = from; d <= hasta; d = _addDaysISO(d, 1)) {
@@ -16064,7 +16073,7 @@ function _proyProyeccion() {
   const { ocupacion } = _proyOcupacionPorCat();
   const y = parseInt(mes.slice(0,4), 10), m = parseInt(mes.slice(5,7), 10);
   const dias = new Date(y, m, 0).getDate();
-  const nCab = Object.keys(CABINS).length;
+  const nCab = _proyCabin ? 1 : Object.keys(CABINS).length;
   const porCat = {};
   PROY_CATS.forEach(c => { porCat[c.key] = { cap: 0, esperadas: 0, actual: 0, nuevo: 0 }; });
   for (let i = 1; i <= dias; i++) {
@@ -16159,6 +16168,18 @@ function _proyRenderControles() {
     +   '</div>'
     +   '<div style="font-size:12px;color:var(--text-muted);width:14px;">%</div>'
     + '</div>'
+    // Filtro de cabaña: Portal tiene otra capacidad y otro recargo por persona,
+    // así que promediarlo con las demás esconde su realidad.
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px;padding-top:10px;border-top:1px dashed var(--border);">'
+    +   '<span style="font-size:12.5px;color:var(--text-muted);">Cabaña:</span>'
+    +   [['','Todas'],['verde','Paseo'],['azul','Portal'],['lila','Puente']].map(function(c) {
+          const on = _proyCabin === c[0];
+          return '<button onclick="_proySetCabin(\'' + c[0] + '\')" style="font-size:12px;font-weight:' + (on?'600':'400')
+            + ';padding:4px 12px;border-radius:20px;cursor:pointer;border:1px solid ' + (on?'var(--verde-dark)':'var(--border)')
+            + ';background:' + (on?'var(--verde-dark)':'var(--surface)') + ';color:' + (on?'#fff':'var(--text-muted)') + ';">'
+            + c[1] + '</button>';
+        }).join('')
+    + '</div>'
     + '<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:12px;font-size:12.5px;color:var(--text-muted);">'
     +   '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;">'
     +     '<input type="checkbox" ' + (_proyAirbnb ? 'checked' : '') + ' onchange="_proySetAirbnb(this.checked)"> '
@@ -16184,10 +16205,14 @@ function _proySetModo(m) {
   renderProyeccion();
 }
 function _proySetAirbnb(v)    { _proyAirbnb = !!v; _proyRenderResultados(); }
+function _proySetCabin(c)     { _proyCabin = c; renderProyeccion(); }
+function _proySetBase(b)      { _proyBase = b;  _proyRenderResultados(); }
 function _proySetMes(m)       { _proyMesObj = m; _proyRenderResultados(); }
 function _proyReset() {
   _proyModo = 'pct';
   _proyOcupCambio = 0;
+  _proyCabin = '';
+  _proyBase = 'vendiste';
   _proyAjustes = { semana:0, viernes:0, sabado:0, vispera:0, feriado:0, escolar:0 };
   renderProyeccion();
 }
@@ -16305,83 +16330,133 @@ function _proyRenderResultados() {
       + '</div>';
   }
 
-  // Comparación de las CUATRO tarifas lado a lado, por categoría. Es la
-  // pregunta de fondo: "a cuánto vendí de verdad los sábados, y cuánto daría
-  // cada una de mis tarifas". Cada columna muestra el precio por noche y lo que
-  // habría facturado ese grupo de noches.
-  const th = (t, extra) => '<th style="padding:6px 8px;font-weight:600;white-space:nowrap;' + (extra||'') + '">' + t + '</th>';
-  const celda = (precio, total, destacar) =>
-    '<td style="padding:6px 8px;text-align:right;white-space:nowrap;' + (destacar ? 'font-weight:600;' : '') + '">'
-    + (precio == null ? '<span style="opacity:.4;">—</span>'
-       : '<span style="color:var(--text-muted);">$' + precio.toFixed(2) + '</span>'
-         + '<br>' + money(total)) + '</td>';
+  // Comparación de las CUATRO tarifas lado a lado, por categoría, más la
+  // diferencia contra la que se elija como referencia. Sin esa columna había
+  // que restar mentalmente cuatro pares de números por fila.
+  const COLS = [
+    { key: 'vendiste',   label: 'Vendiste'   },
+    { key: 'estandar',   label: 'Estándar'   },
+    { key: 'promo',      label: 'Promo'      },
+    { key: 'proyectada', label: 'Proyectada' }
+  ];
+  const baseLbl = (COLS.find(c => c.key === _proyBase) || COLS[0]).label;
 
-  html += '<div class="proy-cmp-desk" style="overflow-x:auto;margin-top:4px;">'
-    + '<table style="width:100%;min-width:620px;border-collapse:collapse;font-size:12.5px;">'
-    + '<thead><tr style="color:var(--text-muted);text-align:left;border-bottom:1px solid var(--border);">'
-    +   th('Categoría') + th('Noches', 'text-align:right;')
-    +   th('Vendiste', 'text-align:right;') + th('Estándar', 'text-align:right;')
-    +   th('Promo', 'text-align:right;')    + th('Proyectada', 'text-align:right;')
-    + '</tr><tr style="color:var(--text-muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;">'
-    +   '<td colspan="2"></td>'
-    +   '<td colspan="4" style="padding:0 8px 6px;text-align:right;">precio por noche · total del grupo</td>'
-    + '</tr></thead><tbody>';
-
-  let totVend = 0, totEst = 0, totPro = 0, totProy = 0, hayPromo = false;
-  const tarjetas = [];   // versión móvil, armada en la misma pasada
+  // Valores por categoría, una sola vez: los usan la tabla, las tarjetas y los
+  // totales, así no pueden discrepar entre vistas.
+  const datos = [];
   PROY_CATS.forEach(c => {
     const d = rep.porCat[c.key];
     if (!d.noches) return;
-    const tf   = _proyTarifasCat(c.key);
-    const real = d.cobrado / d.noches;
-    const est  = tf.estandar > 0 ? tf.estandar : null;
-    const pro  = tf.promo    > 0 ? tf.promo    : null;
-    const proy = d.nuevo / d.noches;
-    if (pro != null) hayPromo = true;
-    totVend += d.cobrado;
-    totEst  += (est != null ? est * d.noches : d.cobrado);
-    totPro  += (pro != null ? pro * d.noches : d.cobrado);
-    totProy += d.nuevo;
-    html += '<tr style="border-top:1px solid var(--border);">'
-      + '<td style="padding:6px 8px;">' + c.label + '</td>'
-      + '<td style="padding:6px 8px;text-align:right;">' + d.noches + '</td>'
-      + celda(real, d.cobrado, true)
-      + celda(est,  est != null ? est * d.noches : null)
-      + celda(pro,  pro != null ? pro * d.noches : null)
-      + celda(proy, d.nuevo, true)
-      + '</tr>';
+    const tf = _proyTarifasCat(c.key);
+    datos.push({
+      label: c.label, noches: d.noches,
+      vendiste:   { p: d.cobrado / d.noches, t: d.cobrado },
+      estandar:   tf.estandar > 0 ? { p: tf.estandar, t: tf.estandar * d.noches } : null,
+      promo:      tf.promo    > 0 ? { p: tf.promo,    t: tf.promo    * d.noches } : null,
+      proyectada: { p: d.nuevo / d.noches, t: d.nuevo }
+    });
+  });
+  const tot = {};
+  COLS.forEach(col => {
+    // Una categoría sin esa tarifa no suma nada: inventarle un valor haría que
+    // el total no fuera comparable con el de las otras columnas.
+    tot[col.key] = datos.reduce((t, d) => t + (d[col.key] ? d[col.key].t : 0), 0);
+  });
+  const hayCol = {};
+  COLS.forEach(col => { hayCol[col.key] = datos.some(d => d[col.key]); });
+  const totNoches = datos.reduce((t, d) => t + d.noches, 0);
 
-    // Misma información, apilada: en el celular cada categoría es una tarjeta
-    // con sus cuatro tarifas una debajo de otra, sin scroll lateral.
-    const fila = (lbl, precio, total, dest) =>
-      '<div class="proy-cmp-row' + (dest ? ' destacada' : '') + '">'
-      + '<span class="lbl">' + lbl + '</span>'
-      + '<span class="pn">' + (precio == null ? '—' : '$' + precio.toFixed(2)) + '</span>'
-      + '<span class="tot">' + (precio == null ? '' : money(total)) + '</span></div>';
-    tarjetas.push('<div class="proy-cmp-card">'
-      + '<h4>' + c.label + '<span>' + d.noches + ' noche' + (d.noches === 1 ? '' : 's') + '</span></h4>'
-      + fila('Vendiste',   real, d.cobrado, true)
-      + fila('Estándar',   est,  est != null ? est * d.noches : 0)
-      + fila('Promo',      pro,  pro != null ? pro * d.noches : 0)
-      + fila('Proyectada', proy, d.nuevo, true)
-      + '</div>');
+  const dif = (v, base) => (v && base) ? v.t - base.t : null;
+  const difHtml = (v, base, esBase) => {
+    if (esBase) return '<span style="opacity:.35;">base</span>';
+    const x = dif(v, base);
+    if (x === null) return '<span style="opacity:.35;">—</span>';
+    if (Math.abs(x) < 0.005) return '<span style="opacity:.5;">igual</span>';
+    return '<span style="color:' + (x > 0 ? 'var(--verde-dark)' : '#c0392b') + ';font-weight:600;">'
+      + (x > 0 ? '+' : '−') + '$' + Math.abs(x).toFixed(2) + '</span>';
+  };
+
+  // Selector de columna de referencia
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:14px 0 8px;font-size:12.5px;color:var(--text-muted);">'
+    + '<span>Comparar contra:</span>'
+    + COLS.filter(c => hayCol[c.key]).map(function(c) {
+        const on = _proyBase === c.key;
+        return '<button onclick="_proySetBase(\'' + c.key + '\')" style="font-size:12px;font-weight:' + (on?'600':'400')
+          + ';padding:3px 11px;border-radius:20px;cursor:pointer;border:1px solid ' + (on?'var(--azul-dark)':'var(--border)')
+          + ';background:' + (on?'var(--azul-dark)':'var(--surface)') + ';color:' + (on?'#fff':'var(--text-muted)') + ';">'
+          + c.label + '</button>';
+      }).join('')
+    + '</div>';
+
+  // ── Tabla (escritorio) ──
+  const th = (t, extra) => '<th style="padding:6px 8px;font-weight:600;white-space:nowrap;' + (extra||'') + '">' + t + '</th>';
+  html += '<div class="proy-cmp-desk" style="overflow-x:auto;">'
+    + '<table style="width:100%;min-width:700px;border-collapse:collapse;font-size:12.5px;">'
+    + '<thead><tr style="color:var(--text-muted);text-align:left;border-bottom:1px solid var(--border);">'
+    +   th('Categoría') + th('Noches', 'text-align:right;')
+    +   COLS.filter(c => hayCol[c.key]).map(c => th(c.label, 'text-align:right;')).join('')
+    + '</tr><tr style="color:var(--text-muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;">'
+    +   '<td colspan="2"></td>'
+    +   '<td colspan="' + COLS.filter(c => hayCol[c.key]).length + '" style="padding:0 8px 6px;text-align:right;">'
+    +     'precio · total · dif. vs ' + baseLbl + '</td>'
+    + '</tr></thead><tbody>';
+  datos.forEach(d => {
+    const base = d[_proyBase];
+    html += '<tr style="border-top:1px solid var(--border);">'
+      + '<td style="padding:6px 8px;">' + d.label + '</td>'
+      + '<td style="padding:6px 8px;text-align:right;">' + d.noches + '</td>'
+      + COLS.filter(c => hayCol[c.key]).map(function(c) {
+          const v = d[c.key];
+          if (!v) return '<td style="padding:6px 8px;text-align:right;opacity:.4;">—</td>';
+          return '<td style="padding:6px 8px;text-align:right;white-space:nowrap;">'
+            + '<span style="color:var(--text-muted);">$' + v.p.toFixed(2) + '</span><br>'
+            + '<strong>' + money(v.t) + '</strong><br>'
+            + '<span style="font-size:11px;">' + difHtml(v, base, c.key === _proyBase) + '</span></td>';
+        }).join('')
+      + '</tr>';
   });
   html += '<tr style="border-top:2px solid var(--border);font-weight:700;background:var(--bg);">'
-    + '<td style="padding:8px;">Total</td>'
-    + '<td style="padding:8px;text-align:right;">' + rep.noches + '</td>'
-    + '<td style="padding:8px;text-align:right;">' + money(totVend) + '</td>'
-    + '<td style="padding:8px;text-align:right;">' + money(totEst)  + '</td>'
-    + '<td style="padding:8px;text-align:right;">' + (hayPromo ? money(totPro) : '<span style="opacity:.4;">—</span>') + '</td>'
-    + '<td style="padding:8px;text-align:right;">' + money(totProy) + '</td>'
+    + '<td style="padding:8px;">Total</td><td style="padding:8px;text-align:right;">' + totNoches + '</td>'
+    + COLS.filter(c => hayCol[c.key]).map(function(c) {
+        const x = tot[c.key] - tot[_proyBase];
+        return '<td style="padding:8px;text-align:right;white-space:nowrap;">' + money(tot[c.key])
+          + '<br><span style="font-size:11px;font-weight:600;">'
+          + (c.key === _proyBase ? '<span style="opacity:.35;">base</span>'
+             : '<span style="color:' + (x >= 0 ? 'var(--verde-dark)' : '#c0392b') + ';">'
+               + (x >= 0 ? '+' : '−') + '$' + Math.abs(x).toFixed(2) + '</span>')
+          + '</span></td>';
+      }).join('')
     + '</tr></tbody></table></div>';
 
-  html += '<div class="proy-cmp-mob" style="margin-top:6px;">' + tarjetas.join('')
+  // ── Tarjetas (celular) ──
+  html += '<div class="proy-cmp-mob" style="margin-top:6px;">'
+    + datos.map(function(d) {
+        const base = d[_proyBase];
+        return '<div class="proy-cmp-card">'
+          + '<h4>' + d.label + '<span>' + d.noches + ' noche' + (d.noches === 1 ? '' : 's') + '</span></h4>'
+          + COLS.map(function(c) {
+              const v = d[c.key];
+              const esB = c.key === _proyBase;
+              return '<div class="proy-cmp-row' + (esB || c.key === 'proyectada' ? ' destacada' : '') + '">'
+                + '<span class="lbl">' + c.label + '</span>'
+                + '<span class="pn">' + (v ? '$' + v.p.toFixed(2) : '—') + '</span>'
+                + '<span class="tot">' + (v ? money(v.t) : '') + '</span>'
+                + '<span class="dif">' + difHtml(v, base, esB) + '</span></div>';
+            }).join('')
+          + '</div>';
+      }).join('')
     + '<div class="proy-cmp-card" style="background:var(--bg);">'
-    +   '<h4>Total<span>' + rep.noches + ' noches</span></h4>'
-    +   '<div class="proy-cmp-row destacada"><span class="lbl">Vendiste</span><span class="pn"></span><span class="tot">' + money(totVend) + '</span></div>'
-    +   '<div class="proy-cmp-row"><span class="lbl">Estándar</span><span class="pn"></span><span class="tot">' + money(totEst) + '</span></div>'
-    +   '<div class="proy-cmp-row"><span class="lbl">Promo</span><span class="pn"></span><span class="tot">' + (hayPromo ? money(totPro) : '—') + '</span></div>'
-    +   '<div class="proy-cmp-row destacada"><span class="lbl">Proyectada</span><span class="pn"></span><span class="tot">' + money(totProy) + '</span></div>'
+    +   '<h4>Total<span>' + totNoches + ' noches</span></h4>'
+    +   COLS.map(function(c) {
+          if (!hayCol[c.key]) return '';
+          const x = tot[c.key] - tot[_proyBase];
+          return '<div class="proy-cmp-row' + (c.key === _proyBase || c.key === 'proyectada' ? ' destacada' : '') + '">'
+            + '<span class="lbl">' + c.label + '</span><span class="pn"></span>'
+            + '<span class="tot">' + money(tot[c.key]) + '</span>'
+            + '<span class="dif">' + (c.key === _proyBase ? '<span style="opacity:.35;">base</span>'
+                : '<span style="color:' + (x >= 0 ? 'var(--verde-dark)' : '#c0392b') + ';font-weight:600;">'
+                  + (x >= 0 ? '+' : '−') + '$' + Math.abs(x).toFixed(2) + '</span>') + '</span></div>';
+        }).join('')
     + '</div></div>';
 
   // Qué significa cada columna. Sin esto, "Estándar" y "Promo" se pueden leer
