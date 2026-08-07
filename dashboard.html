@@ -2901,6 +2901,7 @@
       <button class="active" onclick="showSection('disponibilidad')">Disponibilidad</button>
       <button onclick="showSection('reservas')">Reservas</button>
       <button onclick="showSection('ocupacion')">Ocupación</button>
+      <button onclick="showSection('proyeccion')">Proyección</button>
       <button onclick="showSection('suministros')">Suministros</button>
       <button onclick="showSection('tiendita')">Tiendita</button>
       <button onclick="showSection('contabilidad')">Contabilidad</button>
@@ -2914,6 +2915,7 @@
         <button onclick="showSection('disponibilidad');closeNavMenu()">Disponibilidad</button>
         <button onclick="showSection('reservas');closeNavMenu()">Reservas</button>
         <button onclick="showSection('ocupacion');closeNavMenu()">Ocupación</button>
+        <button onclick="showSection('proyeccion');closeNavMenu()">Proyección</button>
         <button onclick="showSection('suministros');closeNavMenu()">Suministros</button>
         <button onclick="showSection('tiendita');closeNavMenu()">Tiendita</button>
         <button onclick="showSection('contabilidad');closeNavMenu()">Contabilidad</button>
@@ -3766,6 +3768,30 @@
     </div>
 
     <div id="tienditaBody"></div>
+  </section>
+
+  <section id="proyeccion" class="section">
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">Proyección</h1>
+        <p class="page-subtitle">Qué pasa con tus ingresos si mueves las tarifas</p>
+      </div>
+    </div>
+
+    <!-- Período BASE: de aquí salen las noches vendidas y la ocupación por
+         categoría que alimentan los dos cálculos. -->
+    <div class="month-filter" id="proyMonthFilter"></div>
+    <div id="proyCustomRangePopover" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding:10px 12px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;">
+      <label style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Desde</label>
+      <input type="date" id="proyCustomRangeFrom" style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+      <label style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Hasta</label>
+      <input type="date" id="proyCustomRangeTo"   style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+      <button onclick="_applyCustomRange('proyCustomRange')" style="padding:6px 14px;font-size:12px;font-weight:600;border:none;border-radius:6px;background:var(--verde-dark);color:#fff;cursor:pointer;">Aplicar</button>
+      <button onclick="_cancelCustomRange('proyCustomRange')" style="padding:6px 12px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-muted);cursor:pointer;">Cancelar</button>
+    </div>
+
+    <div id="proyControles" class="contab-panel" style="margin-bottom:18px;"></div>
+    <div id="proyResultados"></div>
   </section>
 
   <section id="ocupacion" class="section">
@@ -5520,8 +5546,8 @@ document.addEventListener('click', function(e) {
 function showSection(id) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  const sections = ['reservas','contabilidad','disponibilidad','ocupacion','suministros','tiendita','programa','bot'];
-  const labels   = { reservas:'Reservas', contabilidad:'Contabilidad', disponibilidad:'Disponibilidad', ocupacion:'Ocupación', suministros:'Suministros', tiendita:'Tiendita', programa:'Programa Amigos', bot:'💬 Agente' };
+  const sections = ['reservas','contabilidad','disponibilidad','ocupacion','proyeccion','suministros','tiendita','programa','bot'];
+  const labels   = { reservas:'Reservas', contabilidad:'Contabilidad', disponibilidad:'Disponibilidad', ocupacion:'Ocupación', proyeccion:'Proyección', suministros:'Suministros', tiendita:'Tiendita', programa:'Programa Amigos', bot:'💬 Agente' };
   document.querySelectorAll('nav button').forEach(b => {
     const sec = b.getAttribute('onclick')?.match(/showSection\('(\w+)'/)?.[1];
     b.classList.toggle('active', sec === id);
@@ -5534,6 +5560,7 @@ function showSection(id) {
     if (dispViewMode === 'timeline') setTimeout(() => scrollDispTimelineToToday(false), 60);
   }
   if(id === 'ocupacion')      renderOcupacion();
+  if(id === 'proyeccion')     renderProyeccion();
   if(id === 'suministros')    renderSuministrosTab();
   if(id === 'tiendita')       renderTiendita();
   if(id === 'programa')       renderProgramaMetrics();
@@ -12779,7 +12806,8 @@ function _seccionActiva(id) {
 }
 
 function _rerenderPorPeriodo() {
-  if (_seccionActiva('tiendita'))  { renderTiendita();  return; }
+  if (_seccionActiva('tiendita'))   { renderTiendita();   return; }
+  if (_seccionActiva('proyeccion')) { renderProyeccion(); return; }
   const ocu = document.getElementById('ocupacion');
   if (ocu && ocu.classList.contains('active')) { renderOcupacion(); return; }
   const res = document.getElementById('reservas');
@@ -15716,6 +15744,371 @@ function _ultimoMesConCheckin() {
     const m = (r.checkin || '').slice(0, 7);
     return m > mx ? m : mx;
   }, '');
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PROYECCIÓN DE INGRESOS — simulador de tarifas
+// ═══════════════════════════════════════════════════════════════
+// Dos preguntas distintas, deliberadamente separadas en pantalla:
+//   1) REPRECIO: "¿cuánto habría facturado el período base con estas tarifas?"
+//      Usa las noches REALMENTE vendidas. Sin supuestos.
+//   2) PROYECCIÓN: "¿cuánto daría el mes que viene?" Usa la ocupación observada
+//      por categoría. Descansa en que el mes se parezca al período base.
+// El ajuste va POR CATEGORÍA DE DÍA porque ahí está la decisión: los fines de
+// semana se llenan y entre semana no, así que subirles lo mismo a los dos
+// mezcla una noche que se vende sola con otra que cuesta llenar.
+const PROY_CATS = [
+  { key: 'semana',  label: 'Entre semana' },
+  { key: 'viernes', label: 'Viernes' },
+  { key: 'sabado',  label: 'Sábado' },
+  { key: 'vispera', label: 'Víspera de feriado' },
+  { key: 'feriado', label: 'Feriado' },
+  { key: 'escolar', label: 'Vacaciones escolares' }
+];
+let _proyAjustes = { semana: 0, viernes: 0, sabado: 0, vispera: 0, feriado: 0, escolar: 0 };
+let _proyModo    = 'pct';        // 'pct' | 'monto'
+let _proyAirbnb  = false;        // ¿el cambio also aplica a las noches de Airbnb?
+let _proyMesObj  = null;         // mes a proyectar (YYYY-MM); null = el próximo
+
+// Categoría que DETERMINA el precio de un día: la de tarifa más alta, igual que
+// _lnPrecioDia. Es la que debe recibir el ajuste.
+function _proyCatDelDia(iso) {
+  const cats = _lnCatsDelDia(iso);
+  return cats.reduce((a, c) => _lnPrecioCat(c, iso, false) > _lnPrecioCat(a, iso, false) ? c : a, cats[0]);
+}
+
+// Precio de un día con el ajuste aplicado. Nunca baja de 0.
+function _proyPrecioNuevo(iso) {
+  const base = _lnPrecioDia(iso, false);
+  const aj   = _proyAjustes[_proyCatDelDia(iso)] || 0;
+  const nuevo = _proyModo === 'pct' ? base * (1 + aj / 100) : base + aj;
+  return Math.max(0, Math.round(nuevo * 100) / 100);
+}
+
+function _proyHayAjuste() {
+  return PROY_CATS.some(c => (_proyAjustes[c.key] || 0) !== 0);
+}
+
+// Noches de una reserva que se cobran como noche (las de cortesía no).
+function _proyNochesDeReserva(r) {
+  const out = [];
+  if (!r.checkin || !r.checkout) return out;
+  const tipo = r.tipo || 'noche';
+  const sig = d => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate()+1); return x.toISOString().slice(0,10); };
+  if (tipo === 'noche') {
+    for (let d = r.checkin; d < r.checkout; d = sig(d)) out.push(d);
+  } else if (tipo === 'pasanoche') out.push(r.checkin);
+  else if (tipo === 'early')       out.push(sig(r.checkin));
+  else if (tipo === 'late')        out.push(r.checkin);
+  // pasadía y pasatarde van por TARIFA_TIPO, no por categoría de día: este
+  // simulador no los toca y se reportan aparte para que no parezca que sí.
+  return out;
+}
+
+function _proyRangoBase() {
+  if (typeof getOcuDateRange === 'function') {
+    const r = getOcuDateRange();
+    if (r && r.from && r.to) return r;
+  }
+  const now = new Date();
+  const from = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-01';
+  return { from, to: new Date(now.getFullYear(), now.getMonth()+1, 0).toISOString().slice(0,10) };
+}
+
+// ── Cálculo 1: reprecio de lo realmente vendido ──────────────────
+function _proyReprecio() {
+  const { from, to } = _proyRangoBase();
+  const porCat = {};
+  PROY_CATS.forEach(c => { porCat[c.key] = { noches: 0, actual: 0, nuevo: 0 }; });
+  let planos = 0, nochesAirbnbFuera = 0;
+
+  reservations.forEach(r => {
+    if (r.estadoPago === 'CANCELADA') return;
+    if (SIN_PAGO_ORIGINS.includes(r.origin)) return;
+    const esAirbnb = r.origin === 'Airbnb';
+    if (esAirbnb && !_proyAirbnb) {
+      _proyNochesDeReserva(r).forEach(d => { if (d >= from && d <= to) nochesAirbnbFuera++; });
+      return;
+    }
+    // Tarifas planas: el ajuste por día no las toca.
+    if (['pasadia','pasatarde','pasadia-largo'].indexOf(r.tipo) !== -1) {
+      if (r.checkin >= from && r.checkin <= to) planos += parseFloat(r.amount) || 0;
+      return;
+    }
+    _proyNochesDeReserva(r).forEach(d => {
+      if (d < from || d > to) return;
+      const cat = _proyCatDelDia(d);
+      porCat[cat].noches++;
+      porCat[cat].actual += _lnPrecioDia(d, false);
+      porCat[cat].nuevo  += _proyPrecioNuevo(d);
+    });
+  });
+
+  const actual = PROY_CATS.reduce((t, c) => t + porCat[c.key].actual, 0);
+  const nuevo  = PROY_CATS.reduce((t, c) => t + porCat[c.key].nuevo,  0);
+  const noches = PROY_CATS.reduce((t, c) => t + porCat[c.key].noches, 0);
+  const delta  = nuevo - actual;
+  // Punto de equilibrio: cuántas noches puede perder antes de volver al ingreso
+  // de antes. Es LA pregunta útil — la elasticidad real no la sabe nadie, pero
+  // esto sí es exacto y él sabe si perder esas noches es probable.
+  const precioMedioNuevo = noches ? nuevo / noches : 0;
+  const nochesEquilibrio = precioMedioNuevo > 0 ? delta / precioMedioNuevo : 0;
+  return { from, to, porCat, actual, nuevo, delta, noches, planos, nochesAirbnbFuera,
+           nochesEquilibrio, pctEquilibrio: noches ? (nochesEquilibrio / noches) * 100 : 0 };
+}
+
+// ── Cálculo 2: proyección de un mes futuro ───────────────────────
+// La ocupación se mide POR CATEGORÍA en el período base: aplicar un promedio
+// global sobrestimaría las noches entre semana y subestimaría los fines de
+// semana, que es justo la distinción que importa.
+function _proyOcupacionPorCat() {
+  const { from, to } = _proyRangoBase();
+  const cap = {}, ocu = {};
+  PROY_CATS.forEach(c => { cap[c.key] = 0; ocu[c.key] = 0; });
+  // MISMO alcance que el reprecio: si el ajuste no aplica a Airbnb, sus noches
+  // tampoco entran acá. Contarlas dando ingreso a tarifa de lista proyectaría
+  // plata que Airbnb cobra a otro precio y del que se lleva comisión, y dejaría
+  // los dos cuadros de la pantalla midiendo cosas distintas.
+  const ocupadas = {};   // 'iso|cabin'
+  reservations.forEach(r => {
+    if (r.estadoPago === 'CANCELADA' || !r.cabin) return;
+    if (SIN_PAGO_ORIGINS.includes(r.origin)) return;
+    if (r.origin === 'Airbnb' && !_proyAirbnb) return;
+    _proyNochesDeReserva(r).forEach(d => { ocupadas[d + '|' + r.cabin] = 1; });
+  });
+  const cabinas = Object.keys(CABINS);
+  const hoy = new Date().toISOString().slice(0,10);
+  const hasta = to < hoy ? to : hoy;   // no contar noches futuras como "vacías"
+  for (let d = from; d <= hasta; d = _addDaysISO(d, 1)) {
+    const cat = _proyCatDelDia(d);
+    cabinas.forEach(cab => {
+      cap[cat]++;
+      if (ocupadas[d + '|' + cab]) ocu[cat]++;
+    });
+  }
+  const out = {};
+  PROY_CATS.forEach(c => { out[c.key] = cap[c.key] ? ocu[c.key] / cap[c.key] : 0; });
+  return { ocupacion: out, cap, ocu };
+}
+
+function _proyMesObjetivo() {
+  if (_proyMesObj) return _proyMesObj;
+  const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + 1);
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+
+function _proyProyeccion() {
+  const mes = _proyMesObjetivo();
+  const { ocupacion } = _proyOcupacionPorCat();
+  const y = parseInt(mes.slice(0,4), 10), m = parseInt(mes.slice(5,7), 10);
+  const dias = new Date(y, m, 0).getDate();
+  const nCab = Object.keys(CABINS).length;
+  const porCat = {};
+  PROY_CATS.forEach(c => { porCat[c.key] = { cap: 0, esperadas: 0, actual: 0, nuevo: 0 }; });
+  for (let i = 1; i <= dias; i++) {
+    const iso = mes + '-' + String(i).padStart(2,'0');
+    const cat = _proyCatDelDia(iso);
+    const esp = nCab * (ocupacion[cat] || 0);
+    porCat[cat].cap       += nCab;
+    porCat[cat].esperadas += esp;
+    porCat[cat].actual    += esp * _lnPrecioDia(iso, false);
+    porCat[cat].nuevo     += esp * _proyPrecioNuevo(iso);
+  }
+  const actual = PROY_CATS.reduce((t, c) => t + porCat[c.key].actual, 0);
+  const nuevo  = PROY_CATS.reduce((t, c) => t + porCat[c.key].nuevo,  0);
+  return { mes, porCat, actual, nuevo, delta: nuevo - actual, ocupacion };
+}
+
+// ── UI ───────────────────────────────────────────────────────────
+function renderProyeccion() {
+  _renderChipsPeriodo('proyMonthFilter');
+  const pop = document.getElementById('proyCustomRangePopover');
+  if (pop) pop.style.display = _customRangeOpen ? 'flex' : 'none';
+  _proyRenderControles();
+  _proyRenderResultados();
+}
+
+function _proyRenderControles() {
+  const box = document.getElementById('proyControles');
+  if (!box) return;
+  const esPct = _proyModo === 'pct';
+  const mesesObj = [];
+  const hoy = new Date();
+  for (let i = 0; i < 8; i++) {
+    const d = new Date(hoy.getFullYear(), hoy.getMonth() + i, 1);
+    mesesObj.push(d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'));
+  }
+  const MES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const mesLbl = m => MES[parseInt(m.slice(5,7),10)-1] + ' ' + m.slice(0,4);
+
+  box.innerHTML = '<div class="contab-panel-header">'
+    + '<div class="contab-panel-title">🎚 Mover tarifas</div>'
+    + '<div style="display:flex;gap:4px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:2px;">'
+    +   '<button onclick="_proySetModo(\'pct\')" style="font-size:12px;font-weight:600;padding:4px 12px;border-radius:6px;border:none;cursor:pointer;'
+    +     'background:' + (esPct ? 'var(--surface)' : 'transparent') + ';color:' + (esPct ? 'var(--text)' : 'var(--text-muted)') + ';">%</button>'
+    +   '<button onclick="_proySetModo(\'monto\')" style="font-size:12px;font-weight:600;padding:4px 12px;border-radius:6px;border:none;cursor:pointer;'
+    +     'background:' + (!esPct ? 'var(--surface)' : 'transparent') + ';color:' + (!esPct ? 'var(--text)' : 'var(--text-muted)') + ';">$</button>'
+    + '</div></div>'
+    + '<div style="padding:12px 14px;">'
+    + PROY_CATS.map(c => {
+        const aj  = _proyAjustes[c.key] || 0;
+        const ref = _lnPrecioCat(c.key, new Date().toISOString().slice(0,10), false);
+        const nue = Math.max(0, esPct ? ref * (1 + aj/100) : ref + aj);
+        const col = aj > 0 ? 'var(--verde-dark)' : aj < 0 ? '#c0392b' : 'var(--text-muted)';
+        return '<div style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);">'
+          + '<div><div style="font-size:13px;font-weight:500;">' + c.label + '</div>'
+          +   '<div style="font-size:11.5px;color:var(--text-muted);">$' + ref.toFixed(0)
+          +   (aj !== 0 ? ' <span style="color:' + col + ';">→ $' + nue.toFixed(2) + '</span>' : '') + '</div></div>'
+          + '<div class="rec-qty">'
+          +   '<button type="button" onclick="_proyPaso(\'' + c.key + '\',-1)">−</button>'
+          +   '<input type="number" step="1" value="' + aj + '" data-cat="' + c.key + '" oninput="_proyOnInput(this)" style="width:58px;">'
+          +   '<button type="button" onclick="_proyPaso(\'' + c.key + '\',1)">+</button>'
+          + '</div>'
+          + '<div style="font-size:12px;color:var(--text-muted);width:14px;">' + (esPct ? '%' : '$') + '</div>'
+          + '</div>';
+      }).join('')
+    + '<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:12px;font-size:12.5px;color:var(--text-muted);">'
+    +   '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;">'
+    +     '<input type="checkbox" ' + (_proyAirbnb ? 'checked' : '') + ' onchange="_proySetAirbnb(this.checked)"> '
+    +     'Aplicar también a las noches de Airbnb</label>'
+    +   '<span style="flex:1;"></span>'
+    +   '<label style="display:flex;align-items:center;gap:6px;">Proyectar '
+    +     '<select onchange="_proySetMes(this.value)" style="font-size:12.5px;padding:3px 6px;">'
+    +       mesesObj.map(m => '<option value="' + m + '"' + (m === _proyMesObjetivo() ? ' selected' : '') + '>' + mesLbl(m) + '</option>').join('')
+    +     '</select></label>'
+    +   '<button class="btn btn-ghost" style="font-size:12px;padding:4px 12px;" onclick="_proyReset()">Reiniciar</button>'
+    + '</div></div>';
+}
+
+function _proySetModo(m)      { _proyModo = m;  _proyAjustes = { semana:0,viernes:0,sabado:0,vispera:0,feriado:0,escolar:0 }; renderProyeccion(); }
+function _proySetAirbnb(v)    { _proyAirbnb = !!v; _proyRenderResultados(); }
+function _proySetMes(m)       { _proyMesObj = m; _proyRenderResultados(); }
+function _proyReset()         { _proyAjustes = { semana:0,viernes:0,sabado:0,vispera:0,feriado:0,escolar:0 }; renderProyeccion(); }
+function _proyPaso(cat, d)    { _proyAjustes[cat] = (_proyAjustes[cat] || 0) + d; renderProyeccion(); }
+function _proyOnInput(el) {
+  _proyAjustes[el.dataset.cat] = parseFloat(el.value) || 0;
+  // Solo los resultados: re-renderizar los controles sacaría el foco del campo.
+  _proyRenderResultados();
+}
+
+function _proyRenderResultados() {
+  const box = document.getElementById('proyResultados');
+  if (!box) return;
+  const rep = _proyReprecio();
+  const pro = _proyProyeccion();
+  const money = n => (n < 0 ? '−$' : '$') + Math.abs(n).toFixed(2);
+  const signo = n => n > 0 ? 'positive' : n < 0 ? 'negative' : '';
+  const MES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+
+  if (!rep.noches) {
+    box.innerHTML = '<div class="contab-panel"><div style="text-align:center;padding:28px 14px;color:var(--text-muted);font-size:13px;line-height:1.6;">'
+      + 'No hay noches vendidas en el período elegido.<br>Elige un mes con reservas para tener contra qué comparar.</div></div>';
+    return;
+  }
+
+  let html = '';
+
+  // ── 1. Reprecio de lo vendido ─────────────────────────────────
+  html += '<div class="contab-panel" style="margin-bottom:18px;">'
+    + '<div class="contab-panel-header"><div class="contab-panel-title">📆 Si el período base hubiera tenido estas tarifas</div>'
+    + '<div style="font-size:11.5px;color:var(--text-muted);">' + rep.from + ' → ' + rep.to + '</div></div>'
+    + '<div style="padding:14px;">'
+    + '<div class="stats-grid" style="margin-bottom:14px;">'
+    +   '<div class="stat-card"><div class="stat-label">Tarifa de lista hoy</div>'
+    +     '<div class="stat-value">' + money(rep.actual) + '</div>'
+    +     '<div class="stat-sub">' + rep.noches + ' noches vendidas</div></div>'
+    +   '<div class="stat-card"><div class="stat-label">Con las tarifas nuevas</div>'
+    +     '<div class="stat-value">' + money(rep.nuevo) + '</div>'
+    +     '<div class="stat-sub">mismas noches</div></div>'
+    +   '<div class="stat-card"><div class="stat-label">Diferencia</div>'
+    +     '<div class="stat-value ' + signo(rep.delta) + '">' + money(rep.delta) + '</div>'
+    +     '<div class="stat-sub">' + (rep.actual ? (rep.delta >= 0 ? '+' : '') + (rep.delta / rep.actual * 100).toFixed(1) + '%' : '—') + '</div></div>'
+    + '</div>';
+
+  // Punto de equilibrio: el número que convierte esto en una decisión.
+  if (_proyHayAjuste() && rep.delta > 0) {
+    html += '<div class="modal-aviso" style="margin-bottom:12px;">'
+      + '<strong>Puedes perder hasta ' + rep.nochesEquilibrio.toFixed(1) + ' noches</strong> ('
+      + rep.pctEquilibrio.toFixed(1) + '% de las ' + rep.noches + ') y aun así facturar lo mismo que antes. '
+      + 'Nadie sabe cuánta demanda se cae al subir precios; esto sí es exacto, y tú sabes si perder esas noches es probable.'
+      + '</div>';
+  } else if (_proyHayAjuste() && rep.delta < 0) {
+    html += '<div class="modal-aviso modal-aviso--ambar" style="margin-bottom:12px;">'
+      + 'Bajando precios resignas <strong>' + money(-rep.delta) + '</strong> sobre las mismas noches. '
+      + 'Para compensarlo necesitas vender <strong>' + Math.abs(rep.nochesEquilibrio).toFixed(1) + ' noches más</strong> ('
+      + Math.abs(rep.pctEquilibrio).toFixed(1) + '%).'
+      + '</div>';
+  }
+
+  // Desglose por categoría
+  html += '<table style="width:100%;border-collapse:collapse;font-size:12.5px;">'
+    + '<thead><tr style="color:var(--text-muted);text-align:left;">'
+    + '<th style="padding:6px 4px;font-weight:600;">Categoría</th><th style="padding:6px 4px;text-align:right;font-weight:600;">Noches</th>'
+    + '<th style="padding:6px 4px;text-align:right;font-weight:600;">Hoy</th><th style="padding:6px 4px;text-align:right;font-weight:600;">Nuevo</th>'
+    + '<th style="padding:6px 4px;text-align:right;font-weight:600;">Δ</th></tr></thead><tbody>';
+  PROY_CATS.forEach(c => {
+    const d = rep.porCat[c.key];
+    if (!d.noches) return;
+    const dl = d.nuevo - d.actual;
+    html += '<tr style="border-top:1px solid var(--border);">'
+      + '<td style="padding:6px 4px;">' + c.label + '</td>'
+      + '<td style="padding:6px 4px;text-align:right;">' + d.noches + '</td>'
+      + '<td style="padding:6px 4px;text-align:right;">' + money(d.actual) + '</td>'
+      + '<td style="padding:6px 4px;text-align:right;">' + money(d.nuevo) + '</td>'
+      + '<td style="padding:6px 4px;text-align:right;font-weight:600;" class="' + signo(dl) + '">' + (dl ? money(dl) : '—') + '</td></tr>';
+  });
+  html += '</tbody></table>';
+
+  // Lo que este cálculo NO cubre. Decirlo evita que el número se lea como el total.
+  const fuera = [];
+  if (rep.planos > 0) fuera.push(money(rep.planos) + ' en pasadías y pasatardes (tarifa plana, no depende del día)');
+  if (rep.nochesAirbnbFuera > 0) fuera.push(rep.nochesAirbnbFuera + ' noches de Airbnb (sus precios se fijan allá)');
+  if (fuera.length) {
+    html += '<div style="margin-top:12px;font-size:11.5px;color:var(--text-muted);line-height:1.6;">'
+      + '<strong>Fuera de este cálculo:</strong> ' + fuera.join(' · ') + '.</div>';
+  }
+  html += '</div></div>';
+
+  // ── 2. Proyección del mes elegido ─────────────────────────────
+  const mesLbl = MES[parseInt(pro.mes.slice(5,7),10)-1] + ' ' + pro.mes.slice(0,4);
+  html += '<div class="contab-panel">'
+    + '<div class="contab-panel-header"><div class="contab-panel-title">🔮 Proyección de ' + mesLbl + '</div>'
+    + '<div style="font-size:11.5px;color:var(--text-muted);">con la ocupación del período base</div></div>'
+    + '<div style="padding:14px;">'
+    + '<div class="stats-grid" style="margin-bottom:14px;">'
+    +   '<div class="stat-card"><div class="stat-label">Con tarifas de hoy</div>'
+    +     '<div class="stat-value">' + money(pro.actual) + '</div></div>'
+    +   '<div class="stat-card"><div class="stat-label">Con tarifas nuevas</div>'
+    +     '<div class="stat-value">' + money(pro.nuevo) + '</div></div>'
+    +   '<div class="stat-card"><div class="stat-label">Diferencia</div>'
+    +     '<div class="stat-value ' + signo(pro.delta) + '">' + money(pro.delta) + '</div></div>'
+    + '</div>'
+    + '<table style="width:100%;border-collapse:collapse;font-size:12.5px;">'
+    + '<thead><tr style="color:var(--text-muted);text-align:left;">'
+    + '<th style="padding:6px 4px;font-weight:600;">Categoría</th><th style="padding:6px 4px;text-align:right;font-weight:600;">Ocupación'
+    + (_proyAirbnb ? '' : ' directa') + '</th>'
+    + '<th style="padding:6px 4px;text-align:right;font-weight:600;">Noches esp.</th>'
+    + '<th style="padding:6px 4px;text-align:right;font-weight:600;">Hoy</th><th style="padding:6px 4px;text-align:right;font-weight:600;">Nuevo</th></tr></thead><tbody>';
+  PROY_CATS.forEach(c => {
+    const d = pro.porCat[c.key];
+    if (!d.cap) return;
+    html += '<tr style="border-top:1px solid var(--border);">'
+      + '<td style="padding:6px 4px;">' + c.label + '</td>'
+      + '<td style="padding:6px 4px;text-align:right;">' + ((pro.ocupacion[c.key] || 0) * 100).toFixed(0) + '%</td>'
+      + '<td style="padding:6px 4px;text-align:right;">' + d.esperadas.toFixed(1) + ' de ' + d.cap + '</td>'
+      + '<td style="padding:6px 4px;text-align:right;">' + money(d.actual) + '</td>'
+      + '<td style="padding:6px 4px;text-align:right;font-weight:600;">' + money(d.nuevo) + '</td></tr>';
+  });
+  html += '</tbody></table>'
+    + '<div style="margin-top:12px;font-size:11.5px;color:var(--text-muted);line-height:1.6;">'
+    + 'Asume que ' + mesLbl + ' se comporta como el período base. Es un escenario, no una promesa: '
+    + 'la ocupación real depende de la temporada y de la demanda. El cálculo de arriba, en cambio, '
+    + 'usa noches que de verdad vendiste.'
+    + (_proyAirbnb ? '' : '<br>La ocupación mostrada es <strong>solo de reservas directas</strong>, '
+        + 'que son las que gobierna tu tarifario. Marcando la casilla de arriba se incluye Airbnb.')
+    + '</div></div></div>';
+
+  box.innerHTML = html;
 }
 
 function renderOcupacion() {

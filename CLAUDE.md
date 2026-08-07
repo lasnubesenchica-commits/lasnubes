@@ -140,6 +140,19 @@ Helpers equivalentes en backend (`Parser.gs`):
 - `tipoEmailMeta(r)`: para emails de confirmación/actualización.
 - `buildGuiaHTML(cabin, tipo)`: ajusta hora de check-out en la guía según tipo.
 
+## Tab Proyección (simulador de tarifas)
+
+Sección propia en el menú. Responde **dos preguntas distintas**, separadas a propósito en pantalla porque tienen distinto grado de certeza:
+
+1. **Reprecio** — "¿cuánto habría facturado el período base con estas tarifas?". Usa las noches **realmente vendidas**: sin supuestos.
+2. **Proyección** — "¿cuánto daría el mes que viene?". Usa la ocupación observada **por categoría**; descansa en que el mes se parezca al período base y así se rotula.
+
+- **El ajuste va POR CATEGORÍA DE DÍA** (`PROY_CATS`: semana/viernes/sábado/víspera/feriado/escolar), no global. Ahí está la decisión: los fines de semana se llenan solos (100% de ocupación medida) y entre semana no, así que un control único mezcla una noche que se vende sola con otra que cuesta llenar. `_proyCatDelDia(iso)` devuelve la categoría que **determina** el precio (la de tarifa más alta, igual criterio que `_lnPrecioDia`) y es la que recibe el ajuste.
+- **PUNTO DE EQUILIBRIO en vez de elasticidad.** Un simulador que asume ocupación constante dice que subir precios siempre gana, sin techo — es falso y empuja a malas decisiones. Nadie sabe la elasticidad real, así que se da vuelta la pregunta: *"puedes perder hasta N noches (X%) y facturar lo mismo"*. Eso es exacto y el admin sabe si perder esas noches es probable. Bajando precios se muestra el inverso: cuántas noches más hay que vender.
+- **Airbnb queda FUERA por defecto** (checkbox para incluirlo): sus precios se fijan en Airbnb, no en el tarifario, y encima pagan comisión. `_proyOcupacionPorCat` respeta el MISMO alcance que el reprecio — si no se incluye Airbnb, sus noches tampoco cuentan como ocupadas. Sin eso los dos cuadros de la pantalla medían cosas distintas y no eran comparables.
+- **Las tarifas planas** (pasadía/pasatarde, que van por `TARIFA_TIPO`) no dependen del día, así que el simulador no las toca y se reportan aparte — decir cuánto queda fuera evita que el número se lea como el total.
+- Reusa el motor de precios existente (`_lnPrecioDia`, `_lnPrecioCat`, `_lnCatsDelDia`) y el período compartido (`_renderChipsPeriodo('proyMonthFilter')`).
+
 ## Tab Ocupación
 
 - **El selector de período es el MISMO que el de Contabilidad**, con **estado compartido** (`selectedMonth` / `selectedRange`). Antes Ocupación tenía su propio `<select>` con su propia lógica de rangos — dos implementaciones del mismo control terminan divergiendo, y de hecho ya no coincidían en qué era "Custom". La barra de chips se construye con **`_renderChipsPeriodo(containerId)`** (extraída de `renderContabilidad`) y `getOcuDateRange()` deriva el rango del estado compartido en vez de leer un control propio. Elegir un período en un tab vale para el otro, que es lo que uno espera. Cada sección tiene su **propio popover** de rango custom (ids con prefijo `ocu`), y `_applyCustomRange(prefijo)` está parametrizada para no duplicar la validación. **`_rerenderPorPeriodo()`** decide qué repintar según la sección visible; `setPeriod`, `_applyCustomRange` y `_cancelCustomRange` pasan por ahí.
