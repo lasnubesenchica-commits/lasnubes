@@ -4137,6 +4137,7 @@
         <button class="btn btn-ghost rsv-only" id="detailLinkBtn" style="font-size:13px;" title="Copiar link publico para cliente">🔗 Link</button>
         <button class="btn btn-ghost rsv-only" id="detailResendBtn" style="font-size:13px;" title="Reenviar la confirmación por email">📧 Email</button>
         <button class="btn btn-ghost rsv-only" id="detailResendWaBtn" style="font-size:13px;display:none;" title="Reenviar la confirmación por WhatsApp">💬 WhatsApp</button>
+        <button class="btn btn-ghost rsv-only" id="detailPreviewBtn" style="font-size:13px;" title="Manda el email Y el WhatsApp A TI MISMO, para revisarlos antes de mandárselos al huésped">👁 Probar en mí</button>
         <button class="btn btn-ghost rsv-only" id="detailAddSiblingBtn" style="font-size:13px;display:none;border-color:#f59e0b;color:#b45309;" title="Registrar reserva complementaria en la misma cabaña y día"></button>
         <button class="btn btn-ghost avl-only" id="avlCopyBtn" style="display:none;font-size:13px;border-color:#0f7a4e;color:#0f7a4e;" title="Copiar cotización al portapapeles">📋 Copiar cotización</button>
       </div>
@@ -7573,6 +7574,43 @@ function showDispDetail(id) {
     resendWaBtn.style.display = (_tel.length >= 7 && r.origin !== 'Abierta') ? '' : 'none';
     _reenviar(resendWaBtn, 'sendWAConfirmacion', '💬 WhatsApp');
   }
+  // Vista previa: la MISMA confirmación que recibiría el huésped, pero a los
+  // contactos del admin. Existía solo en el modal de una reserva nueva; desde
+  // el detalle no había forma de revisar antes de reenviar, que es justo cuando
+  // más importa —lo que se manda ya lo recibió alguien una vez—.
+  // Usa el mismo payload consolidado que el reenvío, así que en multi-cabaña se
+  // prueba lo que de verdad va a salir: las dos cabañas y el monto total.
+  const previewBtn = document.getElementById('detailPreviewBtn');
+  if (previewBtn) {
+    const _telPv = (r.telefono || '').toString().replace(/\D/g, '');
+    previewBtn.style.display = (r.email || _telPv.length >= 7) ? '' : 'none';
+    previewBtn.disabled = false;
+    previewBtn.textContent = '👁 Probar en mí';
+    previewBtn.onclick = async () => {
+      previewBtn.disabled = true;
+      previewBtn.textContent = '⏳ Enviando…';
+      try {
+        const res = await fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify({
+          action: 'previewConfirmacionSelf',
+          reservation: _payloadReenvio(r),
+          channels: { email: !!r.email, whatsapp: _telPv.length >= 7 }
+        })});
+        const data = await res.json();
+        const rr = (data && data.result) || {};
+        // Cada canal puede fallar por su cuenta: decir cuál, y a dónde llegó.
+        const partes = [];
+        if (rr.email)    partes.push(rr.email.ok    ? '📧 ' + rr.email.to    : '📧 ✗ ' + (rr.email.error || 'error'));
+        if (rr.whatsapp) partes.push(rr.whatsapp.ok ? '💬 ' + rr.whatsapp.to : '💬 ✗ ' + (rr.whatsapp.error || 'error'));
+        previewBtn.textContent = '✓ Enviado';
+        showToast(partes.length ? 'Vista previa → ' + partes.join(' · ') : 'No había canal al que mandar');
+      } catch(e) {
+        previewBtn.textContent = '⚠ Error';
+        showToast('✗ Vista previa: ' + e.message);
+      }
+      setTimeout(() => { previewBtn.disabled = false; previewBtn.textContent = '👁 Probar en mí'; }, 3000);
+    };
+  }
+
   const linkBtn = document.getElementById('detailLinkBtn');
   if (linkBtn) {
     const phoneDigitsInit = (r.telefono || '').toString().replace(/\D/g, '');
