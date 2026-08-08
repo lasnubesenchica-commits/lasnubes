@@ -619,6 +619,64 @@ function getCuentasResumen(desde, hasta) {
   };
 }
 
+// ─── Atajos para el editor ──────────────────────────────────────
+//
+// El editor de Apps Script corre las funciones SIN argumentos, así que toda
+// función con parámetros necesita un runner sin parámetros. Mismo patrón que
+// la sección equivalente de Cleanup.gs.
+//
+// Sirven para cargar los extractos ANTES de que exista la pantalla: se suben
+// los .xlsx a Drive, se pegan los IDs acá y se corre. La cuenta la detecta el
+// propio archivo, así que no hay nada más que configurar.
+//
+// Cómo sacar el ID: abrir el archivo en Drive → la URL trae /d/<ID>/view.
+
+const IMPORTAR_BANCO_FILE_IDS = [
+  // 'ID_DEL_XLSX_1',
+  // 'ID_DEL_XLSX_2',
+];
+
+/**
+ * Importa uno o varios .xlsx de Banco General que ya estén en Drive.
+ * `dryRun` en true no escribe: solo dice qué entraría.
+ */
+function importarBancoDesdeDrive(fileIds, dryRun) {
+  const ids = (fileIds && fileIds.length) ? fileIds : IMPORTAR_BANCO_FILE_IDS;
+  if (!ids.length) {
+    Logger.log('No hay IDs. Pegá los IDs de Drive en IMPORTAR_BANCO_FILE_IDS.');
+    return;
+  }
+  ids.forEach(id => {
+    let nombre = id;
+    try {
+      const file = DriveApp.getFileById(String(id).trim());
+      nombre = file.getName();
+      const r = importarBancoXlsx({
+        base64: Utilities.base64Encode(file.getBlob().getBytes()),
+        mimeType: file.getMimeType(),
+        dryRun: !!dryRun
+      });
+      if (!r.ok) {
+        Logger.log('✗ ' + nombre + ' → ' + r.error);
+      } else {
+        Logger.log('✓ ' + nombre + ' → cuenta "' + r.cuenta + '" (' + r.cuentaNum + ')  '
+                 + r.importados + ' nuevos, ' + r.duplicados + ' ya estaban'
+                 + (r.desde ? '  [' + r.desde + ' .. ' + r.hasta + ']' : '')
+                 + (dryRun ? '   (SIMULACIÓN, no se escribió nada)' : ''));
+      }
+    } catch (e) {
+      Logger.log('✗ ' + nombre + ' → ' + e.message);
+    }
+  });
+  if (!dryRun) Logger.log('\n' + JSON.stringify(getCuentasResumen(null, null).cuentas
+    .map(c => ({ cuenta: c.cuenta, movs: c.movimientos, saldo: c.saldoFinal })), null, 2));
+}
+
+// Simulación: no escribe. Correr esta PRIMERO.
+function importarBancoReporte() { importarBancoDesdeDrive(null, true); }
+// Escribe de verdad.
+function importarBancoESCRIBIR() { importarBancoDesdeDrive(null, false); }
+
 // Test desde el editor.
 function _testConciliacion() {
   Logger.log(JSON.stringify(getCuentasResumen(null, null), null, 2));
