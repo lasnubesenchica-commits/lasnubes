@@ -3050,11 +3050,12 @@ function doPost(e) {
     }
 
     // ── CONCILIACIÓN BANCARIA ─────────────────────────────────
-    if (action === 'importarBanco' || action === 'guardarConciliacion') {
+    if (action === 'importarBanco' || action === 'importarBancoXlsx'
+        || action === 'guardarConciliacion') {
       try {
-        const r = (action === 'importarBanco')
-          ? importarMovimientosBanco(payload)
-          : guardarConciliacion(payload);
+        const r = (action === 'importarBanco')     ? importarMovimientosBanco(payload)
+                : (action === 'importarBancoXlsx') ? importarBancoXlsx(payload)
+                : guardarConciliacion(payload);
         return ContentService.createTextOutput(JSON.stringify(r))
           .setMimeType(ContentService.MimeType.JSON);
       } catch (err) {
