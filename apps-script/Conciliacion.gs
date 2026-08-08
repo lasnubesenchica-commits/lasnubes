@@ -125,6 +125,172 @@ function _bancoVerificarIdentidad(cuenta, filas) {
        + 'archivo corresponde a OTRA cuenta. Verifica la etiqueta antes de importar.';
 }
 
+// ─── Lectura del XLSX de Banco General ──────────────────────────
+//
+// El export de BG ("Últimos movimientos", hoja `BGPExcelReport`) trae:
+//
+//     fila 3  Cuenta:VISADEBITO 04-99-99-863047-1
+//     fila 7  Fecha | Referencia | Descripción | Monto | Saldo total
+//     fila 8+ los movimientos, del más nuevo al más viejo
+//
+// Se parsea en el servidor y no en el navegador a propósito: `dashboard.html`
+// no carga ni un solo script externo, y meterle un parser de XLSX de un CDN al
+// panel de administración por una pantalla es un mal negocio. Drive convierte
+// el archivo y `SpreadsheetApp` lo lee, que es lo que ya hay disponible.
+
+/**
+ * El archivo dice de qué cuenta es. Esto es MEJOR que el guard de identidad:
+ * el guard detecta la etiqueta mal puesta, esto hace que no haya etiqueta que
+ * poner. Devuelve solo dígitos ('04-99-99-863047-1' → '0499998630471').
+ */
+function _bancoCuentaDelArchivo(filas) {
+  for (let i = 0; i < Math.min(filas.length, 12); i++) {
+    const txt = filas[i].join(' ');
+    const m = txt.match(/Cuenta\s*:?\s*[A-Za-zÁÉÍÓÚÑ ]*([\d\-]{10,})/);
+    if (m) {
+      const dig = m[1].replace(/\D/g, '');
+      if (dig.length >= 10) return dig;
+    }
+  }
+  return '';
+}
+
+// De número de cuenta a la clave configurada ('lasnubes' / 'personal').
+function _bancoClaveDeNumero(numero) {
+  if (!numero) return '';
+  const cfg = _bancoCuentasConfig();
+  const claves = Object.keys(cfg);
+  for (let i = 0; i < claves.length; i++) {
+    if (String(cfg[claves[i]]).replace(/\D/g, '') === numero) return claves[i];
+  }
+  return '';
+}
+
+/**
+ * Convierte el XLSX a hoja de Google, lo lee y borra el temporal.
+ *
+ * Las columnas se ubican por NOMBRE de encabezado, no por posición: si BG
+ * agrega una columna, un índice fijo empieza a leer el campo de al lado sin
+ * avisar. El `finally` borra el temporal aunque el parseo explote — si no,
+ * cada import fallido deja basura en Drive para siempre.
+ */
+function _bancoParsearXlsx(base64, mimeType) {
+  const bytes = Utilities.base64Decode(base64);
+  const blob = Utilities.newBlob(
+    bytes, mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'bg-import.xlsx');
+
+  let tempId = '';
+  try {
+    const creado = Drive.Files.create(
+      { name: 'BG_Temp_' + Date.now(), mimeType: MimeType.GOOGLE_SHEETS }, blob);
+    tempId = creado.id;
+    const valores = SpreadsheetApp.openById(tempId).getSheets()[0]
+                    .getDataRange().getValues()
+                    .map(r => r.map(c => (c == null ? '' : c)));
+
+    const cuentaNum = _bancoCuentaDelArchivo(
+      valores.map(r => r.map(c => String(c))));
+
+    // Encabezado = la primera fila que tiene Fecha y Monto.
+    let hdr = -1, col = {};
+    for (let i = 0; i < valores.length; i++) {
+      const norm = valores[i].map(c => String(c).normalize('NFD')
+                     .replace(/[\u0300-\u036f]/g, '').toLowerCase().trim());
+      if (norm.indexOf('fecha') >= 0 && norm.indexOf('monto') >= 0) {
+        hdr = i;
+        norm.forEach((h, j) => {
+          if (h === 'fecha') col.fecha = j;
+          else if (h === 'monto') col.monto = j;
+          else if (h.indexOf('descrip') === 0) col.desc = j;
+          else if (h.indexOf('saldo') === 0) col.saldo = j;
+          else if (h.indexOf('referencia') === 0) col.ref = j;
+        });
+        break;
+      }
+    }
+    if (hdr < 0) throw new Error('No encontré la fila de encabezados (Fecha / Monto). ¿Es el export de Banco General?');
+    if (col.desc == null || col.saldo == null) {
+      throw new Error('El archivo no tiene columnas Descripción y/o Saldo.');
+    }
+
+    const filas = [];
+    for (let i = hdr + 1; i < valores.length; i++) {
+      const r = valores[i];
+      // La celda Fecha trae hora, pero es el timestamp de EXPORTACIÓN (idéntico
+      // en todas las filas del archivo), no la hora del movimiento. Se descarta.
+      const f = _bancoFecha(r[col.fecha]);
+      const d = String(r[col.desc] || '').replace(/\s+/g, ' ').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(f) || !d) continue;
+      filas.push({ fecha: f, desc: d, monto: _bancoNum(r[col.monto]), saldo: _bancoNum(r[col.saldo]) });
+    }
+    return { filas: filas, cuentaNum: cuentaNum, clave: _bancoClaveDeNumero(cuentaNum) };
+  } finally {
+    if (tempId) { try { Drive.Files.remove(tempId); } catch (_) {} }
+  }
+}
+
+/**
+ * Sube un XLSX de BG y lo importa. Con `dryRun` no escribe nada: devuelve
+ * cuántos entrarían nuevos y cuántos ya están, para poder mirar antes de
+ * aplicar.
+ */
+function importarBancoXlsx(payload) {
+  if (!payload || !payload.base64) return { ok: false, error: 'Falta el archivo' };
+  let p;
+  try {
+    p = _bancoParsearXlsx(payload.base64, payload.mimeType);
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+  if (!p.filas.length) return { ok: false, error: 'El archivo no tenía movimientos legibles' };
+
+  // La cuenta la manda el archivo. Solo se cae a la del payload si el export no
+  // la trae o si todavía no está mapeada en BANCO_CUENTAS.
+  const cuenta = p.clave || String(payload.cuenta || '').trim().toLowerCase();
+  if (!cuenta) {
+    return {
+      ok: false, sinMapear: true, cuentaNum: p.cuentaNum, filas: p.filas.length,
+      error: 'El archivo es de la cuenta ' + (p.cuentaNum || '(no declarada)')
+           + ', que no está en BANCO_CUENTAS. Agrégala como `clave:' + p.cuentaNum + '`.'
+    };
+  }
+  if (payload.cuenta && p.clave && String(payload.cuenta).toLowerCase() !== p.clave) {
+    return {
+      ok: false, necesitaConfirmacion: true, cuentaDetectada: p.clave,
+      error: 'Elegiste "' + payload.cuenta + '" pero el archivo declara ser de "'
+           + p.clave + '" (' + p.cuentaNum + '). Se importa como "' + p.clave + '".'
+    };
+  }
+
+  const desde = p.filas.reduce((a, f) => (!a || f.fecha < a) ? f.fecha : a, '');
+  const hasta = p.filas.reduce((a, f) => (f.fecha > a) ? f.fecha : a, '');
+
+  if (payload.dryRun) {
+    const sheet = _bancoSheet();
+    const ya = {};
+    if (sheet.getLastRow() > 1) {
+      sheet.getRange(2, 7, sheet.getLastRow() - 1, 1).getValues()
+           .forEach(r => { if (r[0]) ya[String(r[0])] = true; });
+    }
+    const vistas = {};
+    let nuevos = 0, dup = 0;
+    p.filas.forEach(f => {
+      const h = _bancoHuella(cuenta, f.fecha, f.desc, f.monto, f.saldo);
+      if (ya[h] || vistas[h]) dup++; else { vistas[h] = true; nuevos++; }
+    });
+    return {
+      ok: true, dryRun: true, cuenta: cuenta, cuentaNum: p.cuentaNum,
+      total: p.filas.length, importados: nuevos, duplicados: dup,
+      desde: desde, hasta: hasta
+    };
+  }
+
+  const r = importarMovimientosBanco({ cuenta: cuenta, filas: p.filas, force: payload.force });
+  if (r.ok) { r.cuentaNum = p.cuentaNum; r.desde = desde; r.hasta = hasta; }
+  return r;
+}
+
 // ─── Importación ────────────────────────────────────────────────
 //
 // Acumula. No borra lo anterior: el histórico es lo que permite comparar meses,
@@ -354,6 +520,31 @@ function guardarConciliacion(payload) {
 // 41% de los Yappy de huéspedes ($10,378 de $25,497) caía en la cuenta personal
 // y no en la de Las Nubes, así que ninguna métrica del dashboard cuadraba con
 // el banco.
+/**
+ * Cuál fue el ÚLTIMO movimiento de un día.
+ *
+ * La celda Fecha del export trae hora, pero es el timestamp de exportación
+ * —idéntico en todas las filas—, así que dentro de un mismo día no hay con qué
+ * ordenar. Confiar en el orden de lectura tampoco sirve: depende de en qué
+ * orden se hayan importado los archivos, y dos exports con rangos distintos
+ * dejan el mismo día en posiciones distintas.
+ *
+ * El orden se reconstruye con la CADENA DE SALDOS: para un movimiento `r`, el
+ * saldo justo antes de él es `r.saldo - r.monto`. El último del día es el único
+ * cuyo saldo no es el "saldo previo" de ningún otro del grupo. Verificado
+ * contra los extractos reales: la cadena encaja en 1023 de 1023 filas.
+ *
+ * Si el grupo es ambiguo (saldos repetidos), se cae al orden de lectura en vez
+ * de inventar un ganador.
+ */
+function _bancoUltimoDelDia(rows) {
+  if (rows.length === 1) return rows[0];
+  const previos = {};
+  rows.forEach(r => { previos[Math.round((r.saldo - r.monto) * 100)] = true; });
+  const cands = rows.filter(r => !previos[Math.round(r.saldo * 100)]);
+  return cands.length === 1 ? cands[0] : rows[rows.length - 1];
+}
+
 function getCuentasResumen(desde, hasta) {
   const movs = _bancoLeer(desde, hasta);
   const porCuenta = {};
@@ -364,7 +555,7 @@ function getCuentasResumen(desde, hasta) {
       porCuenta[c] = {
         cuenta: c, entra: 0, sale: 0, movimientos: 0,
         yappyHuespedes: 0, yappyCount: 0, saldoFinal: null, ultimaFecha: '',
-        meses: {}
+        meses: {}, dias: {}
       };
     }
     const a = porCuenta[c];
@@ -376,12 +567,14 @@ function getCuentasResumen(desde, hasta) {
       a.yappyHuespedes += m.monto; a.yappyCount++;
     }
 
+    (a.dias[m.fecha] = a.dias[m.fecha] || []).push(m);
+
     const mes = m.fecha.slice(0, 7);
     if (!a.meses[mes]) a.meses[mes] = { mes: mes, entra: 0, sale: 0, saldoFinal: null, ultima: '' };
     const mm = a.meses[mes];
     if (m.monto > 0) mm.entra += m.monto; else mm.sale += m.monto;
-    if (m.fecha >= mm.ultima) { mm.ultima = m.fecha; mm.saldoFinal = m.saldo; }
-    if (m.fecha >= a.ultimaFecha) { a.ultimaFecha = m.fecha; a.saldoFinal = m.saldo; }
+    if (m.fecha > mm.ultima) mm.ultima = m.fecha;
+    if (m.fecha > a.ultimaFecha) a.ultimaFecha = m.fecha;
   });
 
   const cuentas = Object.keys(porCuenta).map(k => {
@@ -389,12 +582,21 @@ function getCuentasResumen(desde, hasta) {
     a.entra = +a.entra.toFixed(2); a.sale = +a.sale.toFixed(2);
     a.neto = +(a.entra + a.sale).toFixed(2);
     a.yappyHuespedes = +a.yappyHuespedes.toFixed(2);
+
+    // El saldo de cierre es el del último movimiento del último día con
+    // movimientos — no el de la última fila leída.
+    const ultDia = a.dias[a.ultimaFecha];
+    a.saldoFinal = ultDia ? _bancoUltimoDelDia(ultDia).saldo : null;
+
     a.meses = Object.keys(a.meses).sort().map(mk => {
       const mm = a.meses[mk];
       mm.entra = +mm.entra.toFixed(2); mm.sale = +mm.sale.toFixed(2);
       mm.neto = +(mm.entra + mm.sale).toFixed(2);
+      const d = a.dias[mm.ultima];
+      mm.saldoFinal = d ? _bancoUltimoDelDia(d).saldo : null;
       return mm;
     });
+    delete a.dias;
     return a;
   }).sort((a, b) => b.entra - a.entra);
 
