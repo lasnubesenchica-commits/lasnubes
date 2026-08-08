@@ -2338,6 +2338,18 @@ function doGet(e) {
         .createTextOutput(JSON.stringify({ ok: true, config: _botGetAlertConfig() }))
         .setMimeType(ContentService.MimeType.JSON);
 
+    // ── CONCILIACIÓN BANCARIA ─────────────────────────────────
+    if (action === 'getCuentasResumen')
+      return ContentService
+        .createTextOutput(JSON.stringify(
+          getCuentasResumen(e.parameter.desde || null, e.parameter.hasta || null)))
+        .setMimeType(ContentService.MimeType.JSON);
+    if (action === 'conciliarEgresos')
+      return ContentService
+        .createTextOutput(JSON.stringify(
+          conciliarConEgresos(e.parameter.desde || null, e.parameter.hasta || null)))
+        .setMimeType(ContentService.MimeType.JSON);
+
     // ── GET RESERVATIONS (default) ────────────────────────────
     const scopePublic = e && e.parameter && e.parameter.scope === 'public';
 
@@ -3031,6 +3043,20 @@ function doPost(e) {
         else if (action === 'deletePrestamo')     r = deletePrestamo(payload.prestamoId);
         else                                      r = savePrestamoFacturaToDrive(payload);
         return ContentService.createTextOutput(JSON.stringify(r)).setMimeType(ContentService.MimeType.JSON);
+      } catch (err) {
+        return ContentService.createTextOutput(JSON.stringify({ ok: false, error: err.message }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
+    // ── CONCILIACIÓN BANCARIA ─────────────────────────────────
+    if (action === 'importarBanco' || action === 'guardarConciliacion') {
+      try {
+        const r = (action === 'importarBanco')
+          ? importarMovimientosBanco(payload)
+          : guardarConciliacion(payload);
+        return ContentService.createTextOutput(JSON.stringify(r))
+          .setMimeType(ContentService.MimeType.JSON);
       } catch (err) {
         return ContentService.createTextOutput(JSON.stringify({ ok: false, error: err.message }))
           .setMimeType(ContentService.MimeType.JSON);
