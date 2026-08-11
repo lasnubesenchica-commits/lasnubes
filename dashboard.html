@@ -1786,15 +1786,24 @@
       font-size: 13px;
       flex: 0 1 auto;
     }
+    /* Los botones secundarios WRAPEAN a varias filas en vez de comprimirse.
+       Con `nowrap` + `flex: 1 1 0` + `min-width: 0` cada botón se encogía por
+       debajo del ancho de su propio texto, y como el texto lleva
+       `white-space: nowrap` y no hay recorte, se desbordaba encima del vecino:
+       en un teléfono de 390px con seis botones visibles se leía
+       "Voucher📎 Copiar📧 Email💬 WhatsA👁Probar e".
+       `min-width: auto` (el default de un flex item, = min-content) es lo que
+       impide que se achique más allá de su contenido. Se prefiere una segunda
+       fila antes que truncar: un botón de acción que dice "Probar e…" no se
+       entiende, y cuáles se muestran varía según la reserva. */
     #detailOverlay .detail-footer .footer-row-secondary {
-      flex-wrap: nowrap;
+      flex-wrap: wrap;
     }
     #detailOverlay .detail-footer .footer-row-secondary .btn {
       padding: 8px 10px;
       font-size: 12px;
       white-space: nowrap;
-      flex: 1 1 0;
-      min-width: 0;
+      flex: 1 1 auto;
     }
     #detailOverlay .detail-footer .footer-row-primary .btn {
       min-width: 92px;
@@ -4105,7 +4114,10 @@
         </div>
         <div>
           <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Tarifa base</div>
-          <div style="font-size:15px;color:var(--verde-dark);font-weight:500;" id="avlPrice">$75</div>
+          <!-- Lo rellena showAvailabilityDetail con la tarifa real del tipo.
+               Arranca vacío y no en "$75" para que no se vea un precio
+               equivocado por un instante en un pasatarde, que son $60. -->
+          <div style="font-size:15px;color:var(--verde-dark);font-weight:500;" id="avlPrice">—</div>
         </div>
       </div>
     </div>
@@ -8369,7 +8381,9 @@ function showAvailabilityDetail(cabin, dayISO, tipo) {
   document.getElementById('avlCabin').textContent    = CABIN_NAMES[cabin] || cabin;
   document.getElementById('avlDate').textContent     = formatDate(dayISO);
   document.getElementById('avlHours').textContent    = meta.horas;
-  document.getElementById('avlPrice').textContent    = '$75 (editable)';
+  // El precio sale del motor de tarifas, no de un número fijo: un pasatarde son
+  // $60 y una pasanoche $75, y el cartel decía $75 para los dos.
+  document.getElementById('avlPrice').textContent    = '$' + _precioCorta(tipo, cabin, dayISO, 2).toFixed(2) + ' (2 pers · editable)';
   document.getElementById('avlCopyBtn').onclick = () => _copyAvailabilityQuote(cabin, dayISO, tipo);
   document.getElementById('avlRegisterBtn').onclick = () => {
     closeDetail();
@@ -8382,20 +8396,13 @@ function showAvailabilityDetail(cabin, dayISO, tipo) {
 }
 
 // Copia una cotización estilo WhatsApp de la ventana libre al portapapeles.
-function _copyAvailabilityQuote(cabin, dayISO, tipo) {
-  const CABIN_NAMES = { verde: 'Paseo por Las Nubes', azul: 'Portal hacia Las Nubes', lila: 'Puente entre Las Nubes' };
-  const cabinName = CABIN_NAMES[cabin] || cabin;
-  const fechaFmt  = formatDate(dayISO);
-  const horas = tipo === 'pasatarde' ? '12:30 pm – 7:00 pm'
-              : tipo === 'pasanoche' ? '8:00 pm – 12:30 pm (día siguiente)'
-              : '—';
-  const label = tipo === 'pasatarde' ? 'Pasatarde' : tipo === 'pasanoche' ? 'Pasanoche' : tipo;
-  const text = ''
-    + '🌿 *Las Nubes · ' + cabinName + '*\n\n'
-    + '📅 ' + fechaFmt + '\n'
-    + '🕐 ' + label + ' ' + horas + '\n'
-    + '💰 $75\n\n'
-    + 'Cabaña 100% privada con jacuzzi. Quedo atento si deseas proceder y te comparto las formas de pago.';
+// Usa el MISMO builder que el modal de reserva: la cotización de un pasatarde
+// es la misma la abras desde donde la abras, y tener dos textos separados ya
+// produjo una versión con jacuzzi y precio equivocado.
+function _copyAvailabilityQuote(cabin, dayISO, tipo, personas) {
+  const pers  = personas || 2;
+  const total = _precioCorta(tipo, cabin, dayISO, pers);
+  const text  = _cotTextoCorta(tipo, cabin, dayISO, pers, total, null);
   navigator.clipboard.writeText(text).then(() => {
     showToast('📋 Cotización copiada');
   }).catch(() => {
@@ -10503,6 +10510,42 @@ function _cotMin(iso) {
   return d.getDate() + ' ' + _COT_MES_CORTO[d.getMonth()];
 }
 
+// Texto de cotización de una estadía corta (pasatarde / pasanoche / pasadía).
+//
+// Compartido por el modal de reserva y por el modal de "ventana disponible" del
+// mini-timeline. Estaba duplicado, y la copia del timeline se había separado
+// del original de la peor manera: ofrecía "cabaña 100% privada con jacuzzi"
+// —no tenemos jacuzzi, la base del bot lo dice explícitamente— y cobraba $75
+// fijo para cualquier tipo, cuando un pasatarde son $60 y ninguno de los dos
+// llevaba el recargo por persona.
+function _cotTextoCorta(tipo, cabin, entrada, personas, total, lista) {
+  const f2 = n => n.toFixed(2);
+  const horaIn  = tipo === 'pasatarde' ? '12:30 pm' : tipo === 'pasanoche' ? '8:00 pm' : '9:00 am';
+  const horaOut = tipo === 'pasatarde' ? '7:00 pm'  : tipo === 'pasanoche' ? '12:30 pm' : '5:00 pm';
+  const label   = tipo === 'pasatarde' ? 'pasatarde' : tipo === 'pasanoche' ? 'pasanoche' : 'pasadía';
+  // La pasanoche cruza la medianoche: la salida es el día SIGUIENTE.
+  const isoSalida = tipo === 'pasanoche' ? _addDaysISO(entrada, 1) : entrada;
+  const hayDescuento = (lista != null) && lista > total + 0.009;
+  return 'Tengo disponible el ' + _cotLargo(entrada) + ' en concepto de ' + label
+       + ' en $' + f2(total) + ' para ' + personas + ' personas.\n\n'
+    + '🏡 *' + (COT_CABIN_NOMBRES[cabin] || cabin) + '*\n'
+    + '💰 *Total:* $' + f2(total) + '\n'
+    + (hayDescuento ? '🏷 Antes: $' + f2(lista) + '\n' : '')
+    + '🕑 Entrada ' + _cotMin(entrada) + ' ' + horaIn + '\n'
+    + '🕚 Salida '  + _cotMin(isoSalida) + ' ' + horaOut + '\n'
+    + '\n' + COT_SECCIONES;
+}
+
+// Precio real de una estadía corta, con recargo por persona. Reusa el motor de
+// precios en vez de un número fijo.
+function _precioCorta(tipo, cabin, iso, personas) {
+  try {
+    const q = _lnCotizar(tipo, cabin, iso, iso, personas, false, null);
+    if (q && q.total) return q.total;
+  } catch (_) {}
+  return { pasatarde: LN_TAR.pasatarde, pasanoche: LN_TAR.pasanoche, pasadia: LN_TAR.pasadia }[tipo] || 0;
+}
+
 function copiarCotizacionModal() {
   const tipo     = (document.getElementById('fTipo')    || {}).value || 'noche';
   const cabin    = (document.getElementById('fCabin')   || {}).value || 'verde';
@@ -10524,19 +10567,7 @@ function copiarCotizacionModal() {
 
   let texto;
   if (tipo === 'pasatarde' || tipo === 'pasanoche' || tipo === 'pasadia') {
-    const horaIn  = tipo === 'pasatarde' ? '12:30 pm' : tipo === 'pasanoche' ? '8:00 pm' : '9:00 am';
-    const horaOut = tipo === 'pasatarde' ? '7:00 pm'  : tipo === 'pasanoche' ? '12:30 pm' : '5:00 pm';
-    const label   = tipo === 'pasatarde' ? 'pasatarde' : tipo === 'pasanoche' ? 'pasanoche' : 'pasadía';
-    // La pasanoche cruza la medianoche: la salida es el día SIGUIENTE.
-    const isoSalida = tipo === 'pasanoche' ? _addDaysISO(entrada, 1) : entrada;
-    texto = 'Tengo disponible el ' + _cotLargo(entrada) + ' en concepto de ' + label
-          + ' en $' + f2(total) + ' para ' + personas + ' personas.\n\n'
-      + '🏡 *' + nombre + '*\n'
-      + '💰 *Total:* $' + f2(total) + '\n'
-      + (hayDescuento ? '🏷 Antes: $' + f2(lista) + '\n' : '')
-      + '🕑 Entrada ' + _cotMin(entrada) + ' ' + horaIn + '\n'
-      + '🕚 Salida '  + _cotMin(isoSalida) + ' ' + horaOut + '\n'
-      + '\n' + COT_SECCIONES;
+    texto = _cotTextoCorta(tipo, cabin, entrada, personas, total, lista);
   } else {
     const noches = q.nNoches;
     const extra  = tipo === 'early' ? ' con entrada anticipada (9:00 am)'
