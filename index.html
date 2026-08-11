@@ -3095,16 +3095,22 @@ const VENTANAS_CORTAS = [
   { tipo: 'pasatarde', ini: 12.5, fin: 19,   mismoDia: true,  ...TIPO_META.pasatarde },
   { tipo: 'pasanoche', ini: 20,   fin: 12.5, mismoDia: false, ...TIPO_META.pasanoche }
 ];
-// Margen mínimo de limpieza entre dos estadías. 90 min y no 3h porque el
-// propio negocio ya define ese piso: el check-out estándar es 11am y la
-// pasatarde entra 12:30pm. Con 3h —el turnover de una noche, 11am → 2pm— se
-// descartaba justo el caso más común: la tarde libre entre un check-out normal
-// y un early/pasadía del día siguiente. Los márgenes reales que quedan:
-//   11am → pasatarde 12:30pm .... 90 min  (turnover diseñado)
-//   pasadía 5pm → pasanoche 8pm .. 3 h
-//   late 4pm → pasanoche 8pm ..... 4 h
-//   pasatarde 7pm → pasanoche 8pm  1 h → se descarta, y así debe ser
-const LIMPIEZA_MIN = 90;
+// Margen mínimo de limpieza entre dos estadías. No 3h —el turnover de una
+// noche, 11am → 2pm— porque eso descartaba el caso más común: la tarde libre
+// entre un check-out normal y un early/pasadía del día siguiente.
+//
+// 60 y no 90: el único par por debajo de 90 es pasatarde → pasanoche, y el
+// admin confirmó que una hora alcanza para dejar la cabaña lista. Bajar la
+// constante global equivale a una excepción para ese par —no hay ningún otro
+// margen entre 60 y 90—, así que se cambia el número en vez de agregar un caso
+// especial. Los márgenes reales:
+//   pasatarde 7pm → pasanoche 8pm  60 min  ← el más ajustado, permitido
+//   11am → pasatarde 12:30pm ..... 90 min  (turnover diseñado)
+//   pasanoche 12:30pm → noche 2pm  90 min
+//   pasadía 5pm → pasanoche 8pm ... 3 h
+//   late 4pm → pasanoche 8pm ...... 4 h
+//   pasanoche 12:30pm → pasatarde 12:30pm  0 min → sigue descartado
+const LIMPIEZA_MIN = 60;
 
 const _diaIdx = iso => Math.round(new Date(iso + 'T12:00:00').getTime() / 86400000);
 const _t = (iso, hora) => _diaIdx(iso) * 1440 + Math.round(hora * 60);
