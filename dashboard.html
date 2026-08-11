@@ -8306,18 +8306,34 @@ function renderMiniTimeline(currentRes) {
 
 // Detecta ventanas libres que se pueden cotizar como pasatarde o pasanoche
 // para una cabaña en un día dado. Devuelve [{tipo, start, end}].
+// Margen mínimo de limpieza entre dos estadías, en minutos. Tiene que coincidir
+// con `LIMPIEZA_MIN` del calendario público (index.html): son las DOS
+// superficies que deciden si una ventana corta es vendible, y cuando difieren
+// una ofrece algo que la otra esconde.
+//
+// Pasó de verdad con el pasanoche del domingo 16-ago: el timeline del modal lo
+// anunciaba como libre porque solo preguntaba si la franja estaba desocupada,
+// mientras el calendario público lo descartaba por la hora de limpieza. El
+// admin salía a vender algo que el huésped no podía pedir.
+const LIMPIEZA_SLOT_MIN = 60;
+
 function _findAvailableSlots(cabin, dayISO, events) {
   const at = (iso, h, m) => { const d = new Date(iso + 'T00:00:00'); d.setHours(h, m || 0, 0, 0); return d; };
-  const overlaps = (s, e) => events.some(ev => ev.start < e && ev.end > s);
+  const MG = LIMPIEZA_SLOT_MIN * 60000;
+  // No alcanza con que la franja esté desocupada: tiene que quedar el margen de
+  // limpieza a los DOS lados. Espejo de `_cabe()` en index.html — si se toca
+  // una, hay que tocar la otra.
+  const cabe = (s, e) => !events.some(ev =>
+    s.getTime() < ev.end.getTime() + MG && ev.start.getTime() - MG < e.getTime());
   const slots = [];
   // Pasatarde: 12:30pm–7pm el día dado.
   const ptS = at(dayISO, 12, 30);
   const ptE = at(dayISO, 19, 0);
-  if (!overlaps(ptS, ptE)) slots.push({ tipo: 'pasatarde', start: ptS, end: ptE });
+  if (cabe(ptS, ptE)) slots.push({ tipo: 'pasatarde', start: ptS, end: ptE });
   // Pasanoche: 8pm día dado → 12:30pm día siguiente.
   const pnS = at(dayISO, 20, 0);
   const pnE = at(_addDaysISO(dayISO, 1), 12, 30);
-  if (!overlaps(pnS, pnE)) slots.push({ tipo: 'pasanoche', start: pnS, end: pnE });
+  if (cabe(pnS, pnE)) slots.push({ tipo: 'pasanoche', start: pnS, end: pnE });
   return slots;
 }
 
