@@ -139,6 +139,22 @@ Al tocar amenidades hay que actualizar las siete o el dato queda inconsistente, 
 - **NO hay agua caliente en ninguna cabaña.** Agregado en ago-2026: no estaba en el sitio, ni en el manual, ni en el bot. En una cabaña de montaña con clima fresco es de las primeras cosas que se asumen. La FAQ del bot lo matchea con `agua caliente|ducha|regadera|calentador` — sin esos términos, "¿hay agua caliente?" caía al fallback genérico porque el regex de baño solo cubría `toalla|jabón|papel|baño|amenidades`.
 - **NO hay luz eléctrica convencional.** El texto decía solo "iluminación 100% solar", que un huésped puede leer como "hay enchufes normales". Ahora se dice la ausencia de forma explícita en las siete superficies.
 
+## Los pasadías solo se venden de domingo a jueves
+
+Política comercial, no restricción física: viernes y sábado la noche completa se vende sola (verificado — seis de seis días de fin de semana ocupados en las tres cabañas durante dos semanas corridas), así que fragmentar el día para colocar una franja de $60 cuesta más de lo que deja.
+
+Estaba en la respuesta de WhatsApp del admin pero **no en el código**: `ventanasDelDia` no filtraba por día de la semana y el calendario ofrecía pasatarde y pasanoche cualquier día — un huésped podía solicitar un pasatarde de sábado desde el sitio.
+
+Implementada en las **dos** superficies, y hay que cambiarlas juntas:
+- `index.html` → `VENTANAS_DIAS_OK` + `_ventanaDiaPermitido()`, aplicada en `ventanasDelDia` (celdas del calendario) y en `blocksTipo` (chips de cabaña del modal).
+- `dashboard.html` → `SLOT_DIAS_OK` + `_slotDiaPermitido()`, aplicada al entrar a `_findAvailableSlots`.
+
+Alcanza a **pasatarde, pasadía y pasanoche**. La pasanoche entra porque se vende como complemento de las otras dos, no como producto suelto. `early` y `late` **no** entran: son extensiones de una noche, no productos de día.
+
+**Tarifas**: pasatarde $60, pasadía $75, pasanoche $75. El fallback de `dashboard.html` decía `pasadia: 80` contra `PASADIA_RATE = 75` del sitio público; las dos leen el valor real de Config, así que el desacuerdo solo aparecía si esa llamada fallaba, pero ahí cotizaban distinto el mismo producto.
+
+**Horario de la pasadía: 9:00 am – 5:00 pm.** El texto de WhatsApp del admin decía 7:00 pm; el código dice 5:00 pm en cuatro lugares y es el correcto.
+
 ## La cascada NO se ofrece sola
 
 Decisión del anfitrión: la cascada del proyecto se menciona **solo si el huésped pregunta** por actividades, qué hacer en la zona, o piscina/jacuzzi.

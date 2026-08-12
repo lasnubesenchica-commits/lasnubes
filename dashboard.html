@@ -5344,7 +5344,11 @@ const LN_TAR = {
   weekday: 90, weekend: 110, promo: 75, promoActive: false, promoMeses: 0,
   viernes: 110, sabado: 110, vispera: 110, feriado: 110, escolar: 110,
   promoViernes: 0, promoSabado: 0, promoVispera: 0, promoFeriado: 0, promoEscolar: 0,
-  pasatarde: 60, pasanoche: 75, pasadia: 80,
+  // La pasadía son $75, igual que el fallback del calendario público. Este
+  // decía 80: los dos leen la tarifa real de Config, así que el desacuerdo solo
+  // se veía si la llamada fallaba — pero ahí las dos superficies cotizaban
+  // distinto el mismo producto.
+  pasatarde: 60, pasanoche: 75, pasadia: 75,
   recargoPersonaGrande: 20,   // Paseo (verde) y Puente (lila)
   recargoPersonaPortal: 10,   // Portal (azul)
   recargoEarly: 25, recargoLate: 25,
@@ -8329,7 +8333,19 @@ function renderMiniTimeline(currentRes) {
 // admin salía a vender algo que el huésped no podía pedir.
 const LIMPIEZA_SLOT_MIN = 60;
 
+// Los pasadías se venden SOLO de domingo a jueves (0 = domingo … 6 = sábado).
+// Espejo de `VENTANAS_DIAS_OK` en index.html — si se cambia una, hay que
+// cambiar la otra. El viernes y el sábado la noche completa se vende sola, así
+// que fragmentar el día para colocar una franja de $60 cuesta más de lo que
+// deja. Sin esto el timeline le sugería al admin ventanas que el calendario
+// público no ofrece y que la política dice que no se venden.
+const SLOT_DIAS_OK = [0, 1, 2, 3, 4];
+function _slotDiaPermitido(dayISO) {
+  return SLOT_DIAS_OK.indexOf(new Date(dayISO + 'T12:00:00').getDay()) >= 0;
+}
+
 function _findAvailableSlots(cabin, dayISO, events) {
+  if (!_slotDiaPermitido(dayISO)) return [];
   const at = (iso, h, m) => { const d = new Date(iso + 'T00:00:00'); d.setHours(h, m || 0, 0, 0); return d; };
   const MG = LIMPIEZA_SLOT_MIN * 60000;
   // No alcanza con que la franja esté desocupada: tiene que quedar el margen de
