@@ -3032,3 +3032,146 @@ function borrarCreditosVencidos(dryRun) {
 }
 
 function borrarCreditosVencidosESCRIBIR() { return borrarCreditosVencidos(false); }
+
+
+// ═══════════════════════════════════════════════════════════════
+//  RESCATAR UNA RESERVA QUE NUNCA LLEGÓ A LA HOJA
+// ═══════════════════════════════════════════════════════════════
+//
+// Cuando el POST de `saveReservation` se pierde, la reserva queda viva solo en
+// el `localStorage` del navegador del admin: se ve en el dashboard, no está en
+// la hoja, y la cabaña se sigue publicando como libre. (Caso testigo: 12-ago-2026,
+// un pasatarde en Paseo; `DebugLog` tenía los otros cinco `saveReservation` de
+// esos días con su fila y el de esta no.)
+//
+// Recrearla desde el dashboard NO sirve si al huésped ya se le mandó el email o
+// el WhatsApp de confirmación: el link público es `reserva.html?id=<ID>&t=<firma>`
+// y el ID es un timestamp que se genera de nuevo en cada alta. Con un ID nuevo,
+// el link que el huésped ya tiene queda apuntando a una reserva inexistente.
+//
+// Esta función inserta la fila CON EL ID ORIGINAL, así el link que ya circula
+// sigue resolviendo. Idempotente: si el ID ya está, no hace nada.
+//
+// Cómo se usa:
+//   1. Completar RESCATE_RESERVA con los datos del dashboard.
+//   2. Correr `rescatarReservaReporte()` — no escribe, muestra qué haría.
+//   3. Si se ve bien, `rescatarReservaESCRIBIR()`.
+
+const RESCATE_RESERVA = {
+  id:          '1786572168213',        // El del link que ya tiene el huésped. NO inventar uno nuevo.
+  name:        'Víctor Bazan y Patty Recuero',
+  cabin:       'verde',                // verde | azul | lila
+  tipo:        'pasatarde',
+  // FECHAS DE STORAGE, no las del formulario. Para pasatarde es día → día+1
+  // (el form muestra el mismo día en entrada y salida, pero se guarda el rango).
+  checkin:     '2026-08-13',
+  checkout:    '2026-08-14',
+  persons:     2,
+  amount:      80,
+  deposit:     80,
+  origin:      'Directa',
+  estadoPago:  'PAGA',
+  codTransferencia: 'ZHWVH-37194891',
+  montoVoucher:     80,
+  bookingDate: '2026-08-12',
+  comentarios: 'En colaboración con Malaya.\nClientes pasaran la mañana en Malaya. 50.00 Las Nubes / 30.00 Malaya',
+  email:       '',                     // ← COMPLETAR: el mismo al que se envió la confirmación
+  telefono:    '',                     // ← COMPLETAR
+  horaEntrada: '',                     // vacío = default del tipo (12:30pm para pasatarde)
+  horaSalida:  ''                      // vacío = default del tipo (7:00pm)
+};
+
+function rescatarReserva(dryRun) {
+  if (dryRun === undefined) dryRun = true;   // el default es el seguro
+  const r = RESCATE_RESERVA;
+  const CABIN_NAMES = {
+    verde: 'Paseo por Las Nubes',
+    azul:  'Portal hacia Las Nubes',
+    lila:  'Puente entre Las Nubes'
+  };
+
+  if (!r.id)                       { Logger.log('✗ Falta el id.'); return 0; }
+  if (!CABIN_NAMES[r.cabin])       { Logger.log('✗ Cabaña inválida: ' + r.cabin); return 0; }
+  if (!r.checkin || !r.checkout)   { Logger.log('✗ Faltan fechas de storage.'); return 0; }
+  if (r.checkout <= r.checkin)     { Logger.log('✗ La salida debe ser posterior a la entrada. ¿Usaste las fechas del formulario en vez de las de storage?'); return 0; }
+
+  const sheet = getOrCreateSheet();          // asegura las 33 columnas
+  const data  = sheet.getDataRange().getValues();
+
+  // Idempotencia: si el ID ya está, no se duplica.
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]).trim() === String(r.id).trim()) {
+      Logger.log('✓ La reserva ya está en la hoja (fila ' + (i + 1) + '). No se hace nada.');
+      return 0;
+    }
+  }
+
+  // Aviso —no bloqueo— si esas noches ya están ocupadas en esa cabaña: puede ser
+  // legítimo (un pasatarde convive con una pasanoche) pero conviene mirarlo.
+  const choques = [];
+  for (let i = 1; i < data.length; i++) {
+    const f = data[i];
+    if (String(f[3]) !== r.cabin) continue;
+    if (String(f[20] || '').toUpperCase() === 'CANCELADA') continue;
+    const ci = _rrFecha(f[4]), co = _rrFecha(f[5]);
+    if (!ci || !co) continue;
+    if (ci < r.checkout && r.checkin < co) {
+      choques.push('fila ' + (i + 1) + ': ' + f[1] + ' · ' + ci + ' → ' + co + ' · ' + (f[24] || 'noche'));
+    }
+  }
+
+  Logger.log('── Rescate de reserva ' + r.id + ' ──');
+  Logger.log('   ' + r.name + ' · ' + CABIN_NAMES[r.cabin] + ' · ' + (r.tipo || 'noche'));
+  Logger.log('   storage ' + r.checkin + ' → ' + r.checkout + ' · ' + r.persons + ' pers · $' + r.amount);
+  Logger.log('   link que se preserva: ' + getPublicReservaUrl(r.id));
+  if (!r.email)    Logger.log('   ⚠ sin email — completá RESCATE_RESERVA.email si querés que reciba recordatorios');
+  if (!r.telefono) Logger.log('   ⚠ sin teléfono');
+  if (choques.length) {
+    Logger.log('   ⚠ solapa con:');
+    choques.forEach(c => Logger.log('      ' + c));
+  }
+
+  if (dryRun) {
+    Logger.log('');
+    Logger.log('Nada se escribió. Para ejecutar: rescatarReservaESCRIBIR()');
+    return 0;
+  }
+
+  const fila = [
+    r.id, r.name, CABIN_NAMES[r.cabin], r.cabin,
+    r.checkin, r.checkout, r.persons || 1,
+    r.amount || 0, r.deposit || 0, r.origin || 'Directa',
+    r.id,                                   // CodConfirmacion: mismo id, como hace saveReservation
+    0, r.amount || 0, '',                   // Service Fee, Neto, Alerta
+    r.name,                                 // Pagador
+    r.bookingDate || Utilities.formatDate(new Date(), 'America/Panama', 'yyyy-MM-dd'),
+    '', 0,                                  // FechaPago, MontoPagado
+    r.codTransferencia || '', r.montoVoucher || '', r.estadoPago || '',
+    r.email || '', r.comentarios || '', r.telefono || '',
+    r.tipo || 'noche'
+  ];
+  sheet.appendRow(fila);
+  const nuevaFila = sheet.getLastRow();
+
+  // Horas custom (cols 30/31) solo si se pidieron: vacías = default del tipo.
+  if (r.horaEntrada) sheet.getRange(nuevaFila, 30).setValue(r.horaEntrada);
+  if (r.horaSalida)  sheet.getRange(nuevaFila, 31).setValue(r.horaSalida);
+
+  _invalidarCacheReservasPublicas();   // que el calendario público la vea ya
+  logDebugEntry('rescatarReserva', { id: r.id, row: nuevaFila, name: r.name, cabin: r.cabin, checkin: r.checkin });
+  SpreadsheetApp.flush();
+
+  Logger.log('');
+  Logger.log('✓ Insertada en la fila ' + nuevaFila + '.');
+  Logger.log('  El link del huésped sigue funcionando: ' + getPublicReservaUrl(r.id));
+  Logger.log('  Verificá el calendario público en ~1 min.');
+  return 1;
+}
+
+function _rrFecha(v) {
+  if (v instanceof Date) return Utilities.formatDate(v, 'America/Panama', 'yyyy-MM-dd');
+  return String(v || '').slice(0, 10);
+}
+
+function rescatarReservaReporte()  { return rescatarReserva(true);  }
+function rescatarReservaESCRIBIR() { return rescatarReserva(false); }
