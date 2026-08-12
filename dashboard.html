@@ -7186,8 +7186,19 @@ function _waMessage(r, kind, opts) {
     m += '🎵 Música y conversaciones a volumen moderado 🌿\n';
 
     if (opts.referralCode) {
+      // Los dos premios NO son lo mismo y decir "ambos reciben $20 off en su
+      // estadía" los confundía: el amigo lo descuenta en la reserva que hace,
+      // el referidor recibe un crédito que aplica cuando vuelve. Redacción
+      // canónica en REFERRAL_COMO_FUNCIONA (Referrals.gs).
+      //
+      // La restricción va completa y no como "(Dom–Jue)": el programa se define
+      // por TIPO de día, así que un martes feriado o de vacaciones escolares
+      // NO aplica aunque caiga entre semana. El atajo prometía descuento justo
+      // en las noches de mayor demanda.
+      const amt = opts.referralAmount || 20;
       m += '\n🤝 *Refiere y gana*\n';
-      m += 'Comparte tu código *' + opts.referralCode + '*: cuando un amigo reserve con él, ambos reciben *$20 off* en su estadía (Dom–Jue).\n';
+      m += 'Comparte tu código *' + opts.referralCode + '*. Tu amigo recibe *$' + amt + ' off* en su primera estadía, y tú *$' + amt + ' de crédito* para cuando vuelvas.\n';
+      m += '_Aplica dom–jue, sin feriados ni vacaciones escolares · solo reservas directas._\n';
     }
     m += '\nCualquier cosa, quedo atento. ¡Disfruten!';
     return m;
@@ -7206,7 +7217,7 @@ async function openWhatsApp(id, kind) {
   // check-out con la hora correcta según el tipo, así que el huésped tiene a
   // mano lo mismo que le dice el mensaje. El código de referido solo tiene
   // sentido al entrar.
-  let url = '', referralCode = '', keyBoxCode = '';
+  let url = '', referralCode = '', keyBoxCode = '', referralAmount = 20;
   if (kind === 'entrada' || kind === 'pasadia' || kind === 'salida') {
     try {
       const res = await fetch(SHEETS_API_URL + '?action=getReservaLink&id=' + encodeURIComponent(id));
@@ -7214,6 +7225,7 @@ async function openWhatsApp(id, kind) {
       if (data.ok) {
         url = data.url || '';
         referralCode = data.referralCode || '';
+        referralAmount = data.referralAmount || 20;
         // Viene null si todavía no subieron la cédula: mismo gate que la página
         // pública. El código NO se hardcodea acá.
         keyBoxCode = data.keyBoxCode || '';
@@ -7221,7 +7233,7 @@ async function openWhatsApp(id, kind) {
     } catch(e) { console.warn('getReservaLink failed', e); }
   }
 
-  const msg   = _waMessage(r, kind, { url, referralCode, keyBoxCode });
+  const msg   = _waMessage(r, kind, { url, referralCode, keyBoxCode, referralAmount });
   const waUrl = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(msg);
   window.open(waUrl, '_blank');
 }
@@ -15378,7 +15390,10 @@ function _buildClienteShareText(r, url, referralCode, referralAmount) {
     text += '\nSi durante tu estadía disfrutas la experiencia y deseas compartirla, este es tu código personal: *' + referralCode + '*';
     text += '\n\n• Si un amigo reserva con tu código recibe *$' + amt + ' off*.';
     text += '\n• Y tú *$' + amt + '* para tu próxima visita.';
-    text += '\n(Aplica Dom–Jue, reservas directas)';
+    // Restricción completa: el programa se define por TIPO de día, así que un
+    // martes feriado o de vacaciones escolares no aplica. "(Dom–Jue)" a secas
+    // prometía el descuento en las noches de mayor demanda.
+    text += '\n_(Aplica dom–jue, sin feriados ni vacaciones escolares · solo reservas directas)_';
   }
   text += '\n\n📸 No olvides etiquetarnos en nuestras redes:';
   text += '\nInstagram: https://www.instagram.com/las_nubes_de_chica/';
