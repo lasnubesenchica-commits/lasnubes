@@ -3168,9 +3168,27 @@ function _cabe(intervalos, desde, hasta) {
 // estricto podría declarar invendible una noche que el calendario muestra como
 // disponible, y terminaría ofreciendo una pasatarde de $60 donde todavía se
 // puede vender una noche de $90. Ante la duda, gana el hospedaje.
+// Los pasadías se venden SOLO de domingo a jueves. Es política comercial, no
+// una restricción física: el viernes y el sábado la noche completa se vende
+// sola, así que fragmentar el día para vender una franja de $60 sale más caro
+// que esperar al huésped que paga la noche entera.
+//
+// Estaba escrita en la respuesta de WhatsApp del admin pero NO en el código, y
+// el calendario ofrecía pasatarde y pasanoche cualquier día: un huésped podía
+// solicitar un pasatarde de sábado desde el sitio y había que decirle que no.
+//
+// Aplica también a la pasanoche, que se vende como complemento de las otras
+// dos (0 = domingo … 6 = sábado).
+const VENTANAS_DIAS_OK = [0, 1, 2, 3, 4];
+const VENTANAS_TIPOS_RESTRINGIDOS = { pasatarde: 1, pasadia: 1, pasanoche: 1 };
+function _ventanaDiaPermitido(dateStr) {
+  return VENTANAS_DIAS_OK.indexOf(new Date(dateStr + 'T12:00:00').getDay()) >= 0;
+}
+
 function ventanasDelDia(intervalos, occSet, dateStr) {
   if (!VENTANAS_PUBLICAS) return [];
   if (!occSet.has(dateStr)) return [];        // día libre → se vende como noche
+  if (!_ventanaDiaPermitido(dateStr)) return [];
   return VENTANAS_CORTAS.filter(v => {
     const finDia = v.mismoDia ? dateStr : _addDaysISO(dateStr, 1);
     return _cabe(intervalos, _t(dateStr, v.ini), _t(finDia, v.fin));
@@ -3737,6 +3755,11 @@ function updateModalPriceAndCabins() {
   const blocksTipo = (cabinKey, ds) => {
     const f = FRANJA_TIPO[tipo];
     if (!f) return occMap[cabinKey].has(ds);
+    // Los pasadías no se venden viernes ni sábado. Sin esto el chip del tipo
+    // seguía mostrando cabañas disponibles para un pasatarde de sábado aunque
+    // la celda del calendario ya no lo ofreciera. `early` y `late` no entran:
+    // son extensiones de una noche, no productos de día.
+    if (VENTANAS_TIPOS_RESTRINGIDOS[tipo] && !_ventanaDiaPermitido(dateStr)) return true;
     // La franja se ancla en el día base: es una sola estadía, no una noche por
     // fecha, así que o cabe entera o no cabe.
     const finDia = _addDaysISO(dateStr, f[2] === null ? nights : f[2]);
