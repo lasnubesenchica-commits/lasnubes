@@ -129,7 +129,7 @@ function _bancoVerificarIdentidad(cuenta, filas) {
 //
 // El export de BG ("Últimos movimientos", hoja `BGPExcelReport`) trae:
 //
-//     fila 3  Cuenta:VISADEBITO 04-99-99-863047-1
+//     fila 3  Cuenta:VISADEBITO 04-99-99-XXXXXX-X
 //     fila 7  Fecha | Referencia | Descripción | Monto | Saldo total
 //     fila 8+ los movimientos, del más nuevo al más viejo
 //
@@ -141,7 +141,7 @@ function _bancoVerificarIdentidad(cuenta, filas) {
 /**
  * El archivo dice de qué cuenta es. Esto es MEJOR que el guard de identidad:
  * el guard detecta la etiqueta mal puesta, esto hace que no haya etiqueta que
- * poner. Devuelve solo dígitos ('04-99-99-863047-1' → '0499998630471').
+ * poner. Devuelve solo dígitos ('04-99-99-123456-7' → '0499991234567').
  */
 function _bancoCuentaDelArchivo(filas) {
   for (let i = 0; i < Math.min(filas.length, 12); i++) {

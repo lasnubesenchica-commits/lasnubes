@@ -53,7 +53,7 @@ Cruza los movimientos reales del banco contra `Egresos`. Backend en `apps-script
 - **El hallazgo de fondo — las cuentas están mezcladas**: el **41% de los Yappy de huéspedes** ($10,378 de $25,497) entra por la cuenta personal, no por la de Las Nubes; y Las Nubes le transfirió $5,685 a la personal recibiendo $3,347 de vuelta. Mientras eso siga así, dashboard y banco van a discrepar siempre. `getCuentasResumen` reporta ese % explícitamente (`mezcla.pctFuera`).
 - **`_bancoVerificarIdentidad` — un estado de cuenta nunca se lista a sí mismo como contraparte.** Si las filas que dicen ser de la cuenta X mencionan el número de X, la etiqueta está mal y la importación se rechaza (`necesitaConfirmacion`, se puede forzar con `force:true`). **No es hipotético**: los dos exports de ago-2026 traían las cuentas **invertidas entre sí** (`bank.json/nubes` ≡ `bank2.json/personal`), y eso hizo contar **8 cuotas del terreno donde había 6** y atribuirle a Iris **$8,113 de aportes** que eran transferencias de la propia cuenta hacia sí misma — su aporte neto real fue **−$1,096** (ella recibió). Un error de etiqueta que se propaga a todas las conclusiones. Verificado: el guard rechaza la etiqueta mala y acepta la buena.
 - **Los números de cuenta NO van en el código**: el repo es público. Van en Script Property `BANCO_CUENTAS` como CSV `clave:numero`. Sin configurar, la importación funciona pero se pierde el guard.
-- **El XLSX de BG dice de qué cuenta es** (fila 3: `Cuenta:VISADEBITO 04-99-99-863047-1`), así que `importarBancoXlsx` la **detecta sola** (`_bancoCuentaDelArchivo` → `_bancoClaveDeNumero`) y no hay etiqueta que poner mal. El guard de identidad queda como segunda capa. Si el número no está en `BANCO_CUENTAS` devuelve `sinMapear` con el número, para agregarlo. `dryRun:true` parsea y dice cuántos entrarían sin escribir.
+- **El XLSX de BG dice de qué cuenta es** (fila 3: `Cuenta:VISADEBITO 04-99-99-XXXXXX-X`), así que `importarBancoXlsx` la **detecta sola** (`_bancoCuentaDelArchivo` → `_bancoClaveDeNumero`) y no hay etiqueta que poner mal. El guard de identidad queda como segunda capa. Si el número no está en `BANCO_CUENTAS` devuelve `sinMapear` con el número, para agregarlo. `dryRun:true` parsea y dice cuántos entrarían sin escribir.
 - **Se parsea en el servidor, no en el navegador**: `dashboard.html` no carga **ni un solo script externo**, y meterle un parser de XLSX de un CDN al panel de administración por una pantalla es mal negocio. Drive (advanced service **v3**, ya habilitado en `appsscript.json`) convierte y `SpreadsheetApp` lee; el temporal se borra en un `finally`. **Ojo**: `BancoGeneral_Module.gs.gs` usa `Drive.Files.insert` (sintaxis **v2**) contra un manifiesto v3 — esa llamada hoy fallaría. En v3 es `Drive.Files.create` / `Drive.Files.remove`.
 - **Las columnas se ubican por NOMBRE de encabezado**, no por posición: si BG agrega una columna, un índice fijo empieza a leer el campo de al lado sin avisar.
 - **La hora de la columna Fecha es basura**: es el timestamp de **exportación**, idéntico en todas las filas del archivo, no la hora del movimiento. Se descarta (se corta a 10 caracteres).
@@ -176,6 +176,16 @@ Alcanza a **pasatarde, pasadía y pasanoche**. La pasanoche entra porque se vend
 **Tarifas**: pasatarde $60, pasadía $75, pasanoche $75. El fallback de `dashboard.html` decía `pasadia: 80` contra `PASADIA_RATE = 75` del sitio público; las dos leen el valor real de Config, así que el desacuerdo solo aparecía si esa llamada fallaba, pero ahí cotizaban distinto el mismo producto.
 
 **Horario de la pasadía: 9:00 am – 5:00 pm.** El texto de WhatsApp del admin decía 7:00 pm; el código dice 5:00 pm en cuatro lugares y es el correcto.
+
+## Los datos de pago — el bot cobraba en la cuenta equivocada
+
+`_botPaymentInfo()` (BotConsultor.gs) daba el ACH de la cuenta **personal** (a nombre de Joslyn Lopez) mientras el admin, respondiendo a mano por WhatsApp, mandaba a la de **Las Nubes** (Iris Albelo, la que termina en 9112). Dos instrucciones de pago distintas circulando, y la equivocada era la automatizada.
+
+**Es la causa raíz más probable del 41%**: en feb–jul 2026, $10,378 de $25,497 en pagos de huéspedes entraron por la cuenta personal. Ver "Conciliación bancaria". Corregido en ago-2026 — el default ahora es la cuenta de Las Nubes.
+
+- **`WA_PAYMENT_INFO`** (Script Property) pisa el texto completo. Si está seteada, el default del código nunca se usa: al cambiar uno hay que revisar la otra.
+- **El Yappy sigue siendo 6981-2266 a nombre de Joslyn Lopez** en las dos superficies. Yappy deposita en la cuenta que tenga vinculada — **sin confirmar cuál es**. Si es la personal, arreglar el ACH no alcanza y el ingreso va a seguir partido.
+- **Los números de cuenta en un repo público**: el de la personal estaba hardcodeado en `_botPaymentInfo()` y en dos comentarios de documentación. Se sacó de todos lados; queda en el historial de git, que no se puede reescribir. El de Las Nubes sí está en el código, a propósito: es la cuenta receptora que todo cliente recibe igual, y un fallback vacío dejaría al bot sin poder contestar cómo pagar.
 
 ## La cascada NO se ofrece sola
 
