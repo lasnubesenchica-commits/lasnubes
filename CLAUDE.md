@@ -139,6 +139,20 @@ Al tocar amenidades hay que actualizar las siete o el dato queda inconsistente, 
 - **NO hay agua caliente en ninguna cabaña.** Agregado en ago-2026: no estaba en el sitio, ni en el manual, ni en el bot. En una cabaña de montaña con clima fresco es de las primeras cosas que se asumen. La FAQ del bot lo matchea con `agua caliente|ducha|regadera|calentador` — sin esos términos, "¿hay agua caliente?" caía al fallback genérico porque el regex de baño solo cubría `toalla|jabón|papel|baño|amenidades`.
 - **NO hay luz eléctrica convencional.** El texto decía solo "iluminación 100% solar", que un huésped puede leer como "hay enchufes normales". Ahora se dice la ausencia de forma explícita en las siete superficies.
 
+## Camas por cabaña — el bot decía otra cosa
+
+Fuente correcta (sitio y dashboard coinciden):
+
+| cabaña | capacidad | camas |
+|---|---|---|
+| **Paseo** (verde) | hasta 4 | king + auxiliar **twin** (individual) |
+| **Portal** (azul) | 2 | full matrimonial, **sin auxiliar** (se puede traer colchón inflable) |
+| **Puente** (lila) | hasta 4 | queen + auxiliar **full** · la más grande, ~120 m² |
+
+`BotConsultor.gs` describía **Paseo** como *"cama queen + sofá-cama doble"* en **seis** lugares (saludo, FAQ de cabañas, FAQ de camas, KB de cabañas, KB de familias y `BOT_CABIN_CAMAS`). No es diferencia de redacción: **un sofá-cama doble duerme 2 y una twin duerme 1**, así que el bot invitaba a reservar Paseo para 2 adultos + 2 niños y el cuarto huésped se quedaba sin cama. Corregido en ago-2026.
+
+**Ojo con la capacidad de Paseo**: el sitio dice "hasta 4 personas" pero king + twin son 3 plazas. Sin confirmar si hay una cama extra o si el rótulo está de más.
+
 ## Los pasadías solo se venden de domingo a jueves
 
 Política comercial, no restricción física: viernes y sábado la noche completa se vende sola (verificado — seis de seis días de fin de semana ocupados en las tres cabañas durante dos semanas corridas), así que fragmentar el día para colocar una franja de $60 cuesta más de lo que deja.
