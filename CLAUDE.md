@@ -139,6 +139,14 @@ Al tocar amenidades hay que actualizar las siete o el dato queda inconsistente, 
 - **NO hay agua caliente en ninguna cabaña.** Agregado en ago-2026: no estaba en el sitio, ni en el manual, ni en el bot. En una cabaña de montaña con clima fresco es de las primeras cosas que se asumen. La FAQ del bot lo matchea con `agua caliente|ducha|regadera|calentador` — sin esos términos, "¿hay agua caliente?" caía al fallback genérico porque el regex de baño solo cubría `toalla|jabón|papel|baño|amenidades`.
 - **NO hay luz eléctrica convencional.** El texto decía solo "iluminación 100% solar", que un huésped puede leer como "hay enchufes normales". Ahora se dice la ausencia de forma explícita en las siete superficies.
 
+## La cascada NO se ofrece sola
+
+Decisión del anfitrión: la cascada del proyecto se menciona **solo si el huésped pregunta** por actividades, qué hacer en la zona, o piscina/jacuzzi.
+
+Estaba como **primer ítem de `## AMENIDADES`** en la base de conocimiento del bot, así que el LLM la ofrecía apenas le preguntaban "¿qué incluye?". Se movió: vive únicamente en `## ACTIVIDADES` y hay una regla explícita en `## QUÉ HACER Y QUÉ NO`. Los otros usos son reactivos y quedan como están (FAQ de jacuzzi/piscina, FAQ de actividades, menú de actividades).
+
+**Sigue visible en `index.html`** con tarjeta y lightbox propios dentro de la sección Actividades del sitio público — eso no se tocó.
+
 ## Plantillas de WhatsApp (HSM)
 
 - **El cuerpo de una plantilla vive en Meta, no en el código.** Desde acá solo se mandan los parámetros. Si un texto de plantilla está mal, cambiarlo en el `.gs` NO hace nada: hay que **editar la plantilla** en Meta.
