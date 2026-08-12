@@ -215,6 +215,14 @@ Estaba como **primer ítem de `## AMENIDADES`** en la base de conocimiento del b
 
 **Sigue visible en `index.html`** con tarjeta y lightbox propios dentro de la sección Actividades del sitio público — eso no se tocó.
 
+## Emoji en los mensajes que arma el panel (wa.me)
+
+Los emoji **fuera del BMP** llegan a WhatsApp como `�` (U+FFFD) cuando el texto viaja pre-cargado en un link `wa.me/...?text=`. La firma es inequívoca: se rompen exactamente los que ocupan **dos unidades UTF-16** (pares subrogados) y sobreviven todos los de una — las tildes, `⚠` y `✅` llegan bien. Algo en la cadena procesa el texto como UCS-2 y parte los pares por la mitad.
+
+Es el mismo comportamiento ya documentado para los asuntos de Gmail, y **`_waEmojiSeguro(s)`** (dashboard.html) es el espejo de `_asuntoEmailSeguro`: mapea los conocidos a un equivalente BMP (`🌿→✿`, `🔑→⚿`, `📖→✎`, `📲→✎`, `🎵→♪`, `🤝→★`, `🍽 🗑→▪`, `📅→✓`, `📍→⚑`), borra el selector de variación `U+FE0F` que queda huérfano, y **elimina cualquier otro astral** como red de seguridad. Se aplica en `openWhatsApp` justo antes de `encodeURIComponent`.
+
+**El bot NO tiene este problema**: manda por la API de WhatsApp Cloud, no por un link con el texto en la URL, así que sus emoji astrales llegan bien. Esto aplica solo a los mensajes que arma el panel.
+
 ## Plantillas de WhatsApp (HSM)
 
 - **El cuerpo de una plantilla vive en Meta, no en el código.** Desde acá solo se mandan los parámetros. Si un texto de plantilla está mal, cambiarlo en el `.gs` NO hace nada: hay que **editar la plantilla** en Meta.
