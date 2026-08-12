@@ -124,6 +124,21 @@ Insumos que se le venden al huésped. Backend en `apps-script/Tiendita.gs`, **se
   - Cada `menu_*` es su propia acción; el texto libre no entra al guard.
 - **Al diagnosticar duplicados, mirar `Mensajes`, no `Conversaciones`**: esta última tiene una fila de ESTADO por teléfono, no el historial. Un chat duplicado se ve en `Mensajes` (o en `DebugLog`, evento `WA-inbound-DUPLICADO` cuando el guard sí lo atrapó).
 
+## "Qué incluye la cabaña" — está duplicado 7 veces
+
+El bloque de amenidades vive en **siete** lugares y no hay una fuente única:
+
+- `index.html` — prosa en `_buildClientReservaMessage` (**dos copias**, ~4040 y ~4399) y versión con iconos (~4557).
+- `dashboard.html` — `COT_SECCIONES` (~10488).
+- `BotConsultor.gs` — prosa (~3394), resumen "Lo que incluye" (~494), FAQ de energía (~657), FAQ de baño (~672) y la base de conocimiento del LLM (~860).
+
+**`dashboard.html` ~21527 NO cuenta**: es el `*Incluye:*` de **Malaya Lodge**, que es la cabaña de Celestino y tiene otras amenidades (baño sensorial, pérgola, powerbank en vez de inversor). Su texto se parece pero **no es nuestro** — al hacer un replace global del bloque hay que excluirlo a mano; comparte literalmente la línea `☀ Iluminación con paneles solares`.
+
+Al tocar amenidades hay que actualizar las siete o el dato queda inconsistente, y en una omisión material eso es peor que no decirlo: el huésped va a citar justo la superficie que no lo advertía.
+
+- **NO hay agua caliente en ninguna cabaña.** Agregado en ago-2026: no estaba en el sitio, ni en el manual, ni en el bot. En una cabaña de montaña con clima fresco es de las primeras cosas que se asumen. La FAQ del bot lo matchea con `agua caliente|ducha|regadera|calentador` — sin esos términos, "¿hay agua caliente?" caía al fallback genérico porque el regex de baño solo cubría `toalla|jabón|papel|baño|amenidades`.
+- **NO hay luz eléctrica convencional.** El texto decía solo "iluminación 100% solar", que un huésped puede leer como "hay enchufes normales". Ahora se dice la ausencia de forma explícita en las siete superficies.
+
 ## Plantillas de WhatsApp (HSM)
 
 - **El cuerpo de una plantilla vive en Meta, no en el código.** Desde acá solo se mandan los parámetros. Si un texto de plantilla está mal, cambiarlo en el `.gs` NO hace nada: hay que **editar la plantilla** en Meta.

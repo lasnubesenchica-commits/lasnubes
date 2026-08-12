@@ -493,8 +493,8 @@ function _botSendCampaignWelcome(from, contactName) {
     '• *Puente entre Las Nubes* — 2 a 4 personas (cama queen + cama auxiliar)\n\n' +
     '✨ *Lo que incluye*\n' +
     '• Cocina equipada con área de BBQ y cooler grande\n' +
-    '• Iluminación 100% solar\n' +
-    '• Toallas, jabón y papel higiénico incluidos\n' +
+    '• Iluminación 100% solar — no hay luz eléctrica convencional\n' +
+    '• Toallas, jabón y papel higiénico incluidos — agua fría\n' +
     '• Uso exclusivo de las instalaciones — sin vecinos\n\n' +
     '📅 *Para reservar o consultar disponibilidad*, cuéntame *fechas* y *personas*. Por ejemplo:\n' +
     '   _"del 5 al 8 de junio, 2 personas"_\n\n' +
@@ -654,7 +654,8 @@ function _botHandleInfoQuery(from, contactName, conv, text) {
   if (/\b(energ[ií]a|electric|luz|solar|panel|inversor|cargar|se[ñn]al|internet|wifi)\b/i.test(t)) {
     sendWhatsAppText(from,
       '⚡ *Energía & conectividad*\n\n' +
-      'Iluminación 100% solar mediante paneles fotovoltaicos. Inversor disponible para cargar celulares y dispositivos. ' +
+      'No hay luz eléctrica convencional: la cabaña se ilumina 100% con paneles solares fotovoltaicos. ' +
+      'Hay inversor para cargar celulares y dispositivos. ' +
       'Excelente señal de todas las operadoras.' + tail
     );
     return true;
@@ -668,10 +669,16 @@ function _botHandleInfoQuery(from, contactName, conv, text) {
     );
     return true;
   }
-  if (/\b(toalla|jab[oó]n|papel|ba[ñn]o|amenidades|amenities)\b/i.test(t)) {
+  // El agua caliente es de las preguntas más frecuentes y la respuesta es que
+  // NO hay, así que tiene que matchear sola: quien pregunta "¿hay agua
+  // caliente?" no dice "baño" ni "toalla", y sin estos términos caía al
+  // fallback genérico.
+  if (/\b(toalla|jab[oó]n|papel|ba[ñn]o|amenidades|amenities|agua\s+caliente|ducha|regadera|calentador)\b/i.test(t)) {
     sendWhatsAppText(from,
       '🛁 *Baño & comodidades*\n\n' +
-      'Jabón, papel higiénico y toallas limpias incluidos. Fumigamos semanalmente — si sos sensible a mosquitos, te recomendamos traer repelente.' + tail
+      'Jabón, papel higiénico y toallas limpias incluidos.\n\n' +
+      '💧 *El agua de la ducha es fría* — no contamos con agua caliente en ninguna cabaña.\n\n' +
+      'Fumigamos semanalmente — si eres sensible a mosquitos, te recomendamos traer repelente.' + tail
     );
     return true;
   }
@@ -858,7 +865,9 @@ _botTextoTarifas().replace(/\*/g, '').replace(/^•/gm, '-') +
 '- Iluminación 100% solar + inversor para cargar celulares\n' +
 '- Toallas, jabón y papel higiénico incluidos\n' +
 '- Excelente señal de todas las operadoras\n' +
-'- Fumigamos semanalmente (traer repelente si sos sensible a mosquitos)\n' +
+'- Fumigamos semanalmente (traer repelente si eres sensible a mosquitos)\n' +
+'- NO hay agua caliente en ninguna cabaña — el agua de la ducha es fría\n' +
+'- NO hay luz eléctrica convencional — la iluminación es 100% solar\n' +
 '- NO hay jacuzzi, piscina ni sauna en las cabañas\n\n' +
 '## SERVICIOS EXTRAS\n' +
 '- *Decoración para aniversarios y cumpleaños* — $40 adicionales. Incluye arreglo de flores, globos, letreros, elementos decorativos románticos y una botella de espumante. Se coordina al confirmar la reserva.\n\n' +
@@ -3391,12 +3400,12 @@ function _botSeccionesComunes() {
     '• Menú sencillo de comida disponible bajo reserva previa\n' +
     '\n' +
     '*Energía & Conectividad*\n' +
-    '• Iluminación 100% solar mediante paneles fotovoltaicos\n' +
+    '• Iluminación 100% solar — no hay luz eléctrica convencional\n' +
     '• Inversor disponible para cargar celulares y dispositivos\n' +
     '• Excelente señal de todas las operadoras\n' +
     '\n' +
     '*Baño & Comodidades*\n' +
-    '• Jabón de baño, papel higiénico y toallas limpias incluidos\n' +
+    '• Jabón de baño, papel higiénico y toallas limpias incluidos\n• Agua fría — no contamos con agua caliente\n' +
     '• Fumigación semanal — se recomienda traer repelente si eres sensible a mosquitos\n' +
     '\n' +
     '*Privacidad*\n' +
