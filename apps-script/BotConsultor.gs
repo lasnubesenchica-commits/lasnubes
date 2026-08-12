@@ -488,9 +488,9 @@ function _botSendCampaignWelcome(from, contactName) {
     greeting + ' Gracias por escribirnos.\n\n' +
     '*Las Nubes* es un refugio de tres cabañas privadas en las faldas del *Cerro Chicá*, a 1h 15min de Ciudad de Panamá. Naturaleza, vistas y privacidad total.\n\n' +
     '🏡 *Nuestras cabañas*\n' +
-    '• *Paseo por Las Nubes* — 2 a 4 personas (cama queen + sofá-cama doble)\n' +
+    '• *Paseo por Las Nubes* — hasta 4 personas (cama king + cama auxiliar twin)\n' +
     '• *Portal hacia Las Nubes* — 2 personas (cama matrimonial full)\n' +
-    '• *Puente entre Las Nubes* — 2 a 4 personas (cama queen + cama auxiliar)\n\n' +
+    '• *Puente entre Las Nubes* — hasta 4 personas (cama queen + cama auxiliar full) · la más grande\n\n' +
     '✨ *Lo que incluye*\n' +
     '• Cocina equipada con área de BBQ y cooler grande\n' +
     '• Iluminación 100% solar — no hay luz eléctrica convencional\n' +
@@ -692,9 +692,9 @@ function _botHandleInfoQuery(from, contactName, conv, text) {
   if (/\b(capacidad|cu[aá]ntas?\s+personas|cu[aá]ntos?\s+(hu[eé]spedes|hu[eé]sped|caben))\b/i.test(t)) {
     sendWhatsAppText(from,
       '👥 *Capacidad por cabaña*\n\n' +
-      '• *Paseo por Las Nubes* — 2 a 4 personas (cama queen + sofá-cama doble)\n' +
+      '• *Paseo por Las Nubes* — hasta 4 personas (cama king + cama auxiliar twin)\n' +
       '• *Portal hacia Las Nubes* — 2 personas (cama matrimonial full)\n' +
-      '• *Puente entre Las Nubes* — 2 a 4 personas (cama queen + cama auxiliar)' + tail
+      '• *Puente entre Las Nubes* — hasta 4 personas (cama queen + cama auxiliar full) · la más grande' + tail
     );
     return true;
   }
@@ -734,7 +734,7 @@ function _botHandleInfoQuery(from, contactName, conv, text) {
     sendWhatsAppText(from,
       '👨‍👩‍👧 *Familias con niños*\n\n' +
       '¡Las cabañas son ideales para escapadas familiares! 🌿\n\n' +
-      '🛏 *Camas* — Paseo y Puente tienen recámara con cama *queen* + cama auxiliar *doble* debajo. Perfectas para 2 adultos y 2 niños.\n\n' +
+      '🛏 *Camas* — *Puente* tiene cama *queen* + auxiliar *full*: perfecta para 2 adultos y 2 niños. *Paseo* tiene cama *king* + auxiliar *twin* (individual).\n\n' +
       '💰 *Política de niños*\n' +
       '• Menores de *5 años* no pagan.\n' +
       '• De la 3ra persona en adelante (5 años o más): $' + BOT_RECARGO_PERSONA_GRANDE + ' por persona/noche en Paseo y Puente, $' + BOT_RECARGO_PERSONA_PORTAL + ' en Portal.\n\n' +
@@ -841,9 +841,9 @@ function _botKnowledgeBase() {
   return (
 'Sos el asistente conversacional de *Las Nubes*, un refugio de tres cabañas privadas en las faldas del Cerro Chicá, Panamá. Respondes mensajes de clientes por WhatsApp.\n\n' +
 '## CABAÑAS\n' +
-'- *Paseo por Las Nubes*: 2-4 personas (cama queen + sofá-cama doble)\n' +
-'- *Portal hacia Las Nubes*: 2 personas (cama matrimonial full)\n' +
-'- *Puente entre Las Nubes*: 2-4 personas (cama queen + cama auxiliar)\n' +
+'- *Paseo por Las Nubes*: hasta 4 personas (cama king + cama auxiliar twin). Baño al aire libre entre árboles\n' +
+'- *Portal hacia Las Nubes*: 2 personas (cama matrimonial full, sin cama auxiliar). Cocina exterior con vista a las montañas\n' +
+'- *Puente entre Las Nubes*: hasta 4 personas (cama queen + cama auxiliar full). La más grande: ~120 m² de jardines y terraza techada apta para camping\n' +
 'Las tres son independientes, privadas y de uso exclusivo de quienes reservan.\n\n' +
 '## TARIFAS POR NOCHE (2 personas)\n' +
 _botTextoTarifas().replace(/\*/g, '').replace(/^•/gm, '-') +
@@ -852,7 +852,7 @@ _botTextoTarifas().replace(/\*/g, '').replace(/^•/gm, '-') +
 '- Niños menores de 5 años NO pagan\n' +
 '- 5-6 personas: combo Puente + Portal (cabañas contiguas), cotización aparte\n\n' +
 '## FAMILIAS CON NIÑOS\n' +
-'- Paseo y Puente: recámara con cama queen + cama auxiliar doble debajo (ideal para 2 adultos + 2 niños)\n' +
+'- Puente: cama queen + cama auxiliar full (ideal para 2 adultos + 2 niños)\n- Paseo: cama king + cama auxiliar twin (la auxiliar es individual: 2 adultos + 1 niño)\n' +
 '- Portal: cama matrimonial full (para 2 personas, no incluye espacio para niños extra)\n' +
 '- Niños menores de 5 años no pagan\n' +
 '- A partir de los 5 años aplican como persona adicional con recargo normal\n\n' +
@@ -3367,9 +3367,13 @@ function _botNotifyPagando(from, contactName, ctx) {
   } catch(_) {}
 }
 
-// Camas por cabana (igual que index.html / dashboard)
+// Camas por cabana (igual que index.html / dashboard).
+// Ojo: `verde` decía "queen y un sofá-cama doble" mientras el sitio y el
+// dashboard dicen "king + auxiliar twin". Un sofá-cama doble duerme 2 y una
+// twin duerme 1, así que la diferencia no es de redacción: alguien podía
+// reservar Paseo para 2 adultos y 2 niños y no tener dónde acostar al cuarto.
 const BOT_CABIN_CAMAS = {
-  verde: 'La cabaña cuenta con una cama matrimonial queen y un sofá-cama doble.',
+  verde: 'La cabaña cuenta con una cama king y una cama auxiliar twin (individual).',
   azul:  'La cabaña solo cuenta con una cama matrimonial full. Puede traer colchón inflable.',
   lila:  'La cabaña cuenta con una cama matrimonial queen y una cama auxiliar full.'
 };
