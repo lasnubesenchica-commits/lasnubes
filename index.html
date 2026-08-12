@@ -2921,10 +2921,19 @@ function precioMotivo(dateStr) {
 // revalida por detrás. Si algo cambió, se repinta solo.
 const PUB_CACHE_KEY = 'ln_pub_cache_v1';
 
+// Tope de edad del pintado instantáneo. El `ts` se venía guardando sin que
+// nadie lo mirara, así que una caché de hace días se pintaba igual. Normalmente
+// se corrige sola —`loadData` revalida un segundo después— pero si el visitante
+// abre el calendario sin señal, ve disponibilidad vieja y no se entera.
+// 12 h conserva el pintado instantáneo del uso normal (2065 ms → 115 ms medidos)
+// y descarta lo que ya no representa nada.
+const PUB_CACHE_MAX_MS = 12 * 60 * 60 * 1000;
+
 function _leerCachePublico() {
   try {
     const c = JSON.parse(localStorage.getItem(PUB_CACHE_KEY) || 'null');
     if (!c || !Array.isArray(c.reservations)) return null;
+    if (!c.ts || (Date.now() - c.ts) > PUB_CACHE_MAX_MS) return null;
     return c;
   } catch(_) { return null; }
 }
@@ -2996,7 +3005,17 @@ function pintarDesdeCache() {
 async function loadData() {
   try {
     const [resRes, tarifasRes] = await Promise.all([
-      fetch(`${SHEETS_API_URL}?action=getReservations&scope=public`),
+      // El cache-buster va en las DOS. Sin él la URL de reservas es idéntica en
+      // cada carga y el navegador la sirve desde su caché HTTP, así que una
+      // reserva recién guardada seguía apareciendo como disponible aunque el
+      // servidor ya la devolviera. Peor: esa respuesta vieja se vuelve a
+      // guardar en `localStorage` (abajo), así que la disponibilidad vencida
+      // sobrevive a los recargues en vez de corregirse sola.
+      //
+      // Las dos capas de caché propias son de segundos y se invalidan al
+      // escribir; la del navegador no la controla nadie. Acá el costo de
+      // mostrar de más es una noche vendida dos veces.
+      fetch(`${SHEETS_API_URL}?action=getReservations&scope=public&_=${Date.now()}`),
       fetch(`${SHEETS_API_URL}?action=getTarifas&_=${Date.now()}`)
     ]);
 
