@@ -12081,6 +12081,14 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
     } else {
       const errMsg = syncError ? ' — ' + syncError : '';
       showToast('⚠ Sheets NO guardó la reserva' + errMsg + ' (ver consola)');
+      // Un toast se pierde: dura unos segundos y en el celular es fácil no
+      // verlo. Y el costo de no enterarse es alto — la reserva queda solo en la
+      // memoria del navegador, la cabaña se sigue publicando como libre y se
+      // puede vender dos veces la misma noche. Acá interrumpir es lo correcto.
+      alert('⚠ NO se guardó la reserva de ' + (name || 'este huésped') + '.\n\n'
+          + (syncError ? syncError + '\n\n' : '')
+          + 'La cabaña sigue publicándose como DISPONIBLE y no se envió nada al '
+          + 'huésped.\n\nToca "⚠ Reintentar guardar" antes de cerrar el modal.');
     }
   } else {
     showToast(editId ? 'Reserva actualizada ✓' : 'Reserva guardada ✓');
@@ -12188,8 +12196,16 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
   }
 
 
-  // Enviar email de confirmación si es reserva nueva y hay email
-  if (!editId && email) {
+  // Enviar email de confirmación si es reserva nueva y hay email.
+  //
+  // `syncOk` es OBLIGATORIO. Sin él, un guardado que falla igual le manda al
+  // huésped una confirmación de una reserva que NO existe en la hoja. Pasó de
+  // verdad el 12-ago con un pasatarde: el POST de `saveReservation` nunca llegó
+  // (no está en DebugLog, que sí registra los otros cinco de ese día) pero el
+  // email salió igual, y la cabaña siguió publicándose como libre.
+  // El WhatsApp de confirmación y el registro de referido ya exigían `syncOk`;
+  // esto lo alinea.
+  if (syncOk && !editId && email) {
     try {
       const emailPayload = { action: 'sendConfirmationEmail', reservation };
       if (pendingVoucher && pendingVoucher.base64 && (origin === 'Directa' || origin === 'Referido')) {
@@ -12233,8 +12249,12 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
     }
   }
 
-  // Subir voucher a Drive si hay uno pendiente
-  if (pendingVoucher) {
+  // Subir voucher a Drive si hay uno pendiente.
+  //
+  // También exige `syncOk`: sin fila en la hoja, el archivo queda huérfano en
+  // Drive sin nada que lo referencie — exactamente los vouchers que después hay
+  // que rescatar a mano con `vincularVouchersHuerfanos`.
+  if (syncOk && pendingVoucher) {
     try {
       showToast('📎 Subiendo voucher a Drive…');
       const res = await fetch(SHEETS_API_URL, {

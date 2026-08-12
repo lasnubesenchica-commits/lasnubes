@@ -215,6 +215,18 @@ Estaba como **primer ítem de `## AMENIDADES`** en la base de conocimiento del b
 
 **Sigue visible en `index.html`** con tarjeta y lightbox propios dentro de la sección Actividades del sitio público — eso no se tocó.
 
+## Un guardado fallido no debe avisarle al huésped
+
+`saveReservation` (dashboard.html) pinta la reserva en el array local **antes** de hablar con la hoja, y después dispara las acciones hacia afuera. Si el POST falla, el toast lo dice y el botón queda en "⚠ Reintentar guardar", pero la reserva sigue dibujada en el calendario como si existiera.
+
+**Caso real (12-ago-2026)**: un pasatarde en Paseo para el día siguiente. `DebugLog` registra los cinco `saveReservation` de esos dos días con su `saveReservation-OK` y número de fila — **el de esta reserva no está**: el POST nunca llegó. Pero `sendConfirmationEmail` sí salió, porque estaba gateado solo por `!editId && email`. Resultado: el huésped recibió confirmación de una reserva inexistente y la cabaña se siguió publicando como libre.
+
+**Toda acción hacia afuera exige `syncOk`.** Ya lo hacían `registerReferralUse`, el botón de WhatsApp y `sendWAConfirmacion` (vía `shouldSendWA`); faltaban `sendConfirmationEmail` y `saveVoucherToDrive` — este último dejaba además el archivo huérfano en Drive, de los que después hay que rescatar con `vincularVouchersHuerfanos`.
+
+El fallo además interrumpe con `alert()`, no solo un toast: se pierde en el celular, y el costo de no enterarse es vender dos veces la misma noche.
+
+**Para diagnosticar si una reserva se guardó**: `DebugLog` tiene un `doPost-IN` por cada POST y un `saveReservation-OK` con el número de fila. Si no está el par, el POST no llegó — no es caché ni el calendario.
+
 ## Emoji en los mensajes que arma el panel (wa.me)
 
 Los emoji **fuera del BMP** llegan a WhatsApp como `�` (U+FFFD) cuando el texto viaja pre-cargado en un link `wa.me/...?text=`. La firma es inequívoca: se rompen exactamente los que ocupan **dos unidades UTF-16** (pares subrogados) y sobreviven todos los de una — las tildes, `⚠` y `✅` llegan bien. Algo en la cadena procesa el texto como UCS-2 y parte los pares por la mitad.
