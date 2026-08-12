@@ -617,8 +617,26 @@ function handleGetReservaLink(e) {
                       && isDormido;
     if (eligible) referralCode = getOrCreateReferralCode(r.email, r.telefono, r.name);
   } catch(err) { Logger.log('warn referralCode in getReservaLink: ' + err.message); }
+
+  // Código del key box, con el MISMO gate que la página pública: se libera solo
+  // si el huésped ya subió su cédula (`showKeyBox = idUploaded` en
+  // _buildPublicDTO). Se devuelve para que el mensaje del panel pueda incluirlo
+  // cuando corresponde, en vez de hardcodearlo en dashboard.html — que sería
+  // una tercera copia del código y, peor, se lo mandaría a todo el mundo
+  // salteándose el registro de cédula.
+  let keyBoxCode = null;
+  try {
+    let idUploaded = !!r.idHuespedURL;
+    if (!idUploaded) {
+      const prev = _findExistingHuespedId(r.email, r.telefono);
+      if (prev && prev.url) idUploaded = true;
+    }
+    if (idUploaded) keyBoxCode = PUBLIC_KEY_BOX_CODE;
+  } catch(err) { Logger.log('warn keyBox in getReservaLink: ' + err.message); }
+
   return ContentService
-    .createTextOutput(JSON.stringify({ ok: true, url: url, id: id, referralCode: referralCode, referralAmount: 20 }))
+    .createTextOutput(JSON.stringify({ ok: true, url: url, id: id, referralCode: referralCode,
+                                       referralAmount: 20, keyBoxCode: keyBoxCode }))
     .setMimeType(ContentService.MimeType.JSON);
 }
 

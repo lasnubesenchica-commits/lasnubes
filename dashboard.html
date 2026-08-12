@@ -7163,22 +7163,33 @@ function _waMessage(r, kind, opts) {
   }
 
   if (kind === 'entrada' || kind === 'pasadia') {
-    let m = '¡Hola ' + firstName + '! Bienvenidos a *' + cabinName + '*.\n\n';
-    if (kind === 'entrada') {
-      m += 'Estamos listos para recibirles a partir de las ' + (tipo === 'early' ? '9 am' : '2 pm') + '. Cuando lleguen al portón verde, avísenme por aquí para abrirles.\n\n';
+    // Este mensaje se manda cuando el huésped YA ESTÁ en la cabaña, no antes de
+    // llegar: para eso está el flujo de llegada del bot. Por eso arranca con lo
+    // que necesita adentro (key box, guía) y no con "los esperamos a las 2pm".
+    let m = '🌿 *¡Bienvenidos a ' + cabinName + '!*\n\n';
+
+    // El código solo viaja si el backend lo devolvió, y solo lo devuelve si ya
+    // subieron la cédula. Sin cédula el mensaje pide subirla: es el registro de
+    // huéspedes y saltearlo por comodidad lo dejaría vacío.
+    if (opts.keyBoxCode) {
+      m += '🔑 *Key Box: ' + opts.keyBoxCode + '*\n';
+      m += 'Adentro está la llave y el control del portón.\n\n';
+      m += '📖 Guía de la cabaña — luces, agua, cocina y check-out:\n';
+      m += (opts.url || 'https://lasnubes.cloud') + '\n\n';
     } else {
-      const hora = tipo === 'pasadia' ? '9 am – 5 pm' : '12:30 pm – 7 pm';
-      m += 'Su pasadía es de ' + hora + '. Cuando lleguen al portón verde, avísenme por aquí para abrirles.\n\n';
+      m += '📲 Sube tu cédula desde este link y ahí mismo aparece el *código del Key Box* y la guía completa de la cabaña:\n';
+      m += (opts.url || 'https://lasnubes.cloud') + '\n\n';
     }
-    m += '📲 *Proceso de check-in*\n';
-    m += 'Sube tu cédula desde este link para obtener el código del Key Box y ver la guía completa de la cabaña:\n';
-    m += (opts.url || 'https://lasnubes.cloud') + '\n';
+
+    m += 'Dos cosas que sí les pido:\n';
+    m += '⚠️ *No dejar alimentos expuestos*, ni de noche — estamos en la montaña y los animalitos llegan.\n';
+    m += '🎵 Música y conversaciones a volumen moderado 🌿\n';
+
     if (opts.referralCode) {
       m += '\n🤝 *Refiere y gana*\n';
       m += 'Comparte tu código *' + opts.referralCode + '*: cuando un amigo reserve con él, ambos reciben *$20 off* en su estadía (Dom–Jue).\n';
     }
     m += '\nCualquier cosa, quedo atento. ¡Disfruten!';
-    m += direccion;
     return m;
   }
 
@@ -7195,7 +7206,7 @@ async function openWhatsApp(id, kind) {
   // check-out con la hora correcta según el tipo, así que el huésped tiene a
   // mano lo mismo que le dice el mensaje. El código de referido solo tiene
   // sentido al entrar.
-  let url = '', referralCode = '';
+  let url = '', referralCode = '', keyBoxCode = '';
   if (kind === 'entrada' || kind === 'pasadia' || kind === 'salida') {
     try {
       const res = await fetch(SHEETS_API_URL + '?action=getReservaLink&id=' + encodeURIComponent(id));
@@ -7203,11 +7214,14 @@ async function openWhatsApp(id, kind) {
       if (data.ok) {
         url = data.url || '';
         referralCode = data.referralCode || '';
+        // Viene null si todavía no subieron la cédula: mismo gate que la página
+        // pública. El código NO se hardcodea acá.
+        keyBoxCode = data.keyBoxCode || '';
       }
     } catch(e) { console.warn('getReservaLink failed', e); }
   }
 
-  const msg   = _waMessage(r, kind, { url, referralCode });
+  const msg   = _waMessage(r, kind, { url, referralCode, keyBoxCode });
   const waUrl = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(msg);
   window.open(waUrl, '_blank');
 }
