@@ -139,6 +139,14 @@ Al tocar amenidades hay que actualizar las siete o el dato queda inconsistente, 
 - **NO hay agua caliente en ninguna cabaña.** Agregado en ago-2026: no estaba en el sitio, ni en el manual, ni en el bot. En una cabaña de montaña con clima fresco es de las primeras cosas que se asumen. La FAQ del bot lo matchea con `agua caliente|ducha|regadera|calentador` — sin esos términos, "¿hay agua caliente?" caía al fallback genérico porque el regex de baño solo cubría `toalla|jabón|papel|baño|amenidades`.
 - **NO hay luz eléctrica convencional.** El texto decía solo "iluminación 100% solar", que un huésped puede leer como "hay enchufes normales". Ahora se dice la ausencia de forma explícita en las siete superficies.
 
+## Amenidades de jardín — comunes a las tres, salvo las hamacas
+
+**Las tres** cabañas tienen BBQ, fogata, columpios y mallas suspendidas. **Hamacas solo Paseo y Puente** — Portal no tiene.
+
+Los chips `🔥` de `index.html` estaban incompletos en las tres y de forma distinta en cada una: Paseo y Portal decían "BBQ, fogata, columpios" (sin mallas, y Paseo sin hamacas), Puente decía "BBQ, fogata, hamacas" (sin columpios ni mallas). Corregido en ago-2026.
+
+Ojo al editarlos: **Paseo y Portal tenían el chip con el texto idéntico**, así que un replace global los toca a los dos y ahora deben quedar distintos (Portal sin hamacas). Se distinguen por el chip anterior — Paseo tiene el baño al aire libre, Portal la cocina exterior.
+
 ## Camas por cabaña — el bot decía otra cosa
 
 Fuente correcta (sitio y dashboard coinciden):
