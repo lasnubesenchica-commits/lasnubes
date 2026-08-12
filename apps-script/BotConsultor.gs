@@ -2724,12 +2724,16 @@ function _botSendArrivalInstructions(from, contactName, conv, reserva, opts) {
   // señal, el huésped quedaba parado en el portón creyendo que ya se estaba
   // abriendo. El flujo de salida siempre lo dijo bien ("ya le avisé al equipo");
   // este ahora dice lo mismo.
-  body += '!\n\nYa le avisé al equipo para que te abran el portón. 🚪\n\n' +
+  // Todo el mensaje va en USTEDES: al portón se llega en grupo, y el texto
+  // mezclaba las dos formas en tres líneas seguidas ("para que TE abran",
+  // "conducen", "LLAMA a Josh"). Es el término local: una *calle huella* son
+  // las dos franjas de concreto; "huella calle" estaba invertido.
+  body += '!\n\nYa le avisé al equipo para que les abran el portón. 🚪\n\n' +
           'Apenas se abra, conducen recto y más adelante se encontrarán con una ' +
-          '*huella calle de concreto*. Van a subirla y, cuando termine, van a tomar ' +
+          '*calle huella de concreto*. Van a subirla y, cuando termine, van a tomar ' +
           'la siguiente *calle a mano izquierda*.\n\n' +
           _botLlegadaTramoCabana(cabin) +
-          '\n\nCualquier dificultad, llama a Josh.';
+          '\n\nCualquier dificultad, llamen a Josh.';
 
   sendWhatsAppText(from, body);
 
@@ -2744,7 +2748,7 @@ function _botSendArrivalInstructions(from, contactName, conv, reserva, opts) {
   ];
   const cuerpoBotones =
     'Esta es *' + cabinName + '*.\n\n' +
-    '*Asegúrense de que la cabaña sea la de la foto* antes de entrar. ¿Qué necesitas?';
+    '*Asegúrense de que la cabaña sea la de la foto* antes de entrar. ¿Qué necesitan?';
   try {
     sendWhatsAppButtons(from, cuerpoBotones, botones, foto ? { imageUrl: foto } : null);
   } catch(err) {
@@ -3219,7 +3223,7 @@ function _botHandleCheckoutDone(from, contactName, reservaId) {
   // usarlo.
   const cierre =
     '¡Gracias por avisar! 🌿 Ya le avisé al equipo para que les abran el portón.\n\n' +
-    'Si en un par de minutos no se abre, llama a Josh: *+507 6981-2266*\n\n' +
+    'Si en un par de minutos no se abre, llamen a Josh: *+507 6981-2266*\n\n' +
     '¡Buen viaje y esperamos verlos pronto de nuevo en Las Nubes! 🙌';
   try {
     sendWhatsAppCTAUrl(from, cierre, '📞 Llamar a Josh', 'tel:+50769812266');
