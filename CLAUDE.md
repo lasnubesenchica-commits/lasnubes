@@ -406,6 +406,16 @@ El costo de abrir el calendario **no es leer la hoja: es el viaje a Apps Script*
 - **Servidor** (`Parser.gs`): `getReservations&scope=public` se cachea en `CacheService` (`CACHE_RESERVAS_PUB`, 90 s). El chequeo va **antes** de `getOrCreateSheet()`, que es lo que ahorra el `getDataRange()` sobre cientos de filas de 33 columnas.
 - **El TTL es la red de seguridad, no la fuente de frescura**: `_invalidarCacheReservasPublicas()` se llama en cada escritura de Reservas — alta, edición, borrado y `appendReservation` (punto único de todos los syncs). Si algún camino se olvida, lo peor es 90 s de atraso; nunca queda viejo para siempre. Se eligió TTL corto porque una disponibilidad vencida cuesta dos huéspedes sobre la misma noche y regenerarla es barato.
 
+## El calendario público mostraba disponibilidad vencida
+
+**La llamada de reservas no llevaba cache-buster y la de tarifas sí.** La URL de `getReservations&scope=public` era idéntica en cada carga, así que el navegador la servía desde su **caché HTTP**: una reserva recién guardada seguía apareciendo como disponible aunque el servidor ya la devolviera.
+
+Y se realimentaba: esa respuesta vieja se volvía a escribir en `localStorage` (`_guardarCachePublico`), así que la disponibilidad vencida **sobrevivía a los recargues** en vez de corregirse sola.
+
+- Las dos capas de caché propias son cortas y se invalidan al escribir (`CacheService` 90 s + `_invalidarCacheReservasPublicas`); **la del navegador no la controla nadie**. Acá el costo de mostrar de más es una noche vendida dos veces.
+- El cache-buster **no anula la caché del servidor**: `CacheService` se indexa por clave fija (`CACHE_RESERVAS_PUB`), no por URL, así que se conserva el ahorro de no hacer `getDataRange()`.
+- **`PUB_CACHE_MAX_MS` (12 h)**: `_leerCachePublico` guardaba `ts` y no lo miraba, así que una caché de hace días se pintaba igual. Normalmente se corrige sola —`loadData` revalida un segundo después— pero sin señal el visitante ve disponibilidad vieja y no se entera. 12 h conserva el pintado instantáneo del uso normal y descarta lo que ya no representa nada.
+
 ## Protección de `SuministrosItems` (se borró una vez — no repetir)
 
 La configuración de la tiendita (recetas, precios, costos fijos, marcas 🛒/producto) es **trabajo manual de horas** y vive en UNA hoja que `saveSuministrosItems` **reescribe entera**. Ya se perdió una vez. Tres capas, todas necesarias:
