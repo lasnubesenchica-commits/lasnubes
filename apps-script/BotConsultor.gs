@@ -3385,10 +3385,25 @@ function _botPaymentInfo() {
     // los guarda asi cuando los tipeas), o newlines reales si los pegas.
     return custom.replace(/\\n/g, '\n');
   }
-  // Default: formato estandar de Las Nubes
+  // Default: formato estandar de Las Nubes.
+  //
+  // OJO CON LA CUENTA DEL ACH. Acá estaba la cuenta PERSONAL (a nombre de
+  // Joslyn Lopez) mientras el admin, respondiendo a mano, mandaba a la de Las
+  // Nubes (Iris Albelo). O sea que había dos instrucciones de pago circulando y
+  // una de ellas —la automatizada, la que corre sola— cobraba en la cuenta
+  // equivocada.
+  //
+  // No es cosmético: en feb-jul 2026, $10,378 de $25,497 en pagos de huéspedes
+  // (41%) entraron por la cuenta personal en vez de la del negocio, y eso hace
+  // que la contabilidad y el banco no cuadren nunca. Ver "Conciliación
+  // bancaria" en CLAUDE.md.
+  //
+  // El orden también cambió: primero DÓNDE pagar y después qué escribir en el
+  // mensaje. Al revés, el huésped lee la instrucción antes de saber a qué se
+  // refiere.
   return 'Puede realizar el pago a través de:\n\n' +
     '*Yappy*\n69812266\nJoslyn Lopez\n\n' +
-    '*ACH*\nBanco General\nJoslyn Lopez\nCta de Ahorros\n04-99-99-863047-1\n\n' +
+    '*ACH*\nBanco General\nIris Albelo\nCta de Ahorros\n04-99-99-818911-2\n\n' +
     '*Colocar en la sección "Agregar Mensaje" del Yappy o descripción de la transferencia:*\n' +
     '*Nombre Completo*\n*Email*\n*Celular*\n\n' +
     'Quedo atento para proceder a cerrar el espacio de inmediato.';
