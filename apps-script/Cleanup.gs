@@ -3081,19 +3081,24 @@ const RESCATE_RESERVA = {
   horaSalida:  ''                      // vacío = default del tipo (7:00pm)
 };
 
-function rescatarReserva(dryRun) {
+function rescatarReserva(dryRun, overrides) {
   if (dryRun === undefined) dryRun = true;   // el default es el seguro
-  const r = RESCATE_RESERVA;
+  // `overrides` permite completar datos sin editar el archivo — lo usa el
+  // endpoint web, para poder correr esto desde el celular.
+  const r = Object.assign({}, RESCATE_RESERVA, overrides || {});
+  const _out = [];
+  const L = function(m) { _out.push(String(m)); Logger.log(m); };
+  rescatarReserva._ultimo = _out;
   const CABIN_NAMES = {
     verde: 'Paseo por Las Nubes',
     azul:  'Portal hacia Las Nubes',
     lila:  'Puente entre Las Nubes'
   };
 
-  if (!r.id)                       { Logger.log('✗ Falta el id.'); return 0; }
-  if (!CABIN_NAMES[r.cabin])       { Logger.log('✗ Cabaña inválida: ' + r.cabin); return 0; }
-  if (!r.checkin || !r.checkout)   { Logger.log('✗ Faltan fechas de storage.'); return 0; }
-  if (r.checkout <= r.checkin)     { Logger.log('✗ La salida debe ser posterior a la entrada. ¿Usaste las fechas del formulario en vez de las de storage?'); return 0; }
+  if (!r.id)                       { L('✗ Falta el id.'); return { ok: false, lineas: _out, insertada: false }; }
+  if (!CABIN_NAMES[r.cabin])       { L('✗ Cabaña inválida: ' + r.cabin); return { ok: false, lineas: _out, insertada: false }; }
+  if (!r.checkin || !r.checkout)   { L('✗ Faltan fechas de storage.'); return { ok: false, lineas: _out, insertada: false }; }
+  if (r.checkout <= r.checkin)     { L('✗ La salida debe ser posterior a la entrada. ¿Usaste las fechas del formulario en vez de las de storage?'); return { ok: false, lineas: _out, insertada: false }; }
 
   const sheet = getOrCreateSheet();          // asegura las 33 columnas
   const data  = sheet.getDataRange().getValues();
@@ -3101,8 +3106,8 @@ function rescatarReserva(dryRun) {
   // Idempotencia: si el ID ya está, no se duplica.
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][0]).trim() === String(r.id).trim()) {
-      Logger.log('✓ La reserva ya está en la hoja (fila ' + (i + 1) + '). No se hace nada.');
-      return 0;
+      L('✓ La reserva ya está en la hoja (fila ' + (i + 1) + '). No se hace nada.');
+      return { ok: true, lineas: _out, insertada: false, yaEstaba: true };
     }
   }
 
@@ -3120,21 +3125,21 @@ function rescatarReserva(dryRun) {
     }
   }
 
-  Logger.log('── Rescate de reserva ' + r.id + ' ──');
-  Logger.log('   ' + r.name + ' · ' + CABIN_NAMES[r.cabin] + ' · ' + (r.tipo || 'noche'));
-  Logger.log('   storage ' + r.checkin + ' → ' + r.checkout + ' · ' + r.persons + ' pers · $' + r.amount);
-  Logger.log('   link que se preserva: ' + getPublicReservaUrl(r.id));
-  if (!r.email)    Logger.log('   ⚠ sin email — completá RESCATE_RESERVA.email si querés que reciba recordatorios');
-  if (!r.telefono) Logger.log('   ⚠ sin teléfono');
+  L('── Rescate de reserva ' + r.id + ' ──');
+  L('   ' + r.name + ' · ' + CABIN_NAMES[r.cabin] + ' · ' + (r.tipo || 'noche'));
+  L('   storage ' + r.checkin + ' → ' + r.checkout + ' · ' + r.persons + ' pers · $' + r.amount);
+  L('   link que se preserva: ' + getPublicReservaUrl(r.id));
+  if (!r.email)    L('   ⚠ sin email — completá RESCATE_RESERVA.email si querés que reciba recordatorios');
+  if (!r.telefono) L('   ⚠ sin teléfono');
   if (choques.length) {
-    Logger.log('   ⚠ solapa con:');
-    choques.forEach(c => Logger.log('      ' + c));
+    L('   ⚠ solapa con:');
+    choques.forEach(c => L('      ' + c));
   }
 
   if (dryRun) {
-    Logger.log('');
-    Logger.log('Nada se escribió. Para ejecutar: rescatarReservaESCRIBIR()');
-    return 0;
+    L('');
+    L('Nada se escribió. Para ejecutar: rescatarReservaESCRIBIR()');
+    return { ok: false, lineas: _out, insertada: false };
   }
 
   const fila = [
@@ -3161,11 +3166,11 @@ function rescatarReserva(dryRun) {
   logDebugEntry('rescatarReserva', { id: r.id, row: nuevaFila, name: r.name, cabin: r.cabin, checkin: r.checkin });
   SpreadsheetApp.flush();
 
-  Logger.log('');
-  Logger.log('✓ Insertada en la fila ' + nuevaFila + '.');
-  Logger.log('  El link del huésped sigue funcionando: ' + getPublicReservaUrl(r.id));
-  Logger.log('  Verificá el calendario público en ~1 min.');
-  return 1;
+  L('');
+  L('✓ Insertada en la fila ' + nuevaFila + '.');
+  L('  El link del huésped sigue funcionando: ' + getPublicReservaUrl(r.id));
+  L('  Verificá el calendario público en ~1 min.');
+  return { ok: true,  lineas: _out, insertada: true  };
 }
 
 function _rrFecha(v) {

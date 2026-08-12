@@ -2338,6 +2338,40 @@ function doGet(e) {
         .createTextOutput(JSON.stringify({ ok: true, config: _botGetAlertConfig() }))
         .setMimeType(ContentService.MimeType.JSON);
 
+    // ── RESCATE DE UNA RESERVA PERDIDA ────────────────────────
+    // Existe para poder correrlo desde el celular: el editor de Apps Script no
+    // se usa desde un teléfono. NO está en ACCIONES_PUBLICAS, así que exige la
+    // misma clave que el dashboard (?k=).
+    //
+    // Es un GET que escribe, que normalmente sería mala idea. Lo hace aceptable
+    // que sea idempotente (si el ID ya está, no hace nada) y que el default sea
+    // dry-run: sin `confirm=SI` solo reporta. Un prefetch o una vista previa de
+    // link no puede insertar nada.
+    if (action === 'rescatarReserva') {
+      const p = e.parameter || {};
+      const overrides = {};
+      ['id','name','cabin','tipo','checkin','checkout','origin','estadoPago',
+       'codTransferencia','comentarios','email','telefono','horaEntrada','horaSalida',
+       'bookingDate'].forEach(function(k) { if (p[k]) overrides[k] = p[k]; });
+      ['persons','amount','deposit','montoVoucher'].forEach(function(k) {
+        if (p[k] !== undefined && p[k] !== '') overrides[k] = parseFloat(p[k]);
+      });
+      const dry = String(p.confirm || '').toUpperCase() !== 'SI';
+      let res;
+      try {
+        res = rescatarReserva(dry, overrides);
+      } catch (err) {
+        res = { ok: false, lineas: ['✗ Error: ' + err.message], insertada: false };
+      }
+      const cab = dry
+        ? 'MODO PRUEBA — no se escribió nada.\nPara ejecutar de verdad, agregá  &confirm=SI  al final de la URL.\n\n'
+        : '';
+      // Texto plano y no JSON: esto se abre en el navegador del teléfono.
+      return ContentService
+        .createTextOutput(cab + (res.lineas || []).join('\n'))
+        .setMimeType(ContentService.MimeType.TEXT);
+    }
+
     // ── CONCILIACIÓN BANCARIA ─────────────────────────────────
     if (action === 'getCuentasResumen')
       return ContentService
