@@ -147,6 +147,26 @@ Los chips `🔥` de `index.html` estaban incompletos en las tres y de forma dist
 
 Ojo al editarlos: **Paseo y Portal tenían el chip con el texto idéntico**, así que un replace global los toca a los dos y ahora deben quedar distintos (Portal sin hamacas). Se distinguen por el chip anterior — Paseo tiene el baño al aire libre, Portal la cocina exterior.
 
+## Combo Puente + Portal — la oferta para grupos
+
+Se arma sumando las dos cabañas y restando `COMBO_DESCUENTO` ($30/noche), no con un monto propio: así hereda cualquier cambio de tarifa por tipo de día y no hay dos números que se desincronicen. Reparto: Portal siempre 2 personas, el resto a Puente.
+
+**Capacidad real: 6 plazas** (Puente queen + auxiliar full = 4; Portal full = 2). No 8 — la tabla de precios llega a 8 porque el recargo por persona no tiene tope, pero no hay camas.
+
+Precios con los fallbacks del código ($90 entre semana / $110 vie-sáb-víspera-feriado-**escolar**):
+
+| personas | entre semana | vie/sáb/feriado/escolar |
+|---|---:|---:|
+| Puente sola 4 | $130 | $150 |
+| Combo 4 | $150 | $190 |
+| Combo 6 | $190 | $230 |
+
+**Ojo con "entre semana"**: las vacaciones escolares cobran la tarifa alta aunque sea martes. Un texto que diga "entre semana $130" a secas se equivoca durante todo el período escolar.
+
+**`isCombo` es EXCLUYENTE**: `if (isCombo) { solo el combo } else { cabañas individuales }`. Hoy exige `personas >= 5`. Bajarlo a 4 **no** es cambiar una constante: escondería Puente sola ($130) a una familia de 4 y le dejaría solo el combo ($150). Para ofrecer las dos a la vez hay que mostrar el combo *además* de las individuales, no en lugar de.
+
+**Fogatas**: Puente tiene **2 áreas**, Paseo y Portal **1** cada una — por eso el combo son 3. Los chips del sitio decían "fogata" en singular para las tres.
+
 ## Camas por cabaña — el bot decía otra cosa
 
 Fuente correcta (sitio y dashboard coinciden):
