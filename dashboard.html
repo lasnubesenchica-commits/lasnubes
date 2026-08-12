@@ -7121,6 +7121,43 @@ function _waPhone(t) {
   return null;
 }
 
+// Emoji seguros para el texto pre-cargado de wa.me.
+//
+// Los emoji FUERA DEL BMP llegan a WhatsApp como "�" (U+FFFD). La firma es
+// inequívoca: se rompen exactamente los que ocupan dos unidades UTF-16 (pares
+// subrogados) y sobreviven todos los de una — las tildes y ⚠/✅ llegan bien.
+// Algo en la cadena `wa.me` → app procesa el texto como UCS-2 y parte los pares
+// por la mitad. Es el mismo comportamiento que ya estaba documentado para los
+// asuntos de Gmail, y este mapa es el espejo de ASUNTO_EMOJI_BMP (Parser.gs).
+//
+// Ojo: el bot SÍ manda emoji astrales sin problema, porque va por la API de
+// WhatsApp Cloud y no por un link con el texto en la URL. Esto aplica solo a
+// los mensajes que arma el panel.
+const WA_EMOJI_BMP = {
+  '\u{1F33F}': '✿',   // 🌿 → ✿
+  '\u{1F511}': '⚿',   // 🔑 → ⚿
+  '\u{1F4D6}': '✎',   // 📖 → ✎
+  '\u{1F4F2}': '✎',   // 📲 → ✎
+  '\u{1F3B5}': '♪',   // 🎵 → ♪
+  '\u{1F91D}': '★',   // 🤝 → ★
+  '\u{1F37D}': '▪',   // 🍽 → ▪
+  '\u{1F5D1}': '▪',   // 🗑 → ▪
+  '\u{1F4C5}': '✓',   // 📅 → ✓
+  '\u{1F4CD}': '⚑'    // 📍 → ⚑
+};
+function _waEmojiSeguro(s) {
+  let out = (s || '').toString();
+  Object.keys(WA_EMOJI_BMP).forEach(function(k) {
+    out = out.split(k).join(WA_EMOJI_BMP[k]);
+  });
+  // El selector de variación queda huérfano al reemplazar (⚠️ → ⚠ + U+FE0F) y
+  // en algunos clientes se dibuja como un cuadro suelto.
+  out = out.replace(/\uFE0F/g, '');
+  // Red de seguridad: cualquier astral que alguien agregue después se cae solo
+  // en vez de llegarle al huésped como "�".
+  return out.replace(/[\u{10000}-\u{10FFFF}]/gu, '');
+}
+
 // Hora real de check-out, con la misma precedencia que usa la ocupación y la
 // guía del backend: override manual del admin > cortesía de 12:30pm > default
 // del tipo. La fila de "sale" devolvía 11am fijo salvo late/cortesía, así que
@@ -7233,7 +7270,7 @@ async function openWhatsApp(id, kind) {
     } catch(e) { console.warn('getReservaLink failed', e); }
   }
 
-  const msg   = _waMessage(r, kind, { url, referralCode, keyBoxCode, referralAmount });
+  const msg   = _waEmojiSeguro(_waMessage(r, kind, { url, referralCode, keyBoxCode, referralAmount }));
   const waUrl = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(msg);
   window.open(waUrl, '_blank');
 }
