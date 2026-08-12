@@ -7080,9 +7080,8 @@ function _reservaHoyItemHtml(it) {
   const tipoLbl    = TIPO_LABEL[tipo] || tipo;
   const horaText = (() => {
     if (it.kind === 'salida') {
-      if (tipo === 'late') return 'sale 4pm';
-      if (r.checkoutExtendido && (tipo === 'noche' || tipo === 'early')) return 'sale 12:30pm 🤝';
-      return 'sale 11am';
+      const cortesia = r.checkoutExtendido && (tipo === 'noche' || tipo === 'early') && !r.horaSalida;
+      return 'sale ' + _horaSalidaReal(r) + (cortesia ? ' 🤝' : '');
     }
     if (it.kind === 'entrada') return tipo === 'early' ? 'entra 9am' : 'entra 2pm';
     if (it.kind === 'pasadia') return tipo === 'pasadia' ? '9am – 5pm' : '12:30pm – 7pm';
@@ -7122,6 +7121,19 @@ function _waPhone(t) {
   return null;
 }
 
+// Hora real de check-out, con la misma precedencia que usa la ocupación y la
+// guía del backend: override manual del admin > cortesía de 12:30pm > default
+// del tipo. La fila de "sale" devolvía 11am fijo salvo late/cortesía, así que
+// una reserva con `horaSalida` custom se anunciaba a la hora equivocada — y ese
+// mismo texto es el que ahora va al WhatsApp del huésped.
+function _horaSalidaReal(r) {
+  const tipo = r.tipo || 'noche';
+  if (r.horaSalida) return _fmtHora12(r.horaSalida).replace(/\s/g, '');
+  if (r.checkoutExtendido && (tipo === 'noche' || tipo === 'early')) return '12:30pm';
+  const def = TIPO_DEFAULT_HORAS[tipo] || TIPO_DEFAULT_HORAS.noche;
+  return _fmtHora12(def.salida).replace(/\s/g, '');
+}
+
 function _waMessage(r, kind, opts) {
   opts = opts || {};
   const tipo = r.tipo || 'noche';
@@ -7135,7 +7147,19 @@ function _waMessage(r, kind, opts) {
   const cabinName = CABIN_NAMES[r.cabin] || 'Las Nubes';
 
   if (kind === 'salida') {
-    return 'Buenos días ' + firstName + ', ¿cómo terminaron de pasar su estadía? Quedo atento para abrirles el portón a la hora de su salida.';
+    // Antes era solo un saludo: sin hora, sin instrucciones y sin link. El
+    // check-out es justo donde vive lo que hay que recordar —la basura SE QUEDA
+    // (la recoge el personal) y el control del portón vuelve al key box, que es
+    // como se pierden— así que ahora va todo, con la hora real de esta reserva.
+    let m = 'Buenos días ' + firstName + ', ¿cómo la pasaron? 🌿\n\n';
+    m += 'Su check-out es a las *' + _horaSalidaReal(r) + '*. Avísenme por aquí y les abro el portón.\n\n';
+    m += 'Antes de salir:\n';
+    m += '🍽 Dejar la cocina limpia\n';
+    m += '🗑️ La basura se queda — el personal la recoge\n';
+    m += '🔑 Llave y control del portón dentro del key box\n';
+    if (opts.url) m += '\n📖 Guía completa: ' + opts.url + '\n';
+    m += '\n¡Gracias por visitarnos!';
+    return m;
   }
 
   if (kind === 'entrada' || kind === 'pasadia') {
@@ -7167,9 +7191,12 @@ async function openWhatsApp(id, kind) {
   const phone = _waPhone(r.telefono);
   if (!phone) { if (typeof showToast === 'function') showToast('Esta reserva no tiene teléfono'); return; }
 
-  // Para entrada/pasadia: enriquecer con link de check-in + codigo de referido
+  // Link público de la reserva. También en la SALIDA: la guía trae el paso de
+  // check-out con la hora correcta según el tipo, así que el huésped tiene a
+  // mano lo mismo que le dice el mensaje. El código de referido solo tiene
+  // sentido al entrar.
   let url = '', referralCode = '';
-  if (kind === 'entrada' || kind === 'pasadia') {
+  if (kind === 'entrada' || kind === 'pasadia' || kind === 'salida') {
     try {
       const res = await fetch(SHEETS_API_URL + '?action=getReservaLink&id=' + encodeURIComponent(id));
       const data = await res.json();
