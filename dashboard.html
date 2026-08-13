@@ -7270,9 +7270,59 @@ async function openWhatsApp(id, kind) {
     } catch(e) { console.warn('getReservaLink failed', e); }
   }
 
-  const msg   = _waEmojiSeguro(_waMessage(r, kind, { url, referralCode, keyBoxCode, referralAmount }));
-  const waUrl = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(msg);
-  window.open(waUrl, '_blank');
+  const msg = _waMessage(r, kind, { url, referralCode, keyBoxCode, referralAmount });
+
+  // El texto va por el PORTAPAPELES, no en la URL.
+  //
+  // Pre-cargarlo con `wa.me/...?text=` rompe los emoji fuera del BMP: llegan
+  // como "�" porque algo en esa cadena procesa el texto como UCS-2 y parte los
+  // pares subrogados. Por el portapapeles el texto viaja intacto, así que se
+  // conservan 🌿 🔑 📖 🤝 y compañía. El costo es un pegar de más.
+  //
+  // Si el portapapeles falla se cae al método viejo, con los emoji convertidos
+  // a sus equivalentes BMP (`_waEmojiSeguro`): peor tipografía, pero el admin
+  // no se queda sin poder mandar el mensaje.
+  const abrirChat = (conTexto) => {
+    const waUrl = conTexto
+      ? 'https://wa.me/' + phone + '?text=' + encodeURIComponent(_waEmojiSeguro(msg))
+      : 'https://wa.me/' + phone;
+    window.open(waUrl, '_blank');
+  };
+
+  // Respaldo sincrónico: en iOS Safari el `await fetch` de arriba corta la
+  // cadena del gesto del usuario y `navigator.clipboard` puede rechazar la
+  // escritura. El textarea + execCommand no depende de esa cadena.
+  const copiarFallback = () => {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = msg;
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch (_) { return false; }
+  };
+
+  const listo = () => {
+    showToast('📋 Mensaje copiado — pégalo en el chat');
+    abrirChat(false);
+  };
+
+  try {
+    await navigator.clipboard.writeText(msg);
+    listo();
+  } catch (e) {
+    console.warn('[wa] clipboard API falló, probando execCommand:', e && e.message);
+    if (copiarFallback()) {
+      listo();
+    } else {
+      console.warn('[wa] sin portapapeles: se pre-carga el texto en la URL (emoji degradados)');
+      showToast('⚠ No se pudo copiar — se abre con el texto ya puesto');
+      abrirChat(true);
+    }
+  }
 }
 
 function renderDisponibilidad() {

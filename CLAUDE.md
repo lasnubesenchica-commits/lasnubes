@@ -235,7 +235,11 @@ El fallo además interrumpe con `alert()`, no solo un toast: se pierde en el cel
 
 Los emoji **fuera del BMP** llegan a WhatsApp como `�` (U+FFFD) cuando el texto viaja pre-cargado en un link `wa.me/...?text=`. La firma es inequívoca: se rompen exactamente los que ocupan **dos unidades UTF-16** (pares subrogados) y sobreviven todos los de una — las tildes, `⚠` y `✅` llegan bien. Algo en la cadena procesa el texto como UCS-2 y parte los pares por la mitad.
 
-Es el mismo comportamiento ya documentado para los asuntos de Gmail, y **`_waEmojiSeguro(s)`** (dashboard.html) es el espejo de `_asuntoEmailSeguro`: mapea los conocidos a un equivalente BMP (`🌿→✿`, `🔑→⚿`, `📖→✎`, `📲→✎`, `🎵→♪`, `🤝→★`, `🍽 🗑→▪`, `📅→✓`, `📍→⚑`), borra el selector de variación `U+FE0F` que queda huérfano, y **elimina cualquier otro astral** como red de seguridad. Se aplica en `openWhatsApp` justo antes de `encodeURIComponent`.
+**El texto ahora viaja por el PORTAPAPELES, no en la URL.** `openWhatsApp` copia el mensaje con los emoji reales y abre el chat **vacío** (`wa.me/<phone>` sin `?text=`); el admin pega. Cuesta un paso más y a cambio se conservan 🌿 🔑 📖 🤝.
+
+Tres caídas en cascada, porque el portapapeles no siempre está disponible: `navigator.clipboard.writeText` → textarea + `execCommand('copy')` → y si las dos fallan, el método viejo con la URL y los emoji degradados. **El `await fetch` que trae el link corta la cadena del gesto del usuario en iOS Safari**, y ahí `navigator.clipboard` puede rechazar la escritura: por eso el segundo intento no depende de esa cadena.
+
+El helper de degradación sigue existiendo para esa última rama. Es el mismo comportamiento ya documentado para los asuntos de Gmail, y **`_waEmojiSeguro(s)`** (dashboard.html) es el espejo de `_asuntoEmailSeguro`: mapea los conocidos a un equivalente BMP (`🌿→✿`, `🔑→⚿`, `📖→✎`, `📲→✎`, `🎵→♪`, `🤝→★`, `🍽 🗑→▪`, `📅→✓`, `📍→⚑`), borra el selector de variación `U+FE0F` que queda huérfano, y **elimina cualquier otro astral** como red de seguridad. Se aplica en `openWhatsApp` justo antes de `encodeURIComponent`.
 
 **El bot NO tiene este problema**: manda por la API de WhatsApp Cloud, no por un link con el texto en la URL, así que sus emoji astrales llegan bien. Esto aplica solo a los mensajes que arma el panel.
 
