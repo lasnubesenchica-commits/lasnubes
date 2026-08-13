@@ -762,7 +762,7 @@ function getOrCreateSheet() {
 
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
-    sheet.getRange(1, 1, 1, 33).setValues([[
+    sheet.getRange(1, 1, 1, 34).setValues([[
       'ID', 'Nombre', 'Cabaña', 'CabañaCodigo',
       'Entrada', 'Salida', 'Personas',
       'Monto', 'Abono', 'Origen', 'CodConfirmacion',
@@ -770,16 +770,19 @@ function getOrCreateSheet() {
       'FechaPago', 'MontoPagado', 'CodTransferencia', 'MontoVoucher', 'EstadoPago',
       'Email', 'Comentarios', 'Telefono', 'Tipo', 'VoucherURL',
       'IdHuespedURL', 'FechaNacimiento', 'CheckoutExtendido',
-      'HoraEntrada', 'HoraSalida', 'VouchersMeta', 'Regalo'
+      'HoraEntrada', 'HoraSalida', 'VouchersMeta', 'Regalo', 'Mascotas'
     ]]);
-    sheet.getRange(1, 1, 1, 33).setFontWeight('bold');
+    sheet.getRange(1, 1, 1, 34).setFontWeight('bold');
     sheet.setFrozenRows(1);
   } else {
     // Auto-asegurar columnas Tipo (25), VoucherURL (26), IdHuespedURL (27),
     // FechaNacimiento (28), CheckoutExtendido (29), HoraEntrada (30),
-    // HoraSalida (31), VouchersMeta (32), Regalo (33).
+    // HoraSalida (31), VouchersMeta (32), Regalo (33), Mascotas (34).
     // Idempotente: cada llamada rellena lo que falte.
-    if (sheet.getLastColumn() < 33) {
+    //
+    // OJO con el tope: mientras decía `< 33`, una hoja que YA tenía 33 columnas
+    // nunca entraba acá, así que agregar la 34 sin subirlo la dejaba sin crear.
+    if (sheet.getLastColumn() < 34) {
       const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
       if (!headers.includes('Tipo')) {
         sheet.getRange(1, 25).setValue('Tipo');
@@ -816,6 +819,10 @@ function getOrCreateSheet() {
       if (!headers.includes('Regalo')) {
         sheet.getRange(1, 33).setValue('Regalo');
         sheet.getRange(1, 33).setFontWeight('bold');
+      }
+      if (!headers.includes('Mascotas')) {
+        sheet.getRange(1, 34).setValue('Mascotas');
+        sheet.getRange(1, 34).setFontWeight('bold');
       }
     }
   }
@@ -913,6 +920,7 @@ const _TARIFAS_NUEVAS = [
   // Por estadía, no por noche — la cortesía es solo el primer o último día.
   ['recargoEarly',            null, 'Recargo early check-in (por estadía)',  25],
   ['recargoLate',             null, 'Recargo late check-out (por estadía)',  25],
+  ['recargoMascota',          null, 'Recargo por reserva con mascota',       10],
 
   // Malaya Lodge. Estaban escritas DOS veces en el HTML del dashboard: en el
   // bloque visible de tarifas y, por separado, dentro de calcTarifa. Subir el
@@ -2036,7 +2044,7 @@ function doGet(e) {
        'recargoPasatardePersona','recargoPasanochePersona','recargoPasadiaPersona',
        'recargoPersonaGrande','recargoPersonaPortal','comboDescuento',
        'malayaSemana','malayaFinde','malayaPersonaExtra',
-       'recargoEarly','recargoLate'].forEach(function(k) {
+       'recargoEarly','recargoLate','recargoMascota'].forEach(function(k) {
         if (p[k] !== undefined && p[k] !== '' && !isNaN(parseFloat(p[k]))) updates[k] = parseFloat(p[k]);
       });
       for (let i = 1; i < rows.length; i++) {
@@ -2135,6 +2143,7 @@ function doGet(e) {
         comboDescuento:         parseFloat(map['comboDescuento'])         || 0,
         recargoEarly:           parseFloat(map['recargoEarly'])           || 0,
         recargoLate:            parseFloat(map['recargoLate'])            || 0,
+        recargoMascota:         parseFloat(map['recargoMascota'])         || 0,
         recargoPasatardePersona: parseFloat(map['recargoPasatardePersona']) || 20,
         recargoPasanochePersona: parseFloat(map['recargoPasanochePersona']) || 25,
         recargoPasadiaPersona:   parseFloat(map['recargoPasadiaPersona'])   || 25,
@@ -2474,7 +2483,10 @@ function doGet(e) {
         vouchersMeta:     r[31] || '',
         // JSON {de, mensaje} cuando la reserva es un certificado de regalo.
         // Vacío = reserva normal. Ver _parseRegalo().
-        regalo:           r[32] || ''
+        regalo:           r[32] || '',
+        // Col 34: la reserva viene con mascota. Booleano, no cantidad — el
+        // recargo es por reserva, no por animal.
+        mascotas:         !!r[33]
       }));
 
     return ContentService
@@ -2711,6 +2723,11 @@ function doPost(e) {
         if (r.checkoutExtendido) {
           sheet.getRange(sheet.getLastRow(), 29).setValue(true);
         }
+        // Col 34 (Mascotas). Va aparte del appendRow igual que CheckoutExtendido:
+        // ese array llega solo hasta Tipo (25).
+        if (r.mascotas) {
+          sheet.getRange(sheet.getLastRow(), 34).setValue(true);
+        }
         // Col 26 (VoucherURL) — persistir si viene en el payload. Usado por el
         // flujo multi-cabaña donde el voucher se sube una vez y su URL se
         // comparte entre las reservas hermanas.
@@ -2828,6 +2845,10 @@ function doPost(e) {
           // Col 33 (Regalo) — setear siempre para permitir desmarcar el regalo
           // al editar. Vacío = reserva normal.
           sheet.getRange(row, 33).setValue(_serializeRegalo(r.regalo, r.pagador));
+      // Col 34 (Mascotas) — igual que Regalo, se setea SIEMPRE para poder
+      // desmarcar: si solo se escribiera cuando viene true, una reserva a la
+      // que se le quita la mascota se quedaría cobrando el recargo para siempre.
+      sheet.getRange(row, 34).setValue(r.mascotas ? true : false);
 
           if (payload.fechaAnterior) {
             const fa   = payload.fechaAnterior;
@@ -4032,9 +4053,9 @@ function icsContent(reservation) {
   ].join('\r\n');
 }
 
-function buildGuiaHTML(cabin, tipo, checkoutExtendido, horaSalidaCustom) {
+function buildGuiaHTML(cabin, tipo, checkoutExtendido, horaSalidaCustom, conMascota) {
   // Fuente unica: getCabinGuideSteps() en PublicLink.gs
-  var list = getCabinGuideSteps(cabin, tipo, !!checkoutExtendido, horaSalidaCustom || '');
+  var list = getCabinGuideSteps(cabin, tipo, !!checkoutExtendido, horaSalidaCustom || '', !!conMascota);
   var rows = '';
   for (var i = 0; i < list.length; i++) {
     var s = list[i];
@@ -4329,7 +4350,7 @@ _multiCabinBannerHTML(r) +
 '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:18px;"><tr><td style="vertical-align:top;padding-right:12px;font-size:22px;width:36px;">&#128274;</td><td><p style="margin:0 0 3px;font-size:14px;font-weight:600;color:#3a3530;">Privacidad total</p><p style="margin:0;font-size:13px;color:#6b6560;line-height:1.6;">Todas las instalaciones de la cabaña son de uso exclusivo de quienes la reservan.</p></td></tr></table>' +
 '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;"><tr><td style="vertical-align:top;padding-right:12px;font-size:22px;width:36px;">&#128506;&#65039;</td><td><p style="margin:0 0 3px;font-size:14px;font-weight:600;color:#3a3530;">Cómo llegar</p><p style="margin:0 0 8px;font-size:13px;color:#6b6560;line-height:1.6;">Por carretera interamericana, entrar por el Pío Pío de Bejuco hacia carretera Bejuco–Sorá. Al llegar al pueblo de Buenos Aires, doblar a la derecha hacia el pueblo de Chicá. La cabaña queda a 100 metros.</p><p style="margin:0 0 12px;font-size:13px;color:#6b6560;line-height:1.6;">La manera más fácil es colocar en <strong>Waze: &quot;Aires de Chicá&quot;</strong>. Te llevará directo al portón verde.</p><a href="https://maps.google.com/?q=8.639400,-79.945900" target="_blank" style="display:inline-block;background:#f0ede8;color:#3a3530;font-size:13px;font-weight:500;padding:8px 16px;border-radius:8px;text-decoration:none;border:1px solid #e8e4de;">&#128205; Ver en Google Maps</a></td></tr></table>' +
 '<hr style="border:none;border-top:1px solid #e8e4de;margin:24px 0;">' +
-buildGuiaHTML(r.cabin, meta.tipo, !!r.checkoutExtendido, meta.horaSalidaCustom) +
+buildGuiaHTML(r.cabin, meta.tipo, !!r.checkoutExtendido, meta.horaSalidaCustom, !!r.mascotas) +
 '<hr style="border:none;border-top:1px solid #e8e4de;margin:24px 0;">' +
 '<h2 style="margin:0 0 6px;font-size:17px;font-weight:600;color:#3a3530;">&#127978; Tiendita Las Nubes</h2>' +
 '<p style="margin:0 0 16px;font-size:13px;color:#8a8078;">Tenemos insumos disponibles — te los llevamos directo a la cabaña.</p>' +
@@ -4747,7 +4768,7 @@ function buildUpdateEmailHTML(reservation, cabin, color, checkinFmt, checkoutFmt
 '<td><a href="' + icsUri + '" style="display:inline-block;background:#3a3530;color:#ffffff;font-size:13px;font-weight:500;padding:10px 20px;border-radius:8px;text-decoration:none;">&#127822; Apple / Outlook</a></td>' +
 '</tr></table>' +
 '<hr style="border:none;border-top:1px solid #e8e4de;margin:0 0 28px;">' +
-buildGuiaHTML(reservation.cabin, meta.tipo, !!reservation.checkoutExtendido, meta.horaSalidaCustom) +
+buildGuiaHTML(reservation.cabin, meta.tipo, !!reservation.checkoutExtendido, meta.horaSalidaCustom, !!reservation.mascotas) +
 '</td></tr>' +
 '<tr><td style="background:#3a3530;border-radius:0 0 16px 16px;padding:24px 40px;text-align:center;">' +
 '<p style="margin:0 0 8px;font-size:18px;font-weight:300;color:#ffffff;font-family:Georgia,serif;">Las <em>Nubes</em></p>' +

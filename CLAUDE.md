@@ -446,6 +446,17 @@ La configuración de la tiendita (recetas, precios, costos fijos, marcas 🛒/pr
 
 Además el frontend **verifica** el guardado (`_verificarGuardadoSuministros`): relee la hoja y compara los conteos con lo que mandó; si no coinciden avisa en el momento. Un guardado que se pierde en silencio fue lo que hizo que el borrado no se notara hasta días después.
 
+## Mascotas (pet friendly)
+
+**Columna 34 `Mascotas`** en `Reservas` — booleano, no cantidad: el recargo es **por reserva**, no por animal. Política: hasta 2 mascotas, no suben a la cama, amarradas dentro de los jardines de la cabaña.
+
+- **Recargo**: `recargoMascota` en Config (default $10). Se suma **una vez por estadía** en `_lnCotizar` vía `opts.mascotas`, igual que early/late — no por noche.
+- **Checkbox `#fMascotas`** en el modal. `openModal` lo resetea: sin eso se arrastra de la reserva anterior y le cobra $10 a quien no trajo perro. `updateReservation` escribe la col 34 **siempre** (true o false), para poder desmarcar; si solo escribiera al marcar, una reserva a la que se le quita la mascota seguiría cobrando.
+- **`getOrCreateSheet` tenía el guard en `< 33`**, así que una hoja que ya tenía 33 columnas nunca entraba al bloque de migración y la 34 no se creaba. Al agregar una columna hay que subir ese tope.
+- **Las reglas aparecen SOLO si la reserva tiene mascota**, en dos superficies: el paso `Mascotas` de `getCabinGuideSteps` (antes del de check-out — el último lugar de la guía se lee al irse, y estas reglas hacen falta al llegar) y un párrafo en el mensaje de llegada del bot. A quien no trae perro, un bloque de normas de mascotas le sobra.
+- **El flag tiene que viajar por CINCO lectores** o la guía nunca lo ve: `getReservations` (Parser), `_readReservaById` (PublicLink) y los tres readers de `BotConsultor`. Es el mismo problema documentado para `horaEntrada`/`horaSalida`.
+- **El bot decía "Por el momento no recibimos mascotas"** en la FAQ y en la base de conocimiento — estaba rechazando reservas pet friendly. Corregido en ago-2026.
+
 ## Certificados de regalo (Gift Certificate)
 
 Reserva donde **quien paga y quien disfruta son personas distintas**: `pagador` = quien compró el regalo; `name`/`email`/`telefono` = el **beneficiario**, a quien le llegan todos los avisos. El beneficiario **nunca ve plata** (ni tarifa, ni abono, ni saldo, ni recibo).
