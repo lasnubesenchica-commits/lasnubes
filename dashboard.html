@@ -11913,7 +11913,18 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
     }
     reservations[idx] = reservation;
   } else {
-    reservations.push(reservation);
+    // Reintentar un guardado fallido reusa el MISMO id
+    // (`window._lastFailedSaveId`, unas líneas más arriba) justamente para que
+    // la hoja no reciba dos filas. Pero acá se caía siempre en `push`, porque
+    // `editId` sigue siendo null en una reserva nueva: cada reintento agregaba
+    // otra copia local con el mismo id y la reserva aparecía repetida en el
+    // calendario y en "Reservas de hoy".
+    //
+    // Se deduplica por id, no por `editId`: el id ya es la identidad de la
+    // reserva y es lo único que sobrevive a un reintento.
+    const dupIdx = reservations.findIndex(r => String(r.id) === String(id));
+    if (dupIdx >= 0) reservations[dupIdx] = reservation;
+    else             reservations.push(reservation);
   }
 
   save();
