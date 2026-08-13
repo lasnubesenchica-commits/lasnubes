@@ -197,6 +197,12 @@ Alcanza a **pasatarde, pasadía y pasanoche**. La pasanoche entra porque se vend
 
 **Horario de la pasadía: 9:00 am – 5:00 pm.** El texto de WhatsApp del admin decía 7:00 pm; el código dice 5:00 pm en cuatro lugares y es el correcto.
 
+**La restricción NO debe disfrazarse de falta de inventario.** `blocksTipo` devuelve "bloqueada" para las tres cabañas, la fila cae al render genérico y el modal decía **`Ocupada`** en cabañas que estaban libres (testigo: viernes 28-ago-2026, Puente libre y el panel decía ocupada). Ahora hay un branch antes de armar `cabinsHtml` que muestra `_notaDiaNoVendible(tipo, dateStr, occMap)`: dice la política, el día, y **cuáles cabañas están de verdad libres esa noche**.
+
+Importa porque **los chips de tipo solo se ven con `IS_ADMIN`** — el huésped nunca los ve, para él `ventanasDelDia` ya devuelve `[]`. O sea que el único que leía el `Ocupada` falso era justamente quien puede decidir la excepción: si piden una pasadía de viernes y no hay nada reservado, la respuesta correcta es "no lo vendemos, pero puedo hacerlo", no "no hay lugar".
+
+Los chips restringidos se **atenúan** (`opacity .4` + `title`) en vez de esconderse, y siguen siendo clickeables: un chip apagado dice "existe pero hoy no", uno ausente se lee como que el producto no existe.
+
 ## Los datos de pago — el bot cobraba en la cuenta equivocada
 
 `_botPaymentInfo()` (BotConsultor.gs) daba el ACH de la cuenta **personal** (a nombre de Joslyn Lopez) mientras el admin, respondiendo a mano por WhatsApp, mandaba a la de **Las Nubes** (Iris Albelo, la que termina en 9112). Dos instrucciones de pago distintas circulando, y la equivocada era la automatizada.
