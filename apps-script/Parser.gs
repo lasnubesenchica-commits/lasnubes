@@ -3757,8 +3757,13 @@ const CABIN_COLORS_EMAIL = {
 const REPLY_TO_EMAIL = 'lasnubesenchica@gmail.com';
 
 function formatDateES(dateStr) {
-  const parts = dateStr.toString().slice(0,10).split('-');
+  // Una reserva `Abierta` es un crédito SIN fechas, así que acá llega ''. Sin
+  // este guard el resultado era "undefined NaN de undefined de NaN", y así le
+  // llegó a un huésped en el email de actualización. Devolver '' deja que cada
+  // plantilla decida qué poner; inventar una fecha sería peor.
+  const parts = (dateStr == null ? '' : dateStr).toString().slice(0,10).split('-');
   const y = parseInt(parts[0]), m = parseInt(parts[1]), d = parseInt(parts[2]);
+  if (!y || !m || !d || isNaN(y) || isNaN(m) || isNaN(d)) return '';
   const months = ['enero','febrero','marzo','abril','mayo','junio',
                   'julio','agosto','septiembre','octubre','noviembre','diciembre'];
   const days   = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
@@ -3767,9 +3772,12 @@ function formatDateES(dateStr) {
 }
 
 function nightCount(checkin, checkout) {
+  // Sin fechas (reserva Abierta) daba NaN, que después se imprimía tal cual.
+  if (!checkin || !checkout) return 0;
   const a = new Date(checkin.toString().slice(0,10)  + 'T12:00:00');
   const b = new Date(checkout.toString().slice(0,10) + 'T12:00:00');
-  return Math.round((b - a) / (1000 * 60 * 60 * 24));
+  const n = Math.round((b - a) / (1000 * 60 * 60 * 24));
+  return isNaN(n) ? 0 : n;
 }
 
 // Devuelve metadata visual del email según tipo de reserva (noche/pasatarde/pasadia/early/late).
@@ -4782,8 +4790,9 @@ function sendUpdateEmail(reservation, voucherBase64, voucherMimeType) {
     if (!email) return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'No hay email de huésped' })).setMimeType(ContentService.MimeType.JSON);
     const cabin       = CABIN_NAMES_EMAIL[reservation.cabin] || reservation.cabin;
     const color       = CABIN_COLORS_EMAIL[reservation.cabin] || '#6a9e62';
-    const checkinStr  = reservation.checkin.toString().slice(0,10);
-    const checkoutStr = reservation.checkout.toString().slice(0,10);
+    // `.toString()` sobre un checkin nulo reventaba; en una Abierta llega ''.
+    const checkinStr  = (reservation.checkin  || '').toString().slice(0,10);
+    const checkoutStr = (reservation.checkout || '').toString().slice(0,10);
     const amount      = parseFloat(reservation.amount)  || 0;
     const deposit     = parseFloat(reservation.deposit) || 0;
     const saldo       = (amount - deposit).toFixed(2);
@@ -4791,11 +4800,24 @@ function sendUpdateEmail(reservation, voucherBase64, voucherMimeType) {
     // En un REGALO no se manda el email de actualización (habla de montos,
     // abonos y saldo): se reenvía el certificado, que no lleva plata.
     const isRegalo    = esReservaRegalo(reservation);
+    const _esAbierta  = reservation.origin === 'Abierta';
     const subject     = _asuntoEmailSeguro(isRegalo
       ? '🎁 Tu regalo en Las Nubes — actualizado'
+      : _esAbierta
+      // Mismo rótulo que la confirmación de Abierta: hablar de "reserva
+      // actualizada" con una cabaña en el asunto sugiere fechas que no hay.
+      ? '📌 Reserva Abierta — Las Nubes'
       : 'Actualización de reserva — ' + cabin + ' · Las Nubes');
+    // Una reserva Abierta es un crédito sin fechas: el email de actualización
+    // habla de check-in, check-out y noches, así que no aplica. Se manda el
+    // mismo cuerpo que la confirmación de Abierta, que ya está escrito para
+    // "fechas a coordinar". Mismo orden de precedencia que buildEmailHTML:
+    // primero regalo, después Abierta.
+    const isAbierta   = !isRegalo && _esAbierta;
     const html = isRegalo
       ? buildEmailHTMLRegalo(reservation)
+      : isAbierta
+      ? buildEmailHTMLAbierta(reservation)
       : buildUpdateEmailHTML(reservation, cabin, color, formatDateES(checkinStr), formatDateES(checkoutStr), nightCount(checkinStr, checkoutStr), amount, deposit, saldo, hasSaldo, reservation.comentarios || '', googleCalLink(reservation));
 
     // Si la edicion incluye un voucher nuevo, generar recibo PDF y adjuntar
