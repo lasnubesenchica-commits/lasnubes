@@ -4622,7 +4622,12 @@
     <div class="form-row" id="mascotasRow">
       <div class="form-group" style="grid-column: 1 / -1;">
         <label style="display:flex;align-items:center;gap:8px;font-weight:500;cursor:pointer;">
-          <input type="checkbox" id="fMascotas" style="width:18px;height:18px;cursor:pointer;" onchange="refreshModal()">
+          <!-- calcPrice(), NO refreshModal(): esa última es la del modal de
+               MALAYA (usa selStart/modalNoches y sale de una con
+               `if (!selStart) return;`), así que el recargo se sumaba en la
+               cotización pero el resumen nunca se repintaba. calcPrice es la
+               misma que dispara el campo de personas, y ya llama a calcSaldo. -->
+          <input type="checkbox" id="fMascotas" style="width:18px;height:18px;cursor:pointer;" onchange="calcPrice()">
           <span>🐾 Viene con mascota <span style="color:var(--text-muted);font-weight:400;font-size:12px;">(hasta 2 · +$10 por reserva)</span></span>
         </label>
       </div>
