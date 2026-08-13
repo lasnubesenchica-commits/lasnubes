@@ -225,6 +225,8 @@ Estaba como **primer ítem de `## AMENIDADES`** en la base de conocimiento del b
 
 El fallo además interrumpe con `alert()`, no solo un toast: se pierde en el celular, y el costo de no enterarse es vender dos veces la misma noche.
 
+**Un reintento duplicaba la reserva en la pantalla**: el id se reusa a propósito entre intentos (`window._lastFailedSaveId`) para que la hoja no reciba dos filas, pero el alta local caía siempre en `reservations.push()` — `editId` sigue null en una reserva nueva—, así que cada reintento agregaba otra copia con el mismo id. Ahora se deduplica por id. La copia sobrante se corrige sola en el próximo sync (`sheetIds.has(r.id)` descarta lo local que ya está en la hoja), pero hasta entonces la reserva se ve repetida en el calendario y en "Reservas de hoy".
+
 **Recrearla desde el dashboard NO sirve si ya se le avisó al huésped**: el link público es `reserva.html?id=<ID>&t=<firma>` y el ID es un timestamp que se genera de nuevo en cada alta, así que el link que el huésped ya tiene quedaría apuntando a una reserva inexistente. Para eso está **`rescatarReserva()`** (Cleanup.gs): inserta la fila **con el ID original**, es idempotente, avisa si solapa con otra reserva e invalida la caché pública. Dry-run por defecto; runners `rescatarReservaReporte()` / `rescatarReservaESCRIBIR()`. Ojo: las fechas del bloque de config son las de **storage**, no las del formulario (un pasatarde es día → día+1).
 
 **Para diagnosticar si una reserva se guardó**: `DebugLog` tiene un `doPost-IN` por cada POST y un `saveReservation-OK` con el número de fila. Si no está el par, el POST no llegó — no es caché ni el calendario.
