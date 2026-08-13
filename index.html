@@ -3204,6 +3204,41 @@ function _ventanaDiaPermitido(dateStr) {
   return VENTANAS_DIAS_OK.indexOf(new Date(dateStr + 'T12:00:00').getDay()) >= 0;
 }
 
+// La restricción es una DECISIÓN COMERCIAL, y el panel la disfrazaba de falta
+// de inventario: `blocksTipo` devolvía "bloqueada" para las tres cabañas y la
+// fila caía al render genérico "Ocupada". Un viernes con Puente libre decía
+// "Ocupada" en Puente, que es sencillamente falso.
+//
+// Importa porque el admin es justo quien puede hacer la excepción: si alguien
+// pide una pasadía de viernes y no hay nada reservado, la respuesta correcta es
+// "no lo vendemos, pero puedo hacerlo" — no "no hay lugar". Por eso la nota
+// dice cuáles cabañas están de verdad libres esa noche.
+//
+// Los chips solo se ven con `IS_ADMIN`; para el huésped `ventanasDelDia` ya
+// devuelve [] y el producto no existe ese día.
+const VENTANAS_TIPO_PLURAL = {
+  pasatarde: 'Los pasatardes',
+  pasadia:   'Los pasadías',
+  pasanoche: 'Las pasanoches'
+};
+function _notaDiaNoVendible(tipo, dateStr, occMap) {
+  const dia    = new Date(dateStr + 'T12:00:00').toLocaleDateString('es-PA', { weekday: 'long' });
+  const libres = CABINS.filter(c => !occMap[c.key].has(dateStr));
+  const detalle = libres.length
+    ? 'Libre esa noche: <strong>' + libres.map(c => c.name.split(' ')[0]).join(', ') + '</strong>. '
+      + 'Toca <em>Hospedaje</em> para venderla completa.'
+    : 'Ninguna cabaña está libre esa noche.';
+  return '<div class="tooltip-cabin occ" style="display:block;text-align:left;line-height:1.5;">'
+    + '<div style="font-size:13px;color:var(--text);margin-bottom:4px;">'
+    +   (VENTANAS_TIPO_PLURAL[tipo] || 'Estos productos') + ' se venden de domingo a jueves.'
+    + '</div>'
+    + '<div style="font-size:12px;color:var(--muted);">'
+    +   'El ' + dia + ' la noche completa se vende sola. No es falta de disponibilidad: '
+    +   detalle
+    + '</div>'
+    + '</div>';
+}
+
 function ventanasDelDia(intervalos, occSet, dateStr) {
   if (!VENTANAS_PUBLICAS) return [];
   if (!occSet.has(dateStr)) return [];        // día libre → se vende como noche
@@ -3646,11 +3681,20 @@ function setAdminTipo(tipo) {
 
 function _refreshTipoTabsUI() {
   const tabs = document.querySelectorAll('#ttTipoTabs .tt-tab');
+  // Viernes y sábado tres de los seis chips no venden nada. Se atenúan en vez
+  // de esconderse: el chip apagado dice "existe pero hoy no", mientras que uno
+  // ausente se lee como que el producto no existe. Siguen siendo clickeables —
+  // la nota que sale al tocarlos es la que explica por qué, y el admin puede
+  // querer hacer la excepción.
+  const diaOk = _adminBaseDate ? _ventanaDiaPermitido(_adminBaseDate) : true;
   tabs.forEach(b => {
     const active = b.dataset.tipo === _adminTipo;
+    const noAplica = !diaOk && !!VENTANAS_TIPOS_RESTRINGIDOS[b.dataset.tipo];
     b.style.background = active ? 'var(--text)' : 'none';
     b.style.color      = active ? 'var(--bg)'   : 'var(--text)';
     b.style.fontWeight = active ? '600' : '400';
+    b.style.opacity    = (noAplica && !active) ? '0.4' : '1';
+    b.title            = noAplica ? 'Solo de domingo a jueves' : '';
   });
 }
 
@@ -3809,7 +3853,11 @@ function updateModalPriceAndCabins() {
   };
 
   let cabinsHtml;
-  if (isCombo) {
+  // Política antes que inventario: si el día no vende este producto, decirlo.
+  // Sin este branch las tres cabañas salían "Ocupada" aunque estuvieran libres.
+  if (VENTANAS_TIPOS_RESTRINGIDOS[tipo] && !_ventanaDiaPermitido(dateStr)) {
+    cabinsHtml = _notaDiaNoVendible(tipo, dateStr, occMap);
+  } else if (isCombo) {
     const blockedPuente = datesToCheck.filter(ds => occMap['lila'].has(ds));
     const blockedPortal = datesToCheck.filter(ds => occMap['azul'].has(ds));
     const comboAvail    = blockedPuente.length === 0 && blockedPortal.length === 0;
