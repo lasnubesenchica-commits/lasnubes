@@ -3507,7 +3507,8 @@ function _botConfirmacionText(reservation, publicUrl, referralCode, referralAmou
   const tipo  = meta.tipo;
 
   let fechasLine;
-  if (tipo === 'pasatarde')      fechasLine = '📅 ' + meta.checkinFmt + ' · Pasatarde 12:30pm – 7pm';
+  if (meta.sinFechas)            fechasLine = '📅 Fechas a coordinar';
+  else if (tipo === 'pasatarde') fechasLine = '📅 ' + meta.checkinFmt + ' · Pasatarde 12:30pm – 7pm';
   else if (tipo === 'pasadia')   fechasLine = '📅 ' + meta.checkinFmt + ' · Pasadía 9am – 5pm';
   else if (tipo === 'early')     fechasLine = '📅 ' + meta.checkinFmt + ' → ' + meta.checkoutFmt + ' · 1 noche (entra 9am)';
   else if (tipo === 'late')      fechasLine = '📅 ' + meta.checkinFmt + ' → ' + meta.checkoutFmt + ' · 1 noche (sale 4pm)';
@@ -3525,7 +3526,7 @@ function _botConfirmacionText(reservation, publicUrl, referralCode, referralAmou
   text += '🏡 ' + cabin + '\n';
   text += fechasLine + '\n';
   if (reservation.persons) text += '👥 ' + reservation.persons + (reservation.persons == 1 ? ' persona' : ' personas') + '\n';
-  if (!isPasadia) text += '\nCheck-in: ' + checkinH + '\nCheck-out: ' + checkoutH + '\n';
+  if (!isPasadia && !meta.sinFechas) text += '\nCheck-in: ' + checkinH + '\nCheck-out: ' + checkoutH + '\n';
   if (reservation.origin === 'Referido') text += '\n🤝 Tarifa pactada con descuento del Programa Amigos.\n';
   if (publicUrl) text += '\nVer detalles e instrucciones:\n' + publicUrl;
   if (referralCode) {

@@ -254,6 +254,12 @@ function sendWAReservaConfirmada(reservation) {
     const firstIn = formatDateES(ins[0]);
     const lastOut = formatDateES(outs[outs.length - 1]);
     fechas = firstIn + ' → ' + lastOut + ' · ' + totalNights + ' ' + (totalNights === 1 ? 'noche' : 'noches') + ' en ' + arr.length + ' cabañas';
+  } else if (meta.sinFechas) {
+    // Reserva sin fechas (origen `Abierta`). Sin este branch las plantillas
+    // salian con " →  · undefined noches": los params de Meta no pueden ir
+    // vacios, asi que se dice explicitamente que estan a coordinar.
+    cabin  = CABIN_NAMES[reservation.cabin] || reservation.cabin || 'Las Nubes';
+    fechas = 'Fechas a coordinar';
   } else {
     cabin = CABIN_NAMES[reservation.cabin] || reservation.cabin || 'Las Nubes';
     const tipo = meta.tipo;
@@ -283,8 +289,8 @@ function sendWAReservaConfirmada(reservation) {
     cabana:        cabin,
     fechas:        fechas,
     personas:      personasStr,
-    checkin_hora:  _horaPlantilla(reservation.tipo, 'checkin',  false, reservation.horaEntrada),
-    checkout_hora: _horaPlantilla(reservation.tipo, 'checkout', reservation.checkoutExtendido, null, reservation.horaSalida),
+    checkin_hora:  meta.sinFechas ? 'a coordinar' : _horaPlantilla(reservation.tipo, 'checkin',  false, reservation.horaEntrada),
+    checkout_hora: meta.sinFechas ? 'a coordinar' : _horaPlantilla(reservation.tipo, 'checkout', reservation.checkoutExtendido, null, reservation.horaSalida),
     link:          link
   }, null, 'consulta_' + reservation.id);   // payload del boton "Consultas y cambios"
 }

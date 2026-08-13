@@ -3865,8 +3865,29 @@ function esReservaRegalo(r) {
 
 function tipoEmailMeta(r) {
   const tipo = (r.tipo || 'noche').toString();
-  const checkinStored  = r.checkin instanceof Date  ? Utilities.formatDate(r.checkin,  'America/Panama', 'yyyy-MM-dd') : r.checkin.toString().slice(0,10);
-  const checkoutStored = r.checkout instanceof Date ? Utilities.formatDate(r.checkout, 'America/Panama', 'yyyy-MM-dd') : r.checkout.toString().slice(0,10);
+  // Guard de reserva SIN FECHAS (origen `Abierta`: es un crédito a coordinar).
+  //
+  // Sin esto había dos formas de reventar, y las dos llegan por acá porque esta
+  // función la usan 14 lugares —emails, WhatsApp, página pública, bot—:
+  //   · `r.checkin.toString()` lanza si checkin es null.
+  //   · `addDaysISO('')` da "Invalid time value" en pasadía/early/late.
+  // Devolver una meta vacía deja que cada plantilla decida qué mostrar, que es
+  // lo que ya hacen `buildEmailHTMLAbierta` y el DTO público.
+  const _ciRaw = r.checkin  == null ? '' : r.checkin;
+  const _coRaw = r.checkout == null ? '' : r.checkout;
+  if (!_ciRaw || !_coRaw) {
+    return {
+      tipo: tipo, displayCheckin: '', displayCheckout: '',
+      checkinFmt: '', checkoutFmt: '',
+      checkinHora: '', checkoutHora: '',
+      estanciaLabel: 'Estancia', estanciaValue: 'A coordinar',
+      checkoutExtendido: false, horaEntradaCustom: '', horaSalidaCustom: '',
+      isPasadia: tipo === 'pasatarde' || tipo === 'pasadia',
+      sinFechas: true
+    };
+  }
+  const checkinStored  = _ciRaw instanceof Date  ? Utilities.formatDate(_ciRaw,  'America/Panama', 'yyyy-MM-dd') : _ciRaw.toString().slice(0,10);
+  const checkoutStored = _coRaw instanceof Date ? Utilities.formatDate(_coRaw, 'America/Panama', 'yyyy-MM-dd') : _coRaw.toString().slice(0,10);
   const addDaysISO = (s, n) => {
     const d = new Date(s + 'T12:00:00');
     d.setDate(d.getDate() + n);
@@ -3951,11 +3972,16 @@ function tipoEmailMeta(r) {
 }
 
 function toCalDate(dateStr) {
+  if (dateStr == null || dateStr === '') return '';
   return dateStr.toString().slice(0,10).replace(/-/g, '');
 }
 
 function toCalDateTime(dateStr, hour, minute) {
+  // Una reserva `Abierta` no tiene fechas: `null.toString()` lanzaba y se
+  // llevaba puesto el email entero.
+  if (dateStr == null || dateStr === '') return '';
   const d = new Date(dateStr.toString().slice(0,10) + 'T' + hour + ':' + minute + ':00-05:00');
+  if (isNaN(d.getTime())) return '';
   return Utilities.formatDate(d, 'UTC', "yyyyMMdd'T'HHmmss'Z'");
 }
 
@@ -4028,6 +4054,9 @@ function _asuntoEmailSeguro(s) {
 }
 
 function googleCalLink(reservation) {
+  // Sin fechas no hay evento que agendar (reserva `Abierta`). Se devuelve ''
+  // para que el href quede vacío en vez de apuntar a un rango invalido.
+  if (!reservation || !reservation.checkin || !reservation.checkout) return '';
   const _cp     = _emailCabinaPersonas(reservation);
   const cabin   = _cp.cabin;
   const title   = encodeURIComponent('Las Nubes — ' + cabin);
@@ -4039,6 +4068,7 @@ function googleCalLink(reservation) {
 }
 
 function icsContent(reservation) {
+  if (!reservation || !reservation.checkin || !reservation.checkout) return '';
   const _cpIcs = _emailCabinaPersonas(reservation);
   const cabin = _cpIcs.cabin;
   const start = toCalDateTime(reservation.checkin,  '14', '00');
@@ -4564,7 +4594,11 @@ function generateReceiptPDF(r) {
 
   // Texto de estancia según tipo
   let estanciaText;
-  if (meta.tipo === 'pasadia') {
+  if (meta.sinFechas) {
+    // Crédito sin fecha (origen `Abierta`): el pago es real y merece recibo,
+    // pero no hay estadía que fechar todavía.
+    estanciaText = 'A coordinar';
+  } else if (meta.tipo === 'pasadia') {
     estanciaText = meta.checkinFmt + ' · Pasadía 9am – 5pm';
   } else if (meta.tipo === 'pasatarde') {
     estanciaText = meta.checkinFmt + ' · Pasatarde 12:30pm – 7pm';

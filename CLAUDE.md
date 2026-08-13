@@ -215,6 +215,23 @@ Estaba como **primer ítem de `## AMENIDADES`** en la base de conocimiento del b
 
 **Sigue visible en `index.html`** con tarjeta y lightbox propios dentro de la sección Actividades del sitio público — eso no se tocó.
 
+## Una reserva `Abierta` no tiene fechas — y 14 lugares las daban por hechas
+
+`tipoEmailMeta(r)` es el traductor storage→display de fechas y horas, y lo llaman **14 sitios** (emails, plantillas de WhatsApp, página pública, recibo PDF, bot, recordatorios). Arrancaba con `r.checkin.toString()` y usaba un `addDaysISO` interno, así que con una reserva sin fechas fallaba de dos formas distintas:
+
+- `r.checkin` es `null` → **`Cannot read properties of null (reading 'toString')`**.
+- `r.checkin` es `''` → `addDaysISO('')` da **`Invalid time value`** en `pasadia`/`early`/`late`.
+
+Y cuando no lanzaba, formateaba basura: el email de actualización de una `Abierta` salió con **"undefined NaN de undefined de NaN"**.
+
+**El guard vive en `tipoEmailMeta`, no en cada llamador**: devuelve una meta vacía con **`sinFechas: true`** y `estanciaValue: 'A coordinar'`, y cada plantilla decide qué mostrar. Poner el guard en los 14 llamadores garantizaba que alguno quedara afuera — que es exactamente lo que había pasado.
+
+Superficies que ya deciden por su cuenta y **no** deben perder ese branch: `buildEmailHTML` (despacha a `buildEmailHTMLAbierta`/`buildEmailHTMLRegalo` **antes** de tocar fechas), `sendUpdateEmail` (mismo despacho), `_buildPublicDTO` (early return para `Abierta`), `sendWARegaloCertificado`, `sendWAReservaConfirmada` (`'Fechas a coordinar'` + horas `'a coordinar'` — los params de Meta **no pueden ir vacíos**), `generateReceiptPDF` (el pago es real y merece recibo, la estadía es la que no existe todavía) y `_botConfirmacionText`.
+
+**Los helpers de calendario también**: `toCalDate` / `toCalDateTime` devolvían `null.toString()`; ahora devuelven `''` (y `''` también ante una fecha inválida). `googleCalLink` / `icsContent` cortan temprano — sin fechas no hay evento que agendar.
+
+Ojo: `_horaPlantilla` **no** recibe fechas, así que nunca lanzó; su problema era otro — anunciaba un check-in a las 2:00 pm para una reserva que no tiene día.
+
 ## Un guardado fallido no debe avisarle al huésped
 
 `saveReservation` (dashboard.html) pinta la reserva en el array local **antes** de hablar con la hoja, y después dispara las acciones hacia afuera. Si el POST falla, el toast lo dice y el botón queda en "⚠ Reintentar guardar", pero la reserva sigue dibujada en el calendario como si existiera.
