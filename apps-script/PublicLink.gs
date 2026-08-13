@@ -214,7 +214,7 @@ function _buildIcsFor(r) {
 }
 
 // Pasos de la guia de cabaña. Fuente unica usada por email y pagina publica.
-function getCabinGuideSteps(cabin, tipo, checkoutExtendido, horaSalidaCustom) {
+function getCabinGuideSteps(cabin, tipo, checkoutExtendido, horaSalidaCustom, conMascota) {
   tipo = tipo || 'noche';
   const checkoutTitleMap = {
     'noche':     'Check-out · 11:00 am',
@@ -254,6 +254,15 @@ function getCabinGuideSteps(cabin, tipo, checkoutExtendido, horaSalidaCustom) {
   const TIENDA_CERCA = ['&#129482;', 'Tienda cercana', '¿Se les olvidó el hielo? Hay una tienda de conveniencia a <strong>5 minutos</strong> de la cabaña, con hielo, carbón, bebidas y básicos.<br><a href="https://maps.google.com/?q=8.631809,-79.944489">Cómo llegar</a>'];
   const CONVIVENCIA = ['&#127925;', 'Convivencia', 'Las cabañas están cerca unas de otras, así que música y conversaciones a volumen moderado. 🌿'];
 
+  // Solo aparece si la reserva viene con mascota. A quien no trae perro, un
+  // bloque de reglas de mascotas le sobra; a quien sí, tenerlas por escrito
+  // antes de llegar evita la conversación incómoda después.
+  const MASCOTAS = ['&#128062;', 'Mascotas', 'Somos pet friendly. Para que la estadía sea agradable para todos:'
+    + '<br>• No pueden subir a la cama'
+    + '<br>• Manténlas amarradas dentro de los jardines de tu cabaña'
+    + '<br>• Máximo 2 por reserva'
+    + '<br>Ten especial cuidado con sus necesidades y olores. 🙏'];
+
   const steps = {
     verde: [
       ['&#128273;', 'Acceso', 'Key Box código <strong>0507</strong>. Dentro está la llave de la cabaña y, en el mismo llavero, un control negro con botones verdes que abre el portón verde de la entrada. Úsenlo si necesitan salir <strong>durante su estadía</strong>.<br><strong>El día del check-out el control se queda</strong>: déjenlo en el key box junto con la llave.'],
@@ -282,7 +291,10 @@ function getCabinGuideSteps(cabin, tipo, checkoutExtendido, horaSalidaCustom) {
     ]
   };
 
-  const list = steps[cabin] || steps.verde;
+  let list = steps[cabin] || steps.verde;
+  // El paso de mascotas va ANTES del de check-out: el último lugar de la guía
+  // es el que se lee al irse, y estas reglas hacen falta al llegar.
+  if (conMascota) list = list.slice(0, -1).concat([MASCOTAS], [list[list.length - 1]]);
   return list.map(s => ({ icon: s[0], title: s[1], body: s[2] }));
 }
 
@@ -367,7 +379,7 @@ function _buildPublicDTO(r) {
   // Pasos de la guia de la cabaña
   let cabinGuide = [];
   try {
-    cabinGuide = getCabinGuideSteps(r.cabin, meta.tipo, !!r.checkoutExtendido, meta.horaSalidaCustom);
+    cabinGuide = getCabinGuideSteps(r.cabin, meta.tipo, !!r.checkoutExtendido, meta.horaSalidaCustom, !!r.mascotas);
     // Ocultar el codigo del key box dentro de la guia tambien cuando no estamos en ventana operativa
     if (!showKeyBox) {
       const mask = 'El código del Key Box aparece más arriba el día de tu entrada.';
@@ -489,6 +501,9 @@ function _readReservaById(id) {
         // Col 33: certificado de regalo. Sin esto la página pública mostraría
         // la tarifa y el saldo al beneficiario del regalo.
         regalo:      r[32] || '',
+        // Col 34: sin esto el flag nunca llega y la guía nunca muestra las
+        // reglas de mascotas, por más que la reserva las tenga.
+        mascotas:    !!r[33],
         pagador:     r[14] || ''
       };
     }

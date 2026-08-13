@@ -701,7 +701,8 @@ function _botHandleInfoQuery(from, contactName, conv, text) {
   if (/\b(mascot|pet|llevar\s+(mi\s+)?perr|mi\s+gat)\b/i.test(t)) {
     sendWhatsAppText(from,
       '🐾 *Mascotas*\n\n' +
-      'Por el momento no recibimos mascotas. Para coordinaciones puntuales puedes escribir al equipo y vemos. 🙏'
+      'Somos *pet friendly* 🐶 Hay un cargo de *$10 por reserva* y aceptamos hasta *2 mascotas*.\n\n' +
+      'Para que la estadía sea agradable para todos: no pueden subir a la cama, se mantienen amarradas dentro de los jardines de tu cabaña, y te pedimos especial cuidado con sus necesidades y olores. 🙏'
     );
     return true;
   }
@@ -891,7 +892,8 @@ _botTextoTarifas().replace(/\*/g, '').replace(/^•/gm, '-') +
 '- NO aceptamos tarjeta de crédito ni pago contraentrega\n' +
 '- Sin voucher/abono, no se confirma la reserva\n\n' +
 '## POLÍTICAS\n' +
-'- No se reciben mascotas por el momento\n' +
+'- SÍ se reciben mascotas (pet friendly): $10 por reserva, máximo 2\n' +
+'- Reglas: no suben a la cama, amarradas dentro de los jardines de la cabaña, cuidado con necesidades y olores\n' +
 '- Cancelaciones/cambios: coordinar con el equipo (derivá al agente)\n' +
 '- Eventos especiales (cumpleaños, aniversarios, lunas de miel): bienvenidos, coordiná con el equipo\n\n' +
 '## QUÉ HACER Y QUÉ NO\n' +
@@ -2585,6 +2587,7 @@ function _botArrivalStatus(phone) {
       checkoutExtendido: !!r[28],
       horaEntrada: (typeof _normalizeHora === 'function') ? _normalizeHora(r[29]) : (r[29] || ''),
       horaSalida:  (typeof _normalizeHora === 'function') ? _normalizeHora(r[30]) : (r[30] || ''),
+      mascotas:    !!r[33],
       displayCheckin: displayCi, displayCheckout: displayCo,
       cabinName: BOT_CABIN_NAMES[r[3]] || r[3]
     };
@@ -2733,6 +2736,14 @@ function _botSendArrivalInstructions(from, contactName, conv, reserva, opts) {
           '*calle huella de concreto*. Van a subirla y, cuando termine, van a tomar ' +
           'la siguiente *calle a mano izquierda*.\n\n' +
           _botLlegadaTramoCabana(cabin) +
+          // Las reglas de mascota van acá y no en el manual solamente: es el
+          // momento en que bajan del auto con el perro. Solo si la reserva las
+          // tiene, para no darle normas de mascotas a quien no trajo ninguna.
+          (reserva.mascotas
+            ? '\n\n🐾 *Con tu mascota:* no puede subir a la cama y se mantiene '
+              + 'amarrada dentro de los jardines de la cabaña. Cuidado con sus '
+              + 'necesidades y olores. 🙏'
+            : '') +
           '\n\nCualquier dificultad, llamen a Josh.';
 
   sendWhatsAppText(from, body);
@@ -2923,7 +2934,8 @@ function _botFindReservaById(reservaId) {
         // real (cortesía o custom), no el default del tipo.
         idHuespedURL: r[26] || '',
         checkoutExtendido: r[28] === true || r[28] === 'TRUE' || r[28] === 'true' || r[28] === 1,
-        horaSalida: (typeof _normalizeHora === 'function') ? _normalizeHora(r[30]) : (r[30] || '')
+        horaSalida: (typeof _normalizeHora === 'function') ? _normalizeHora(r[30]) : (r[30] || ''),
+        mascotas:   !!r[33]
       };
     }
   }
@@ -2970,7 +2982,8 @@ function _botResolverReservaLlegada(from, reservaId) {
 // suelto, el bloque va — puede no haber visto el otro mensaje.
 function _botManualCabanaTexto(reserva, omitirAcceso) {
   let pasos = getCabinGuideSteps(
-    reserva.cabin, reserva.tipo, !!reserva.checkoutExtendido, reserva.horaSalida || ''
+    reserva.cabin, reserva.tipo, !!reserva.checkoutExtendido, reserva.horaSalida || '',
+    !!reserva.mascotas
   );
   if (omitirAcceso) pasos = pasos.filter(function(p) { return p.title !== 'Acceso'; });
   // getCabinGuideSteps devuelve [{icon, title, body}] con el cuerpo en HTML
@@ -3130,7 +3143,7 @@ function _testLlegadaAMiNumero(cabinKey, reservaIdOpcional) {
     ? _botFindReservaById(reservaIdOpcional)
     : { id: 'preview', name: 'Ana Gómez', cabin: cabin,
         cabinName: BOT_CABIN_NAMES[cabin], tipo: 'noche',
-        checkoutExtendido: false, horaSalida: '', idHuespedURL: '' };
+        checkoutExtendido: false, horaSalida: '', idHuespedURL: '', mascotas: false };
   if (!reserva) { Logger.log('✗ No encontré la reserva ' + reservaIdOpcional); return; }
   const conv = { context: {} };
   try {
@@ -3968,7 +3981,8 @@ function _botAdminApprove(adminPhone, reservaId) {
         tipo:     data[i][24] || 'noche',
         checkoutExtendido: data[i][28] === true || data[i][28] === 'TRUE' || data[i][28] === 'true' || data[i][28] === 1,
         horaEntrada: (typeof _normalizeHora === 'function') ? _normalizeHora(data[i][29]) : (data[i][29] || ''),
-        horaSalida:  (typeof _normalizeHora === 'function') ? _normalizeHora(data[i][30]) : (data[i][30] || '')
+        horaSalida:  (typeof _normalizeHora === 'function') ? _normalizeHora(data[i][30]) : (data[i][30] || ''),
+        mascotas:    !!data[i][33]
       };
       // Construir texto rico (espejo de _buildClienteShareText del dashboard) y enviar
       // como session message — el bot acaba de tener interaccion con el cliente,

@@ -4172,6 +4172,9 @@
       <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Comentarios</div>
       <div id="detailComentarios" style="white-space:pre-wrap;color:var(--text);"></div>
     </div>
+    <div id="detailMascotaWrap" style="display:none;background:#f4f8f4;border-left:3px solid var(--verde-dark);padding:8px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;">
+      🐾 <strong>Viene con mascota</strong> <span style="color:var(--text-muted);">· recargo $10 incluido en el monto</span>
+    </div>
     <div id="detailRegaloWrap" style="display:none;background:#fdf8f0;border-left:3px solid #b5893f;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;">
       <div style="font-size:11px;color:#8a6a2f;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;font-weight:600;">🎁 Certificado de regalo</div>
       <div id="detailRegalo" style="color:var(--text);line-height:1.5;"></div>
@@ -4611,6 +4614,16 @@
         <label style="display:flex;align-items:center;gap:8px;font-weight:500;cursor:pointer;">
           <input type="checkbox" id="fCheckoutExtendido" style="width:18px;height:18px;cursor:pointer;" onchange="_updateHorasCustomHint((document.getElementById('fTipo')||{}).value||'noche', this.checked)">
           <span>Check-out extendido hasta 12:30 pm <span style="color:var(--text-muted);font-weight:400;font-size:12px;">(cortesía · sin costo)</span></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Fila 4a-bis: Mascotas -->
+    <div class="form-row" id="mascotasRow">
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:500;cursor:pointer;">
+          <input type="checkbox" id="fMascotas" style="width:18px;height:18px;cursor:pointer;" onchange="refreshModal()">
+          <span>🐾 Viene con mascota <span style="color:var(--text-muted);font-weight:400;font-size:12px;">(hasta 2 · +$10 por reserva)</span></span>
         </label>
       </div>
     </div>
@@ -5199,7 +5212,8 @@ async function syncFromSheets() {
           horaSalida:       r.horaSalida        || '',
           checkoutExtendido: !!r.checkoutExtendido,
           vouchersMeta:     r.vouchersMeta      || '',
-          regalo:           r.regalo            || ''
+          regalo:           r.regalo            || '',
+          mascotas:         !!r.mascotas
         };
       });
 
@@ -5351,7 +5365,7 @@ const LN_TAR = {
   pasatarde: 60, pasanoche: 75, pasadia: 75,
   recargoPersonaGrande: 20,   // Paseo (verde) y Puente (lila)
   recargoPersonaPortal: 10,   // Portal (azul)
-  recargoEarly: 25, recargoLate: 25,
+  recargoEarly: 25, recargoLate: 25, recargoMascota: 10,
   recargoPasatardePersona: 20, recargoPasanochePersona: 25, recargoPasadiaPersona: 25,
   feriados: {}, escolares: {}
 };
@@ -5380,6 +5394,7 @@ async function cargarTarifario() {
       promoEscolar:'promoEscolar', pasatarde:'pasatarde', pasanoche:'pasanoche',
       pasadia:'pasadia', recargoPersonaGrande:'recargoPersonaGrande',
       recargoPersonaPortal:'recargoPersonaPortal', recargoEarly:'recargoEarly',
+      recargoMascota:'recargoMascota',
       recargoLate:'recargoLate', recargoPasatardePersona:'recargoPasatardePersona',
       recargoPasanochePersona:'recargoPasanochePersona',
       recargoPasadiaPersona:'recargoPasadiaPersona', feriados:'feriados', escolares:'escolares'
@@ -5468,7 +5483,10 @@ function _mcCabinasDeNoche(cabinPorNoche, fecha, cabinKey, personas) {
   return [{ cabin: cabinKey, personas: personas }];
 }
 
-function _lnCotizar(tipo, cabinKey, entradaISO, salidaISO, personas, sinPromo, cabinPorNoche) {
+// `opts` es el 8vo parámetro y no un campo más de la firma posicional porque
+// lo único que lleva hoy es `mascotas`; agregarlo suelto dejaría la llamada con
+// ocho argumentos sueltos imposibles de leer.
+function _lnCotizar(tipo, cabinKey, entradaISO, salidaISO, personas, sinPromo, cabinPorNoche, opts) {
   personas = Math.max(1, parseInt(personas, 10) || 2);
   const out = { total: 0, noches: [], extras: [], nNoches: 0 };
 
@@ -5548,6 +5566,12 @@ function _lnCotizar(tipo, cabinKey, entradaISO, salidaISO, personas, sinPromo, c
   if (tipo === 'late' && LN_TAR.recargoLate) {
     out.total += LN_TAR.recargoLate;
     out.extras.push({ label: 'Late check-out (4pm)', monto: LN_TAR.recargoLate });
+  }
+  // Mascotas: recargo POR RESERVA, no por noche ni por animal. La política
+  // acepta hasta 2 y cobra un único cargo, así que se suma una sola vez.
+  if (opts && opts.mascotas && LN_TAR.recargoMascota) {
+    out.total += LN_TAR.recargoMascota;
+    out.extras.push({ label: 'Mascota', monto: LN_TAR.recargoMascota });
   }
   return out;
 }
@@ -7630,6 +7654,8 @@ function showDispDetail(id) {
   }
   // Certificado de regalo: recordarle al admin que el huésped es el beneficiario
   // y que sus notificaciones van sin montos.
+  const mkWrap = document.getElementById('detailMascotaWrap');
+  if (mkWrap) mkWrap.style.display = r.mascotas ? '' : 'none';
   const rgWrap = document.getElementById('detailRegaloWrap');
   const rgEl   = document.getElementById('detailRegalo');
   if (rgWrap && rgEl) {
@@ -10334,6 +10360,10 @@ function openModal(cabin, date) {
   document.getElementById('fComentarios').value = '';
   const _ceNewEl = document.getElementById('fCheckoutExtendido');
   if (_ceNewEl) _ceNewEl.checked = false;
+  // Sin esto el check de mascota se arrastra de la reserva anterior y le suma
+  // $10 a alguien que no viene con perro.
+  const _mkNewEl = document.getElementById('fMascotas');
+  if (_mkNewEl) _mkNewEl.checked = false;
   document.getElementById('fNotificarActualizacion').checked = false;
   const _waCkNew = document.getElementById('fNotificarWhatsApp');
   if (_waCkNew) _waCkNew.checked = false;
@@ -10407,6 +10437,8 @@ function editReservation(id) {
   document.getElementById('fComentarios').value = r.comentarios || '';
   const _ceEl = document.getElementById('fCheckoutExtendido');
   if (_ceEl) _ceEl.checked = !!r.checkoutExtendido;
+  const _mkEl = document.getElementById('fMascotas');
+  if (_mkEl) _mkEl.checked = !!r.mascotas;
   const _tipoEl = document.getElementById('fTipo');
   if (_tipoEl) {
     const _t = r.tipo || 'noche';
@@ -10477,8 +10509,9 @@ function calcPrice() {
   }
 
   const mapaMulti = _mapaCabinPorNoche();
-  const q       = _lnCotizar(tipo, cabin, entrada, salida, personas, false, mapaMulti);
-  const sinProm = _lnCotizar(tipo, cabin, entrada, salida, personas, true,  mapaMulti);
+  const _masc   = !!(document.getElementById('fMascotas') || {}).checked;
+  const q       = _lnCotizar(tipo, cabin, entrada, salida, personas, false, mapaMulti, { mascotas: _masc });
+  const sinProm = _lnCotizar(tipo, cabin, entrada, salida, personas, true,  mapaMulti, { mascotas: _masc });
   if (!q.noches.length) { box.style.display = 'none'; return; }
 
   // Los descuentos (referido, Cliente Fiel) se restan del subtotal y quedan
@@ -10711,8 +10744,9 @@ function copiarCotizacionModal() {
   const salida   = (document.getElementById('fCheckout') || {}).value;
   if (!entrada) { showToast('Falta la fecha de entrada'); return; }
 
-  const q       = _lnCotizar(tipo, cabin, entrada, salida, personas, false, _mapaCabinPorNoche());
-  const sinProm = _lnCotizar(tipo, cabin, entrada, salida, personas, true,  _mapaCabinPorNoche());
+  const _masc   = !!(document.getElementById('fMascotas') || {}).checked;
+  const q       = _lnCotizar(tipo, cabin, entrada, salida, personas, false, _mapaCabinPorNoche(), { mascotas: _masc });
+  const sinProm = _lnCotizar(tipo, cabin, entrada, salida, personas, true,  _mapaCabinPorNoche(), { mascotas: _masc });
   if (!q.noches.length) { showToast('Faltan fechas para cotizar'); return; }
 
   // Lo que se va a cobrar: el campo Monto manda.
@@ -11520,6 +11554,7 @@ async function _saveMultiCabinReservation() {
       tipo: 'noche',
       checkoutExtendido: false,
       regalo: _buildRegaloFromForm(),
+      mascotas: !!(document.getElementById('fMascotas') || {}).checked,
       voucherURL: ''  // Se rellena tras la subida del voucher
     };
   });
@@ -11936,7 +11971,8 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
                         fechaReserva, codTransferencia, montoVoucher, estadoPago, comentarios, tipo, checkoutExtendido,
                         horaEntrada, horaSalida,
                         // Certificado de regalo: JSON {de, mensaje} o '' si no aplica.
-                        regalo: _buildRegaloFromForm() };
+                        regalo: _buildRegaloFromForm(),
+                        mascotas: !!(document.getElementById('fMascotas') || {}).checked };
 
   // Detect date change before overwriting
   let fechaAnterior = null;
@@ -15394,7 +15430,8 @@ function _buildFormReservation() {
     deposit:  parseFloat(document.getElementById('fDeposit').value) || 0,
     checkoutExtendido: !!(document.getElementById('fCheckoutExtendido') || {}).checked,
     pagador:  document.getElementById('fPagador').value.trim(),
-    regalo:   _buildRegaloFromForm()
+    regalo:   _buildRegaloFromForm(),
+    mascotas: !!(document.getElementById('fMascotas') || {}).checked
   };
 }
 
