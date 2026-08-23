@@ -12330,8 +12330,23 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
   // - Nueva reserva con telefono + origen Directa/Referido: auto-envia
   //   (mismo patron que el email de confirmacion).
   // - Edicion: solo si el admin marca el checkbox 💬 WhatsApp (opt-in resend).
-  const shouldSendWA = syncOk && telefono && (origin === 'Directa' || origin === 'Referido') &&
-    (!editId || notificarWA);
+  //
+  // `Abierta` (crédito a coordinar) NO auto-envía —el aviso de un crédito lo
+  // decide el admin, no el guardado— pero SÍ respeta el checkbox. Antes el
+  // gate de origen la excluía siempre: marcar 💬 WhatsApp no mandaba nada y
+  // tampoco avisaba, así que se guardaba creyendo que el huésped fue avisado.
+  // El backend ya sabe qué decir sin fechas ("Fechas a coordinar").
+  const _waOrigenAuto   = origin === 'Directa' || origin === 'Referido';
+  const _waOrigenOptIn  = _waOrigenAuto || origin === 'Abierta';
+  const shouldSendWA = syncOk && telefono &&
+    (editId ? (notificarWA && _waOrigenOptIn) : _waOrigenAuto);
+  // Un checkbox marcado que no manda nada es peor que uno deshabilitado: hay
+  // que decir por qué se saltó.
+  if (editId && notificarWA) {
+    if (!telefono)                 showToast('💬 No se envió: la reserva no tiene teléfono');
+    else if (!_waOrigenOptIn)      showToast('💬 WhatsApp no se envía en reservas de origen ' + origin);
+  }
+  if (editId && notificar && !email) showToast('📧 No se envió: la reserva no tiene email');
   if (shouldSendWA) {
     try {
       const _waRes  = await fetch(SHEETS_API_URL, {
