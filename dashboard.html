@@ -4608,6 +4608,26 @@
       </div>
     </div>
 
+    <!-- Fila 4-bis: qué se ve en LUGAR de las fechas cuando el origen es Abierta.
+         Un crédito no tiene fechas a propósito (si las tuviera bloquearía noches
+         que están a la venta), así que el modal no puede limitarse a esconder
+         los campos: hay que decir cómo se redime. -->
+    <div class="form-row" id="abiertaHintRow" style="display:none;">
+      <div class="form-group" style="grid-column:1 / -1;">
+        <div style="background:#fdf6e3;border:1px solid #e8dfc9;border-left:3px solid #c0956a;border-radius:8px;padding:12px 14px;">
+          <div style="font-size:13px;color:var(--text);line-height:1.5;">
+            🎟 Es un <strong>crédito sin fecha</strong>. No bloquea noches: esas noches siguen a la venta.
+          </div>
+          <div style="font-size:12.5px;color:var(--text-muted);line-height:1.5;margin-top:6px;">
+            Cuando el huésped elija cuándo viene, tócalo para poner las fechas.
+          </div>
+          <button type="button" onclick="redimirCredito()" style="margin-top:10px;background:var(--accent,#6a9e62);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;touch-action:manipulation;">
+            📅 Redimir: asignar fechas
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Fila 4a: Check-out extendido (cortesia, sin costo) -->
     <div class="form-row" id="checkoutExtendidoRow">
       <div class="form-group" style="grid-column: 1 / -1;">
@@ -10405,6 +10425,9 @@ function openModal(cabin, date) {
   clearVoucher();
   renderVouchersRegistrados(null); // reserva nueva → sin pagos previos
   document.getElementById('voucherSection').style.display = 'block'; // Directa por defecto
+  // Sin esto, haber elegido Abierta en una reserva anterior dejaba la fila de
+  // fechas oculta para siempre (estilo inline que nadie restauraba).
+  _syncDateRowVisibility(document.getElementById('fOrigin').value);
   applyModalCabinTint(document.getElementById('fCabin').value);
   _refrescarAvisosModal();
 }
@@ -10470,6 +10493,10 @@ function editReservation(id) {
   clearVoucher();
   renderVouchersRegistrados(r);
   document.getElementById('voucherSection').style.display = _puedeSubirVoucher(r.origin, _rg.esRegalo) ? 'block' : 'none';
+  // Fechas: ocultas si es un crédito Abierta, visibles en cualquier otro caso.
+  // Va DESPUÉS de fijar `editId`, porque la nota de redención solo se muestra
+  // sobre un crédito que ya existe.
+  _syncDateRowVisibility(r.origin);
   // Multi-cabaña: en edición se oculta (solo aplica a nuevas reservas)
   const _mcChk = document.getElementById('fMultiCabin');
   if (_mcChk) { _mcChk.checked = false; toggleMultiCabin(); }
@@ -11376,6 +11403,45 @@ async function handleVoucherUpload(event) {
 // ahora sale del tarifario (LN_TAR/_lnCotizar), que ya sabe si está vigente
 // para esas fechas, y el desglose la muestra tachando el precio de lista.
 
+// Muestra la fila de fechas o, si el origen es `Abierta`, la nota de crédito
+// que va en su lugar.
+//
+// Vive aparte porque `handleOriginChange` SOLO corre desde el onchange del
+// select, y el `display:none` que ponía era un estilo inline que nadie
+// restauraba: bastaba con elegir Abierta una vez para que las fechas quedaran
+// ocultas en TODAS las reservas que se abrieran después, hasta recargar la
+// página. `voucherSection` ya se restauraba en openModal y en editReservation;
+// `dateRow` se había quedado afuera. Por eso ahora hay un solo helper y los
+// tres caminos lo llaman.
+//
+// No hay pérdida de datos por esto: editReservation llena los inputs igual y
+// un input oculto conserva su value, así que guardar no borraba las fechas —
+// solo no se podían ver ni editar.
+function _syncDateRowVisibility(origin) {
+  const isAbierta = origin === 'Abierta';
+  const dateRow = document.getElementById('dateRow');
+  const hintRow = document.getElementById('abiertaHintRow');
+  if (dateRow) dateRow.style.display = isAbierta ? 'none' : '';
+  // La nota solo tiene sentido sobre un crédito que ya existe: en un alta nueva
+  // el admin acaba de elegir Abierta y todavía no hay nada que redimir.
+  if (hintRow) hintRow.style.display = (isAbierta && editId) ? '' : 'none';
+}
+
+// Redimir = ponerle fechas al crédito. El origen pasa a `Directa` porque a
+// partir de acá es ocupación e ingreso del período de la estadía; dejarlo en
+// `Abierta` con fechas es exactamente la fila rota que hubo que limpiar con
+// liberarFechasAbiertas().
+function redimirCredito() {
+  const sel = document.getElementById('fOrigin');
+  if (!sel) return;
+  sel.value = 'Directa';
+  handleOriginChange();
+  _refrescarAvisosModal();
+  showToast('Origen cambiado a Directa: pon las fechas y guarda');
+  const ci = document.getElementById('fCheckin');
+  if (ci) { try { ci.focus(); } catch(e) {} }
+}
+
 function handleOriginChange() {
   const origin = document.getElementById('fOrigin').value;
   const isAbierta  = (origin === 'Abierta');
@@ -11397,8 +11463,7 @@ function handleOriginChange() {
   // Se vacían de verdad. Esto solo se llama desde el onchange del select, así
   // que nunca corre al abrir el modal: no puede borrar fechas sin que el usuario
   // haya elegido Abierta a mano.
-  const dateRow = document.getElementById('dateRow');
-  if (dateRow) dateRow.style.display = isAbierta ? 'none' : '';
+  _syncDateRowVisibility(origin);
   if (isAbierta) {
     const ci = document.getElementById('fCheckin');
     const co = document.getElementById('fCheckout');
