@@ -12148,11 +12148,23 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
     console.table(d.entries || []);
     return d;
   };
-  async function _verifyInSheet() {
+  // En un ALTA basta con que la fila exista. En una EDICIÓN eso no prueba nada
+  // —la fila ya existía antes—, así que hay que comprobar que el cambio HAYA
+  // LLEGADO: `debugFindReserva` devuelve el checkin de la fila, y cuando la
+  // edición cambia la fecha ese campo alcanza para decidir.
+  //
+  // Sin esto, una respuesta que no llega en una edición se reportaba como
+  // "NO se guardó" aunque Apps Script sí hubiera escrito. Es el espejo del bug
+  // de #675: allá el panel decía guardado sin estarlo, acá dice que falló
+  // habiendo guardado. Los dos hacen que el admin no pueda confiar en el aviso.
+  async function _verifyInSheet(expectCheckin) {
     try {
       const res = await fetch(SHEETS_API_URL + '?action=debugFindReserva&id=' + encodeURIComponent(id));
       const data = await res.json();
-      return !!(data && data.ok && data.exactMatchCol0);
+      const m = data && data.ok && data.exactMatchCol0;
+      if (!m) return false;
+      if (expectCheckin === undefined) return true;      // alta: existir basta
+      return String(m.checkin || '') === String(expectCheckin || '');
     } catch(e) {
       console.warn('[save] verify failed:', e);
       return false; // si verify mismo falla, mejor confiar en el POST
@@ -12167,8 +12179,14 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
       // Si el POST aparentemente fallo (HTTP 404, parse error, etc.) pero
       // la fila SI quedo en el sheet, tratar como exito. Esto pasa cuando
       // Apps Script proceso bien pero la respuesta HTTP no llego.
-      if (!syncOk && !editId) {
-        const verifiedAfterFail = await _verifyInSheet();
+      //
+      // En una edición solo se puede afirmar nada si la fecha CAMBIÓ en esta
+      // edición (`fechaAnterior` != null): si no cambió, la fila se ve igual
+      // antes y después y verificar no distingue nada — ahí se sigue
+      // reportando el fallo, que es lo honesto.
+      const _puedeVerificarEdit = !!(editId && fechaAnterior);
+      if (!syncOk && (!editId || _puedeVerificarEdit)) {
+        const verifiedAfterFail = await _verifyInSheet(editId ? checkin : undefined);
         if (verifiedAfterFail) {
           console.warn('[save] POST fallo (' + syncError + ') pero la fila SI esta en Sheets. Tratando como exito.');
           syncOk = true;
@@ -12247,15 +12265,26 @@ ${dup.name} · ${dup.checkin} → ${dup.checkout}
       showToast(editId ? 'Reserva actualizada ✓' : 'Reserva guardada ✓');
     } else {
       const errMsg = syncError ? ' — ' + syncError : '';
-      showToast('⚠ Sheets NO guardó la reserva' + errMsg + ' (ver consola)');
+      showToast('⚠ Sheets NO guardó ' + (editId ? 'los cambios' : 'la reserva') + errMsg + ' (ver consola)');
       // Un toast se pierde: dura unos segundos y en el celular es fácil no
       // verlo. Y el costo de no enterarse es alto — la reserva queda solo en la
       // memoria del navegador, la cabaña se sigue publicando como libre y se
       // puede vender dos veces la misma noche. Acá interrumpir es lo correcto.
-      alert('⚠ NO se guardó la reserva de ' + (name || 'este huésped') + '.\n\n'
+      //
+      // Pero la consecuencia NO es la misma en un alta que en una edición: en
+      // una edición la fila ya existe y sigue bloqueando sus noches viejas, así
+      // que decir "la cabaña sigue publicándose como DISPONIBLE" sería falso.
+      // Un aviso alarmante y equivocado enseña a ignorar los avisos.
+      const _consecuencia = editId
+        ? 'La fila conserva sus datos ANTERIORES'
+          + (fechaAnterior ? ' (incluidas las fechas viejas)' : '')
+          + ' y no se envió nada al huésped.'
+        : 'La cabaña sigue publicándose como DISPONIBLE y no se envió nada al huésped.';
+      alert('⚠ NO se guardó ' + (editId ? 'la actualización de ' : 'la reserva de ')
+          + (name || 'este huésped') + '.\n\n'
           + (syncError ? syncError + '\n\n' : '')
-          + 'La cabaña sigue publicándose como DISPONIBLE y no se envió nada al '
-          + 'huésped.\n\nToca "⚠ Reintentar guardar" antes de cerrar el modal.');
+          + _consecuencia
+          + '\n\nToca "⚠ Reintentar guardar" antes de cerrar el modal.');
     }
   } else {
     showToast(editId ? 'Reserva actualizada ✓' : 'Reserva guardada ✓');

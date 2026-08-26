@@ -252,6 +252,14 @@ El fallo además interrumpe con `alert()`, no solo un toast: se pierde en el cel
 
 **Recrearla desde el dashboard NO sirve si ya se le avisó al huésped**: el link público es `reserva.html?id=<ID>&t=<firma>` y el ID es un timestamp que se genera de nuevo en cada alta, así que el link que el huésped ya tiene quedaría apuntando a una reserva inexistente. Para eso está **`rescatarReserva()`** (Cleanup.gs): inserta la fila **con el ID original**, es idempotente, avisa si solapa con otra reserva e invalida la caché pública. Dry-run por defecto; runners `rescatarReservaReporte()` / `rescatarReservaESCRIBIR()`. Ojo: las fechas del bloque de config son las de **storage**, no las del formulario (un pasatarde es día → día+1).
 
+**Una edición que falla NO es lo mismo que un alta que falla**, y el panel las trataba igual. La recuperación de "el POST falló pero la fila SÍ quedó" estaba gateada por `!editId`, porque `_verifyInSheet` solo comprobaba que la fila **existiera** — y en una edición siempre existe. Resultado: cualquier respuesta que no llegara en una edición se reportaba como **"NO se guardó"** aunque Apps Script hubiera escrito. Es el espejo del bug anterior: allá el panel decía guardado sin estarlo, acá dice que falló habiendo guardado. Los dos hacen que el aviso deje de ser creíble.
+
+Ahora `_verifyInSheet(expectCheckin)` compara el **checkin de la fila** (que `debugFindReserva` ya devuelve) contra el que se acaba de mandar. Solo se puede afirmar algo si la fecha **cambió** en esa edición (`fechaAnterior != null`) — si no cambió, la fila se ve igual antes y después y verificar no distingue nada; ahí se sigue reportando el fallo, que es lo honesto. El caso que lo motivó es **redimir un crédito `Abierta`**: el checkin pasa de `''` a una fecha real, así que es exactamente donde la verificación es concluyente.
+
+**El texto del aviso también mentía en una edición**: decía "la cabaña sigue publicándose como DISPONIBLE", pero en una edición la fila ya existe y sigue bloqueando sus noches viejas. Ahora dice que conserva los datos anteriores. Un aviso alarmante y equivocado enseña a ignorar los avisos.
+
+**Reintentar ya no apila notas en `Alerta`**: el reintento reenvía el MISMO `fechaAnterior`, así que cada toque de "⚠ Reintentar guardar" agregaba otra copia de `📅 Entrada: … | Salida: …`. Se compara el texto sin el sello de fecha antes de anexar. Ojo al tocar esto: **la nota lleva un `|` adentro**, así que no se puede contar ni partir por el separador.
+
 **Para diagnosticar si una reserva se guardó**: `DebugLog` tiene un `doPost-IN` por cada POST y un `saveReservation-OK` con el número de fila. Si no está el par, el POST no llegó — no es caché ni el calendario.
 
 ## Emoji en los mensajes que arma el panel (wa.me)
