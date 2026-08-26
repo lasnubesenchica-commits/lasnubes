@@ -2858,7 +2858,15 @@ function doPost(e) {
                         + ' (' + stamp + ')';
             const alertaCell = sheet.getRange(row, 14);
             const prev = alertaCell.getValue();
-            alertaCell.setValue(prev ? prev + ' | ' + nota : nota);
+            // Un reintento del mismo guardado reenvía el MISMO `fechaAnterior`,
+            // así que sin este guard cada toque de "Reintentar guardar" apila
+            // otra copia de la misma nota. Se compara el texto sin el sello de
+            // fecha: dos notas iguales el mismo día son el mismo cambio.
+            const prevStr = prev ? prev.toString() : '';
+            const notaSinStamp = nota.replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '');
+            if (prevStr.indexOf(notaSinStamp) === -1) {
+              alertaCell.setValue(prevStr ? prevStr + ' | ' + nota : nota);
+            }
           }
 
           _invalidarCacheReservasPublicas();   // fechas/cabaña pudieron cambiar
